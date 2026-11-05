@@ -30,10 +30,13 @@ int64_t lastWriteTime(std::string const &path) {
 
 std::shared_ptr<nova::Image> readImage(std::string const &path) {
     // A file in a package (.usdz) is read from a copy extracted into the
-    // default texture cache directory; `path` still names it and picks its
-    // color space.
+    // default texture cache directory, a .rat file (Houdini's own format, as
+    // its HDRIs in $HFS/houdini/pic/hdri, which OIIO cannot read) from the EXR
+    // imaketx converts it to there; `path` still names it and picks its color
+    // space.
     std::string error;
-    const std::string local = HdNovaLocalizeTexture(path, HdNovaTextureOptions{}, error);
+    const std::string local =
+        HdNovaReadableTexture(path, HdNovaTextureOptions{}, HdNovaTextureColorSpaceIsNamed(path), error);
     if (local.empty()) {
         HD_NOVA_WARN("cannot open texture '%s': %s", path.c_str(), error.c_str());
         return nullptr;

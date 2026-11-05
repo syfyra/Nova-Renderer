@@ -7,6 +7,10 @@ half-float EXR holding the decoded values must give the same. As in Karma
 (values measured with husk --renderer BRAY_HdKarma):
   * .tx files written by Houdini's imaketx are sRGB-encoded, also from a
     float EXR, so they render like their source image;
+  * .rat files (Houdini's format, also of the HDRIs in $HFS/houdini/pic/hdri;
+    OIIO cannot read them) render like their source image: float data as
+    stored, 8-bit sRGB data decoded, a name a file rule matches applied to
+    the stored values, under an ACES config converted to ACEScg;
   * 1-channel images are linear, even if a file rule says sRGB;
   * only real file rules count: color space names in directories or in file
     names of formats without a rule are ignored;
@@ -260,6 +264,40 @@ def main():
         expect("an imaketx .tx of a float EXR lights like the EXR", mean_of("hdr.tx"), [0.5 * v for v in hdr_texel])
         expect("an imaketx .tx of a PNG lights like the PNG", mean_of("tex.tx"), expected)
 
+        # .rat files (Houdini's format, also of its HDRIs; OIIO cannot read
+        # them) light as in Karma: float data as stored, 8-bit sRGB data
+        # decoded, and a name a file rule matches applies to the stored values.
+        # Before, the dome lost its texture and lit with its plain color.
+        for src, dst in (("hdr_src.exr", "hdr.rat"), ("tex.png", "tex.rat")):
+            proc = run([tool(args, "imaketx.exe"), os.path.join(args.out, src), os.path.join(args.out, dst)],
+                       env, args.out)
+            check(proc.returncode == 0, f"imaketx {src} {dst} exits with 0")
+        shutil.copyfile(os.path.join(args.out, "hdr.rat"), os.path.join(args.out, "hdr_srgb_tx.rat"))
+        expect("a float .rat lights like its EXR", mean_of("hdr.rat"), [0.5 * v for v in hdr_texel], 1e-4)
+        expect("an 8-bit .rat lights like its PNG", mean_of("tex.rat"), expected, 2e-3)
+        expect("a float .rat named *srgb_tx* is decoded from its stored values", mean_of("hdr_srgb_tx.rat"),
+               [0.5 * srgb_to_linear(v) for v in hdr_texel], 1e-3)
+        # Houdini's own HDRI (with a sun up to 3.5e5), against the same pixels
+        # as an EXR (iconvert writes a float .rat's stored values) and the
+        # ground they light, 0.5 E / pi, summed over the texels (+Y up). Its
+        # camera-visible texels match Karma's exactly (docs/design/M3.md).
+        kiara = os.path.join(args.hfs, "houdini", "pic", "hdri", "HDRIHaven_kiara_5_noon_2k.rat")
+        if os.path.exists(kiara):
+            shutil.copyfile(kiara, os.path.join(args.out, "kiara.rat"))
+            proc = run([tool(args, "iconvert.exe"), kiara, os.path.join(args.out, "kiara.exr")], env, args.out)
+            check(proc.returncode == 0, "iconvert of Houdini's kiara HDRI exits with 0")
+            kiara_rat = mean_of("kiara.rat")
+            expect("Houdini's kiara .rat HDRI lights like its EXR", kiara_rat, mean_of("kiara.exr"), 1e-4)
+            texels = oiio.ImageBuf(os.path.join(args.out, "kiara.exr")).get_pixels(oiio.FLOAT)[..., :3]
+            h, w = texels.shape[:2]
+            theta = (np.arange(h) + 0.5) / h * np.pi
+            weight = np.where(np.cos(theta) > 0, (2 * np.pi / w) * (np.pi / h) * np.sin(theta) * np.cos(theta), 0.0)
+            irradiance = (texels.astype(np.float64) * weight[:, None, None]).sum(axis=(0, 1))
+            expect("Houdini's kiara .rat HDRI lights the ground with its texels' irradiance", kiara_rat,
+                   [0.5 * float(e) / np.pi for e in irradiance], 3e-3)
+        else:
+            check(False, f"Houdini's HDRI not found: {kiara}")
+
         # 1-channel images are linear, also where a file rule says sRGB.
         grey = 153 / 255.0
         write_texture("grey1.png", oiio.UINT8, [grey])
@@ -290,6 +328,11 @@ def main():
                    mean_of("gamma.png", aces, "_aces"), converted)
             expect("ACES config: a .hdr texture is converted like an EXR", mean_of("plain/sky.hdr", aces, "_aces"),
                    to_acescg(plain), 2e-3)
+            # Karma converts a .rat's stored lin_rec709 data as well.
+            expect("ACES config: a float .rat is converted to ACEScg", mean_of("hdr.rat", aces, "_aces"),
+                   [0.5 * v for v in to_acescg(hdr_texel)], 2e-3)
+            expect("ACES config: an 8-bit .rat is decoded and converted like its PNG", mean_of("tex.rat", aces, "_aces"),
+                   converted, 3e-3)
         else:
             check(False, f"ACES config not found: {config}")
 
@@ -301,7 +344,7 @@ def main():
         cache = os.path.join(args.out, "txcache")
         shutil.rmtree(cache, ignore_errors=True)
 
-        def surface(texture, output="image.outputs:out"):
+        def surface(texture, output="image.outputs:out", render_env=None):
             renders.append("surface " + texture + " " + output)
             stem = f"render{len(renders):02d}"
             scene = os.path.join(args.out, stem + ".usda")
@@ -310,7 +353,7 @@ def main():
                         .replace("CACHE_DIR", cache.replace("\\", "/")))
             image = os.path.join(args.out, stem + ".exr")
             cmd = [tool(args, "husk.exe"), "--renderer", "Nova", "--settings", "/Render/settings", "-o", image, scene]
-            proc = run(cmd, env, args.out)
+            proc = run(cmd, render_env or env, args.out)
             check(proc.returncode == 0, f"husk with a {texture} surface texture exits with 0")
             pixels = oiio.ImageBuf(image).get_pixels(oiio.FLOAT)
             # The quad covers the 4x4 center pixels.
@@ -327,6 +370,13 @@ def main():
                [sum(m * v for m, v in zip(row, acescg)) for row in aces_to_709], 3e-3)
         _, got = surface("tex.png", "uvtex.outputs:rgb")
         expect("a UsdUVTexture applies scale and bias", got, [2 * v + 0.1 for v in linear], 2e-3)
+        _, got = surface("hdr.rat")
+        expect("an image node shows a float .rat's texel", got, hdr_texel, 1e-4)
+        if os.path.exists(config):
+            # Karma converts a .rat into the rendering space as any file
+            # (before, Nova used its lin_rec709 data as ACEScg).
+            _, got = surface("hdr.rat", render_env=aces)
+            expect("ACES config: an image node converts a float .rat to ACEScg", got, to_acescg(hdr_texel), 2e-3)
         converted = sorted(os.listdir(cache)) if os.path.isdir(cache) else []
         check(len(converted) >= 3, f"untiled and sRGB textures are converted into the cache: {converted}")
         times = {f: os.path.getmtime(os.path.join(cache, f)) for f in converted}

@@ -63,28 +63,57 @@ bool isKnown(std::string const &cs) {
 
 float srgbToLinear(float v) { return v <= 0.04045f ? v / 12.92f : std::pow((v + 0.055f) / 1.055f, 2.4f); }
 
-} // namespace
-
-std::string HdNovaTextureColorSpace(std::string const &path, OIIO::ImageSpec const &spec, std::string const &hint) {
-    if (!hint.empty() && !OIIO::Strutil::iequals(hint, "auto")) {
-        if (isOneOf(hint, {"raw", "data", "none", "Raw", "Utility - Raw"}))
-            return {};
-        const std::string cs = canonicalName(hint);
-        if (isKnown(cs))
-            return cs;
-        HD_NOVA_WARN("texture '%s' names the unknown color space '%s'; using the automatic rules", path.c_str(),
-                     hint.c_str());
+// The space an explicit hint names ("" for raw); false for none, "auto" or
+// an unknown name (then `unknown` is set).
+bool hintColorSpace(std::string const &hint, std::string &cs, bool &unknown) {
+    unknown = false;
+    if (hint.empty() || OIIO::Strutil::iequals(hint, "auto"))
+        return false;
+    if (isOneOf(hint, {"raw", "data", "none", "Raw", "Utility - Raw"})) {
+        cs.clear();
+        return true;
     }
-    if (spec.nchannels < 3)
-        return {};
+    cs = canonicalName(hint);
+    unknown = !isKnown(cs);
+    return !unknown;
+}
+
+// The space a real file rule of the OCIO config gives `path` (a path that
+// only matches the Default rule has none).
+bool fileRuleColorSpace(std::string const &path, std::string &cs) {
     if (OCIO::ConstConfigRcPtr config = ocioConfig()) {
         try {
-            if (!config->filepathOnlyMatchesDefaultRule(path.c_str()))
-                return canonicalName(config->getColorSpaceFromFilepath(path.c_str()));
+            if (!config->filepathOnlyMatchesDefaultRule(path.c_str())) {
+                cs = canonicalName(config->getColorSpaceFromFilepath(path.c_str()));
+                return true;
+            }
         } catch (OCIO::Exception const &) {
-            // a config without file rules: fall through
+            // a config without file rules
         }
     }
+    return false;
+}
+
+} // namespace
+
+bool HdNovaTextureColorSpaceIsNamed(std::string const &path, std::string const &hint) {
+    std::string cs;
+    bool unknown;
+    return hintColorSpace(hint, cs, unknown) || fileRuleColorSpace(path, cs);
+}
+
+std::string HdNovaTextureColorSpace(std::string const &path, OIIO::ImageSpec const &spec, std::string const &hint) {
+    std::string cs;
+    bool unknown;
+    if (hintColorSpace(hint, cs, unknown))
+        return cs;
+    if (unknown)
+        HD_NOVA_WARN("texture '%s' names the unknown color space '%s'; using the automatic rules", path.c_str(),
+                     hint.c_str());
+    if (spec.nchannels < 3)
+        return {};
+    if (fileRuleColorSpace(path, cs))
+        return cs;
     // Metadata naming a known space; others (e.g. "Gamma2.2" from a PNG's
     // gAMA chunk) are skipped, as Karma does.
     if (const std::string meta = canonicalName(spec.get_string_attribute("oiio:ColorSpace")); !meta.empty())

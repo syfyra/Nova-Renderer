@@ -44,6 +44,7 @@ std::string utf8(fs::path const &p) {
 constexpr const char *kFormatVersion = "nova-tx-2";
 constexpr const char *kPackagedVersion = "nova-usdz-1";
 constexpr const char *kLinkVersion = "nova-udim-link-1";
+constexpr const char *kRatVersion = "nova-rat-exr-1"; // a .rat as the EXR imaketx makes of it
 
 struct SourceFile {
     std::string path;
@@ -173,8 +174,11 @@ std::string houdiniBin() {
     return {};
 }
 
-// Runs imaketx <source> <target> (true on success).
-bool runImaketx(std::string const &source, std::string const &target, std::string &error) {
+// Runs imaketx <source> <target>, with `stored` the stored values unchanged
+// (-m builtin -l 0: no OCIO, no sRGB decoding), otherwise decoded by the
+// stored color space, named in the target's metadata (--disableparse: not
+// by the file name) (true on success).
+bool runImaketx(std::string const &source, std::string const &target, bool stored, std::string &error) {
     const std::string bin = houdiniBin();
     const fs::path tool = fs::u8path(bin) / "imaketx.exe";
     std::error_code ec;
@@ -186,8 +190,12 @@ bool runImaketx(std::string const &source, std::string const &target, std::strin
     const std::wstring exe = tool.wstring(), src = fs::u8path(source).wstring(), dst = fs::u8path(target).wstring();
     // _wspawnv passes the arguments unquoted: quote them.
     const std::wstring a0 = L"\"" + exe + L"\"", a1 = L"\"" + src + L"\"", a2 = L"\"" + dst + L"\"";
-    const wchar_t *quoted[] = {a0.c_str(), a1.c_str(), a2.c_str(), nullptr};
-    const intptr_t code = _wspawnv(_P_WAIT, exe.c_str(), quoted);
+    std::vector<const wchar_t *> quoted{a0.c_str(), a1.c_str(), a2.c_str()};
+    for (const wchar_t *a : stored ? std::vector<const wchar_t *>{L"-m", L"builtin", L"-l", L"0"}
+                                   : std::vector<const wchar_t *>{L"--disableparse"})
+        quoted.push_back(a);
+    quoted.push_back(nullptr);
+    const intptr_t code = _wspawnv(_P_WAIT, exe.c_str(), quoted.data());
     if (code != 0) {
         error = "imaketx failed (exit code " + std::to_string(code) + ")";
         return false;
@@ -199,15 +207,14 @@ bool runImaketx(std::string const &source, std::string const &target, std::strin
 #endif
 }
 
-// Converts one file into `target` (half, scene-linear, tiled 64, MIP-mapped).
+// Converts one file OIIO reads (for a .rat file: HdNovaReadableTexture's)
+// into `target` (half, scene-linear, tiled 64, MIP-mapped).
 bool convertOne(SourceFile const &file, std::string const &target, std::string const &colorSpace,
                 std::string const &layer, std::string &error) {
     const fs::path out = fs::u8path(target);
     const fs::path tmp = tempPath(out);
     bool ok;
-    if (lowerExtension(file.path) == ".rat") {
-        ok = runImaketx(file.path, utf8(tmp), error);
-    } else {
+    {
         int subimage = 0;
         if (!layer.empty()) {
             OIIO::ImageBuf probe(file.path);
@@ -392,6 +399,34 @@ std::string HdNovaLocalizeTexture(std::string const &path, HdNovaTextureOptions 
     return ok ? utf8(out) : std::string();
 }
 
+std::string HdNovaReadableTexture(std::string const &path, HdNovaTextureOptions const &options, bool stored,
+                                  std::string &error) {
+    const std::string local = HdNovaLocalizeTexture(path, options, error);
+    if (local.empty() || lowerExtension(local) != ".rat")
+        return local;
+    SourceFile f;
+    f.path = local;
+    if (!stat(f)) {
+        error = "the file does not exist";
+        return {};
+    }
+    // Named by the file and the mode; decoding goes through the OCIO config.
+    uint64_t key = fnv1a(kRatVersion);
+    key = fnv1a(utf8(fs::u8path(local).lexically_normal()) + "|" + std::to_string(f.size) + "|" +
+                    std::to_string(f.mtime) + "|" + (stored ? std::string("stored") : "decoded|" + TfGetenv("OCIO")),
+                key);
+    const fs::path dir = fs::u8path(HdNovaTextureCacheDir(options));
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    const fs::path out = dir / fs::u8path(utf8(fs::u8path(local).stem()) + "_" + hex(key) + ".exr");
+    if (fs::exists(out, ec))
+        return utf8(out); // converted before
+    const fs::path tmp = tempPath(out);
+    const bool ok = runImaketx(local, utf8(tmp), stored, error) && commit(tmp, out, error);
+    fs::remove(tmp, ec);
+    return ok ? utf8(out) : std::string();
+}
+
 HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &path, std::string const &colorSpaceHint,
                                            std::string const &layer, HdNovaTextureOptions const &options) {
     HdNovaPreparedTexture r;
@@ -418,30 +453,33 @@ HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &path, std::string 
         return r;
     }
 
-    // The first file decides the color space and the layout for the set
-    // (.rat files have no OIIO reader: imaketx converts them, linear).
+    // The first file decides the color space and the layout for the set.
+    // .rat files (no OIIO reader) are read through the EXRs imaketx makes of
+    // them, and their color space is decided like any file's, by the .rat's
+    // name and with its stored color space as the metadata (as Karma).
     const bool rat = lowerExtension(files.front().path) == ".rat";
-    OIIO::ImageSpec spec;
-    bool tiled = false, mipped = false;
-    if (!rat) {
-        auto in = OIIO::ImageInput::open(files.front().path);
-        if (!in) {
-            r.error = OIIO::geterror();
-            return r;
-        }
-        spec = in->spec();
-        tiled = spec.tile_width > 0;
-        mipped = in->seek_subimage(0, 1) || (spec.width <= 1 && spec.height <= 1);
-        in->close();
+    const bool stored = rat && HdNovaTextureColorSpaceIsNamed(path, colorSpaceHint);
+    const std::string first =
+        rat ? HdNovaReadableTexture(files.front().path, options, stored, r.error) : files.front().path;
+    if (first.empty())
+        return r;
+    auto in = OIIO::ImageInput::open(first);
+    if (!in) {
+        r.error = OIIO::geterror();
+        return r;
     }
+    const OIIO::ImageSpec spec = in->spec();
+    const bool tiled = spec.tile_width > 0;
+    const bool mipped = in->seek_subimage(0, 1) || (spec.width <= 1 && spec.height <= 1);
+    in->close();
     r.found = true;
-    r.colorSpace =
-        rat ? std::string() : HdNovaTextureColorSpace(packaged ? path : files.front().path, spec, colorSpaceHint);
+    r.colorSpace = HdNovaTextureColorSpace(packaged ? path : files.front().path, spec, colorSpaceHint);
     r.transform = HdNovaGetColorTransform(r.colorSpace);
     const bool nonlinear = r.transform.kind == HdNovaColorTransform::Kind::Nonlinear;
-    const bool convert = rat || nonlinear || !tiled || !mipped;
+    // The tiles of a .rat UDIM set are converted under one name.
+    const bool convert = (rat && r.udim) || nonlinear || !tiled || !mipped;
     // What OIIO reads when the file is used as it is.
-    const auto direct = [&] { return r.udim ? directUdimName(path, token, files, options) : local; };
+    const auto direct = [&] { return r.udim ? directUdimName(path, token, files, options) : first; };
     if (!convert || (!options.autoTx && !rat)) {
         if (nonlinear) {
             HD_NOVA_WARN("texture '%s' is in color space '%s' and nova:textureAutoTx is off; it is used undecoded",
@@ -456,7 +494,7 @@ HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &path, std::string 
     // rendering space (the pixels are baked in it), the layer and the version.
     uint64_t key = fnv1a(kFormatVersion);
     key = fnv1a(r.colorSpace + "|" + HdNovaSceneLinearTransformId(r.colorSpace) + "|" + layer + "|" +
-                    utf8(fs::u8path(path).lexically_normal()),
+                    utf8(fs::u8path(path).lexically_normal()) + (stored ? "|stored" : ""),
                 key);
     for (SourceFile const &f : files)
         key = fnv1a(f.tile + "|" + std::to_string(f.size) + "|" + std::to_string(f.mtime), key);
@@ -473,7 +511,10 @@ HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &path, std::string 
         if (fs::exists(fs::u8path(target), ec))
             continue; // converted before
         std::string error;
-        if (!convertOne(f, target, r.colorSpace, layer, error)) {
+        SourceFile source = f;
+        if (rat) // a .rat file has one image ("C")
+            source.path = HdNovaReadableTexture(f.path, options, stored, error);
+        if (source.path.empty() || !convertOne(source, target, r.colorSpace, rat ? std::string() : layer, error)) {
             HD_NOVA_WARN("cannot convert texture '%s' (%s); using it unconverted", f.path.c_str(), error.c_str());
             r.lookupPath = direct();
             r.converted = false;

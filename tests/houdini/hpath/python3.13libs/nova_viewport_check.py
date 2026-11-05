@@ -26,7 +26,8 @@ OUT = os.environ.get("NOVA_VIEWPORT_CHECK", "")
 # steps (setup, Houdini GL, Nova, the LOP, Karma); =pyro the volume steps
 # (setup_pyro); =m9 hair, SSS, many lights and Nova's geometry properties
 # (setup_m9); =xpu Nova XPU in the viewport (setup_xpu); =icons Nova's icon
-# on its nodes and tools (setup_icons).
+# on its nodes and tools (setup_icons); =dome a Dome Light LOP with Houdini's
+# .rat HDRI in Nova CPU, Nova XPU and Karma (setup_dome).
 ONLY = os.environ.get("NOVA_VIEWPORT_CHECK_ONLY", "")
 SCENE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scenes", "basic.usda").replace("\\", "/")
 # "started" (absolute) tells this run's log from an earlier one in the same folder.
@@ -1007,6 +1008,106 @@ def step_icons_shelf():
     later(2, finish)
 
 
+def region_mean(name, y0, y1):
+    """The mean color of rows y0..y1 (fractions of the height) of a capture."""
+    try:
+        from PySide6 import QtGui
+    except ImportError:  # pragma: no cover
+        from PySide2 import QtGui
+    files = sorted(f for f in os.listdir(OUT) if f.startswith(name) and f.endswith(".png"))
+    if not files:
+        return None
+    img = QtGui.QImage(os.path.join(OUT, files[0]))
+    total, n = [0.0, 0.0, 0.0], 0
+    for y in range(int(y0 * img.height()), int(y1 * img.height()), 2):
+        for x in range(0, img.width(), 2):
+            c = img.pixelColor(x, y)
+            total[0] += c.redF(); total[1] += c.greenF(); total[2] += c.blueF()
+            n += 1
+    return [round(t / max(n, 1), 4) for t in total]
+
+
+DOME_GROUND = """#usda 1.0
+(
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "ground"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-20, 0, -20), (-20, 0, 20), (20, 0, 20), (20, 0, -20)]
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 24
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 1, 6)
+        float3 xformOp:rotateXYZ = (-4, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+"""
+
+
+def setup_dome():
+    """A Dome Light LOP with Houdini's own HDRI, a .rat file (Nova lost the
+    texture before: a plain white sky), over a ground plane, seen by Nova CPU, Nova
+    XPU and Karma. The sky (upper part of the frame) must match Karma's."""
+    STATE["t0"] = time.time()
+    stage = hou.node("/stage")
+    ground = os.path.join(OUT, "dome_ground.usda")
+    with open(ground, "w") as f:
+        f.write(DOME_GROUND)
+    sub = stage.createNode("sublayer", "ground")
+    sub.parm("filepath1").set(ground.replace("\\", "/"))
+    dome = stage.createNode("domelight::3.0", "dome")
+    dome.setInput(0, sub)
+    hdri = hou.text.expandString("$HFS/houdini/pic/hdri/HDRIHaven_kiara_5_noon_2k.rat")
+    for p in dome.parms():
+        if p.name().startswith("xn__inputstexturefile_") and "_control_" not in p.name():
+            p.set(hdri)
+        if p.name().startswith("xn__inputskarmalightrenderlightgeo_") and "_control_" not in p.name():
+            p.set(1)
+    dome.setDisplayFlag(True)
+    v = viewer()
+    v.setPwd(stage)
+    try:
+        v.curViewport().setCamera("/World/cam")
+    except Exception:  # noqa: BLE001
+        pass
+    log("dome setup", texture=hdri, prims=[str(p.GetPath()) for p in dome.stage().Traverse()])
+    set_renderer("Nova CPU")
+    later(25, step_dome_nova)
+
+
+def step_dome_nova():
+    capture("60_dome_nova")
+    set_renderer("Nova XPU")
+    later(25, step_dome_xpu)
+
+
+def step_dome_xpu():
+    capture("61_dome_xpu")
+    set_renderer("Karma CPU")
+    later(40, step_dome_karma)
+
+
+def step_dome_karma():
+    capture("62_dome_karma")
+    log("dome", **{name: {"sky": region_mean(name, 0.02, 0.3), "ground": region_mean(name, 0.75, 0.98)}
+                   for name in ("60_dome_nova", "61_dome_xpu", "62_dome_karma")})
+    set_renderer("Nova CPU")
+    later(2, finish)
+
+
 def finish():
     log("done")
     hou.exit(exit_code=0, suppress_save_prompt=True)
@@ -1016,5 +1117,6 @@ def start():
     if not OUT:
         return
     os.makedirs(OUT, exist_ok=True)
-    modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble, "icons": setup_icons}
+    modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble,
+             "icons": setup_icons, "dome": setup_dome}
     later(5, modes.get(ONLY, setup))

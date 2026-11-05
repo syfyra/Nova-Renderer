@@ -34,6 +34,9 @@
 # the TAB menu filtered to "nova" in /stage and in the material library
 # (icons_tabmenu, icons_tabmenu_matlib: screen grabs) and, with -Prefs, a
 # shelf tab of the Nova tools (icons_shelf).
+# -Only dome: a Dome Light LOP with Houdini's .rat HDRI over a plane in Nova
+# CPU, Nova XPU and Karma (60_dome_nova ... 62_dome_karma; log.json has the
+# sky and ground means of each).
 #
 # -Prefs <dir> gives the instance its own preference directory (created if
 # needed; no user packages then). The first start in a new one takes a few
