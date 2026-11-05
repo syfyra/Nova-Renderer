@@ -1,14 +1,19 @@
-/* Nova Setup: neutral dark, one accent colour, no motion. */
+/* Nova Setup: the logo's off-white and black, its orange only in small
+   accents (progress, focus, the check mark, the dot of the mark); no motion. */
 :root {
-  --bg: #1c1d20;
-  --text: #e6e6e6;
-  --muted: #9a9ca3;
-  --line: #2c2e33;
-  --field: #232428;
-  --accent: #4c8dff;
-  --accent-hover: #6a9fff;
-  --danger: #e5484d;
-  color-scheme: dark;
+  --bg: #f7f6f3;
+  --text: #0a0a0a;
+  --muted: #6b6964;
+  --line: #e2e0db;
+  --field: #ffffff;
+  --field-line: #d3d0c9;
+  --hover: #edebe6;
+  --accent: #fe4819;
+  --primary: #0a0a0a;
+  --primary-hover: #2b2b2b;
+  --danger: #d93a3f;
+  --error: #c4282d;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -37,8 +42,8 @@ code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color
   padding-left: 14px;
   border-bottom: 1px solid var(--line);
 }
-.mark { width: 13px; height: 13px; fill: var(--muted); }
-.mark .dot { fill: #fe4819; }
+.mark { width: 13px; height: 13px; fill: var(--text); }
+.mark .dot { fill: var(--accent); }
 .title { flex: 1; color: var(--muted); font-size: 12px; }
 .controls { display: flex; height: 100%; }
 .ctl {
@@ -46,7 +51,7 @@ code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color
   display: grid; place-items: center;
 }
 .ctl svg { width: 10px; height: 10px; fill: none; stroke: var(--muted); stroke-width: 1; }
-.ctl:hover { background: #2a2b2f; }
+.ctl:hover { background: var(--hover); }
 .ctl.close:hover { background: #c42b1c; }
 .ctl.close:hover svg { stroke: #fff; }
 
@@ -74,17 +79,18 @@ dd .sub { display: block; color: var(--muted); font-size: 12px; overflow: hidden
 .location { display: flex; align-items: center; gap: 12px; }
 .location input {
   flex: 1; min-width: 0; height: 30px; padding: 0 9px;
-  background: var(--field); border: 1px solid var(--line); border-radius: 5px; outline: none; user-select: text;
+  background: var(--field); border: 1px solid var(--field-line); border-radius: 5px; outline: none; user-select: text;
 }
 .location input:focus { border-color: var(--accent); }
-.link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 4px 0; }
-.link:hover { color: var(--accent-hover); text-decoration: underline; }
+.link { border: 0; background: none; color: var(--text); cursor: pointer; padding: 4px 0; text-decoration: underline; text-decoration-color: var(--field-line); text-underline-offset: 3px; }
+.link:hover { text-decoration-color: var(--text); }
+.link:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 
 .check { display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; }
 .check > span { min-width: 0; overflow: hidden; }
 .check input {
   appearance: none; flex: none; width: 15px; height: 15px; margin: 0;
-  border: 1px solid #55575e; border-radius: 3px; background: var(--field); cursor: pointer;
+  border: 1px solid #a9a6a0; border-radius: 3px; background: var(--field); cursor: pointer;
   display: grid; place-items: center;
 }
 .check input:checked { background: var(--accent); border-color: var(--accent); }
@@ -101,7 +107,7 @@ dd .sub { display: block; color: var(--muted); font-size: 12px; overflow: hidden
 .bar-text { display: flex; justify-content: space-between; margin-top: 10px; color: var(--muted); font-size: 12px; }
 .bar-text span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 16px; }
 .message { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); }
-.message.error { color: #ff8a8d; }
+.message.error { color: var(--error); }
 
 /* Footer with the buttons. */
 .footer {
@@ -117,11 +123,11 @@ dd .sub { display: block; color: var(--muted); font-size: 12px; overflow: hidden
 .buttons { display: flex; gap: 8px; }
 .btn {
   min-width: 84px; height: 30px; padding: 0 14px;
-  border: 1px solid #3a3c42; border-radius: 5px; background: transparent; cursor: pointer;
+  border: 1px solid var(--field-line); border-radius: 5px; background: transparent; cursor: pointer;
 }
-.btn:hover { background: #26272b; }
+.btn:hover { background: var(--hover); }
 .btn:disabled { opacity: .4; cursor: default; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600; }
 .btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }

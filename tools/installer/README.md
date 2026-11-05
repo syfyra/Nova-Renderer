@@ -24,8 +24,9 @@ The installer of Nova for Houdini: one executable, `dist/NovaSetup-<version>.exe
 ## The window
 
 A frameless window (Tauri 2, WebView2) with its own title bar and three pages: install (location, Houdini,
-graphics), progress, done; the uninstaller shows remove, progress, done. Neutral dark grey, one accent colour, no
-motion. The interface is `ui/` (HTML, CSS, JavaScript); `src/main.rs` is the backend. Opened in a browser
+graphics), progress, done; the uninstaller shows remove, progress, done. The colours of the Nova logo: off-white,
+near-black text and buttons, its orange only in small accents (progress bar, focus, check mark, the dot of the mark);
+no motion. The interface is `ui/` (HTML, CSS, JavaScript); `src/main.rs` is the backend. Opened in a browser
 (`python -m http.server --directory tools/installer/ui`), the interface runs against a mock backend:
 `?installed`, `?uninstall`, `?running`, `?notnova`, `?nogpu`, `?other` show its states.
 
