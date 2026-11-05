@@ -3,7 +3,7 @@ dist/
 *.exr
 .vs/
 # Reference images and texture assets are part of the tests.
-!tests/reference/images/*.exr
+!tests/reference/images/**/*.exr
 !tests/reference/scenes/assets/*.exr
 tools/installer/target/
 tools/installer/payload/
