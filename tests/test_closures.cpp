@@ -4,8 +4,11 @@
 // exact anchors and the agreement of both models on their shared subset.
 
 #include "bsdf_stats.h"
+#include "test_helpers.h"
 
 #include "core/bsdf/surface.h"
+#include "core/math/sobol.h"
+#include "core/scene/scene.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -15,6 +18,7 @@
 #include <vector>
 
 using namespace nova;
+using nova::test::AlbedoPair;
 using nova::test::Chi2Result;
 using nova::test::LobeUnderTest;
 using nova::test::Pcg32;
@@ -87,6 +91,51 @@ SurfaceInputs whiteOpenPbr() {
     in.set(sf::subsurfaceColor, spectrum(1.0f));
     return in;
 }
+
+// White thin-walled Standard Surface glass.
+SurfaceInputs thinGlass(float specular, float roughness, float ior) {
+    SurfaceInputs in = whiteStandardSurface();
+    in.set(sf::thinWalled, 1.0f);
+    in.set(sf::transmissionWeight, 1.0f);
+    in.set(sf::specularWeight, specular);
+    in.set(sf::specularRoughness, roughness);
+    in.set(sf::specularIor, ior);
+    return in;
+}
+
+// The closure built once for wo as a lobe under test (green channel, energy
+// units); only valid at that wo.
+LobeUnderTest adaptAt(const SurfaceInputs &in, Vec3f wo) {
+    const ClosureList cl = build(in, wo);
+    LobeUnderTest l;
+    l.sample = [cl](V3 w, V3 u, V3 &wi, double &pdf, double &weight, bool &delta) {
+        ClosureSample s;
+        if (!sampleClosure(cl, toF(w), toF(u), s))
+            return false;
+        wi = toD(s.wi);
+        pdf = s.pdf;
+        delta = s.delta;
+        weight = s.weight.y * (s.refract ? s.eta * s.eta : 1.0f);
+        return true;
+    };
+    l.pdf = [cl](V3 w, V3 wi) { return double(evalClosure(cl, toF(w), toF(wi)).pdf); };
+    l.evalCos = [cl](V3 w, V3 wi) { return double(evalClosure(cl, toF(w), toF(wi)).fcos.y); };
+    return l;
+}
+
+// Directional albedo (green, energy units) by importance sampling on
+// Owen-scrambled Sobol points: far less noise than albedo() at equal count.
+double sobolAlbedo(const ClosureList &cl, Vec3f wo, uint32_t n, uint32_t seed) {
+    double sum = 0.0;
+    for (uint32_t i = 0; i < n; ++i) {
+        ClosureSample s;
+        if (sampleClosure(cl, wo, Sampler{seed, i}.get3D(0), s))
+            sum += double(s.weight.y) * (s.refract ? s.eta * s.eta : 1.0f);
+    }
+    return sum / n;
+}
+
+const float kCos80 = 0.17364818f;
 
 } // namespace
 
@@ -325,6 +374,43 @@ TEST_CASE("Standard Surface seen from inside uses the transmission roughness", "
     }
 }
 
+TEST_CASE("Thin-sheet albedo tables match the lobe between their nodes", "[closure][tables]") {
+    // E_R' and E_T' of the clear sheet exactly as pushTransmission builds it
+    // (both interfaces with their inter-reflections, the widened transmission
+    // roughness), by importance sampling, against the tables' interpolation
+    // off their nodes: thinR, and thinRT - thinR for the transmission.
+    // Scrambled Sobol points (other scrambles than the generator's).
+    const BsdfTables &t = bsdfTables();
+    uint32_t seed = 1;
+    for (const float roughness : {0.1f, 0.3f, 0.6f, 1.0f})
+        for (const float ior : {1.33f, 1.5f, 2.0f})
+            for (const float mu : {0.1f, kCos80, 0.3f, 0.5f, 0.7f, 1.0f}) {
+                const float alpha = alphaStandardSurface(roughness, 0.0f).x;
+                const float alphaT = ThinDielectricLobe::transmissionAlpha(alpha, ior);
+                ThinDielectricLobe lobe{GgxDistribution::make(alpha, alpha), GgxDistribution::make(alphaT, alphaT), ior,
+                                        spectrum(1.0f), spectrum(1.0f)};
+                const Vec3f wo = direction(mu);
+                const uint32_t n = 1u << 18;
+                double er = 0.0, et = 0.0;
+                ++seed;
+                for (uint32_t i = 0; i < n; ++i) {
+                    LobeSample s;
+                    const Vec3f u = Sampler{0x7e57u + seed, i}.get3D(0);
+                    if (!lobe.sample(wo, {u.x, u.y}, u.z, s))
+                        continue;
+                    const double w = s.delta ? s.fcos.y : s.fcos.y / s.pdf;
+                    (s.transmit ? et : er) += w / n;
+                }
+                const float r = lutRough(alpha, alpha);
+                const double tableR = thinDielectricAlbedoR(t, ior, r, mu);
+                const double tableT = thinDielectricAlbedo(t, ior, r, mu) - tableR;
+                INFO("roughness " << roughness << ", IOR " << ior << ", cos(wo) " << mu << ": E_R' " << er << " (table "
+                                  << tableR << "), E_T' " << et << " (table " << tableT << ")");
+                CHECK(std::fabs(er - tableR) < 2.5e-3); // measured: at most 1.5e-3
+                CHECK(std::fabs(et - tableT) < 2.5e-3);
+            }
+}
+
 TEST_CASE("Thin-walled Standard Surface glass with specular < 1 keeps its energy", "[closure][furnace]") {
     // The sheet's transmission takes the energy the weakened reflection gives
     // up (smooth sheet: exact, one event of weight R' + T' = 1 per sample).
@@ -339,23 +425,155 @@ TEST_CASE("Thin-walled Standard Surface glass with specular < 1 keeps its energy
             CHECK_THAT(albedo(in, direction(mu), 1 << 12, 11).y, WithinAbs(1.0, 1e-4));
             CHECK_THAT(build(in, direction(mu)).albedo.y, WithinAbs(1.0, 1e-4));
         }
-    // Rough sheets: never more than the clear sheet's energy (the boost would
-    // otherwise scale microfacets whose T' is already near 1 at grazing
-    // angles: up to 2x), and more than without it.
+    // Every roughness, angle and IOR: the energy of the specular-1 sheet. The
+    // boost scales every microfacet's T', so it comes from the rough sheet's
+    // own E_R' and E_T' (before, the single interface's E_R bounded it:
+    // specular 0, roughness 0.3, 80 degrees kept 0.78). Importance sampling
+    // on scrambled Sobol points, the same for both sheets; the estimator
+    // pair of bsdf_stats.h (importance vs uniform) checks sampling against
+    // evaluation where the uniform one converges.
+    uint32_t seed = 1;
+    for (const float roughness : {0.0f, 0.1f, 0.3f, 0.6f, 1.0f})
+        for (const float ior : {1.33f, 1.5f, 2.0f})
+            for (const float mu : {0.1f, kCos80, 0.3f, 0.5f, 0.7f, 1.0f}) {
+                const Vec3f wo = direction(mu);
+                ++seed;
+                const double clear = sobolAlbedo(build(thinGlass(1.0f, roughness, ior), wo), wo, 1u << 16, seed);
+                for (const float specular : {0.0f, 0.5f}) {
+                    const SurfaceInputs in = thinGlass(specular, roughness, ior);
+                    const double a = sobolAlbedo(build(in, wo), wo, 1u << 16, seed);
+                    INFO("roughness " << roughness << ", IOR " << ior << ", cos(wo) " << mu << ", specular " << specular
+                                      << ": " << a << ", specular 1: " << clear);
+                    CHECK(std::fabs(a - clear) < 4e-3); // measured: at most 3.4e-3 (roughness 0.1, mu 0.1)
+                    CHECK(a < 1.0 + 2e-3);
+                    if (roughness >= 0.3f && (mu == kCos80 || mu == 0.7f)) {
+                        Pcg32 rng(seed);
+                        const AlbedoPair p = nova::test::albedoEstimates(adaptAt(in, wo), toD(wo), rng, 1 << 15);
+                        INFO("importance " << p.importance << " +- " << p.importanceErr << ", uniform " << p.uniform
+                                           << " +- " << p.uniformErr);
+                        CHECK(std::fabs(p.uniform - p.importance) < 5.0 * std::hypot(p.uniformErr, p.importanceErr));
+                        CHECK(std::fabs(p.importance - a) < 5.0 * p.importanceErr + 1e-3);
+                    }
+                }
+            }
+    // OpenPBR's specular_weight modulates the sheet's index instead (no
+    // boost): the compensated sheet at that index is white.
     for (const float roughness : {0.3f, 1.0f})
         for (const float specular : {0.0f, 0.5f})
-            for (const float mu : {0.1f, 0.4f, 1.0f}) {
-                SurfaceInputs in = whiteStandardSurface();
+            for (const float mu : {0.1f, 0.5f, 1.0f}) {
+                SurfaceInputs in = whiteOpenPbr();
                 in.set(sf::thinWalled, 1.0f);
                 in.set(sf::transmissionWeight, 1.0f);
                 in.set(sf::specularWeight, specular);
                 in.set(sf::specularRoughness, roughness);
-                INFO("roughness " << roughness << ", specular " << specular << ", cos(wo) " << mu);
-                const float a = albedo(in, direction(mu), 1 << 14, 13).y;
-                CHECK(a <= 1.0f + 0.02f);
-                if (mu == 1.0f) // little reflection to give up at normal incidence
-                    CHECK(a >= 0.9f);
+                INFO("OpenPBR, roughness " << roughness << ", specular " << specular << ", cos(wo) " << mu);
+                CHECK_THAT(albedo(in, direction(mu), 1 << 16, 17).y, WithinAbs(1.0, 0.012));
             }
+}
+
+TEST_CASE("Rough thin-walled glass with specular < 1 samples its pdf", "[closure][chi2]") {
+    // The boost changes the sheet's reflection probability (from the boosted
+    // R'/T' at wo): chi-square of the sampled directions and sampled weights
+    // equal to the evaluated f cos / pdf.
+    Pcg32 rng(91);
+    for (const float roughness : {0.3f, 0.7f})
+        for (const float specular : {0.0f, 0.5f})
+            for (const float mu : {0.25f, 0.8f}) {
+                const SurfaceInputs in = thinGlass(specular, roughness, 1.5f);
+                const Vec3f wo = direction(mu);
+                INFO("roughness " << roughness << ", specular " << specular << ", cos(wo) " << mu);
+                const Chi2Result r = nova::test::chi2Test(adaptAt(in, wo), toD(wo), rng, 1 << 17, 32, 5.0, 0.01, 8);
+                INFO(r.message << " (p " << r.pValue << ", dof " << r.dof << ")");
+                CHECK(r.pass);
+                const ClosureList cl = build(in, wo);
+                int checked = 0;
+                for (int i = 0; i < 1000; ++i) {
+                    ClosureSample s;
+                    if (!sampleClosure(cl, wo, {float(rng.uniform()), float(rng.uniform()), float(rng.uniform())}, s) ||
+                        s.delta)
+                        continue;
+                    const ClosureEval e = evalClosure(cl, wo, s.wi);
+                    CHECK_THAT(e.pdf, Catch::Matchers::WithinRel(s.pdf, 1e-5f));
+                    CHECK_THAT(e.fcos.y / e.pdf, Catch::Matchers::WithinRel(s.weight.y, 1e-4f));
+                    ++checked;
+                }
+                CHECK(checked > 900);
+            }
+}
+
+TEST_CASE("Thin-walled glass with specular < 1: fake caustics and the albedo AOV ignore the roughness",
+          "[closure][caustics]") {
+    // What a straight line through the white sheet keeps, and its albedo AOV,
+    // are the smooth sheet's at wo: transmission 1 - specular R' (the boost
+    // of the smooth sheet, never above 1), albedo 1, at any roughness.
+    const BsdfTables &t = bsdfTables();
+    for (const float roughness : {0.0f, 0.3f, 1.0f})
+        for (const float specular : {0.0f, 0.5f, 1.0f})
+            for (const float mu : {0.2f, 0.7f, 1.0f}) {
+                const Vec3f wo = direction(mu);
+                const ClosureList cl = build(thinGlass(specular, roughness, 1.5f), wo);
+                const float r = fresnelDielectric(mu, 1.5f), Rs = 2.0f * r / (1.0f + r);
+                INFO("roughness " << roughness << ", specular " << specular << ", cos(wo) " << mu);
+                CHECK_THAT(closureTransmittance(cl, wo, t).y, WithinAbs(1.0f - specular * Rs, 1e-5));
+                CHECK_THAT(cl.albedo.y, WithinAbs(1.0, 1e-5));
+            }
+}
+
+TEST_CASE("XPU renders rough thin-walled glass with specular < 1 like the CPU", "[gpu][render][closure]") {
+    // A thin-walled pane (roughness 0.3, specular 0) seen at 80 degrees from
+    // its normal under a white dome, one bounce: every pixel shows the sheet's
+    // directional albedo, which must be the clear pane's (0.78 before the
+    // sheet tables). Skipped without a GPU (the XPU render falls back).
+    auto renderPane = [](float specular, RenderDevice device, bool &onGpu) {
+        Scene scene;
+        const float h = 10.0f, c = kCos80, s = std::sqrt(1.0f - kCos80 * kCos80);
+        MeshDesc pane; // spans x and (0, c, s): normal (0, -s, c), 80 degrees from the view
+        pane.points = {{-h, -h * c, -h * s}, {h, -h * c, -h * s}, {h, h * c, h * s}, {-h, h * c, h * s}};
+        pane.indices = {0, 1, 2, 0, 2, 3};
+        const MeshId mesh = scene.createMesh();
+        scene.updateMesh(mesh, pane);
+        MaterialDesc glass;
+        glass.inputs = thinGlass(specular, 0.3f, 1.5f);
+        const MaterialId m = scene.createMaterial();
+        scene.updateMaterial(m, glass);
+        scene.setMeshMaterials(mesh, {m});
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        dome.intensity = 1.0f;
+        scene.updateLight(scene.createLight(), dome);
+        scene.commit();
+        Renderer renderer;
+        RenderSettings settings;
+        settings.device = device;
+        settings.maxSamples = 64;
+        settings.maxDepth = 1;
+        settings.clampIndirect = 0.0f;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        const int size = 16;
+        renderer.setCamera(nova::test::makeOrthoCamera({0.0f, 0.0f, 10.0f}, 0.5f, size, size));
+        renderer.resize(size, size);
+        onGpu = true;
+        while (!renderer.converged()) {
+            renderer.renderPass({});
+            onGpu = onGpu && renderer.lastPassOnGpu();
+        }
+        double mean = 0.0;
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x)
+                mean += nova::test::pixelMean(renderer.film(), x, y).y / double(size * size);
+        return mean;
+    };
+    bool onGpu = false, cpuOnGpu = true;
+    const double xpu = renderPane(0.0f, RenderDevice::Xpu, onGpu);
+    if (!onGpu)
+        SKIP("no GPU: the XPU render ran on the CPU");
+    const double cpu = renderPane(0.0f, RenderDevice::Cpu, cpuOnGpu), clear = renderPane(1.0f, RenderDevice::Cpu, cpuOnGpu);
+    INFO("specular 0: CPU " << cpu << ", XPU " << xpu << "; specular 1 (CPU): " << clear);
+    CHECK(!cpuOnGpu);
+    CHECK_THAT(cpu, WithinAbs(clear, 0.01));
+    CHECK_THAT(cpu, WithinAbs(1.0, 0.015));
+    CHECK_THAT(xpu, WithinAbs(cpu, 0.005 * cpu));
 }
 
 TEST_CASE("Emission and unlit surfaces", "[closure]") {

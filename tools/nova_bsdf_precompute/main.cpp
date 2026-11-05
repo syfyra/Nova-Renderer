@@ -126,19 +126,24 @@ double dielectricE(float r, float eta, float mu, uint8_t mode, uint32_t seed, ui
     return sum / double(n);
 }
 
-// Albedo of a clear thin-walled sheet.
-double thinE(float r, float eta, float mu, uint32_t seed, uint64_t n) {
+// Albedo of a clear thin-walled sheet, E_R' + E_T', and from the same
+// samples its reflection E_R' alone (`reflected`), so E_T' is the difference.
+double thinE(float r, float eta, float mu, uint32_t seed, uint64_t n, double &reflected) {
     const float alpha = r * r, alphaT = ThinDielectricLobe::transmissionAlpha(alpha, eta);
     const ThinDielectricLobe lobe{GgxDistribution::make(alpha, alpha), GgxDistribution::make(alphaT, alphaT), eta,
                                   spectrum(1.0f), spectrum(1.0f)};
     const Vec3f wo = viewDirection(mu);
-    double sum = 0.0;
+    double sum = 0.0, sumR = 0.0;
     for (uint64_t i = 0; i < n; ++i) {
         const Vec3f u = Sampler{seed, uint32_t(i)}.get3D(0);
         LobeSample s;
-        if (lobe.sample(wo, {u.x, u.y}, u.z, s))
+        if (lobe.sample(wo, {u.x, u.y}, u.z, s)) {
             sum += weight(s);
+            if (!s.transmit)
+                sumR += weight(s);
+        }
     }
+    reflected = sumR / double(n);
     return sum / double(n);
 }
 
@@ -237,7 +242,7 @@ int main(int argc, char **argv) {
     std::fprintf(stderr, "GGX tables: %.1f s\n", elapsed());
 
     const size_t n3 = size_t(kLutEta) * kLutRough * kLutMu;
-    std::vector<float> RT(n3), RTinv(n3), R(n3), thin(n3);
+    std::vector<float> RT(n3), RTinv(n3), R(n3), thin(n3), thinR(n3);
     forCells(n3, [&](size_t c) {
         const int iz = int(c) / (kLutRough * kLutMu), ir = int(c) / kLutMu % kLutRough, iy = int(c) % kLutMu;
         const float eta = lutEtaAt(iz, kLutEta), r = lutRoughAt(ir), mu = lutMuAt(iy);
@@ -245,7 +250,9 @@ int main(int argc, char **argv) {
         RT[c] = float(dielectricE(r, eta, mu, DielectricLobe::kBoth, cellSeed(4, uint32_t(c)), n));
         RTinv[c] = float(dielectricE(r, 1.0f / eta, mu, DielectricLobe::kBoth, cellSeed(5, uint32_t(c)), n));
         R[c] = float(dielectricE(r, eta, mu, DielectricLobe::kReflect, cellSeed(6, uint32_t(c)), n));
-        thin[c] = float(thinE(r, eta, mu, cellSeed(8, uint32_t(c)), n));
+        double reflected = 0.0;
+        thin[c] = float(thinE(r, eta, mu, cellSeed(8, uint32_t(c)), n, reflected));
+        thinR[c] = float(reflected);
     });
     std::fprintf(stderr, "dielectric tables: %.1f s\n", elapsed());
 
@@ -275,11 +282,12 @@ int main(int argc, char **argv) {
     writeArray(f, "kFresnelAvg", Favg);
     writeArray(f, "kCharlieE", sheen);
     writeArray(f, "kThinRT", thin);
+    writeArray(f, "kThinR", thinR);
     std::fprintf(f, "} // namespace\n\n"
                     "const BsdfTables &bsdfTables() {\n"
                     "    static const BsdfTables tables{kGgxE,       kGgxEavg,  kGgxABC, kDielRT,\n"
                     "                                   kDielRTinv,  kDielR,    kFresnelAvg,\n"
-                    "                                   kCharlieE,   kThinRT};\n"
+                    "                                   kCharlieE,   kThinRT,   kThinR};\n"
                     "    return tables;\n"
                     "}\n\n} // namespace nova\n");
     std::fclose(f);

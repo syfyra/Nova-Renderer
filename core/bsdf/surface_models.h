@@ -7,7 +7,7 @@
 // untinted, as Karma measured); mixes split the weight. Energy compensation:
 // conductors by Turquin/Kulla-Conty, dielectric interfaces by 1 / E_RT with
 // E_R / E_RT as the albedo of a reflection layer, thin sheets by their own
-// table (core/bsdf/energy.h). Included by core/bsdf/surface.h.
+// tables (core/bsdf/energy.h). Included by core/bsdf/surface.h.
 //
 // Orientation: every frame faces wo (opaque materials are two-sided);
 // refraction sees the relative index from wo's side of the authored
@@ -246,49 +246,48 @@ NOVA_INLINE Spectrum pushDielectricLayer(ClosureList &cl, const ClosureContext &
 // transmission is normalized so a white interface conserves energy.
 // reflectWeight (thin sheets only): the reflection is scaled by this weight
 // (Standard Surface `specular`, part of tintR) and the sheet's transmission
-// keeps the energy the reflection gives up, from the white sheet's R'/T'
-// split at mu (exact for a smooth sheet).
+// takes the energy the reflection gives up, so the sheet keeps the energy of
+// reflectWeight 1: from the white sheet's E_R' and E_T' at mu (tables of
+// this lobe; for a smooth sheet its R'/T' split, exact).
 NOVA_INLINE void pushTransmission(ClosureList &cl, const ClosureContext &ctx, uint8_t frame, Spectrum weight,
                                   const GgxDistribution &gR, const GgxDistribution &gT, float eta, bool thin,
                                   Spectrum tintR, Spectrum tintT, float mu, float reflectWeight = 1.0f) {
     const BsdfTables &t = *ctx.tables;
     if (thin) {
-        const float e = gR.smooth() ? 1.0f : thinDielectricAlbedo(t, nova::fmax(eta, 1.0f), lutRough(gR.ax, gR.ay), mu);
+        const float e1 = nova::fmax(eta, 1.0f), rIdx = lutRough(gR.ax, gR.ay);
+        const float e = gR.smooth() ? 1.0f : thinDielectricAlbedo(t, e1, rIdx, mu);
         Lobe *l = cl.push(LobeType::ThinDielectric, frame, weight * (1.0f / nova::fmax(e, 1e-4f)), luminance(weight), false);
         if (l) {
-            const float e1 = nova::fmax(eta, 1.0f);
             l->thin = ThinDielectricLobe{gR,
                                          GgxDistribution::make(ThinDielectricLobe::transmissionAlpha(gR.ax, e1),
                                                                ThinDielectricLobe::transmissionAlpha(gR.ay, e1)),
                                          e1, tintR, tintT};
-            l->thin.tBoost = 0.0f;
+            l->thin.tBoost = l->thin.tBoostSmooth = 0.0f;
             Spectrum R, T, Rw, Tw;
             ThinDielectricLobe white = l->thin;
             white.tintR = white.tintT = spectrum(1.0f);
             white.sheet(mu, Rw, Tw);
             if (reflectWeight != 1.0f) {
-                // T' (1 + tBoost) = sum - reflectWeight R' for the white
-                // sheet. Smooth: its R'/T' split at mu, exact. Rough: the
-                // boost scales every microfacet's T', so it must come from the
-                // sheet's energies, E_R' + E_T' = e; E_R' is bounded below by
-                // the single interface's E_R (R' >= R per microfacet, same
-                // distribution), which never adds energy; at grazing angles it
-                // keeps less than the reflection gave up (specular 0, rough
-                // 0.3, 80 degrees: 0.78 of the clear sheet).
-                float rw, tw;
+                // T' (1 + tBoost) = E - reflectWeight E_R' for the white
+                // sheet. Smooth: one event per sample, its R'/T' split at mu
+                // (exact). Rough: the boost scales every microfacet's T', so
+                // it comes from the sheet's directional albedos E_R' and
+                // E_T' = E - E_R' (both integrated from this lobe), exact up
+                // to the tables' interpolation.
+                l->thin.tBoostSmooth = ThinDielectricLobe::boostFor(average(Rw), average(Tw), reflectWeight);
                 if (gR.smooth()) {
-                    rw = average(Rw);
-                    tw = average(Tw);
+                    l->thin.tBoost = l->thin.tBoostSmooth;
                 } else {
-                    rw = nova::fmin(dielectricAlbedoR(t, e1, lutRough(gR.ax, gR.ay), mu), e);
-                    tw = e - rw;
+                    const float rw = thinDielectricAlbedoR(t, e1, rIdx, mu);
+                    l->thin.tBoost = ThinDielectricLobe::boostFor(rw, e - rw, reflectWeight);
                 }
-                const float scale = nova::fmax(rw + tw - reflectWeight * rw, 0.0f) / nova::fmax(tw, 1e-4f);
-                l->thin.tBoost = scale - 1.0f;
             }
-            // The albedo AOV with the tints: the tinted sheet relative to the
-            // white one without the boost (the compensation's reference).
-            l->thin.sheet(mu, R, T);
+            // The albedo AOV with the tints: the tinted sheet at mu (roughness
+            // ignored, so with the smooth sheet's boost) relative to the white
+            // one without the boost (the compensation's reference).
+            ThinDielectricLobe aov = l->thin;
+            aov.tBoost = l->thin.tBoostSmooth;
+            aov.sheet(mu, R, T);
             const float norm = 1.0f / nova::fmax(average(Rw + Tw), 1e-6f);
             cl.addAlbedo(*l, weight * R * norm, weight * T * norm);
         }
