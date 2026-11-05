@@ -341,7 +341,7 @@
                 "1" "Velocity Blur"
                 "2" "Acceleration Blur"
             }
-            help    "Motion blur of meshes, curves and points from their velocities (v in SOPs, units per second) instead of their time samples, for geometry whose point count changes from frame to frame. Velocity Blur moves the points in straight lines over the shutter; Acceleration Blur bends the paths with the accelerations (accel), sampled Acceleration Samples times. Unset: Karma's vblur (on the object, else on the render settings)."
+            help    "Motion blur of meshes, curves and points from their velocities (v in SOPs, units per second) instead of their time samples, for geometry whose point count changes from frame to frame. Velocity Blur moves the points in straight lines over the shutter; Acceleration Blur bends the paths with the accelerations (accel), sampled Acceleration Samples times. Volumes blur by their velocity field when this is on (both modes move them linearly; Karma's volumevblurscale scales it). Unset: Karma's vblur (on the object, else on the render settings)."
             parmtag { "spare_category" "Motion Blur" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "int" }

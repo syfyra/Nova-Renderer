@@ -107,11 +107,16 @@ bool otherVolumeFilter(HdSceneDelegate *sd, SdfPath const &id) {
     return w >= 0.0f && std::fabs(w - 1.0f) > 1e-6f;
 }
 
-// Velocity blur (D17): Karma's karma:object:vblur (1 velocity, 2
-// acceleration: velocity here) and volumevblurscale; the scale, 0 if off.
+// Velocity blur (D17): Nova's nova:object:velocityBlur, else Karma's
+// karma:object:vblur (1 velocity, 2 acceleration: velocity here), and
+// Karma's volumevblurscale; the scale, 0 if off.
 float velocityBlurOf(HdSceneDelegate *sd, SdfPath const &id) {
-    static const TfToken vblur("karma:object:vblur"), scale("karma:object:volumevblurscale");
-    if (!(constantFloat(sd, id, vblur) >= 0.5f))
+    static const TfToken nova("nova:object:velocityBlur"), vblur("karma:object:vblur"),
+        scale("karma:object:volumevblurscale");
+    float mode = constantFloat(sd, id, nova);
+    if (!(mode >= 0.0f))
+        mode = constantFloat(sd, id, vblur);
+    if (!(mode >= 0.5f))
         return 0.0f;
     const float s = constantFloat(sd, id, scale);
     return s >= 0.0f ? s : 1.0f;

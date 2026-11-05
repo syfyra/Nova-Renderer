@@ -749,7 +749,7 @@
                 size    1
                 default { 0 }
                 range   { 0 65536 }
-                help    "The GPU memory for textures with Nova XPU, in MB (0: half the memory free when the first texture loads). Past it the finest MIP levels of further textures are left out, with a warning."
+                help    "The GPU memory for textures with Nova XPU, in MB (0: half the memory free when the first texture loads). When the textures do not fit, the largest are reduced first: every texture is capped at the largest size that fits (all tiles of a UDIM set alike) and only the MIP levels kept are read, with a warning."
                 parmtag { "spare_category" "Textures" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "int" }

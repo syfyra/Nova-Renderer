@@ -45,7 +45,7 @@
          "section": "Curves and Points", "scopes": ["geometry"], "help": "How points render: discs turned towards each ray, spheres, or discs facing the points' normals (facing the ray where there are none). Unset: Karma's point_style."},
         {"key": "nova:object:velocityBlur", "label": "Velocity Blur", "type": "int", "default": 0,
          "menu": [["0", "No Velocity Blur"], ["1", "Velocity Blur"], ["2", "Acceleration Blur"]],
-         "section": "Motion Blur", "scopes": ["geometry"], "help": "Motion blur of meshes, curves and points from their velocities (v in SOPs, units per second) instead of their time samples, for geometry whose point count changes from frame to frame. Velocity Blur moves the points in straight lines over the shutter; Acceleration Blur bends the paths with the accelerations (accel), sampled Acceleration Samples times. Unset: Karma's vblur (on the object, else on the render settings)."},
+         "section": "Motion Blur", "scopes": ["geometry"], "help": "Motion blur of meshes, curves and points from their velocities (v in SOPs, units per second) instead of their time samples, for geometry whose point count changes from frame to frame. Velocity Blur moves the points in straight lines over the shutter; Acceleration Blur bends the paths with the accelerations (accel), sampled Acceleration Samples times. Volumes blur by their velocity field when this is on (both modes move them linearly; Karma's volumevblurscale scales it). Unset: Karma's vblur (on the object, else on the render settings)."},
         {"key": "nova:object:instanceVelocityBlur", "label": "Instance Velocity Blur", "type": "int", "default": 0,
          "menu": [["0", "No Velocity Blur"], ["1", "Velocity Blur"], ["2", "Acceleration Blur"]],
          "section": "Motion Blur", "scopes": ["geometry"], "help": "Set on a point instancer: its instances move with the instancer's velocities and turn with its angular velocities instead of following the time samples of their positions and orientations; Acceleration Blur adds the accelerations. Unset: Karma's instance_vblur (on the instancer, else on the render settings)."},
@@ -100,7 +100,7 @@
         {"key": "nova:textureStats", "label": "Texture Statistics", "type": "int", "default": 0, "range": [0, 5],
          "section": "Textures", "scopes": ["global"], "help": "OpenImageIO texture statistics level printed at the end of a render."},
         {"key": "nova:gpuTextureBudget", "label": "GPU Texture Budget", "type": "int", "default": 0, "range": [0, 65536],
-         "section": "Textures", "scopes": ["global"], "help": "The GPU memory for textures with Nova XPU, in MB (0: half the memory free when the first texture loads). Past it the finest MIP levels of further textures are left out, with a warning."},
+         "section": "Textures", "scopes": ["global"], "help": "The GPU memory for textures with Nova XPU, in MB (0: half the memory free when the first texture loads). When the textures do not fit, the largest are reduced first: every texture is capped at the largest size that fits (all tiles of a UDIM set alike) and only the MIP levels kept are read, with a warning."},
 
         {"key": "nova:lightSamplingMode", "label": "Light Selection", "type": "token", "default": "lighttree",
          "menu": [["lighttree", "Light Tree"], ["uniform", "Uniform"]],
