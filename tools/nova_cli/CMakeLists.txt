@@ -31,6 +31,11 @@ file(GENERATE OUTPUT "${_nova_cli_plugins}/hdNova/resources/plugInfo.json"
      CONTENT "${_nova_pluginfo}")
 file(GENERATE OUTPUT "${_nova_cli_plugins}/novaUsdImagingAdapters/resources/plugInfo.json"
      INPUT "${CMAKE_CURRENT_SOURCE_DIR}/usdImagingAdapters.plugInfo.json")
+#  - usdKarma: Houdini's Karma USD schemas (KarmaSkyDomeLight, KarmaLightAPI,
+#    ...; a resource-only plugin, no code), which husk finds on Houdini's
+#    plugin path (docs/design/M11-P3.md)
+file(GENERATE OUTPUT "${_nova_cli_plugins}/usdKarma/resources/plugInfo.json"
+     CONTENT "{ \"Includes\": [ \"${HFS}/houdini/dso/usd_plugins/usdKarma/resources/\" ] }\n")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/hydra/plugInfo.json")
 
 add_dependencies(nova_cli nova_cvex nova_volume)

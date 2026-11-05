@@ -19,6 +19,7 @@ add_library(nova_core STATIC
     lights/lights.cpp
     lights/light_sampler.cpp
     lights/light_tree.cpp
+    lights/sky.cpp
     integrator/wavefront.cpp
     integrator/renderer.cpp
     film/film.cpp

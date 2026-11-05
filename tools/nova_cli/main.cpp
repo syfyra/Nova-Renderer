@@ -751,6 +751,10 @@ bool registerPlugins() {
         std::fprintf(stderr, "nova_cli: no UsdImaging camera adapter (%s/novaUsdImagingAdapters missing)\n", dir.c_str());
         return false;
     }
+    // Karma's USD schemas (Houdini's resource-only usdKarma plugin), so typed
+    // Karma prims such as the KarmaSkyDomeLight render as in husk.
+    if (!reg.GetPluginWithName("usdKarma"))
+        reg.RegisterPlugins(TfStringCatPaths(dir, "usdKarma/resources/plugInfo.json"));
     return true;
 }
 
