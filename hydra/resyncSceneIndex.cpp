@@ -1,5 +1,7 @@
 #include "resyncSceneIndex.h"
 
+#include <pxr/base/tf/weakPtr.h>
+
 #include <algorithm>
 #include <mutex>
 #include <utility>
@@ -66,22 +68,32 @@ void HdNovaResyncSceneIndex::_PrimsDirtied(HdSceneIndexBase const &,
     _SendPrimsDirtied(entries);
 }
 
+namespace {
+
+// Strong references (used outside the lock) to the live indices of a render
+// instance. A render index created without an instance name hands "" to the
+// plugins but reports its address from GetInstanceName(): the unnamed
+// instances then (extra syncs elsewhere are harmless). An index whose last
+// reference is gone waits in its destructor for the lock: it is not revived.
+std::vector<HdNovaResyncSceneIndexRefPtr> liveIndices(std::string const &renderInstanceId) {
+    std::vector<HdNovaResyncSceneIndexRefPtr> targets;
+    std::lock_guard<std::mutex> lock(registryMutex());
+    for (bool unnamed : {false, true}) {
+        for (auto const &[id, index] : registry())
+            if (id == (unnamed ? std::string() : renderInstanceId))
+                if (HdNovaResyncSceneIndexRefPtr strong = TfCreateRefPtrFromProtectedWeakPtr(index))
+                    targets.push_back(strong);
+        if (!targets.empty())
+            break;
+    }
+    return targets;
+}
+
+} // namespace
+
 bool HdNovaResyncSceneIndex::DirtyPrims(std::string const &renderInstanceId, TfTokenVector const &primTypes,
                                         HdDataSourceLocatorSet const &locators) {
-    std::vector<HdNovaResyncSceneIndexRefPtr> targets;
-    {
-        std::lock_guard<std::mutex> lock(registryMutex());
-        for (auto const &[id, index] : registry())
-            if (id == renderInstanceId && index)
-                targets.emplace_back(index); // strong refs, used outside the lock
-        // A render index created without an instance name hands "" to the
-        // plugins but reports its address from GetInstanceName(): dirty the
-        // unnamed instances then (extra syncs elsewhere are harmless).
-        if (targets.empty())
-            for (auto const &[id, index] : registry())
-                if (id.empty() && index)
-                    targets.emplace_back(index);
-    }
+    const std::vector<HdNovaResyncSceneIndexRefPtr> targets = liveIndices(renderInstanceId);
     for (HdNovaResyncSceneIndexRefPtr const &index : targets)
         index->_DirtyAll(primTypes, locators);
     return !targets.empty();
@@ -89,17 +101,7 @@ bool HdNovaResyncSceneIndex::DirtyPrims(std::string const &renderInstanceId, TfT
 
 bool HdNovaResyncSceneIndex::DirtyPaths(std::string const &renderInstanceId, SdfPathVector const &paths,
                                         HdDataSourceLocatorSet const &locators) {
-    std::vector<HdNovaResyncSceneIndexRefPtr> targets;
-    {
-        std::lock_guard<std::mutex> lock(registryMutex());
-        for (auto const &[id, index] : registry())
-            if (id == renderInstanceId && index)
-                targets.emplace_back(index);
-        if (targets.empty())
-            for (auto const &[id, index] : registry())
-                if (id.empty() && index)
-                    targets.emplace_back(index);
-    }
+    const std::vector<HdNovaResyncSceneIndexRefPtr> targets = liveIndices(renderInstanceId);
     for (HdNovaResyncSceneIndexRefPtr const &index : targets) {
         if (!index->_IsObserved())
             continue;

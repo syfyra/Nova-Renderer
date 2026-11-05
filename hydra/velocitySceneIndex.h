@@ -29,14 +29,18 @@
 // index sets on the root prim from the render settings' houdini:fps (pxr's
 // UsdImaging leaves it out; Houdini's says 24 whatever the stage has, while
 // houdini:fps follows the stage's timeCodesPerSecond as Karma does).
+//
+// The render settings' defaults belong to the render index whose chain holds
+// the index (Find): every Nova render index (each viewer, husk) has its own.
 
 #include <pxr/imaging/hd/filteringSceneIndex.h>
 #include <pxr/pxr.h>
 
 #include <memory>
-#include <string>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+class HdRenderIndex;
 
 // The render settings' defaults for objects that author nothing (Karma's
 // karma:object:* on the render settings prim).
@@ -57,23 +61,27 @@ TF_DECLARE_WEAK_AND_REF_PTRS(HdNovaVelocityModeSceneIndex);
 
 class HdNovaVelocityModeSceneIndex final : public HdSingleInputFilteringSceneIndexBase {
 public:
-    static HdNovaVelocityModeSceneIndexRefPtr New(HdSceneIndexBaseRefPtr const &input,
-                                                  std::string const &renderInstanceId);
+    static HdNovaVelocityModeSceneIndexRefPtr New(HdSceneIndexBaseRefPtr const &input);
     ~HdNovaVelocityModeSceneIndex() override;
 
     HdSceneIndexPrim GetPrim(SdfPath const &primPath) const override;
     SdfPathVector GetChildPrimPaths(SdfPath const &primPath) const override;
 
-    // Sets the render settings' defaults of a render instance. If they
-    // changed, every prim that can blur by velocity is dirtied (it resamples
-    // in the next sync) and true is returned.
-    static bool SetDefaults(std::string const &renderInstanceId, HdNovaVelocityDefaults const &defaults);
+    // The index in a render index's scene index chain (null if there is none).
+    static HdNovaVelocityModeSceneIndexRefPtr Find(HdRenderIndex *index);
+
+    // Sets the render settings' defaults. Prims whose motion they change are
+    // dirtied (they resample in the next sync) once anything has resolved
+    // with the old ones; returns true if any was.
+    bool SetDefaults(HdNovaVelocityDefaults const &defaults);
+    // The defaults, for volumes (docs/design/M8.md D17); they count as used.
+    HdNovaVelocityDefaults GetDefaults() const;
 
     // The whole chain Nova appends: this index, pxr's resolving index and
     // one that keeps shutter open and close only where Karma samples the
     // velocity motion twice (pxr samples rotations and accelerations at
     // least three times).
-    static HdSceneIndexBaseRefPtr Append(HdSceneIndexBaseRefPtr const &input, std::string const &renderInstanceId);
+    static HdSceneIndexBaseRefPtr Append(HdSceneIndexBaseRefPtr const &input);
 
     struct State;
 
@@ -85,12 +93,8 @@ protected:
                        HdSceneIndexObserver::DirtiedPrimEntries const &entries) override;
 
 private:
-    HdNovaVelocityModeSceneIndex(HdSceneIndexBaseRefPtr const &input, std::string const &renderInstanceId);
-    // Dirties every prim that can blur by velocity (and the root's frame
-    // rate if `timeCodes`).
-    void _DirtyAll(bool timeCodes);
+    explicit HdNovaVelocityModeSceneIndex(HdSceneIndexBaseRefPtr const &input);
 
-    std::string _renderInstanceId;
     std::shared_ptr<State> _state;
 };
 

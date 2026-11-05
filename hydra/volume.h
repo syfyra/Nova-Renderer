@@ -39,7 +39,7 @@ private:
     float _volumeLimit = -1.0f;             // nova:object:volumeLimit / karma:object:volumelimit
     std::string _lpeTag;                    // karma:object:lpetag
     bool _light = false;                    // nova:object:volumeLight / karma:object:treat_as_lightsource
-    float _velocityBlur = 0.0f;             // karma:object:vblur on: volumevblurscale (0: off)
+    float _velocityBlur = 0.0f;             // velocity blur on: volumevblurscale / fps (0: off)
     bool _warnedFilter = false;             // karma:object:volumefilter other than box/1 (once)
     float _lightDiffuse = 1.0f, _lightSpecular = 1.0f; // karma:object:lightsource_*scale
     HdNovaShutter _sampledShutter;

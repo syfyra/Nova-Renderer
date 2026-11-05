@@ -109,8 +109,8 @@ HdNovaRenderPass::HdNovaRenderPass(HdRenderIndex *index, HdRprimCollection const
     : HdRenderPass(index, collection), _delegate(delegate) {
     // The render settings' velocity blur before the first sync, so the
     // prims resolve their motion once (docs/design/M8.md D19).
-    if (index)
-        HdNovaVelocityModeSceneIndex::SetDefaults(index->GetInstanceName(), _delegate->GetVelocityDefaults());
+    if (HdNovaVelocityModeSceneIndexRefPtr velocity = HdNovaVelocityModeSceneIndex::Find(index))
+        velocity->SetDefaults(_delegate->GetVelocityDefaults());
 }
 
 HdNovaRenderPass::~HdNovaRenderPass() {
@@ -325,16 +325,15 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     }
 
     // Velocity blur defaults of the render settings (Karma's karma:object:
-    // vblur and friends, docs/design/M8.md D19): a change re-resolves the
-    // motion of every prim that can blur by velocity; render after the sync.
-    if (HdRenderIndex *index = GetRenderIndex()) {
-        const HdNovaVelocityDefaults velocity = _delegate->GetVelocityDefaults();
-        if (HdNovaVelocityModeSceneIndex::SetDefaults(index->GetInstanceName(), velocity)) {
+    // vblur and friends, docs/design/M8.md D19), this render index's own: a
+    // change re-resolves the motion of the prims it affects; render after
+    // the sync.
+    if (HdNovaVelocityModeSceneIndexRefPtr velocity = HdNovaVelocityModeSceneIndex::Find(GetRenderIndex()))
+        if (velocity->SetDefaults(_delegate->GetVelocityDefaults())) {
             thread.StopRender();
             _bindings.clear();
             return;
         }
-    }
 
     View view = _ComputeView(state, width, height);
     view.frameTime = shutter.FrameTime();
