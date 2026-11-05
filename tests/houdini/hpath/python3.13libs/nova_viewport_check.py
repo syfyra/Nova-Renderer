@@ -90,6 +90,8 @@ def capture(name):
     frame = hou.frame()
     settings.frameRange((frame, frame))
     settings.output(path)
+    # Files only: an MPlay window would outlive the check's Houdini.
+    settings.outputToMPlay(False)
     v.flipbook(v.curViewport(), settings)
     found = [f for f in os.listdir(OUT) if f.startswith(name)]
     log("capture", name=name, files=found, renderer=v.currentHydraRenderer())
