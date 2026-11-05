@@ -3,6 +3,7 @@
 #include "aov.h"
 #include "denoise.h"
 #include "renderParam.h"
+#include "velocitySceneIndex.h"
 
 #include "core/integrator/renderer.h"
 #include "core/scene/scene.h"
@@ -144,6 +145,10 @@ public:
     nova::RenderSettings GetNovaSettings() const;
     // Upper bound for motion steps per prim (nova:maxMotionSteps).
     unsigned GetMaxMotionSteps() const;
+    // Velocity blur of objects that set nothing themselves (docs/design/M8.md
+    // D19): Karma's karma:object:vblur, instance_vblur, geosamples and
+    // instance_samples on the render settings; the frame rate from houdini:fps.
+    HdNovaVelocityDefaults GetVelocityDefaults() const;
     // nova:subdivLevel (-1: from the display style's refine level, else 0..6)
     // and nova:subdivMaxTriangles (per mesh).
     int GetSubdivLevel() const;

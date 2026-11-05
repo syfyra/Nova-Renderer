@@ -1,6 +1,7 @@
 #include "implicitSurfaceSceneIndexPlugin.h"
 
 #include "resyncSceneIndex.h"
+#include "velocitySceneIndex.h"
 #include "volumeDependencies.h"
 
 #include <pxr/imaging/hd/dependencyForwardingSceneIndex.h>
@@ -59,8 +60,11 @@ TF_REGISTRY_FUNCTION(HdSceneIndexPlugin) {
 HdSceneIndexBaseRefPtr HdNova_ImplicitSurfaceSceneIndexPlugin::_AppendSceneIndex(
     const std::string &renderInstanceId, const HdSceneIndexBaseRefPtr &inputScene,
     const HdContainerDataSourceHandle &inputArgs) {
+    // Velocity and acceleration blur (docs/design/M8.md D19): velocities
+    // resolved into sampled points and instance positions per the settings.
+    HdSceneIndexBaseRefPtr scene = HdNovaVelocityModeSceneIndex::Append(inputScene, renderInstanceId);
+    scene = HdsiImplicitSurfaceSceneIndex::New(scene, inputArgs);
     // Volumes depend on their fields (docs/design/M8.md D3), forwarded as Storm does.
-    HdSceneIndexBaseRefPtr scene = HdsiImplicitSurfaceSceneIndex::New(inputScene, inputArgs);
     scene = HdDependencyForwardingSceneIndex::New(HdNovaVolumeDependencySceneIndex::New(scene));
     return HdNovaResyncSceneIndex::New(scene, renderInstanceId);
 }

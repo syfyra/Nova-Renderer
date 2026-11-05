@@ -6,6 +6,8 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 // Nova's renderer scene index plugin:
+// - resolves velocity and acceleration motion into sampled points and
+//   instance transforms as the object settings ask (HdNovaVelocityModeSceneIndex);
 // - converts implicit surfaces (sphere, cube, cone, cylinder, capsule, plane)
 //   to meshes. With Hydra scene indices these prims no longer arrive as
 //   meshes on their own; renderers that only handle meshes must ask for it.

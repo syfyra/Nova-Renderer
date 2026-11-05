@@ -157,6 +157,14 @@
       }
     },
     {
+      "name": "motion_velocity",
+      "file": "scenes/motion_velocity.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
       "name": "furnace_materials",
       "file": "scenes/furnace_materials.usda",
       "settings": "/Render/ref",

@@ -649,6 +649,28 @@ unsigned HdNovaRenderDelegate::GetMaxMotionSteps() const {
     return unsigned(std::clamp(steps, 2, int(nova::kMaxMotionSteps)));
 }
 
+HdNovaVelocityDefaults HdNovaRenderDelegate::GetVelocityDefaults() const {
+    static const TfToken vblur("karma:object:vblur"), instanceVblur("karma:object:instance_vblur"),
+        geoSamples("karma:object:geosamples"), instanceSamples("karma:object:instance_samples");
+    HdNovaVelocityDefaults d;
+    const int mode = HdNovaVelocityBlurMode(GetRenderSetting(vblur));
+    const int instanceMode = HdNovaVelocityBlurMode(GetRenderSetting(instanceVblur));
+    d.velocityBlur = mode >= 0 ? mode : d.velocityBlur;
+    d.instanceVelocityBlur = instanceMode >= 0 ? instanceMode : d.instanceVelocityBlur;
+    auto count = [this](TfToken const &key, int fallback) {
+        const VtValue v = VtValue::Cast<double>(GetRenderSetting(key));
+        return v.IsHolding<double>() && std::isfinite(v.UncheckedGet<double>())
+                   ? int(std::clamp(std::lround(v.UncheckedGet<double>()), 1l, 64l))
+                   : fallback;
+    };
+    d.geoSamples = count(geoSamples, d.geoSamples);
+    d.instanceSamples = count(instanceSamples, d.instanceSamples);
+    float frame = 1.0f, fps = 24.0f;
+    _FrameAndFps(frame, fps);
+    d.timeCodesPerSecond = fps;
+    return d;
+}
+
 int HdNovaRenderDelegate::GetSubdivLevel() const {
     return std::clamp(GetRenderSetting<int>(HdNovaSettingsTokens->subdivLevel, -1), -1, 6);
 }

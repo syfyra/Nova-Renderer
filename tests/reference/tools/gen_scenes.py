@@ -1066,6 +1066,81 @@ def motion_blur():
                  "    timeCodesPerSecond = 24\n    framesPerSecond = 24\n", settings_extra=extra)
 
 
+def motion_velocity():
+    """Velocity and acceleration blur (docs/design/M8.md D19) at frame 1,
+    shutter [-0.25, 0.25] frames, 24 time codes per second, nothing
+    time-sampled: a box moving by its velocities, a quad on an accelerated
+    arc (Karma's 4 geometry samples), points, curves and the instances of a
+    point instancer moving and turning by velocities and angular velocities.
+    Karma's settings drive both renderers; the box also sets Nova's own."""
+    vblur = lambda k: f'    int primvars:karma:object:vblur = {k} (interpolation = "constant")\n'
+
+    def add(text, extra):
+        return text.replace("    rel material:binding = </Looks/displayColorLambert>\n",
+                            "    rel material:binding = </Looks/displayColorLambert>\n" + extra)
+
+    def vec(v, n):
+        return "[" + ", ".join([f3(v)] * n) + "]"
+
+    b = quads("ground", [[(-20, 0, 20), (20, 0, 20), (20, 0, -20), (-20, 0, -20)]], (0.6, 0.6, 0.6))
+    b += add(quads("box", box_quads((-1.4, 0.3, 0), (0.6, 0.6, 0.6)), (0.8, 0.35, 0.25)),
+             f"    vector3f[] velocities = {vec((19.2, 0, 0), 24)}\n" + vblur(1) +
+             '    int primvars:nova:object:velocityBlur = 1 (interpolation = "constant")\n')
+    # Left edge: 0.25 u in x and 0.25 u - 0.5 u^2 in y (u = -1..1 over the shutter).
+    b += add(quads("arc", [[(-0.3, 1.2, 0), (0.1, 1.2, 0), (0.1, 1.6, 0), (-0.3, 1.6, 0)]], (0.3, 0.4, 0.8)),
+             f"    vector3f[] velocities = {vec((24, 24, 0), 4)}\n"
+             f"    vector3f[] accelerations = {vec((0, -9216, 0), 4)}\n" + vblur(2) +
+             '    int primvars:karma:object:geosamples = 4 (interpolation = "constant")\n')
+    pts = [(-0.6 + 0.35 * i, 0.25 + 0.3 * (i % 3), 0.4 - 0.2 * (i % 2)) for i in range(6)]
+    vel = [(19.2 * math.cos(1.1 * i), 19.2 * math.sin(1.1 * i), 0) for i in range(6)]
+    b += f"""    def Points "particles" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {{
+        point3f[] points = [{', '.join(f3(p) for p in pts)}]
+        float[] widths = [{', '.join(['0.18'] * 6)}] (interpolation = "vertex")
+        vector3f[] velocities = [{', '.join(f3(v) for v in vel)}]
+        color3f[] primvars:displayColor = [(0.85, 0.75, 0.3)]
+        rel material:binding = </Looks/displayColorLambert>
+    {vblur(1)}    }}
+"""
+    strands = [[(1.6 + 0.12 * i, 0.0, -0.2), (1.6 + 0.12 * i, 0.9 + 0.1 * (i % 2), -0.2)] for i in range(5)]
+    b += f"""    def BasisCurves "strands" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {{
+        uniform token type = "linear"
+        int[] curveVertexCounts = [{', '.join(['2'] * 5)}]
+        point3f[] points = [{', '.join(f3(p) for s in strands for p in s)}]
+        float[] widths = [{', '.join(['0.05'] * 10)}] (interpolation = "vertex")
+        vector3f[] velocities = [{', '.join(f3((0, 0, 0)) + ', ' + f3((24, 0, 0)) for s in strands)}]
+        color3f[] primvars:displayColor = [(0.3, 0.7, 0.35)]
+        rel material:binding = </Looks/displayColorLambert>
+    {vblur(1)}    }}
+"""
+    b += f"""    def PointInstancer "spinners"
+    {{
+        rel prototypes = [</World/spinners/protos/slab>]
+        int[] protoIndices = [0, 0, 0]
+        point3f[] positions = [(-2.0, 1.5, -0.5), (0.9, 1.65, -0.5), (1.9, 1.5, -0.5)]
+        vector3f[] velocities = [(0, -14.4, 0), (9.6, 0, 0), (0, 0, 0)]
+        vector3f[] angularVelocities = [(0, 0, 2880), (0, 2160, 0), (1440, 0, 2880)]
+        int primvars:karma:object:instance_vblur = 1 (interpolation = "constant")
+
+        def Scope "protos"
+        {{
+{quads("slab", box_quads((0, 0, 0), (0.6, 0.15, 0.3)), (0.75, 0.3, 0.7), indent="            ")}        }}
+    }}
+"""
+    b += light("DistantLight", "sun", ["float inputs:intensity = 2.5", "float inputs:angle = 1",
+                                       "bool inputs:normalize = 1"], rotate=(-50, 20, 0))
+    b += light("DomeLight", "sky", ["float inputs:intensity = 0.4"])
+    b += camera((0, 1.2, 5), (-8, 0, 0), extra="\n        double shutter:open = -0.25\n        double shutter:close = 0.25")
+    extra = "\n        bool disableMotionBlur = 0"
+    return scene(b, (160, 96), 2, header_extra="    startTimeCode = 1\n    endTimeCode = 1\n"
+                 "    timeCodesPerSecond = 24\n    framesPerSecond = 24\n", settings_extra=extra)
+
+
 SKY_SOFT = ["--create", "256x128", "3",
             "--fill:top=0.25,0.42,0.85:bottom=0.65,0.72,0.85", "256x64+0+0",
             "--fill:top=0.20,0.17,0.14:bottom=0.08,0.07,0.06", "256x64+0+64",
@@ -1521,7 +1596,8 @@ def main():
              "dome_plane.usda": dome_plane(), "furnace_rectbox.usda": furnace_rectbox(),
              "instancer.usda": instancer(), "subdiv.usda": subdiv(), "subdiv_karma.usda": subdiv(karma=True),
              "dof.usda": dof(),
-             "motion_blur.usda": motion_blur(), "mtl_spheres.usda": mtl_spheres(), "mtl_glass.usda": mtl_glass(),
+             "motion_blur.usda": motion_blur(), "motion_velocity.usda": motion_velocity(),
+             "mtl_spheres.usda": mtl_spheres(), "mtl_glass.usda": mtl_glass(),
              "furnace_materials.usda": furnace_materials(),
              "implicit_spheres.usda": implicit_spheres(),
              "implicit_spheres_karma.usda": implicit_spheres(karma=True), "mtl_nodes.usda": mtl_nodes(),

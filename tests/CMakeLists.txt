@@ -85,7 +85,7 @@ endif()
 # Hydra-level tests against the delegate's object files.
 add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oiio.cpp test_hydra_materials.cpp
     test_hydra_textures.cpp test_hydra_normals.cpp test_hydra_bench.cpp test_hydra_karma.cpp test_hydra_graphs.cpp
-    test_hydra_displacement.cpp test_hydra_vex.cpp test_ipr_latency.cpp test_hydra_volumes.cpp)
+    test_hydra_displacement.cpp test_hydra_vex.cpp test_ipr_latency.cpp test_hydra_volumes.cpp test_hydra_velocity.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nova_hydra_tests PRIVATE hdNova_objects Catch2::Catch2WithMain
     Houdini::Dep::pxr_usd Houdini::Dep::pxr_usdGeom Houdini::Dep::pxr_usdShade Houdini::Dep::pxr_usdImaging)

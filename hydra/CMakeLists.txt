@@ -28,6 +28,7 @@ add_library(hdNova_objects OBJECT
     meshSubdiv.cpp
     implicitSurfaceSceneIndexPlugin.cpp
     resyncSceneIndex.cpp
+    velocitySceneIndex.cpp
     material/nodeDefDatabase.cpp
     material/networkSource.cpp
     material/translator.cpp
