@@ -25,7 +25,8 @@ OUT = os.environ.get("NOVA_VIEWPORT_CHECK", "")
 # NOVA_VIEWPORT_CHECK_ONLY=rendersettings runs only the Nova Render Settings
 # steps (setup, Houdini GL, Nova, the LOP, Karma); =pyro the volume steps
 # (setup_pyro); =m9 hair, SSS, many lights and Nova's geometry properties
-# (setup_m9); =xpu Nova XPU in the viewport (setup_xpu).
+# (setup_m9); =xpu Nova XPU in the viewport (setup_xpu); =icons Nova's icon
+# on its nodes and tools (setup_icons).
 ONLY = os.environ.get("NOVA_VIEWPORT_CHECK_ONLY", "")
 SCENE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scenes", "basic.usda").replace("\\", "/")
 # "started" (absolute) tells this run's log from an earlier one in the same folder.
@@ -833,6 +834,179 @@ def step_tumble_after():
     later(2, finish)
 
 
+def network_editor():
+    return hou.ui.paneTabOfType(hou.paneTabType.NetworkEditor)
+
+
+def frame(nodes, margin):
+    """Shows these nodes in the network editor with `margin` units around them."""
+    xs, ys = [], []
+    for n in nodes:
+        p, s = n.position(), n.size()
+        xs += [p[0], p[0] + s[0]]
+        ys += [p[1], p[1] + s[1]]
+    network_editor().setVisibleBounds(hou.BoundingRect(min(xs) - margin, min(ys) - margin,
+                                                       max(xs) + margin, max(ys) + margin))
+
+
+def setup_icons():
+    """Nova's icon instead of Karma's (-Only icons): Nova (Setup), the Nova
+    LOP and a Nova Material Builder (next to a Karma Material Builder: both
+    are stock VOP subnets) in the maximised network editor, close and far;
+    the icons of every Nova tool and LOP drawn at small sizes on dark and
+    light backgrounds (icons_tools.png); the TAB menu filtered to "nova" in
+    /stage and in the material library; with an own preference directory
+    (NOVA_VIEWPORT_CHECK_OWN_PREFS, the changed shelf set is saved there) a
+    shelf tab with the Nova tools."""
+    STATE["t0"] = time.time()
+    import novautils
+    import voptoolutils
+    stage = hou.node("/stage")
+    settings, rpass, rop = novautils.createSetup(stage)
+    nova = stage.createNode("nova", "nova")
+    nova.setPosition(settings.position() + hou.Vector2(4, 0))
+    matlib = stage.createNode("materiallibrary", "materials")
+    matlib.setPosition(settings.position() + hou.Vector2(8, 0))
+    builder = novautils.createBuilder(matlib, "novamaterial")
+    karma = matlib.createNode("subnet", "karmamaterial")
+    voptoolutils._setupMtlXBuilderSubnet(subnet_node=karma, mask=voptoolutils.KARMAMTLX_TAB_MASK,
+                                         folder_label="Karma Material Builder", render_context="kma")
+    karma.setPosition(builder.position() + hou.Vector2(4, 0))
+    STATE.update(matlib=matlib, stage_nodes=[settings, rpass, rop, nova, matlib], builders=[builder, karma])
+    log("icons setup", icons={n.path(): n.type().icon() for n in stage.children() + matlib.children()})
+    editor = network_editor()
+    editor.setPwd(stage)
+    editor.pane().setIsMaximized(True)
+    hou.clearAllSelected()
+    later(3, step_icons_close)
+
+
+def step_icons_close():
+    frame(STATE["stage_nodes"], 1.0)
+    later(2, step_icons_close_grab)
+
+
+def step_icons_close_grab():
+    grab("icons_stage_close")
+    frame(STATE["stage_nodes"], 14.0)
+    later(2, step_icons_far)
+
+
+def step_icons_far():
+    grab("icons_stage_far")
+    network_editor().setPwd(STATE["matlib"])
+    later(2, step_icons_matlib)
+
+
+def step_icons_matlib():
+    frame(STATE["builders"], 1.5)
+    later(2, step_icons_matlib_grab)
+
+
+def icon_sheet(rows, path):
+    """Each (label, icon name) at 16, 24, 32 and 48 px on a dark and a light
+    background; returns {label: error} for the icons Houdini cannot find."""
+    from PySide6 import QtGui
+    sizes, backgrounds = (16, 24, 32, 48), ("#2b2b2b", "#e6e6e6")
+    width = 330 + len(backgrounds) * (sum(sizes) + 12 * len(sizes)) + 20
+    img = QtGui.QImage(width, 60 * len(rows) + 10, QtGui.QImage.Format_ARGB32)
+    img.fill(QtGui.QColor("#808080"))
+    p = QtGui.QPainter(img)
+    missing = {}
+    for row, (label, name) in enumerate(rows):
+        y = 10 + row * 60
+        p.setPen(QtGui.QColor("#000000"))
+        p.drawText(10, y + 22, label)
+        p.drawText(10, y + 40, name)
+        x = 330
+        for bg in backgrounds:
+            p.fillRect(x - 6, y - 4, sum(sizes) + 12 * len(sizes), 56, QtGui.QColor(bg))
+            for s in sizes:
+                try:
+                    p.drawPixmap(x, y + 48 - s, hou.qt.Icon(name, s, s).pixmap(s, s))
+                except hou.Error as e:
+                    missing[label] = str(e)
+                x += s + 12
+            x += 6
+    p.end()
+    img.save(path)
+    return missing
+
+
+def step_icons_matlib_grab():
+    grab("icons_matlib")
+    lop = hou.lopNodeTypeCategory()
+    rows = [("%s (tool %s)" % (t.label(), name), t.icon()) for name, t in sorted(hou.shelves.tools().items())
+            if "Nova" in t.label()]
+    rows += [("%s LOP (node)" % hou.nodeType(lop, n).description(), hou.nodeType(lop, n).icon())
+             for n in ("nova", "nova_rendersettings")]
+    rows.append(("VOP subnet (Material Builders)", hou.nodeType(hou.vopNodeTypeCategory(), "subnet").icon()))
+    missing = icon_sheet(rows, os.path.join(OUT, "icons_tools.png"))
+    log("icon sheet", rows=rows, missing=missing)
+    tab_menu(hou.node("/stage"), STATE["stage_nodes"], "icons_tabmenu", step_icons_tabmenu_matlib)
+
+
+def step_icons_tabmenu_matlib():
+    tab_menu(STATE["matlib"], STATE["builders"], "icons_tabmenu_matlib", step_icons_shelf_setup)
+
+
+def close_start_dialog():
+    """A new preference directory opens Houdini's first-start dialog."""
+    from PySide6 import QtGui
+    for w in QtGui.QGuiApplication.topLevelWindows():
+        if w.isVisible() and w.title() == "Start Here":
+            w.close()
+            log("closed the Start Here dialog")
+
+
+def tab_menu(network, nodes, name, then):
+    """Opens the TAB menu in `network`, types "nova" and grabs the screen
+    under the main window as `name` (the TAB menu is a window of its own)."""
+    from PySide6 import QtCore, QtTest, QtWidgets
+    editor = network_editor()
+    editor.setPwd(network)
+    frame(nodes, 3.0)
+    close_start_dialog()
+    editor.openTabMenu()
+
+    def type_nova():
+        target = QtWidgets.QApplication.focusWidget() or hou.qt.mainWindow()
+        QtTest.QTest.keyClicks(target, "nova")
+        later(2, lambda: grab_screen(target))
+
+    def grab_screen(target):
+        win = hou.qt.mainWindow()
+        screen = win.screen()
+        geo, origin = win.frameGeometry(), screen.geometry().topLeft()
+        path = os.path.join(OUT, name + ".png")
+        remove_stale(path)
+        screen.grabWindow(0, geo.x() - origin.x(), geo.y() - origin.y(), geo.width(), geo.height()).save(path)
+        log("grab", name=name, screen=True)
+        QtTest.QTest.keyClick(target, QtCore.Qt.Key_Escape)
+        later(2, then)
+
+    later(2, type_nova)
+
+
+def step_icons_shelf_setup():
+    if not os.environ.get("NOVA_VIEWPORT_CHECK_OWN_PREFS"):
+        later(1, finish)
+        return
+    tools = [t for name, t in sorted(hou.shelves.tools().items()) if "Nova" in t.label()]
+    shelf = hou.shelves.shelves().get("nova_icons_check") or hou.shelves.newShelf(
+        file_path=os.path.join(hou.homeHoudiniDirectory(), "toolbar", "nova_icons_check.shelf").replace("\\", "/"),
+        name="nova_icons_check", label="Nova")
+    shelf.setTools(tools)
+    shelf_set = hou.ui.curDesktop().shelfDock().shelfSets()[0]
+    shelf_set.setShelves((shelf,))
+    later(3, step_icons_shelf)
+
+
+def step_icons_shelf():
+    grab("icons_shelf")
+    later(2, finish)
+
+
 def finish():
     log("done")
     hou.exit(exit_code=0, suppress_save_prompt=True)
@@ -842,5 +1016,5 @@ def start():
     if not OUT:
         return
     os.makedirs(OUT, exist_ok=True)
-    modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble}
+    modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble, "icons": setup_icons}
     later(5, modes.get(ONLY, setup))

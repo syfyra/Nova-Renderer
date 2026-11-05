@@ -114,6 +114,9 @@ add_custom_target(nova_stage ALL
             "${_nova_stage}/toolbar"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${PROJECT_SOURCE_DIR}/houdini/package/python3.13libs"
             "${_nova_stage}/python3.13libs"
+    # Nova's icon for the HDAs and tools.
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${PROJECT_SOURCE_DIR}/houdini/package/config"
+            "${_nova_stage}/config"
     VERBATIM)
 add_dependencies(nova_stage hdNova nova_cvex nova_volume)
 

@@ -16,7 +16,9 @@ environment (see run_hython.ps1; ctest runs it through check_solaris_ui.py):
   * its layout follows the Karma Render Settings LOP (M6.7); the Nova LOP
     (settings and render buttons in one node, as the Karma LOP) renders to
     disk with Nova; the Nova (Setup) tool builds settings, render pass and a
-    USD Render ROP set to Nova, as Karma (Setup) does.
+    USD Render ROP set to Nova, as Karma (Setup) does;
+  * Nova's LOPs and tools show Nova's icon (the package's NOVA_logo), not
+    Karma's.
 
 Usage: hython test_solaris_ui.py <repo> <outdir>
 """
@@ -325,6 +327,26 @@ check(tool is not None and 'createSetupTool' in tool.script(), 'the Nova (Setup)
 for t in ('nova', 'nova_rendersettings'):
     d = hou.nodeType(hou.lopNodeTypeCategory(), t).definition()
     check('Rendering' in d.sections()['Tools.shelf'].contents(), 'the TAB menu lists %s under Rendering' % t)
+
+# ---- Nova's icon, not Karma's: the package's config/Icons/NOVA_logo.svg, by
+# name for the shelf tools, embedded in the HDAs (the node and its TAB entry).
+try:
+    icon_file = hou.findFile('config/Icons/NOVA_logo.svg')
+except hou.OperationFailed:
+    icon_file = None
+check(icon_file is not None, 'the package has Nova\'s icon: %s' % icon_file)
+with open(os.path.join(REPO, 'houdini', 'package', 'config', 'Icons', 'NOVA_logo.svg'), encoding='utf-8') as f:
+    svg = f.read()
+for t in ('nova', 'nova_rendersettings'):
+    d = hou.nodeType(hou.lopNodeTypeCategory(), t).definition()
+    section = d.sections().get('IconSVG')
+    check(d.icon() == 'opdef:/Lop/%s?IconSVG' % t and section is not None and section.contents() == svg,
+          'the %s LOP shows Nova\'s icon (%s, the package\'s SVG)' % (t, d.icon()))
+nova_tools = {name: tool.icon() for name, tool in hou.shelves.tools().items() if 'Nova' in tool.label()}
+check(nova_tools.get('lop_nova_setup') == 'NOVA_logo' and nova_tools.get('vop_novamtlxsubnet') == 'NOVA_logo',
+      'the Nova (Setup) and Nova Material Builder tools show Nova\'s icon')
+check(len(nova_tools) >= 4 and not any('karma' in icon.lower() for icon in nova_tools.values()),
+      'no Nova tool shows a Karma icon: %s' % nova_tools)
 
 print('%d failure(s)' % len(FAILURES))
 sys.exit(1 if FAILURES else 0)
