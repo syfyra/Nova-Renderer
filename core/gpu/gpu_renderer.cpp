@@ -21,9 +21,9 @@ constexpr uint32_t kBlock = 256;
 constexpr uint32_t kMaxWavePaths = 1u << 21;
 
 // BsdfTables' members in the order of kBsdfTableFloats.
-constexpr const float *BsdfTables::*kTableMembers[9] = {
+constexpr const float *BsdfTables::*kTableMembers[kBsdfTableCount] = {
     &BsdfTables::ggxE,       &BsdfTables::ggxEavg, &BsdfTables::ggxABC,   &BsdfTables::dielRT, &BsdfTables::dielRTinv,
-    &BsdfTables::dielR,      &BsdfTables::fresnelAvg, &BsdfTables::charlieE, &BsdfTables::thinRT};
+    &BsdfTables::dielR,      &BsdfTables::fresnelAvg, &BsdfTables::charlieE, &BsdfTables::thinRT, &BsdfTables::thinR};
 
 // IEEE half of f, rounded to nearest even.
 uint16_t toHalf(float f) {
@@ -303,20 +303,20 @@ bool GpuRenderer::init(std::string &error) {
     // The BSDF tables and the XYZ matrix (constant): one buffer.
     const BsdfTables &host = bsdfTables();
     std::vector<float> blob;
-    size_t offsets[10] = {};
-    for (int i = 0; i < 9; ++i) {
+    size_t offsets[kBsdfTableCount + 1] = {};
+    for (int i = 0; i < kBsdfTableCount; ++i) {
         offsets[i] = blob.size();
         blob.insert(blob.end(), host.*kTableMembers[i], host.*kTableMembers[i] + kBsdfTableFloats[i]);
     }
-    offsets[9] = blob.size();
+    offsets[kBsdfTableCount] = blob.size();
     blob.insert(blob.end(), kXyzToRec709Grey, kXyzToRec709Grey + 9);
     if (!m_device.upload(m_tables, blob)) {
         error = m_device.lastError();
         return false;
     }
-    for (int i = 0; i < 9; ++i)
+    for (int i = 0; i < kBsdfTableCount; ++i)
         m_view.tables.*kTableMembers[i] = m_tables.as<float>() + offsets[i];
-    m_view.xyzToRgb = m_tables.as<float>() + offsets[9];
+    m_view.xyzToRgb = m_tables.as<float>() + offsets[kBsdfTableCount];
     if (!m_device.sync()) {
         error = m_device.lastError();
         return false;

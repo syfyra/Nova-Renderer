@@ -168,14 +168,24 @@ struct ThinDielectricLobe {
     Spectrum tintT; // transmission color at normal incidence
     // T' is scaled by 1 + tBoost after the absorption: the energy a reflection
     // below full strength gives up (Standard Surface specular < 1). Not part
-    // of tintT, which the absorption clamps to [0, 1]. Last and 0-neutral, so
-    // aggregate initializers without it leave T' as is (no default member
-    // initializer: the lobe lives in Lobe's union).
-    float tBoost;
+    // of tintT, which the absorption clamps to [0, 1]. tBoostSmooth is the
+    // boost of the same sheet without roughness at the closure's wo (fake
+    // caustics and the albedo AOV ignore the roughness). Last and 0-neutral,
+    // so aggregate initializers without them leave T' as is (no default
+    // member initializers: the lobe lives in Lobe's union).
+    float tBoost, tBoostSmooth;
 
     // Roughness of the transmission through both interfaces.
     NOVA_INLINE static float transmissionAlpha(float alpha, float eta) {
         return saturate(alpha * std::sqrt(nova::fmax(3.4f * (eta - 1.0f) * sqr(eta - 0.5f) / (eta * eta * eta), 0.0f)));
+    }
+
+    // The boost for a reflection weight s when the white sheet reflects rw
+    // and transmits tw (energies): s rw + (1 + boost) tw = rw + tw, the
+    // transmission takes what the weakened reflection gives up (never
+    // below 0 for s > 1).
+    NOVA_INLINE static float boostFor(float rw, float tw, float s) {
+        return nova::fmax(rw + tw - s * rw, 0.0f) / nova::fmax(tw, 1e-4f) - 1.0f;
     }
 
     // R' and T' at the microfacet cosine c.

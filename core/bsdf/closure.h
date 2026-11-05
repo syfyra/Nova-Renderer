@@ -401,9 +401,12 @@ NOVA_INLINE Spectrum closureTransmittance(const ClosureList &cl, Vec3f wo, const
                                            : dielectricAlbedoRT(tables, l.dielectric.eta, lutRough(g.ax, g.ay), mu);
             T += l.weight * l.dielectric.tintT * (t * uncompensate);
         } else if (l.type == LobeType::ThinDielectric) {
+            // The smooth sheet at mu: with its own specular-weight boost and
+            // the compensation 1 / E undone (roughness ignored).
+            ThinDielectricLobe smooth = l.thin;
+            smooth.tBoost = l.thin.tBoostSmooth;
             Spectrum R, Ts;
-            l.thin.sheet(mu, R, Ts);
-            // The sheet's compensation 1 / E undone: roughness ignored.
+            smooth.sheet(mu, R, Ts);
             const GgxDistribution &g = l.thin.ggxR;
             const float e = g.smooth() ? 1.0f : thinDielectricAlbedo(tables, l.thin.eta, lutRough(g.ax, g.ay), mu);
             T += l.weight * Ts * e;

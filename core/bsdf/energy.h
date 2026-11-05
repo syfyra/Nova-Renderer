@@ -40,14 +40,17 @@ struct BsdfTables {
     const float *fresnelAvg; // 2 int F mu dmu of the exact dielectric Fresnel, eta > 1
     const float *charlieE;   // albedo of the Charlie sheen lobe (core/bsdf/sheen.h), [sheen roughness][y]
     const float *thinRT;     // E_R' + E_T' of a clear thin-walled sheet (ThinDielectricLobe), eta > 1
+    const float *thinR;      // E_R' of the same sheet (its reflection lobe; E_T' = thinRT - thinR)
 };
 
-// The tables' lengths in floats, in the order of BsdfTables' members.
-inline constexpr size_t kBsdfTableFloats[9] = {
+// The number of tables and their lengths in floats, in the order of
+// BsdfTables' members.
+constexpr int kBsdfTableCount = 10;
+inline constexpr size_t kBsdfTableFloats[kBsdfTableCount] = {
     size_t(kLutRough) * kLutMu,           size_t(kLutRough),           size_t(kLutRough) * kLutMu * 3,
     size_t(kLutEta) * kLutRough * kLutMu, size_t(kLutEta) * kLutRough * kLutMu,
     size_t(kLutEta) * kLutRough * kLutMu, size_t(kLutFresnelAvg),      size_t(kLutRough) * kLutMu,
-    size_t(kLutEta) * kLutRough * kLutMu};
+    size_t(kLutEta) * kLutRough * kLutMu, size_t(kLutEta) * kLutRough * kLutMu};
 
 // The generated tables (host memory, core/bsdf/tables/bsdf_tables.cpp).
 const BsdfTables &bsdfTables();
@@ -154,6 +157,13 @@ NOVA_INLINE float dielectricAlbedoRT(const BsdfTables &t, float eta, float r, fl
 // sheet.
 NOVA_INLINE float thinDielectricAlbedo(const BsdfTables &t, float eta, float r, float mu) {
     return lut3(t.thinRT, kLutEta, kLutRough, kLutMu, lutEta(eta), r, lutMu(mu));
+}
+// E_R' alone: the clear sheet's reflection lobe (R' per microfacet, inter-
+// reflections inside the sheet included). Integrated from the same samples
+// as E_R' + E_T', so thinDielectricAlbedo - thinDielectricAlbedoR is the
+// sheet's E_T' (both interpolate linearly on the same grid).
+NOVA_INLINE float thinDielectricAlbedoR(const BsdfTables &t, float eta, float r, float mu) {
+    return lut3(t.thinR, kLutEta, kLutRough, kLutMu, lutEta(eta), r, lutMu(mu));
 }
 
 // E_R of a rough dielectric seen from outside (eta >= 1).
