@@ -11,6 +11,7 @@
 #include "core/film/lpe_compile.h"
 #include "core/geometry/curves.h"
 #include "core/gpu/device.h"
+#include "core/gpu/gpu_renderer.h"
 #include "core/integrator/renderer.h"
 #include "core/scene/scene.h"
 #include "core/shading/compiler.h"
@@ -470,6 +471,102 @@ TEST_CASE("XPU refreshes a texture replaced under its id", "[gpu][render][textur
     CHECK_THAT(second.y, WithinAbs(1.0, 0.01));
 }
 
+namespace {
+
+// Texture budget tests (R1-48): level l of a size^2 RGB float texture is the
+// constant color (l / 10, 1 - l / 10, 0.5).
+std::vector<float> levelTexels(int size, uint32_t l) {
+    std::vector<float> texels;
+    texels.reserve(size_t(size) * size_t(size) * 3);
+    for (int i = 0; i < size * size; ++i)
+        texels.insert(texels.end(), {float(l) / 10.0f, 1.0f - float(l) / 10.0f, 0.5f});
+    return texels;
+}
+
+// Levels `from` + 1 on of a size^2 chain.
+std::vector<std::vector<float>> chainBelow(int size, uint32_t from) {
+    std::vector<std::vector<float>> mips;
+    for (uint32_t l = from + 1; (size >> l) >= 1; ++l)
+        mips.push_back(levelTexels(size >> l, l));
+    return mips;
+}
+
+// An unlit program showing texture slot 0 at st; with `rows`, also the sum of
+// that many primvars (all live at once: a program over the GPU's rows).
+shading::ProgramPtr texturedUnlit(int rows = 0) {
+    using namespace shading;
+    IrGraph g;
+    g.model = SurfaceModel::Unlit;
+    IrBuilder b(g);
+    const uint32_t slot = b.textureSlot(TexSlot{});
+    Ref color = b.tex2D(slot, b.primvar("st", 2, b.constant(0.0f)), b.constant(0.0f));
+    if (rows > 0) {
+        Ref sum = b.constant(1.0f);
+        for (int i = 0; i < rows; ++i)
+            sum = b.add(sum, b.primvar("pv" + std::to_string(i), 1, b.constant(0.0f)));
+        color = b.mul(color, b.convert(sum, 3));
+    }
+    b.output(surface_field::emissionColor, 3, color);
+    return compile(g).program;
+}
+
+MaterialId addMaterial(Scene &scene, TextureId tex, shading::ProgramPtr program,
+                       SurfaceModel model = SurfaceModel::Unlit) {
+    MaterialDesc material;
+    material.inputs = unlitDefaults();
+    material.inputs.model = model;
+    material.program = std::move(program);
+    material.textures = {tex};
+    const MaterialId m = scene.createMaterial();
+    scene.updateMaterial(m, material);
+    return m;
+}
+
+// An unlit quad over [-1, 1]^2 showing `tex` at its st (materials added
+// before it come first in the plan's order).
+void texturedQuad(Scene &scene, const MemorySampler &textures, TextureId tex) {
+    MeshDesc quad = makeQuad(1.0f);
+    quad.setAttribute({"st", AttributeRate::Vertex, 2, {0, 0, 1, 0, 1, 1, 0, 1}});
+    const MeshId mesh = scene.createMesh();
+    scene.updateMesh(mesh, quad);
+    scene.setMeshMaterials(mesh, {addMaterial(scene, tex, texturedUnlit())});
+    scene.setTextureSampler(&textures);
+    scene.commit();
+}
+
+// The quad from the camera, 4 texels of a 1024^2 texture per pixel (level 0
+// is sampled when everything fits), with the budget `budgetMb`.
+Film renderBudget(Renderer &renderer, const Scene &scene, uint32_t budgetMb, bool &onGpu) {
+    RenderSettings settings;
+    settings.device = RenderDevice::Xpu;
+    settings.maxSamples = 4;
+    settings.maxDepth = 1;
+    settings.gpuTextureBudget = budgetMb;
+    renderer.setScene(&scene);
+    renderer.setSettings(settings);
+    renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 5.0f}, 0.5f, 128, 128));
+    renderer.resize(128, 128);
+    renderer.reset();
+    while (!renderer.converged()) {
+        renderer.renderPass({});
+        onGpu = onGpu && renderer.lastPassOnGpu();
+    }
+    return renderer.film();
+}
+
+Film renderBudget(const Scene &scene, uint32_t budgetMb, bool &onGpu) {
+    Renderer renderer;
+    return renderBudget(renderer, scene, budgetMb, onGpu);
+}
+
+bool sameFilm(const Film &a, const Film &b) {
+    return a.colorSum.size() == b.colorSum.size() &&
+           std::memcmp(a.colorSum.data(), b.colorSum.data(), a.colorSum.size() * sizeof(a.colorSum[0])) == 0 &&
+           a.count == b.count;
+}
+
+} // namespace
+
 // R1-48: the texture budget is planned from the textures' shapes before any
 // texel is read, and only the kept levels are read and uploaded. A texture
 // over the budget renders bit for bit as the same texture holding only the
@@ -479,77 +576,119 @@ TEST_CASE("XPU keeps the texture levels its budget plans", "[gpu][render][textur
     std::string why;
     if (!gpuAvailable(why))
         SKIP("no GPU: " << why);
-    using namespace shading;
-    // Level l: the constant color (l / 10, 1 - l / 10, 0.5).
-    const auto level = [](int size, uint32_t l) {
-        std::vector<float> texels;
-        texels.reserve(size_t(size) * size_t(size) * 3);
-        for (int i = 0; i < size * size; ++i)
-            texels.insert(texels.end(), {float(l) / 10.0f, 1.0f - float(l) / 10.0f, 0.5f});
-        return texels;
-    };
     MemorySampler textures;
-    std::vector<std::vector<float>> mips;
-    for (uint32_t l = 1; (1024 >> l) >= 1; ++l)
-        mips.push_back(level(1024 >> l, l));
-    const TextureId full = textures.add(1024, 1024, 3, level(1024, 0), mips);
-    const TextureId from2 =
-        textures.add(256, 256, 3, level(256, 2), std::vector<std::vector<float>>(mips.begin() + 2, mips.end()));
-
-    // An unlit quad showing the texture at its st, 4 texels of level 0 per
-    // pixel: level 0 is sampled when everything fits.
-    const auto render = [&](TextureId tex, uint32_t budgetMb, bool &onGpu) {
-        Scene scene;
-        MeshDesc quad = makeQuad(1.0f);
-        quad.setAttribute({"st", AttributeRate::Vertex, 2, {0, 0, 1, 0, 1, 1, 0, 1}});
-        const MeshId mesh = scene.createMesh();
-        scene.updateMesh(mesh, quad);
-        IrGraph g;
-        g.model = SurfaceModel::Unlit;
-        IrBuilder b(g);
-        const uint32_t slot = b.textureSlot(TexSlot{});
-        b.output(surface_field::emissionColor, 3, b.tex2D(slot, b.primvar("st", 2, b.constant(0.0f)), b.constant(0.0f)));
-        MaterialDesc material;
-        material.inputs = unlitDefaults();
-        material.program = compile(g).program;
-        REQUIRE(material.program);
-        material.textures = {tex};
-        const MaterialId m = scene.createMaterial();
-        scene.updateMaterial(m, material);
-        scene.setMeshMaterials(mesh, {m});
-        scene.setTextureSampler(&textures);
-        scene.commit();
-        Renderer renderer;
-        RenderSettings settings;
-        settings.device = RenderDevice::Xpu;
-        settings.maxSamples = 4;
-        settings.maxDepth = 1;
-        settings.gpuTextureBudget = budgetMb;
-        renderer.setScene(&scene);
-        renderer.setSettings(settings);
-        renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 5.0f}, 0.5f, 128, 128));
-        renderer.resize(128, 128);
-        while (!renderer.converged()) {
-            renderer.renderPass({});
-            onGpu = onGpu && renderer.lastPassOnGpu();
-        }
-        return renderer.film();
-    };
+    const TextureId full = textures.add(1024, 1024, 3, levelTexels(1024, 0), chainBelow(1024, 0));
+    const TextureId from2 = textures.add(256, 256, 3, levelTexels(256, 2), chainBelow(1024, 2));
+    Scene a, b, c;
+    texturedQuad(a, textures, full);
+    texturedQuad(b, textures, from2);
+    texturedQuad(c, textures, full);
     bool onGpu = true;
     const uint64_t before = textures.texelsRead();
-    const Film budgeted = render(full, 2, onGpu);
+    const Film budgeted = renderBudget(a, 2, onGpu);
     const uint64_t read = textures.texelsRead() - before;
-    const Film kept = render(from2, 0, onGpu);
-    const Film everything = render(full, 0, onGpu);
+    const Film kept = renderBudget(b, 0, onGpu);
+    const Film everything = renderBudget(c, 0, onGpu);
     REQUIRE(onGpu);
     // Only levels 2 to 10 of the full chain were read.
     CHECK(read == 87381);
-    REQUIRE(budgeted.colorSum.size() == kept.colorSum.size());
-    CHECK(std::memcmp(budgeted.colorSum.data(), kept.colorSum.data(),
-                      budgeted.colorSum.size() * sizeof(budgeted.colorSum[0])) == 0);
-    CHECK(budgeted.count == kept.count);
+    CHECK(sameFilm(budgeted, kept));
     const Vec3f limited = channelMeans(budgeted), all = channelMeans(everything);
     INFO("budgeted " << limited.x << " " << limited.y << ", everything " << all.x << " " << all.y);
     CHECK_THAT(limited.x, WithinAbs(0.2, 0.01)); // level 2
     CHECK_THAT(all.x, WithinAbs(0.0, 0.01));     // level 0
+}
+
+// The plan counts exactly the textures the device samples: not those of a
+// VEX stand-in or of a program over the GPU's rows (which falls back to its
+// uniform inputs), which are not uploaded either. Counted first, a 2048^2
+// texture of theirs would have left the quad's texture only levels 3 on.
+TEST_CASE("XPU plans only the textures it uploads", "[gpu][render][texture]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    MemorySampler textures;
+    const TextureId full = textures.add(1024, 1024, 3, levelTexels(1024, 0), chainBelow(1024, 0));
+    const TextureId from2 = textures.add(256, 256, 3, levelTexels(256, 2), chainBelow(1024, 2));
+    const TextureId other = textures.add(2048, 2048, 3, levelTexels(2048, 0), chainBelow(2048, 0));
+    const shading::ProgramPtr large = texturedUnlit(int(shading::kGpuRowLimit) + 8);
+    REQUIRE(large);
+    REQUIRE(large->rowCount > shading::kGpuRowLimit);
+    Scene scene, kept;
+    addMaterial(scene, other, texturedUnlit(), SurfaceModel::External); // a VEX stand-in
+    addMaterial(scene, other, large);
+    texturedQuad(scene, textures, full);
+    texturedQuad(kept, textures, from2);
+    bool onGpu = true;
+    const uint64_t before = textures.texelsRead();
+    const Film budgeted = renderBudget(scene, 2, onGpu);
+    const uint64_t read = textures.texelsRead() - before;
+    const Film reference = renderBudget(kept, 0, onGpu);
+    REQUIRE(onGpu);
+    CHECK(read == 87381); // levels 2 to 10 of the quad's texture, nothing of the other
+    CHECK(sameFilm(budgeted, reference));
+}
+
+// The default budget is measured when the first texture loads, not at the
+// first scene without textures; a changed budget applies at the next pass of
+// the same scene (IPR), reading again only the textures whose kept levels
+// change.
+TEST_CASE("XPU applies texture budget changes without a scene edit", "[gpu][render][texture]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    MemorySampler textures;
+    const TextureId full = textures.add(1024, 1024, 3, levelTexels(1024, 0), chainBelow(1024, 0));
+    const TextureId from2 = textures.add(256, 256, 3, levelTexels(256, 2), chainBelow(1024, 2));
+    const TextureId small = textures.add(64, 64, 3, levelTexels(64, 0), chainBelow(64, 0));
+
+    {
+        gpu::GpuRenderer device;
+        std::string error;
+        REQUIRE(device.init(error));
+        Scene plain;
+        MeshDesc quad = makeQuad(1.0f);
+        const MeshId mesh = plain.createMesh();
+        plain.updateMesh(mesh, quad);
+        plain.setTextureSampler(&textures);
+        plain.commit();
+        REQUIRE(device.setScene(plain));
+        CHECK(device.textureBudgetBytes() == 0); // no texture: not measured
+        Scene textured;
+        texturedQuad(textured, textures, full);
+        REQUIRE(device.setScene(textured));
+        CHECK(device.textureBudgetBytes() > 0);
+        device.setTextureBudget(5);
+        CHECK(device.textureBudgetBytes() == size_t(5) << 20);
+        device.setTextureBudget(0);
+        CHECK(device.textureBudgetBytes() == 0); // measured again when textures load next
+    }
+
+    // The quad's texture and a small one of another material (unused by the
+    // camera, under every cap here, so never read again).
+    Scene scene, kept;
+    texturedQuad(scene, textures, full);
+    addMaterial(scene, small, texturedUnlit());
+    scene.commit();
+    texturedQuad(kept, textures, from2);
+    bool onGpu = true;
+    Renderer renderer;
+    uint64_t before = textures.texelsRead();
+    const Film everything = renderBudget(renderer, scene, 0, onGpu);
+    CHECK(textures.texelsRead() - before == 1398101 + 5461);
+    before = textures.texelsRead();
+    const Film budgeted = renderBudget(renderer, scene, 2, onGpu); // no scene edit
+    CHECK(textures.texelsRead() - before == 87381);                 // the quad's texture, levels 2 on
+    before = textures.texelsRead();
+    const Film again = renderBudget(renderer, scene, 0, onGpu);
+    CHECK(textures.texelsRead() - before == 1398101);
+    before = textures.texelsRead();
+    const Film same = renderBudget(renderer, scene, 1000, onGpu); // everything still fits: nothing read
+    CHECK(textures.texelsRead() - before == 0);
+    const Film reference = renderBudget(kept, 0, onGpu);
+    REQUIRE(onGpu);
+    CHECK(sameFilm(budgeted, reference));
+    CHECK(sameFilm(again, everything));
+    CHECK(sameFilm(same, everything));
+    CHECK(!sameFilm(budgeted, everything));
 }

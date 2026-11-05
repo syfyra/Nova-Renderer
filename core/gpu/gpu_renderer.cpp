@@ -105,6 +105,43 @@ bool mayWalk(const SurfaceInputs &in, const shading::Program *p) {
     return false;
 }
 
+// Which textures the device samples (D10), one rule for the texture budget's
+// plan and setScene's upload: a surface material's when its per-hit program
+// or per-hit opacity program runs on the device (VEX materials are grey
+// stand-ins, D12; a program over kGpuMaxRows falls back to its uniform
+// inputs), a volume's material's when its shader runs there.
+bool standIn(const MaterialRecord &rec) {
+    return rec.resolved.model == SurfaceModel::External || (rec.desc.external && rec.desc.external->shader);
+}
+
+bool opacityRuns(const MaterialRecord &rec) {
+    const shading::Program *p = rec.desc.program.get();
+    const shading::Program *op = p ? p->opacity.get() : nullptr;
+    return op && !rec.opacityUniforms.empty() && op->rowCount <= kGpuMaxRows;
+}
+
+bool surfaceTexturesOnDevice(const MaterialRecord &rec) {
+    const shading::Program *p = rec.desc.program.get();
+    return !standIn(rec) && p && ((rec.varying && p->rowCount <= kGpuMaxRows) || opacityRuns(rec));
+}
+
+bool volumeShaderOnDevice(const VolumeRecord &rec) { return rec.program && rec.program->rowCount <= kGpuMaxRows; }
+
+// The texture samplers the device uses, in the order setScene uploads them:
+// the surface materials', then the volume shaders'.
+template <class F> void forEachDeviceSampler(const Scene &scene, F &&f) {
+    for (MaterialId id = 0; id < scene.materialCount(); ++id)
+        if (scene.hasMaterial(id) && surfaceTexturesOnDevice(scene.material(id)))
+            for (const TexSampler &s : scene.material(id).samplers)
+                f(s);
+    for (VolumeId id = 0; id < scene.volumeCount(); ++id) {
+        const VolumeRecord &rec = scene.volumeRecord(id);
+        if (volumeShaderOnDevice(rec))
+            for (const TexSampler &s : scene.material(rec.material).samplers)
+                f(s);
+    }
+}
+
 } // namespace
 
 GpuRenderer::~GpuRenderer() {
@@ -115,25 +152,31 @@ GpuRenderer::~GpuRenderer() {
     }
 }
 
+void GpuRenderer::freeTexture(TextureId id, Texture &tex) {
+    const CudaApi &cu = m_device.cu();
+    for (CUtexObject o : tex.objects)
+        cu.p_cuTexObjectDestroy(o);
+    for (auto &[udim, chain] : tex.tiles)
+        cu.p_cuMipmappedArrayDestroy(chain);
+    tex.objects.clear();
+    tex.tables.clear();
+    tex.tiles.clear();
+    tex.levels.clear();
+    tex.ok = tex.uploaded = false;
+    m_textureBytes -= std::min(m_textureBytes, tex.bytes);
+    tex.bytes = 0;
+    for (auto it = m_texSlots.begin(); it != m_texSlots.end();)
+        it = (it->first >> 16) == id ? m_texSlots.erase(it) : std::next(it);
+}
+
 void GpuRenderer::freeTextureData() {
-    if (m_texObjects.empty() && m_textures.empty())
+    if (m_textures.empty())
         return;
     Device::Scope scope(m_device);
-    const CudaApi &cu = m_device.cu();
     m_device.sync();
-    for (CUtexObject o : m_texObjects)
-        cu.p_cuTexObjectDestroy(o);
-    for (auto &[id, tex] : m_textures) {
-        for (auto &[udim, chain] : tex.tiles)
-            cu.p_cuMipmappedArrayDestroy(chain);
-        tex.tiles.clear();
-        tex.levels.clear();
-        tex.ok = tex.uploaded = false;
-        tex.bytes = 0;
-    }
-    m_texObjects.clear();
+    for (auto &[id, tex] : m_textures)
+        freeTexture(id, tex);
     m_texSlots.clear();
-    m_tileTables.clear();
     m_textureBytes = 0;
 }
 
@@ -163,57 +206,89 @@ GpuRenderer::Texture &GpuRenderer::textureEntry(const ITextureSampler *sampler, 
 }
 
 size_t GpuRenderer::textureBudget() {
-    if (m_textureBudget == 0) { // nova:gpuTextureBudget's default: half the memory free at the first upload
+    if (m_textureBudget == 0) {
+        // nova:gpuTextureBudget's default: half the memory free when the
+        // first texture loads (with the textures already held, after a
+        // change of the setting).
         size_t free = 0, total = 0;
         m_device.cu().p_cuMemGetInfo(&free, &total);
-        m_textureBudget = std::max<size_t>(free / 2, 1);
+        m_textureBudget = std::max<size_t>((free + m_textureBytes) / 2, 1);
     }
     return m_textureBudget;
 }
 
-void GpuRenderer::planTextures(const Scene &scene) {
+GpuRenderer::TexturePlan GpuRenderer::planTextures(const Scene &scene) {
+    TexturePlan p;
     if (!m_sampler)
-        return;
-    // The textures the materials' programs sample (surfaces and volumes,
-    // incl. materials no object uses, as the upload below), in order of
-    // first use.
-    std::vector<TextureId> used;
+        return p;
     std::unordered_set<TextureId> seen;
-    for (MaterialId id = 0; id < scene.materialCount(); ++id)
-        if (scene.hasMaterial(id))
-            for (const TexSampler &s : scene.material(id).samplers)
-                if (s.texture != kNoTexture && seen.insert(s.texture).second)
-                    used.push_back(s.texture);
+    forEachDeviceSampler(scene, [&](const TexSampler &s) {
+        if (s.texture != kNoTexture && seen.insert(s.texture).second)
+            p.used.push_back(s.texture);
+    });
     std::vector<const TexInfo *> infos;
-    infos.reserve(used.size());
-    for (TextureId id : used) {
+    infos.reserve(p.used.size());
+    bool any = false;
+    for (TextureId id : p.used) {
         const Texture &tex = textureEntry(m_sampler, id);
         infos.push_back(tex.known ? &tex.info : nullptr);
+        any = any || tex.known;
     }
-    const size_t budget = textureBudget();
-    TexBudgetPlan plan = planTextureBudget(infos, budget);
-    // Device copies stay while they hold what the plan keeps and the ones
-    // no longer used leave the room; otherwise everything is uploaded anew,
-    // so the device holds what a fresh upload of this scene would (IPR).
-    bool again = false;
-    size_t unused = m_textureBytes;
-    for (size_t i = 0; i < used.size(); ++i) {
-        const Texture &tex = m_textures[used[i]];
-        if (!tex.uploaded)
-            continue;
-        unused -= tex.bytes;
-        again = again || tex.plan != plan.textures[i];
+    // The default budget is measured only once there are textures to load.
+    p.budget = any ? textureBudget() : m_textureBudget;
+    p.plan = planTextureBudget(infos, p.budget);
+    return p;
+}
+
+bool GpuRenderer::texturesMatch(const TexturePlan &p) const {
+    std::unordered_set<TextureId> used(p.used.begin(), p.used.end());
+    for (size_t i = 0; i < p.used.size(); ++i) {
+        const auto it = m_textures.find(p.used[i]);
+        if (it == m_textures.end() || it->second.plan != p.plan.textures[i])
+            return false;
     }
-    if (again || (unused > 0 && unused + plan.bytes > budget))
-        freeTextureData();
-    for (size_t i = 0; i < used.size(); ++i)
-        m_textures[used[i]].plan = std::move(plan.textures[i]);
-    if (plan.reduced && !m_budgetWarned) {
+    size_t unused = 0;
+    for (const auto &[id, tex] : m_textures)
+        if (tex.uploaded && !used.count(id))
+            unused += tex.bytes;
+    return unused == 0 || unused + p.plan.bytes <= p.budget;
+}
+
+void GpuRenderer::applyTexturePlan(TexturePlan &p) {
+    // Device copies stay while they hold what the plan keeps, and those no
+    // longer used while they leave room for it; so the device holds what a
+    // fresh upload of this scene would (IPR), reading again only what the
+    // plan changes.
+    std::unordered_set<TextureId> used(p.used.begin(), p.used.end());
+    std::vector<TextureId> drop;
+    size_t unused = 0;
+    for (size_t i = 0; i < p.used.size(); ++i) {
+        const Texture &tex = m_textures[p.used[i]];
+        if (tex.uploaded && tex.plan != p.plan.textures[i])
+            drop.push_back(p.used[i]);
+    }
+    for (const auto &[id, tex] : m_textures)
+        if (tex.uploaded && !used.count(id))
+            unused += tex.bytes;
+    if (unused > 0 && unused + p.plan.bytes > p.budget)
+        for (const auto &[id, tex] : m_textures)
+            if (tex.uploaded && !used.count(id))
+                drop.push_back(id);
+    if (!drop.empty()) {
+        m_device.sync();
+        for (TextureId id : drop)
+            freeTexture(id, m_textures[id]);
+    }
+    for (size_t i = 0; i < p.used.size(); ++i)
+        m_textures[p.used[i]].plan = std::move(p.plan.textures[i]);
+    m_budgetChanged = false;
+    if (p.plan.reduced && !m_budgetWarned) {
         m_budgetWarned = true;
         std::fprintf(stderr,
                      "[Nova] XPU: textures need %.0f MB, more than the GPU texture budget (%.0f MB); the finer MIP "
                      "levels of the largest are left out (down to %d texels)\n",
-                     double(plan.fullBytes) / 1048576.0, double(budget) / 1048576.0, 1 << std::max(plan.cap, 0));
+                     double(p.plan.fullBytes) / 1048576.0, double(p.budget) / 1048576.0,
+                     1 << std::max(p.plan.cap, 0));
     }
 }
 
@@ -270,7 +345,8 @@ GpuRenderer::Texture &GpuRenderer::texture(const ITextureSampler *sampler, Textu
     return tex;
 }
 
-CUtexObject GpuRenderer::textureObject(CUmipmappedArray chain, uint32_t levels, const TexSlot &slot, bool udim) {
+CUtexObject GpuRenderer::textureObject(Texture &tex, CUmipmappedArray chain, uint32_t levels, const TexSlot &slot,
+                                       bool udim) {
     const auto mode = [udim](TexWrap w) {
         if (udim) // tiles never wrap into each other
             return CU_TR_ADDRESS_MODE_CLAMP;
@@ -299,11 +375,11 @@ CUtexObject GpuRenderer::textureObject(CUmipmappedArray chain, uint32_t levels, 
     desc.maxMipmapLevelClamp = float(levels - 1);
     desc.flags = CU_TRSF_NORMALIZED_COORDINATES;
     CUtexObject object = 0;
-    if (m_texObjects.size() == m_texObjects.capacity()) // the push_back below cannot throw
-        m_texObjects.reserve(std::max<size_t>(16, m_texObjects.capacity() * 2));
+    if (tex.objects.size() == tex.objects.capacity()) // the push_back below cannot throw
+        tex.objects.reserve(std::max<size_t>(4, tex.objects.capacity() * 2));
     if (!m_device.check(m_device.cu().p_cuTexObjectCreate(&object, &res, &desc, nullptr), "cuTexObjectCreate"))
         return 0;
-    m_texObjects.push_back(object);
+    tex.objects.push_back(object);
     return object;
 }
 
@@ -317,19 +393,19 @@ DeviceTexSlot GpuRenderer::textureSlot(const ITextureSampler *sampler, const Tex
     auto it = m_texSlots.find(key);
     if (it == m_texSlots.end()) {
         DeviceTexSlot made;
-        const Texture &tex = texture(sampler, s.texture);
+        Texture &tex = texture(sampler, s.texture);
         if (tex.ok && !tex.udim) {
-            made.object = textureObject(tex.tiles[0].second, tex.levels[0], s.slot, false);
+            made.object = textureObject(tex, tex.tiles[0].second, tex.levels[0], s.slot, false);
         } else if (tex.ok) {
             std::vector<unsigned long long> objects(kUdimTiles, 0);
             for (size_t i = 0; i < tex.tiles.size(); ++i) {
                 const uint32_t udim = tex.tiles[i].first;
                 if (udim >= 1001 && udim < 1001 + uint32_t(kUdimTiles))
-                    objects[udim - 1001] = textureObject(tex.tiles[i].second, tex.levels[i], s.slot, true);
+                    objects[udim - 1001] = textureObject(tex, tex.tiles[i].second, tex.levels[i], s.slot, true);
             }
-            m_tileTables.emplace_back();
-            if (m_device.upload(m_tileTables.back(), objects))
-                made.tiles = m_tileTables.back().as<unsigned long long>();
+            tex.tables.emplace_back();
+            if (m_device.upload(tex.tables.back(), objects))
+                made.tiles = tex.tables.back().as<unsigned long long>();
         }
         it = m_texSlots.emplace(key, made).first;
     }
@@ -394,13 +470,12 @@ Span<T> GpuRenderer::upload(std::vector<DeviceBuffer> &into, const T *data, size
 }
 
 void GpuRenderer::setTextureBudget(uint32_t megabytes) {
-    if (megabytes > 0) {
-        m_textureBudget = size_t(megabytes) << 20;
-        m_budgetSet = true;
-    } else if (m_budgetSet) {
-        m_textureBudget = 0; // the default again at the next upload
-        m_budgetSet = false;
-    }
+    if (megabytes == m_budgetSetting)
+        return;
+    m_budgetSetting = megabytes;
+    m_textureBudget = size_t(megabytes) << 20; // 0: the default, measured when textures load next
+    m_budgetChanged = true;
+    m_budgetWarned = false;
 }
 
 bool GpuRenderer::setScene(const Scene &scene) {
@@ -408,8 +483,17 @@ bool GpuRenderer::setScene(const Scene &scene) {
     // the scene's version as it was: its stale device copy goes, and the
     // materials are uploaded again with the new texture objects.
     const bool texturesStale = texturesChanged(scene.textureSampler());
-    if (&scene == m_scene && scene.version() == m_sceneVersion && !texturesStale)
-        return true;
+    if (&scene == m_scene && scene.version() == m_sceneVersion && !texturesStale) {
+        if (!m_budgetChanged)
+            return true;
+        // A new texture budget (IPR) and the same scene: uploaded again only
+        // if the new plan keeps other levels.
+        Device::Scope scope(m_device);
+        if (texturesMatch(planTextures(scene))) {
+            m_budgetChanged = false;
+            return true;
+        }
+    }
     Device::Scope scope(m_device);
     m_scene = nullptr;
     m_failed = false;
@@ -517,7 +601,8 @@ bool GpuRenderer::setScene(const Scene &scene) {
         releaseTextures();
         m_sampler = scene.textureSampler();
     }
-    planTextures(scene);
+    TexturePlan texturePlan = planTextures(scene);
+    applyTexturePlan(texturePlan);
     std::vector<DeviceTexSlot> texSlots;
     std::vector<SurfaceInputs> inputs(scene.materialCount(), lambertDefaults());
     std::vector<GpuMaterial> materials(scene.materialCount());
@@ -528,7 +613,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
             continue;
         const MaterialRecord &rec = scene.material(id);
         SurfaceInputs &in = inputs[id];
-        if (rec.resolved.model == SurfaceModel::External || (rec.desc.external && rec.desc.external->shader)) {
+        if (standIn(rec)) {
             in = lambertDefaults(spectrum(0.5f));
             ++standIns;
             continue;
@@ -543,7 +628,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
         g.hasOpacity = uint8_t(rec.hasOpacity);
         g.uniformOpacity = rec.uniformOpacity;
         const shading::Program *op = p ? p->opacity.get() : nullptr;
-        const bool opacityVaries = op && !rec.opacityUniforms.empty() && op->rowCount <= kGpuMaxRows;
+        const bool opacityVaries = opacityRuns(rec);
         if (opacityVaries) {
             g.opacityCode = put(op->code).ptr;
             g.opacityCodeSize = uint32_t(op->code.size());
@@ -555,11 +640,13 @@ bool GpuRenderer::setScene(const Scene &scene) {
         if (p && (rec.varying || opacityVaries)) { // the primvar order and textures programs share
             g.primvarNames = uint32_t(p->primvars.size());
             g.tangentUv = p->tangentUv;
-            texSlots.clear();
-            for (const TexSampler &s : rec.samplers)
-                texSlots.push_back(textureSlot(m_sampler, s));
-            g.textures = put(texSlots).ptr;
-            g.textureCount = uint32_t(texSlots.size());
+            if (surfaceTexturesOnDevice(rec)) { // as the texture plan
+                texSlots.clear();
+                for (const TexSampler &s : rec.samplers)
+                    texSlots.push_back(textureSlot(m_sampler, s));
+                g.textures = put(texSlots).ptr;
+                g.textureCount = uint32_t(texSlots.size());
+            }
         }
         if (!rec.varying || !p)
             continue;
@@ -683,7 +770,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
         g.velocityTime[1] = rec.desc.velocityTime[1];
         g.volumeLimit = rec.desc.volumeLimit;
         if (const shading::Program *p = rec.program) {
-            if (p->rowCount > kGpuMaxRows) {
+            if (!volumeShaderOnDevice(rec)) { // as the texture plan
                 ++largeShaders; // the default volume stands in
                 continue;
             }

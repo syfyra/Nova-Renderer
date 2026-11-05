@@ -45,9 +45,13 @@ public:
     // Uploads the scene if its version changed: the geometry and GAS of the
     // meshes that changed, the rest anew.
     bool setScene(const Scene &scene);
-    // RenderSettings::gpuTextureBudget in MB (0: the default), for textures
-    // uploaded from now on.
+    // RenderSettings::gpuTextureBudget in MB (0: the default, half the
+    // memory free when the first texture loads). A change is planned again
+    // at the next setScene, also of an unchanged scene; only the textures
+    // whose kept levels change are read again.
     void setTextureBudget(uint32_t megabytes);
+    // The texture budget in bytes (0: the default, not measured yet).
+    size_t textureBudgetBytes() const { return m_textureBudget; }
     // The device film becomes a copy of `film` (its beauty and alpha sums and
     // its counts).
     bool setFilm(const Film &film);
@@ -81,10 +85,10 @@ private:
     bool launch(CUfunction fn, uint32_t threads, void *args);
 
     // Textures (D10): per TextureId of the scene's sampler its shape, the
-    // levels the budget plan keeps of each tile (planTextures, before any
-    // texel is read) and its tiles' MIP chains on the device (uploaded on
-    // first use: only the planned levels are read), and a material slot's
-    // texture objects (per texture, address modes and filter).
+    // levels the budget plan keeps of each tile (planned before any texel is
+    // read) and its tiles' MIP chains on the device (uploaded on first use:
+    // only the planned levels are read) with its texture objects (per
+    // address modes and filter) and UDIM tables.
     struct Texture {
         bool ok = false;         // uploaded, with at least one tile
         bool udim = false;
@@ -93,19 +97,36 @@ private:
         uint32_t generation = 0; // the sampler's textureGeneration when its shape was taken
         TexInfo info;
         std::vector<TexTilePlan> plan; // per tile of `info` (empty: not planned)
-        size_t bytes = 0;              // on the device
+        size_t bytes = 0;              // its chains on the device
         std::vector<std::pair<uint32_t, CUmipmappedArray>> tiles; // UDIM number (0: none), chain
         std::vector<uint32_t> levels;
+        std::vector<CUtexObject> objects;
+        std::vector<DeviceBuffer> tables; // UDIM sets' objects per tile
+    };
+    // The textures the device samples (setScene's rule) in order of first
+    // use, the budget and the plan over them.
+    struct TexturePlan {
+        std::vector<TextureId> used;
+        size_t budget = 0;
+        TexBudgetPlan plan;
     };
     Texture &textureEntry(const ITextureSampler *sampler, TextureId id);
     Texture &texture(const ITextureSampler *sampler, TextureId id);
-    // The budget plan over the textures the scene's materials sample; drops
-    // the device copies that no longer match it.
-    void planTextures(const Scene &scene);
+    TexturePlan planTextures(const Scene &scene);
+    // Whether the device copies are what `plan` keeps (and those no longer
+    // used leave room for it).
+    bool texturesMatch(const TexturePlan &plan) const;
+    // Drops the device copies `plan` changes (only those) and those no longer
+    // used when they do not fit beside it; the plan's levels are uploaded on
+    // first use.
+    void applyTexturePlan(TexturePlan &plan);
     size_t textureBudget();
     DeviceTexSlot textureSlot(const ITextureSampler *sampler, const TexSampler &s);
-    CUtexObject textureObject(CUmipmappedArray chain, uint32_t levels, const TexSlot &slot, bool udim);
-    // The device copies and texture objects (the shapes stay).
+    CUtexObject textureObject(Texture &tex, CUmipmappedArray chain, uint32_t levels, const TexSlot &slot, bool udim);
+    // A texture's device copy, objects and slots (its shape stays); after a
+    // device sync.
+    void freeTexture(TextureId id, Texture &tex);
+    // Every texture's device copy (the shapes stay).
     void freeTextureData();
     void releaseTextures();
     // Whether `sampler` (the current one) replaced the data of a texture
@@ -154,11 +175,10 @@ private:
 
     const ITextureSampler *m_sampler = nullptr;
     std::unordered_map<TextureId, Texture> m_textures;
-    std::unordered_map<uint64_t, DeviceTexSlot> m_texSlots;
-    std::vector<CUtexObject> m_texObjects;
-    std::vector<DeviceBuffer> m_tileTables; // UDIM sets' objects per tile
+    std::unordered_map<uint64_t, DeviceTexSlot> m_texSlots; // by texture << 16 | address modes, filter
     size_t m_textureBudget = 0, m_textureBytes = 0;
-    bool m_budgetSet = false; // m_textureBudget from the settings, not the default
+    uint32_t m_budgetSetting = 0;  // nova:gpuTextureBudget (MB, 0: the default)
+    bool m_budgetChanged = false;  // the setting changed since the last plan
     bool m_budgetWarned = false;
     DeviceBuffer m_tileCones, m_pixelList;
 
