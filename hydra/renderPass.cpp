@@ -106,7 +106,12 @@ GfMatrix4d karmaConformedWindow(GfMatrix4d const &projection, CameraUtilConformW
 
 HdNovaRenderPass::HdNovaRenderPass(HdRenderIndex *index, HdRprimCollection const &collection,
                                    HdNovaRenderDelegate *delegate)
-    : HdRenderPass(index, collection), _delegate(delegate) {}
+    : HdRenderPass(index, collection), _delegate(delegate) {
+    // The render settings' velocity blur before the first sync, so the
+    // prims resolve their motion once (docs/design/M8.md D19).
+    if (index)
+        HdNovaVelocityModeSceneIndex::SetDefaults(index->GetInstanceName(), _delegate->GetVelocityDefaults());
+}
 
 HdNovaRenderPass::~HdNovaRenderPass() {
     // The render thread must no longer write into the buffers bound here.
@@ -315,6 +320,18 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
                     tracker.MarkSprimDirty(hdCamera->GetId(), HdCamera::DirtyTransform);
             }
             _bindings.clear(); // restart once the updated scene arrives
+            return;
+        }
+    }
+
+    // Velocity blur defaults of the render settings (Karma's karma:object:
+    // vblur and friends, docs/design/M8.md D19): a change re-resolves the
+    // motion of every prim that can blur by velocity; render after the sync.
+    if (HdRenderIndex *index = GetRenderIndex()) {
+        const HdNovaVelocityDefaults velocity = _delegate->GetVelocityDefaults();
+        if (HdNovaVelocityModeSceneIndex::SetDefaults(index->GetInstanceName(), velocity)) {
+            thread.StopRender();
+            _bindings.clear();
             return;
         }
     }

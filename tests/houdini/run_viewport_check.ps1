@@ -27,7 +27,10 @@
 # hair ribbons through the Render Geometry Settings LOP's Nova tab, live, then
 # Karma (30_m9_nova ... 33_m9_karma). -Only xpu: Nova XPU in the viewport,
 # the Nova LOP set to XPU with a sample count it does not reach, a prim added
-# live, then Nova on the CPU (40_xpu ... 44_nova_cpu, ui_xpu_lop).
+# live, then Nova on the CPU (40_xpu ... 44_nova_cpu, ui_xpu_lop). -Only
+# velocity: tests/scenes/motion_velocity.usda, velocity blur of a quad
+# switched on and off live through the Render Geometry Settings LOP's Nova
+# tab, then Karma (60_velocity_before ... 63_velocity_karma).
 param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Hfs = 'C:\Program Files\Side Effects Software\Houdini 22.0.466',

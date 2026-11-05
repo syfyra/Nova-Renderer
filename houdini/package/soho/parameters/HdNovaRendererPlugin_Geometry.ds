@@ -315,6 +315,94 @@
         }
     }
     groupcollapsible {
+        name    "nova_geo_motion_blur"
+        label   "Motion Blur"
+        grouptag { "group_default" "1" }
+        parm {
+            name    "xn__primvarsnovaobjectvelocityBlur_control_02beg"
+            label   "Velocity Blur"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectvelocityBlur_zpbeg"
+            label   "Velocity Blur"
+            type    int
+            size    1
+            default { 0 }
+            menu {
+                "0" "No Velocity Blur"
+                "1" "Velocity Blur"
+                "2" "Acceleration Blur"
+            }
+            help    "Motion blur of meshes, curves and points from their velocities (v in SOPs, units per second) instead of their time samples, for geometry whose point count changes from frame to frame. Velocity Blur moves the points in straight lines over the shutter; Acceleration Blur bends the paths with the accelerations (accel), sampled Acceleration Samples times. Unset: Karma's vblur (on the object, else on the render settings)."
+            parmtag { "spare_category" "Motion Blur" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "int" }
+            disablewhen "{ xn__primvarsnovaobjectvelocityBlur_control_02beg == block } { xn__primvarsnovaobjectvelocityBlur_control_02beg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectinstanceVelocityBlur_control_1gceg"
+            label   "Instance Velocity Blur"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectinstanceVelocityBlur_02beg"
+            label   "Instance Velocity Blur"
+            type    int
+            size    1
+            default { 0 }
+            menu {
+                "0" "No Velocity Blur"
+                "1" "Velocity Blur"
+                "2" "Acceleration Blur"
+            }
+            help    "Set on a point instancer: its instances move with the instancer's velocities and turn with its angular velocities instead of following the time samples of their positions and orientations; Acceleration Blur adds the accelerations. Unset: Karma's instance_vblur (on the instancer, else on the render settings)."
+            parmtag { "spare_category" "Motion Blur" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "int" }
+            disablewhen "{ xn__primvarsnovaobjectinstanceVelocityBlur_control_1gceg == block } { xn__primvarsnovaobjectinstanceVelocityBlur_control_1gceg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectaccelerationSamples_control_ffceg"
+            label   "Acceleration Samples"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectaccelerationSamples_e1beg"
+            label   "Acceleration Samples"
+            type    int
+            size    1
+            default { 2 }
+            range   { 2 32 }
+            help    "How many times Acceleration Blur samples the shutter (Max Motion Steps caps it); 2 is a straight line from shutter open to close. Unset: Karma's geosamples, on point instancers its instance_samples."
+            parmtag { "spare_category" "Motion Blur" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "int" }
+            disablewhen "{ xn__primvarsnovaobjectaccelerationSamples_control_ffceg == block } { xn__primvarsnovaobjectaccelerationSamples_control_ffceg == none }"
+        }
+    }
+    groupcollapsible {
         name    "nova_geo_geometry"
         label   "Geometry"
         grouptag { "group_default" "1" }

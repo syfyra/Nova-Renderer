@@ -1,0 +1,24 @@
+{
+  "scene": "motion_velocity",
+  "created": "2026-11-05",
+  "inputs": {
+    "scenes/motion_velocity.usda": "2948685d0c02aa0a88042fbe9b446754f5b40f84",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/motion_velocity.exr",
+  "sigma": "images/motion_velocity.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.010222,
+    "flip_test_pair": 0.017146,
+    "relmse": 0.000511,
+    "global_z": [
+      0.966,
+      0.385,
+      0.066,
+      0.467
+    ]
+  }
+}

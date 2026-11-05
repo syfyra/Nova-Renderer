@@ -25,7 +25,8 @@ OUT = os.environ.get("NOVA_VIEWPORT_CHECK", "")
 # NOVA_VIEWPORT_CHECK_ONLY=rendersettings runs only the Nova Render Settings
 # steps (setup, Houdini GL, Nova, the LOP, Karma); =pyro the volume steps
 # (setup_pyro); =m9 hair, SSS, many lights and Nova's geometry properties
-# (setup_m9); =xpu Nova XPU in the viewport (setup_xpu).
+# (setup_m9); =xpu Nova XPU in the viewport (setup_xpu); =velocity velocity
+# blur switched on and off live (setup_velocity).
 ONLY = os.environ.get("NOVA_VIEWPORT_CHECK_ONLY", "")
 SCENE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scenes", "basic.usda").replace("\\", "/")
 # "started" (absolute) tells this run's log from an earlier one in the same folder.
@@ -833,6 +834,81 @@ def step_tumble_after():
     later(2, finish)
 
 
+def sharp_share(name):
+    """The share of a capture's pixels as dark as the grey quads themselves:
+    a quad that blurs mixes with the white dome behind it and leaves it."""
+    try:
+        from PySide6 import QtGui
+    except ImportError:  # pragma: no cover
+        from PySide2 import QtGui
+    img = QtGui.QImage(os.path.join(OUT, name + ".png"))
+    values = [img.pixelColor(x, y).valueF() for y in range(0, img.height(), 2) for x in range(0, img.width(), 2)]
+    if not values:
+        return None
+    lo, hi = min(values), max(values)
+    return round(sum(v < lo + 0.25 * (hi - lo) for v in values) / len(values), 5)
+
+
+def setup_velocity():
+    """Velocity blur (docs/design/M8.md D19): tests/scenes/motion_velocity.usda
+    through /World/cam, then the Render Geometry Settings LOP's Nova tab
+    switches velocity blur on and off live for the quad without a setting."""
+    STATE["t0"] = time.time()
+    stage = hou.node("/stage")
+    sub = stage.createNode("sublayer", "velocity")
+    scene = os.path.join(os.path.dirname(SCENE), "motion_velocity.usda").replace("\\", "/")
+    sub.parm("filepath1").set(scene)
+    geo = stage.createNode("rendergeometrysettings", "velocity_settings")
+    geo.setInput(0, sub)
+    geo.parm("primpattern").set("/World/still")
+    geo.setDisplayFlag(True)
+    STATE["geo"] = geo
+    hou.setFrame(1)
+    v = viewer()
+    v.setPwd(stage)
+    try:
+        v.curViewport().setCamera("/World/cam")
+    except Exception:  # noqa: BLE001
+        pass
+    log("velocity setup", scene=scene, errors=list(geo.errors()), fps=hou.fps())
+    set_renderer("Nova CPU")
+    later(30, step_velocity_before)
+
+
+def step_velocity_before():
+    capture("60_velocity_before")
+    ok = geometry_setting(STATE["geo"], "nova:object:velocityBlur", 1)
+    prim = STATE["geo"].stage().GetPrimAtPath("/World/still")
+    attr = prim.GetAttribute("primvars:nova:object:velocityBlur") if prim else None
+    log("velocity blur on", parms=ok, authored=attr.Get() if attr else None)
+    later(25, step_velocity_on)
+
+
+def step_velocity_on():
+    capture("61_velocity_on")
+    STATE["geo"].parm(hou.text.encodeParm("primvars:nova:object:velocityBlur")).set(0)
+    prim = STATE["geo"].stage().GetPrimAtPath("/World/still")
+    attr = prim.GetAttribute("primvars:nova:object:velocityBlur") if prim else None
+    log("velocity blur off", authored=attr.Get() if attr else None)
+    later(25, step_velocity_off)
+
+
+def step_velocity_off():
+    capture("62_velocity_off")
+    # Velocity blur on: the quad leaves the sharp pixels; off: it comes back.
+    log("velocity sharp shares", before=sharp_share("60_velocity_before"), on=sharp_share("61_velocity_on"),
+        off=sharp_share("62_velocity_off"))
+    set_renderer("Karma CPU")
+    later(45, step_velocity_karma)
+
+
+def step_velocity_karma():
+    capture("63_velocity_karma")
+    log("velocity karma", karma=sharp_share("63_velocity_karma"))
+    set_renderer("Nova CPU")
+    later(2, finish)
+
+
 def finish():
     log("done")
     hou.exit(exit_code=0, suppress_save_prompt=True)
@@ -842,5 +918,6 @@ def start():
     if not OUT:
         return
     os.makedirs(OUT, exist_ok=True)
-    modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble}
+    modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble,
+             "velocity": setup_velocity}
     later(5, modes.get(ONLY, setup))

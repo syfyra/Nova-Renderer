@@ -9,6 +9,9 @@ slerped orientations against its analytic radial coverage.
 tests/scenes/motion_topology.usda: particles dying and meshes changing their
 point count within the shutter must render sharp at their frame values;
 motion_topology_late.usda the same for a shutter that excludes the frame.
+tests/scenes/motion_velocity.usda: velocity and acceleration blur of meshes,
+curves, points and instances (Nova's and Karma's settings, inherited and on
+the render settings) against their swept coverage, on the CPU and Nova XPU.
 tests/scenes/dof.usda: a defocused edge must follow the edge-spread function
 of the circle of confusion (rho = 22.22 px), an edge on the focus plane and
 disableDepthOfField must stay sharp.
@@ -55,6 +58,118 @@ def disk_esf(d):
     """Edge-spread function of a uniform disk, d = signed distance / radius."""
     c = max(-1.0, min(1.0, d))
     return 0.5 + (math.asin(c) + c * math.sqrt(1.0 - c * c)) / math.pi
+
+
+def expected_alpha(rows, cols, inside, times=64, sub=4):
+    """Box-filtered coverage per pixel of motion_velocity.usda's frame
+    (10 px per unit, x from -20, y from 12 down): the mean over sub x sub
+    positions per pixel and `times` shutter times u in (-1, 1) of
+    inside(x, y, u) (numpy arrays)."""
+    import numpy as np
+    r = np.asarray(rows, dtype=float)[:, None, None]
+    c = np.asarray(cols, dtype=float)[None, :, None]
+    s = (np.arange(sub * sub, dtype=float) % sub + 0.5) / sub
+    t = (np.arange(sub * sub, dtype=float) // sub + 0.5) / sub
+    x = -20.0 + (c + s[None, None, :]) / 10.0
+    y = 12.0 - (r + t[None, None, :]) / 10.0
+    total = np.zeros((len(rows), len(cols)))
+    for k in range(times):
+        u = -1.0 + 2.0 * (k + 0.5) / times
+        total += inside(x, y, u).mean(axis=2)
+    return total / times
+
+
+def accel_edge(u, samples=8):
+    """The left edge of the accelerated quad, 2.5 u + 2.5 u^2, interpolated
+    linearly between `samples` uniform shutter samples (acceleration blur)."""
+    import numpy as np
+    knots = np.linspace(-1.0, 1.0, samples)
+    return float(np.interp(u, knots, 2.5 * knots + 2.5 * knots ** 2))
+
+
+def check_velocity(args, env, alpha):
+    """Velocity and acceleration blur (tests/scenes/motion_velocity.usda,
+    docs/design/M8.md D19) against the analytic coverage, on the CPU and Nova XPU."""
+    import numpy as np
+
+    def quad(x0, y0, edge):
+        return lambda x, y, u: (x >= x0 + edge(u)) & (x <= x0 + 2.0 + edge(u)) & (y >= y0) & (y <= y0 + 2.0)
+
+    def sweep(dist):
+        return lambda u: dist * u
+
+    still = lambda u: 0.0
+
+    def spin(cx, cy, degrees):
+        def inside(x, y, u):
+            a = math.radians(degrees * u)
+            dx, dy = x - cx, y - cy
+            xr, yr = dx * math.cos(a) + dy * math.sin(a), -dx * math.sin(a) + dy * math.cos(a)
+            return (np.abs(xr) <= 1.0) & (np.abs(yr) <= 1.0)
+        return inside
+
+    # (name, rows, cols, inside) per object; rows avoid the ends of the curve.
+    def objects(default_velocity, frame=False):
+        left = range(0, 150)
+        right = range(150, 400)
+        return [
+            ("no setting", range(10, 30), left, quad(-16, 9, sweep(2.5) if default_velocity else still)),
+            ("nova:object:velocityBlur", range(10, 30), right, quad(0, 9, sweep(2.5))),
+            ("inherited karma:object:vblur", range(50, 70), right, quad(0, 5, sweep(2.5))),
+            ("Nova's 0 over Karma's 1", range(50, 70), left, quad(-16, 5, still)),
+            # (the 8 samples miss the frame: its own position there)
+            ("acceleration blur, 8 samples", range(90, 110), right, quad(0, 1, still if frame else accel_edge)),
+            ("velocity blur ignores accelerations", range(90, 110), left, quad(-16, 1, sweep(2.5))),
+            ("velocities over time samples", range(130, 150), right, quad(0, -3, sweep(5.0))),
+            ("points", range(130, 150), left,
+             lambda x, y, u: (x - (-15.0 + 2.5 * u)) ** 2 + (y + 2.0) ** 2 <= 1.0),
+            ("curves", range(175, 185), right, lambda x, y, u: np.abs(x - (1.0 + 2.5 * u)) <= 0.5),
+            ("instance velocities", range(170, 190), left, quad(-16, -7, sweep(2.5))),
+            ("instance angular velocities", range(195, 236), right, spin(12.0, -10.0, 45.0)),
+            ("instances without a setting", range(195, 236), left,
+             spin(-12.0, -10.0, 45.0 if default_velocity else 0.0)),
+        ]
+
+    def compare(a, label, default_velocity=False):
+        for name, rows, cols, inside in objects(default_velocity):
+            rows, cols = list(rows), list(cols)
+            want = expected_alpha(rows, cols, inside)
+            got = a[np.ix_(rows, cols)]
+            worst = float(np.abs(got.mean(axis=0) - want.mean(axis=0)).max())
+            check(worst < 0.03, f"{label}: {name} follows the swept coverage (max column deviation {worst:.4f})")
+            ratio = float(got.sum() / max(want.sum(), 1e-9))
+            check(abs(ratio - 1.0) < 0.02, f"{label}: {name} conserves its area ({ratio:.4f})")
+
+    for renderer in ("Nova", "HdNovaXpuRendererPlugin"):
+        tag = "cpu" if renderer == "Nova" else "xpu"
+        out = os.path.join(args.out, f"motion_velocity_{tag}.exr")
+        cmd = [tool(args, "husk.exe"), "--renderer", renderer, "--settings", "/Render/settings", "-o", out,
+               "--frame", "1", os.path.join(args.scenes, "motion_velocity.usda")]
+        proc = run(cmd, env, args.out)
+        check(proc.returncode == 0, f"husk motion_velocity.usda ({tag}) exits with 0")
+        compare(alpha(out), f"velocity blur ({tag})")
+
+    out = os.path.join(args.out, "motion_velocity_karma_default.exr")
+    husk_frame(args, "/Render/karmaDefault", "motion_velocity.usda", env, out, frame=1)
+    compare(alpha(out), "Karma's render-settings vblur", default_velocity=True)
+
+    out = os.path.join(args.out, "motion_velocity_nomotion.exr")
+    husk_frame(args, "/Render/nomotion", "motion_velocity.usda", env, out, frame=1)
+    a = alpha(out)
+    # Edges on pixel boundaries: a pixel sample exactly on an edge may fall
+    # either way (one of 16), blur would leave whole columns partial.
+    worst, total, count = 0.0, 0.0, 0
+    for name, rows, cols, inside in objects(False, frame=True):
+        if name == "points":
+            continue  # the only edge that does not follow pixel boundaries
+        rows, cols = list(rows), list(cols)
+        want = expected_alpha(rows, cols, lambda x, y, u, f=inside: f(x, y, 0.0), times=1)
+        diff = np.abs(a[np.ix_(rows, cols)] - want)
+        worst = max(worst, float(diff.max()))
+        total += float(diff.sum())
+        count += diff.size
+    check(worst <= 1.0 / 16.0 + 1e-6 and total / count < 1e-4,
+          f"disableMotionBlur renders velocities sharp at the frame (max deviation {worst:.3g}, mean {total / count:.2g})")
 
 
 def main():
@@ -173,6 +288,8 @@ def main():
                 inside = any(x0 < px(c) < x1 and y0 < py(r) < y1 for x0, x1, y0, y1 in boxes)
                 worst = max(worst, abs(float(a[r, c]) - (1.0 if inside else 0.0)))
         check(worst < 1e-6, f"topology changing outside the shutter holds the frame (max deviation {worst:.2g})")
+
+        check_velocity(args, env, alpha)
 
         # --- Depth of field
         out = os.path.join(args.out, "dof.exr")
