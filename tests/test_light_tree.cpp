@@ -304,11 +304,11 @@ TEST_CASE("Rays find the area lights they cross through the tree", "[lights][tre
     CHECK(found > 100); // the rays do cross lights
 }
 
-TEST_CASE("Area lights with sampling quality 0 are still found by rays", "[lights][tree]") {
-    // D18: quality 0 takes a light's selection weight, not its emission. The
-    // rect joins the lights outside the tree with weight 0: never chosen,
-    // probability 0 (BSDF rays weigh it fully), and rays crossing it find it,
-    // alone (an empty tree) and next to a light in the tree.
+TEST_CASE("Lights with sampling quality 0 light nothing", "[lights][tree]") {
+    // D18, as Karma (measured, docs/design/M9.md): sampling quality 0 turns a
+    // light's illumination off. It is never chosen (probability 0) and rays
+    // never collect it (none of the crossings, with a tree or without, alone
+    // or next to a light in the tree), but the camera still sees it.
     for (bool other : {false, true}) {
         INFO("with a light in the tree: " << other);
         Scene scene;
@@ -318,6 +318,7 @@ TEST_CASE("Area lights with sampling quality 0 are still found by rays", "[light
         rect.width = rect.height = 1.0f;
         rect.intensity = 5.0f;
         rect.samplingQuality = 0.0f;
+        rect.cameraVisible = true;
         rect.transform = translation({0.0f, 0.0f, 3.0f}); // emits down -Z
         scene.updateLight(scene.createLight(), rect);
         if (other) {
@@ -331,23 +332,31 @@ TEST_CASE("Area lights with sampling quality 0 are still found by rays", "[light
         const std::vector<LightData> &lights = scene.lights();
         const uint32_t n = uint32_t(lights.size());
         REQUIRE(lights[0].selection == 0.0f);
+        CHECK_FALSE(lights[0].illuminates());
         const LightTreeView tree = scene.lightTree();
         CHECK(tree.nodeCount == (other ? 1u : 0u));
-        REQUIRE(tree.infiniteCount == 1u);
-        CHECK(tree.infinite[0] == 0u);
         const Vec3f p{0.2f, 0.1f, 0.0f}, nr{0.0f, 0.0f, 1.0f};
         CHECK(tree.pmf(0u, p, nr, Receiver::OneSided, 0u) == 0.0f);
         for (int d = 0; d < 256; ++d) {
             float pm = 0.0f;
             CHECK(tree.sample((float(d) + 0.5f) / 256.0f, p, nr, Receiver::OneSided, 0u, pm) != 0u);
         }
-        int found = 0;
+        int found = 0, seen = 0;
         for (int k = 0; k < 64; ++k) {
             const Vec3f o{-0.4f + 0.8f * float(k % 8) / 7.0f, -0.4f + 0.8f * float(k / 8) / 7.0f, 0.1f};
-            forEachAreaLightCrossing(lights.data(), n, &tree, o, Vec3f{0.0f, 0.0f, 1.0f}, kInf,
-                                     [&](uint32_t i, float, Vec3f, bool) { found += i == 0u; });
+            for (const LightTreeView *t : {&tree, static_cast<const LightTreeView *>(nullptr)})
+                forEachAreaLightCrossing(lights.data(), n, t, o, Vec3f{0.0f, 0.0f, 1.0f}, kInf,
+                                         [&](uint32_t i, float, Vec3f, bool) { found += i == 0u; });
+            uint32_t index = kInvalidId;
+            float tHit = 0.0f;
+            Vec3f nHit;
+            bool front = false;
+            seen += nearestCameraLight(lights.data(), n, o, Vec3f{0.0f, 0.0f, 1.0f}, kInf, false, 0.0f, index, tHit,
+                                       nHit, front) &&
+                    index == 0u;
         }
-        CHECK(found == 64);
+        CHECK(found == 0);
+        CHECK(seen == 64);
     }
 }
 
@@ -668,5 +677,85 @@ TEST_CASE("Shadow-linked domes light through objects outside their shadow set", 
                     CHECK(inNear < 0.8 * refNear);
                 }
             }
+        }
+}
+
+namespace {
+
+// A ground and a mirror sphere (in category "casters") under a rect light, a
+// distant light with an angle and a dome, all with sampling quality
+// `quality`, shadow-linked to "casters" or not (D18 and D15, the follow-up of
+// R1-31): the image's luminance sum of an orthographic view from above.
+void qualityScene(Scene &scene, float quality, bool shadowLinked) {
+    MeshDesc ground = makeQuad(6.0f);
+    ground.setDisplayColor(spectrum(0.5f));
+    scene.updateMesh(scene.createMesh(), ground);
+    MaterialDesc mirror;
+    mirror.inputs = standardSurfaceDefaults();
+    mirror.inputs.set(surface_field::metalness, 1.0f);
+    mirror.inputs.set(surface_field::specularRoughness, 0.0f);
+    const MaterialId mirrorId = scene.createMaterial();
+    scene.updateMaterial(mirrorId, mirror);
+    MeshDesc ball = makeSphere(0.6f, 32, 16);
+    ball.transform = translation({0.0f, 0.0f, 0.6f});
+    const MeshId ballId = scene.createMesh();
+    scene.updateMesh(ballId, ball);
+    scene.setMeshMaterials(ballId, {mirrorId});
+    scene.setMeshCategories(ballId, {"casters"});
+    const std::string link = shadowLinked ? "casters" : "";
+    LightDesc rect;
+    rect.type = LightType::Rect;
+    rect.width = rect.height = 2.0f;
+    rect.intensity = 5.0f;
+    rect.transform = translation({1.5f, 0.0f, 3.0f}); // emits down -Z
+    LightDesc sun;
+    sun.type = LightType::Distant;
+    sun.angleDeg = 10.0f;
+    sun.intensity = 2.0f;
+    LightDesc dome;
+    dome.type = LightType::Dome;
+    dome.intensity = 0.3f;
+    for (LightDesc *l : {&rect, &sun, &dome}) {
+        l->samplingQuality = quality;
+        l->shadowLink = link;
+        scene.updateLight(scene.createLight(), *l);
+    }
+    scene.commit();
+}
+
+double luminanceSum(const Film &film) {
+    double sum = 0.0;
+    for (size_t i = 0; i < film.colorSum.size(); ++i)
+        sum += double(luminance(film.colorSum[i]));
+    return sum;
+}
+
+} // namespace
+
+TEST_CASE("Sampling quality 0 turns a light's illumination off, shadow-linked or not", "[render][lights][linking]") {
+    // As Karma (measured, docs/design/M9.md D18): at quality 0 no light
+    // sample picks the lights and no ray collects them, not even through the
+    // mirror; before, unlinked ones still lit the scene through BSDF rays
+    // and shadow-linked ones through the mirror. At quality 1 they light it.
+    for (const bool shadowLinked : {false, true})
+        for (const float quality : {0.0f, 1.0f}) {
+            INFO("shadow-linked " << shadowLinked << ", quality " << quality);
+            Scene scene;
+            qualityScene(scene, quality, shadowLinked);
+            CHECK(scene.shadowLinkedDomes().size() == (shadowLinked && quality > 0.0f ? 1u : 0u));
+            Renderer renderer;
+            RenderSettings settings;
+            settings.maxSamples = 16;
+            settings.maxDepth = 4;
+            renderer.setScene(&scene);
+            renderer.setSettings(settings);
+            renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 8.0f}, 3.0f, 32, 32));
+            renderer.resize(32, 32);
+            renderToConvergence(renderer);
+            const double sum = luminanceSum(renderer.film());
+            if (quality > 0.0f)
+                CHECK(sum > 0.0);
+            else
+                CHECK(sum == 0.0);
         }
 }

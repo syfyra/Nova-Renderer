@@ -451,6 +451,90 @@ TEST_CASE("XPU shadow-linked domes", "[gpu][render][lights][linking][lpe]") {
     }
 }
 
+// M9 D18 (the follow-up of R1-31): lights with sampling quality 0 illuminate
+// nothing on the GPU either (a ground and a mirror sphere under a rect, a
+// distant light with an angle and a dome, shadow-linked or not), the camera
+// still sees a camera-visible one; at quality 1 the GPU renders the CPU's.
+TEST_CASE("XPU lights with sampling quality 0", "[gpu][render][lights][linking]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    for (const bool shadowLinked : {false, true})
+        for (const float quality : {0.0f, 1.0f}) {
+            INFO("shadow-linked " << shadowLinked << ", quality " << quality);
+            Scene scene;
+            MeshDesc ground = makeQuad(6.0f);
+            ground.setDisplayColor(spectrum(0.5f));
+            scene.updateMesh(scene.createMesh(), ground);
+            MaterialDesc mirror;
+            mirror.inputs = standardSurfaceDefaults();
+            mirror.inputs.set(surface_field::metalness, 1.0f);
+            mirror.inputs.set(surface_field::specularRoughness, 0.0f);
+            const MaterialId mirrorId = scene.createMaterial();
+            scene.updateMaterial(mirrorId, mirror);
+            MeshDesc ball = makeSphere(0.6f, 32, 16);
+            ball.transform = translation({0.0f, 0.0f, 0.6f});
+            const MeshId ballId = scene.createMesh();
+            scene.updateMesh(ballId, ball);
+            scene.setMeshMaterials(ballId, {mirrorId});
+            scene.setMeshCategories(ballId, {"casters"});
+            LightDesc rect;
+            rect.type = LightType::Rect;
+            rect.width = rect.height = 2.0f;
+            rect.intensity = 5.0f;
+            rect.transform = translation({1.5f, 0.0f, 3.0f}); // emits down -Z
+            LightDesc sun;
+            sun.type = LightType::Distant;
+            sun.angleDeg = 10.0f;
+            sun.intensity = 2.0f;
+            LightDesc dome;
+            dome.type = LightType::Dome;
+            dome.intensity = 0.3f;
+            for (LightDesc *l : {&rect, &sun, &dome}) {
+                l->samplingQuality = quality;
+                l->shadowLink = shadowLinked ? "casters" : "";
+                scene.updateLight(scene.createLight(), *l);
+            }
+            LightDesc seen; // camera-visible, facing the camera, outside the view of the rest
+            seen.type = LightType::Rect;
+            seen.width = seen.height = 1.0f;
+            seen.intensity = 3.0f;
+            seen.cameraVisible = true;
+            seen.samplingQuality = 0.0f;
+            Mat4 up = Mat4::identity(); // local -Z (the emission) to world +Z
+            up.m[1][1] = -1.0f;
+            up.m[2][2] = -1.0f;
+            seen.transform = up * translation({-2.0f, -2.0f, 4.0f});
+            scene.updateLight(scene.createLight(), seen);
+            scene.commit();
+            const Camera camera = makeOrthoCamera({0.0f, 0.0f, 8.0f}, 3.0f, 32, 32);
+            const Render cpu = render(scene, camera, 32, 32, 32, RenderDevice::Cpu, 4, true);
+            const Render gpu = render(scene, camera, 32, 32, 32, RenderDevice::Xpu, 4, true);
+            REQUIRE(gpu.gpu);
+            const double cpuMean = luminanceMean(cpu.film), gpuMean = luminanceMean(gpu.film);
+            INFO("mean CPU " << cpuMean << ", GPU " << gpuMean);
+            CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.003 * cpuMean));
+            // The camera-visible light (x, y in [-2.5, -1.5]: pixel columns
+            // and rows 3..7) is seen; at quality 0 nothing else is lit.
+            for (const Film *film : {&cpu.film, &gpu.film}) {
+                double inside = 0.0, away = 0.0;
+                for (int y = 0; y < 32; ++y)
+                    for (int x = 0; x < 32; ++x) {
+                        const double v = luminance(pixelMean(*film, x, y));
+                        if (x >= 4 && x <= 6 && y >= 4 && y <= 6)
+                            inside += v;
+                        else if (x > 10 || y > 10)
+                            away += v;
+                    }
+                CHECK_THAT(inside / 9.0, WithinAbs(3.0, 1e-3));
+                if (quality == 0.0f)
+                    CHECK(away == 0.0);
+                else
+                    CHECK(away > 0.0);
+            }
+        }
+}
+
 // docs/design/M10.md G4: first-hit AOVs (the CPU traces them for GPU passes,
 // so they are exact), the ambient occlusion AOV and cryptomattes (the GPU
 // records the camera hits, the host accumulates them).

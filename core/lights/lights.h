@@ -102,8 +102,12 @@ struct LightData {
     // where a sample lands. The triangle: mesh, instance, primitive.
     uint32_t mesh = 0, instance = 0, prim = 0;
 
-    // Multiplies the light's selection weight (Karma's sampling quality, M9 D18).
+    // Multiplies the light's selection weight (Karma's sampling quality, M9
+    // D18). 0 turns the illumination of a light other than an emissive
+    // triangle off, as in Karma (measured): light sampling never picks it and
+    // no ray collects it, but the camera still sees it (illuminates()).
     float selection = 1.0f;
+    NOVA_INLINE bool illuminates() const { return selection > 0.0f; }
     // Equiangular distance sampling along rays in volumes (M9 D17): point,
     // spot, sphere and area lights that opted in.
     bool equiangular = false;
@@ -113,7 +117,8 @@ struct LightData {
     // Shadow linking (M9 D15): the category of the objects that shadow the
     // light (0xFFFF: all of them). Continuations of non-delta events never
     // collect such lights: most are sampled by next-event estimation alone
-    // (neeOnly; it covers their whole emission), a dome's BSDF samples are
+    // (neeOnly; it covers their whole emission, as every light that
+    // illuminates has a selection weight above 0), a dome's BSDF samples are
     // shadow rays of their own (core/integrator/path.h).
     uint16_t shadowCategory = 0xFFFFu;
     NOVA_INLINE bool shadowLinked() const { return shadowCategory != 0xFFFFu; }
@@ -524,9 +529,10 @@ NOVA_INLINE Spectrum escapedRadiance(const LightData *lights, const Pmf &pmf, ui
     Spectrum L{0.0f, 0.0f, 0.0f};
     for (uint32_t i = 0; i < count; ++i) {
         const LightData &light = lights[i];
-        // Unlinked, or shadow-linked after a non-delta event (M9 D15): only
-        // the light's own samples see its shadow set (LightData::shadowCategory).
-        if (!pmf.links(i) || (light.shadowLinked() && bsdfPdf >= 0.0f))
+        // Off (sampling quality 0, M9 D18), unlinked, or shadow-linked after a
+        // non-delta event (D15): only the light's own samples see its shadow
+        // set (LightData::shadowCategory).
+        if (!light.illuminates() || !pmf.links(i) || (light.shadowLinked() && bsdfPdf >= 0.0f))
             continue;
         if (light.type == LightType::Dome) {
             const float weight =
@@ -633,13 +639,14 @@ NOVA_INLINE Spectrum areaLightRadiance(const LightData &light, Vec3f p, Vec3f d)
 // ray (origin o, unit direction d) crosses in (0, tMax), unordered. With a
 // light tree, only the lights whose subtree boxes the ray crosses are tested
 // (docs/design/M9.md D13), and only subtrees with crossable lights; lights the
-// tree leaves out have no power. Without, every light is.
+// tree leaves out have no power. Without, every light is. Lights whose
+// illumination is off (sampling quality 0, D18) are never crossed.
 template <typename F>
 NOVA_INLINE void forEachAreaLightCrossing(const LightData *lights, uint32_t count, const LightTreeView *tree, Vec3f o,
                                           Vec3f d, float tMax, const F &f) {
     const auto test = [&](uint32_t i) {
         const LightData &light = lights[i];
-        if (!isAreaLight(light.type) || light.delta)
+        if (!isAreaLight(light.type) || light.delta || !light.illuminates())
             return;
         float t = 0.0f;
         Vec3f n;

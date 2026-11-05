@@ -14,6 +14,8 @@ other per-light expressions) are compared with Karma CPU's measured values:
 - a dome linked to the spheres leaves the ground to their indirect light;
 - a dome whose shadow link excludes A is not occluded by A (an untextured
   dome: BSDF samples only, as shadow rays of their own; bug audit R1-31);
+- a light with sampling quality 0 lights nothing, with or without a shadow
+  link (Karma measured: 0 everywhere);
 - native instances link per instance, a point instancer as a whole; an
   instance proxy in a collection is ignored; a membership expression with
   includeRoot blocked;
@@ -271,6 +273,13 @@ CONFIGS = {
     "dome_shadow_excl_A": (dict(dome_extra='''
         rel collection:shadowLink:excludes = </World/sphA>'''),
                            [("L4", "nearA", 0.15540), ("L4", "mid", 0.14328), ("L4", "open", 0.15121)]),
+    # Karma CPU at 1024 samples: a 3x3 key with sampling quality 0 lights
+    # nothing, linked or not (quality 1: A_top 0.29761, open 0.19816).
+    "key_quality0": (dict(key_size=3.0, key_extra='''
+        float inputs:karma:light:samplingquality = 0'''), [("L3", "A_top", 0.0), ("L3", "open", 0.0)]),
+    "key_quality0_shadow_excl_B": (dict(key_size=3.0, key_extra='''
+        float inputs:karma:light:samplingquality = 0
+        rel collection:shadowLink:excludes = </World/sphB>'''), [("L3", "A_top", 0.0), ("L3", "shadowB", 0.0)]),
     "key_instances": (dict(key_extra='''
         uniform bool collection:lightLink:includeRoot = 0
         rel collection:lightLink:includes = [</World/ni1>, </World/pi>]'''),
