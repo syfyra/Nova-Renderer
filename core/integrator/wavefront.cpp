@@ -109,7 +109,10 @@ void WaveQueues::reserve(uint32_t paths) {
     aoRays.reserve(paths);
     if (aoOccluded.size() < paths)
         aoOccluded.resize(paths);
-    shadows.reserve(3 * paths);
+    // Per path and depth at most: an equiangular sample, the hit's or volume
+    // event's light sample, a walk exit's, and a shadow-linked dome's BSDF
+    // sample (path.h) at the event or the exit.
+    shadows.reserve(4 * paths);
 }
 
 namespace {
@@ -545,7 +548,9 @@ struct ShadeContext {
     uint32_t lightCount;             // the lights before the emissive triangles (Scene::analyticLightCount)
     LightSamplerView lightSampler;   // by power (the Uniform sampling mode); pmf > 0: light-sampled at all
     const LightTreeView *lightTree;  // the light tree (null: select by power)
-    const uint64_t *linkMask;        // light linking: per light the receiver sets it lights (null: none)
+    LightLinks links;                // light linking (M9 D15; null: none)
+    const uint32_t *shadowDomes;     // the shadow-linked dome lights (path.h)
+    uint32_t shadowDomeCount;
     float tolerance;
     uint32_t depth;
     // The firefly clamp only applies to indirect light: rays that reach a
@@ -578,7 +583,7 @@ struct PathLightPmf {
         return c.lightTree ? c.lightTree->pmf(i, p, n, r, set) : c.lightSampler.pmf[i];
     }
     // Whether light i lights that vertex at all.
-    NOVA_INLINE bool links(uint32_t i) const { return !c.linkMask || ((c.linkMask[i] >> set) & 1u) != 0; }
+    NOVA_INLINE bool links(uint32_t i) const { return c.links.links(i, set); }
 };
 NOVA_INLINE PathLightPmf pathPmf(const ShadeContext &c, const WaveQueues &q, uint32_t p) {
     return {c, q.prevP[p], q.prevN[p], Receiver(q.prevReceiver[p]), prevLinkSet(q.prevSet[p])};
@@ -623,11 +628,12 @@ NOVA_NOINLINE Spectrum escapedRadianceLpe(const ShadeContext &c, WaveQueues &q, 
 }
 
 // The unoccluded; estimate of the lights at infinity that light sampling
-// never picks, along a continuation (direction, weight already in beta).
+// never picks, along a continuation (direction, weight already in beta) of a
+// non-delta event or not.
 NOVA_NOINLINE void lpeUnoccludedEnvironment(const ShadeContext &c, uint32_t pixel, lpe::State state, Vec3f dir,
-                                            float diffuseShare, const Spectrum &beta) {
+                                            float diffuseShare, const Spectrum &beta, bool nonDelta) {
     nova::lpeUnoccludedEnvironment(*c.lpe, c.lights, c.lightCount, c.lightSampler.pmf, c.film, pixel, state, dir,
-                                   diffuseShare, beta);
+                                   diffuseShare, beta, nonDelta);
 }
 
 // evalClosure and sampleClosure with the lobes' values, out of line.
@@ -742,7 +748,7 @@ void equiangularSample(const ShadeContext &c, WaveQueues &q, uint32_t k) {
     if (slot == kInvalidId)
         return;
     const uint32_t li = eq.lights[slot];
-    if (c.linkMask && !(c.linkMask[li] & 1u)) // volume events are receiver set 0 (D15)
+    if (!c.links.links(li, 0u)) // volume events are receiver set 0 (D15)
         return;
     const LightData &light = c.lights[li];
     Equiangular e;
@@ -774,7 +780,7 @@ void equiangularSample(const ShadeContext &c, WaveQueues &q, uint32_t k) {
     for (int i = 0; i < n; ++i) {
         const float ph = parts[i].phase.eval(ray.d, ls.wi);
         f += parts[i].scattering *
-             (ph * lightSampleWeight(c.settings.lightStrategy, lightPdf, ph, ls.delta || light.shadowLinked()));
+             (ph * lightSampleWeight(c.settings.lightStrategy, lightPdf, ph, ls.delta || light.neeOnly()));
         fUnit += parts[i].scattering * ph;
     }
     // The throughput to the point: the medium as the ray's own flight sees
@@ -863,7 +869,7 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
         gather.prevN = q.prevN[p];
         gather.prevReceiver = Receiver(q.prevReceiver[p]);
         gather.prevSet = prevLinkSet(q.prevSet[p]);
-        gather.linkMask = c.depth > 0 ? c.linkMask : nullptr; // the camera is not a receiver
+        gather.links = c.depth > 0 ? c.links : LightLinks{}; // the camera is not a receiver
         if (c.depth > 0) {
             gather.bsdfPdf = q.bsdfPdf[p];
             gather.diffuseShare = q.diffuseShare[p];
@@ -1217,7 +1223,7 @@ LightChoice chooseLight(const ShadeContext &c, WaveQueues &q, uint32_t p, float 
     n.light = c.lightTree ? c.lightTree->sample(ul.z, origin, nr, receiver, set, n.selectPdf)
                           : c.lightSampler.sample(ul.z, n.selectPdf);
     // Light linking without the tree: an unlinked light is rejected (D15).
-    if (n.light != kInvalidId && c.linkMask && !((c.linkMask[n.light] >> set) & 1u))
+    if (n.light != kInvalidId && !c.links.links(n.light, set))
         n.light = kInvalidId;
     if (n.light != kInvalidId)
         n.ls = c.lights[n.light].type == LightType::Volume
@@ -1317,6 +1323,42 @@ void pushShadowRay(const ShadeContext &c, WaveQueues &q, Vec3f o, Vec3f d, float
     }
     q.shadows.push(o, d, t, p, clampContribution(contribution, c.clampNee), time, seed, light.shadowCategory);
     if (c.lpe)
+        lpeAttachParts(q, clampScale(contribution, c.clampNee));
+}
+
+// A shadow-linked dome's BSDF sample (path.h, M9 D15): a shadow ray of its
+// own along the non-delta continuation `wi` (density `pdf`, diffuse share)
+// of an event whose light selection and links `pmf` gives. `o`: where the
+// event's light samples leave towards wi; `beta`: the continuation's weight;
+// `state`: the path's LPE state after the event; `intoSolid`: wi enters a
+// solid dielectric (no weight-1 parts, as for light samples).
+void pushShadowDomeRay(const ShadeContext &c, WaveQueues &q, uint32_t p, const PathLightPmf &pmf, Vec3f o, Vec3f wi,
+                       float pdf, float diffuseShare, const Spectrum &beta, float time, float seed, lpe::State state,
+                       bool intoSolid) {
+    const float u = c.shadowDomeCount > 1
+                        ? Sampler{q.pixelSeed[p], q.sampleIndex[p]}.get1D(stream::shadowDome(c.depth))
+                        : 0.0f;
+    Spectrum Le;
+    float weight = 0.0f;
+    const uint32_t li = sampleShadowLinkedDome(c.lights, c.shadowDomes, c.shadowDomeCount, pmf, wi, pdf,
+                                               c.settings.lightStrategy, diffuseShare, u, Le, weight);
+    if (li == kInvalidId)
+        return;
+    const Spectrum contribution = beta * Le;
+    const LpeView *lpe = c.lpe;
+    if (lpe) {
+        lpePartsClear(q);
+        // Weight-1 parts only for a dome that light sampling never picks:
+        // this ray is its only estimate (lpeUnoccludedEnvironment leaves it).
+        const bool unit = lpe->unit && !(c.lightSampler.pmf[li] > 0.0f) && !intoSolid;
+        if (state)
+            lpePartsAdd(*lpe, q, lpeLightStep(*lpe, state, li), contribution, unit ? contribution : spectrum(0.0f));
+    }
+    if (isBlack(contribution) && !(lpe && lpe->unit && !q.lpePartState.empty()))
+        return;
+    q.shadows.push(o, wi, kInf, p, clampContribution(contribution, c.clampNee), time, seed,
+                   c.lights[li].shadowCategory);
+    if (lpe)
         lpeAttachParts(q, clampScale(contribution, c.clampNee));
 }
 
@@ -1470,8 +1512,9 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                 const Spectrum f = e.fcosDiffuse * light.diffuse + (e.fcos - e.fcosDiffuse) * light.specular;
                 if (!isBlack(f)) {
                     const float lightPdf = selectPdf * ls.pdf;
-                    // Shadow-linked lights are sampled by NEE alone (D15): weight 1.
-                    const float weight = lightSampleWeight(strategy, lightPdf, e.pdf, ls.delta || light.shadowLinked());
+                    // Shadow-linked lights other than domes are sampled by
+                    // NEE alone (D15): weight 1.
+                    const float weight = lightSampleWeight(strategy, lightPdf, e.pdf, ls.delta || light.neeOnly());
                     const Spectrum contribution = q.beta[p] * f * ls.Li * (weight / lightPdf);
                     if (lpe)
                         lpePartsClear(q);
@@ -1600,17 +1643,22 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                 if (lpe)
                     q.lpeState[p] = next;
                 if (next && lpe->unit && !intoSolid) // as light samples: none into solid glass
-                    lpeUnoccludedEnvironment(c, q.pixel[p], next, s.wi, s.diffuseShare, beta);
+                    lpeUnoccludedEnvironment(c, q.pixel[p], next, s.wi, s.diffuseShare, beta, !s.delta);
                 q.bsdfPdf[p] = s.delta ? -1.0f : s.pdf;
                 q.diffuseShare[p] = s.diffuseShare;
                 if (!s.delta) { // the MIS vertex: where this hit's light sample was chosen
                     q.prevP[p] = origin;
                     q.prevN[p] = nShade;
                     q.prevReceiver[p] = uint8_t(receiver);
-                    q.prevSet[p] = uint8_t(receiverSet);
+                    q.prevSet[p] = receiverSet;
+                    if (c.shadowDomeCount > 0)
+                        pushShadowDomeRay(c, q, p, PathLightPmf{c, origin, nShade, receiver, receiverSet},
+                                          dot(s.wi, ng) >= 0.0f ? origin : leave(s.wi), s.wi, s.pdf,
+                                          s.diffuseShare, beta, time, domeRaySeed(q.rays.filterSeed[k]), next,
+                                          intoSolid);
                 } else if (q.prevSet[p] & kPrevSetDelta) {
                     // No MIS vertex yet: light linking asks this delta surface.
-                    q.prevSet[p] = uint8_t(kPrevSetDelta | c.scene.receiverSet(hit.mesh, q.hitInstance[k]));
+                    q.prevSet[p] = kPrevSetDelta | c.scene.receiverSet(hit.mesh, q.hitInstance[k]);
                 }
                 q.etaScale[p] = etaScale;
                 if (s.refract) {
@@ -1753,7 +1801,7 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
             if (f != 0.0f) {
                 const float lightPdf = choice.selectPdf * ls.pdf;
                 const float weight = lightSampleWeight(c.settings.lightStrategy, lightPdf, phase.eval(d, ls.wi),
-                                                       ls.delta || light.shadowLinked());
+                                                       ls.delta || light.neeOnly());
                 // A light sampled equiangularly along this ray (D17): the
                 // free flight's share of the distance.
                 float share = 1.0f;
@@ -1804,13 +1852,16 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
         if (lpe)
             q.lpeState[p] = scattered;
         if (scattered && lpe->unit)
-            lpeUnoccludedEnvironment(c, q.pixel[p], scattered, wi, 1.0f, beta);
+            lpeUnoccludedEnvironment(c, q.pixel[p], scattered, wi, 1.0f, beta, true);
         q.bsdfPdf[p] = pdf;
         q.diffuseShare[p] = 1.0f;
         q.prevP[p] = x;
         q.prevN[p] = Vec3f{0.0f, 0.0f, 0.0f};
         q.prevReceiver[p] = uint8_t(Receiver::None);
         q.prevSet[p] = 0;
+        if (c.shadowDomeCount > 0)
+            pushShadowDomeRay(c, q, p, PathLightPmf{c, x, Vec3f{0.0f, 0.0f, 0.0f}, Receiver::None, 0u}, x, wi, pdf,
+                              1.0f, beta, time, domeRaySeed(q.rays.filterSeed[k]), scattered, false);
         q.afterDiffuse[p] = 1; // fake caustics: a volume event counts as diffuse
         q.coneWidth[p] += q.coneSpread[p] * t;
         q.coneSpread[p] = nova::fmax(q.coneSpread[p], 1.0f);
@@ -1877,7 +1928,7 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
                 const float lightPdf = choice.selectPdf * ls.pdf;
                 const float weight =
                     lightSampleWeight(c.settings.lightStrategy, lightPdf, cosineHemispherePdf(cosI),
-                                      ls.delta || light.shadowLinked());
+                                      ls.delta || light.neeOnly());
                 const Spectrum unit = beta * ls.Li * light.diffuse * (cosI * kInvPi / lightPdf);
                 const Spectrum contribution = unit * weight;
                 if (lpe)
@@ -1907,13 +1958,16 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
         }
         q.beta[p] = beta;
         if (state && lpe->unit)
-            lpeUnoccludedEnvironment(c, q.pixel[p], state, wi, 1.0f, beta);
+            lpeUnoccludedEnvironment(c, q.pixel[p], state, wi, 1.0f, beta, true);
         q.bsdfPdf[p] = pdf;
         q.diffuseShare[p] = 1.0f;
         q.prevP[p] = origin;
         q.prevN[p] = ng;
         q.prevReceiver[p] = uint8_t(Receiver::OneSided);
-        q.prevSet[p] = uint8_t(c.scene.receiverSet(w.mesh, w.instance));
+        q.prevSet[p] = c.scene.receiverSet(w.mesh, w.instance);
+        if (c.shadowDomeCount > 0)
+            pushShadowDomeRay(c, q, p, PathLightPmf{c, origin, ng, Receiver::OneSided, q.prevSet[p]}, origin, wi, pdf,
+                              1.0f, beta, time, domeRaySeed(q.rays.filterSeed[k]), state, false);
         q.coneWidth[p] += q.coneSpread[p] * w.hitT;
         q.coneSpread[p] = nova::fmax(q.coneSpread[p], 1.0f);
         q.nextRays.push(origin, wi, kInf, p, time,
@@ -1932,7 +1986,9 @@ void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t 
                          scene.analyticLightCount(),
                          scene.lightSampler(),
                          settings.lightTree ? &tree : nullptr,
-                         scene.lightLinkMasks(),
+                         scene.lightLinks(),
+                         scene.shadowLinkedDomes().data(),
+                         uint32_t(scene.shadowLinkedDomes().size()),
                          scene.intersectionTolerance(),
                          depth,
                          depth > 1 ? settings.clampIndirect : 0.0f,

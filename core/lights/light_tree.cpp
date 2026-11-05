@@ -110,7 +110,7 @@ void LightTree::buildNode(std::vector<std::pair<uint32_t, LightBounds>> &items, 
         m_nodes[index] = nodeOf(items[size_t(begin)].second);
         m_nodes[index].flags |= LightTreeNode::kLeaf;
         m_nodes[index].child = light;
-        m_nodes[index].mask = m_mask.empty() ? ~uint64_t(0) : m_mask[light];
+        linkLeaf(m_nodes[index], light);
         m_trail[light] = bits;
         m_leaf[light] = index;
         return;
@@ -177,14 +177,32 @@ void LightTree::buildNode(std::vector<std::pair<uint32_t, LightBounds>> &items, 
     }
     m_nodes[index] = nodeOf(all);
     m_nodes[index].child = second;
-    m_nodes[index].mask = m_nodes[index + 1].mask | m_nodes[second].mask;
+    linkInterior(m_nodes[index], m_nodes[index + 1], m_nodes[second]);
+}
+
+// Light linking (M9 D15): a leaf links to its light's category, or to every
+// receiver; an interior node to what its children link to.
+void LightTree::linkLeaf(LightTreeNode &node, uint32_t light) const {
+    const uint64_t mask = m_mask.empty() ? kLinksEveryone : m_mask[light];
+    node.mask = mask == kLinksEveryone ? 0u : mask;
+    if (mask == kLinksEveryone)
+        node.flags |= LightTreeNode::kLinksAll;
+}
+
+void LightTree::linkInterior(LightTreeNode &node, const LightTreeNode &a, const LightTreeNode &b) {
+    node.mask = a.mask | b.mask;
+    node.flags |= (a.flags | b.flags) & LightTreeNode::kLinksAll;
 }
 
 void LightTree::build(const std::vector<LightBounds> &bounds, const std::vector<bool> &atInfinity,
                       const std::vector<float> &infinitePower, const std::vector<float> &infiniteE,
-                      const std::vector<Vec3f> &infiniteDir, const std::vector<uint64_t> &masks) {
+                      const std::vector<Vec3f> &infiniteDir, const std::vector<uint64_t> &masks,
+                      const std::vector<uint64_t> &receivers) {
     const size_t n = bounds.size();
     m_mask = masks.size() == n ? masks : std::vector<uint64_t>{};
+    m_receiver = m_mask.empty() ? std::vector<uint64_t>{} : receivers;
+    if (!m_mask.empty() && m_receiver.empty())
+        m_receiver.assign(1, 0u); // set 0: no categories
     m_trail.assign(n, ~uint64_t(0));
     m_leaf.assign(n, ~uint32_t(0));
     std::vector<std::pair<uint32_t, LightBounds>> items;
@@ -245,10 +263,13 @@ void LightTree::setInfinite(const std::vector<bool> &atInfinity, const std::vect
 
 void LightTree::update(const std::vector<LightBounds> &bounds, const std::vector<bool> &atInfinity,
                        const std::vector<float> &infinitePower, const std::vector<float> &infiniteE,
-                       const std::vector<Vec3f> &infiniteDir, const std::vector<uint64_t> &masks) {
+                       const std::vector<Vec3f> &infiniteDir, const std::vector<uint64_t> &masks,
+                       const std::vector<uint64_t> &receivers) {
     // The same lights in the same places (only their powers changed, as by
     // an intensity or colour edit): the powers are summed up the tree again,
     // everything else stays (IPR, docs/design/M9.md D11). Otherwise a build.
+    // The nodes' links depend on the lights' links alone: new receiver sets
+    // only replace the table.
     const size_t n = bounds.size();
     bool same = n == m_trail.size() && n == m_leaf.size() && (masks.size() == n ? masks == m_mask : m_mask.empty());
     for (size_t i = 0; same && i < n; ++i) {
@@ -263,12 +284,16 @@ void LightTree::update(const std::vector<LightBounds> &bounds, const std::vector
         const LightTreeNode fresh = nodeOf(bounds[i]);
         const auto eq = [](Vec3f a, Vec3f b) { return a.x == b.x && a.y == b.y && a.z == b.z; };
         same = eq(leaf.lo, fresh.lo) && eq(leaf.hi, fresh.hi) && eq(leaf.w, fresh.w) && leaf.cosO == fresh.cosO &&
-               leaf.cosE == fresh.cosE && (leaf.flags & ~LightTreeNode::kLeaf) == fresh.flags;
+               leaf.cosE == fresh.cosE &&
+               (leaf.flags & ~(LightTreeNode::kLeaf | LightTreeNode::kLinksAll)) == fresh.flags;
     }
     if (!same) {
-        build(bounds, atInfinity, infinitePower, infiniteE, infiniteDir, masks);
+        build(bounds, atInfinity, infinitePower, infiniteE, infiniteDir, masks, receivers);
         return;
     }
+    m_receiver = m_mask.empty() ? std::vector<uint64_t>{} : receivers;
+    if (!m_mask.empty() && m_receiver.empty())
+        m_receiver.assign(1, 0u);
     for (size_t k = m_nodes.size(); k-- > 0;) { // children come after their parent
         LightTreeNode &node = m_nodes[k];
         node.phi = (node.flags & LightTreeNode::kLeaf) ? bounds[node.child].phi
@@ -286,7 +311,7 @@ void LightTree::refit(const std::vector<LightBounds> &bounds) {
             const uint32_t light = node.child;
             const uint64_t mask = node.mask;
             node = nodeOf(bounds[light]);
-            node.flags |= LightTreeNode::kLeaf;
+            node.flags |= LightTreeNode::kLeaf | (flags & LightTreeNode::kLinksAll);
             node.child = light;
             node.mask = mask;
         } else {
@@ -306,6 +331,7 @@ void LightTree::refit(const std::vector<LightBounds> &bounds) {
             const uint32_t second = node.child;
             const uint64_t mask = node.mask;
             node = nodeOf(unite(boundsOf(m_nodes[k + 1]), boundsOf(m_nodes[second])));
+            node.flags |= flags & LightTreeNode::kLinksAll;
             node.child = second;
             node.mask = mask;
         }
@@ -326,7 +352,9 @@ LightTreeView LightTree::view() const {
     v.infiniteSlot = m_infiniteSlot.data();
     v.cut = m_cut.data();
     v.cutCount = uint32_t(m_cut.size());
-    v.lightMask = m_mask.empty() ? nullptr : m_mask.data();
+    v.links.light = m_mask.empty() ? nullptr : m_mask.data();
+    v.links.receiver = m_mask.empty() ? nullptr : m_receiver.data();
+    v.receiverSetCount = m_mask.empty() ? 0u : uint32_t(m_receiver.size());
     return v;
 }
 

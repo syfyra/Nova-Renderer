@@ -46,7 +46,7 @@ struct GpuMesh {
     Span<GpuBinding> bindings;
     Span<uint32_t> emitterOf;
     uint32_t emitterBase = 0, emitterStride = 0;
-    Span<uint8_t> receiverSets; // per instance (empty: set 0)
+    Span<uint32_t> receiverSets; // per instance (empty: set 0)
     Span<uint64_t> shadowMasks; // per instance: the shadow-link categories it is in
     uint8_t fakeCaustics = 0;   // shadow rays cross it with its transmittance (M4 3.3)
 
@@ -156,15 +156,18 @@ struct GpuScene {
     const GpuMaterial *materials = nullptr; // per MaterialId
     // Scene::lights(), the lights before the emissive triangles
     // (Scene::analyticLightCount), the power table over all of them, the
-    // light tree (used with useTree, RenderSettings::lightTree) and the
-    // light-linking masks (null: none).
+    // light tree (used with useTree, RenderSettings::lightTree), light
+    // linking (the tree's links; null: none) and the shadow-linked domes
+    // (Scene::shadowLinkedDomes).
     const LightData *lights = nullptr;
     uint32_t lightCount = 0;
     LightSamplerView lightSampler;
     LightTreeView tree;
     uint8_t useTree = 0;
     uint8_t anyEmitters = 0;
-    const uint64_t *linkMask = nullptr;
+    LightLinks links;
+    const uint32_t *shadowDomes = nullptr;
+    uint32_t shadowDomeCount = 0;
     BsdfTables tables{};
     const float *xyzToRgb = nullptr;
     float tolerance = 0.0f;
@@ -275,7 +278,7 @@ struct GpuWave {
     Vec3f *prevP = nullptr;
     Vec3f *prevN = nullptr;
     uint8_t *prevReceiver = nullptr;
-    uint8_t *prevSet = nullptr;
+    uint32_t *prevSet = nullptr;
     // Closest hits of the current rays.
     uint32_t *hitMesh = nullptr;
     uint32_t *hitPrim = nullptr;
@@ -293,8 +296,9 @@ struct GpuWave {
     Vec2f *shadowBary = nullptr;
     float *shadowClamp = nullptr;
     // Per shadow ray its kind (0: the hit's or event's light sample, 1: an
-    // equiangular sample, 2: a walk exit's): the shadow kernel runs once per
-    // kind, so a path adds at most one ray per run (deterministic sums, no
+    // equiangular sample, 2: a walk exit's, 3: a shadow-linked dome's BSDF
+    // sample, core/integrator/path.h): the shadow kernel runs once per kind,
+    // so a path adds at most one ray per run (deterministic sums, no
     // atomics).
     uint8_t *shadowSlot = nullptr;
     // The ambient occlusion AOV (M6.4): per path its unoccluded rays, the

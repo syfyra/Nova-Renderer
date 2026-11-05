@@ -111,10 +111,13 @@ struct LightData {
     // of the light tree and is chosen with the lights at infinity.
     bool outsideTree = false;
     // Shadow linking (M9 D15): the category of the objects that shadow the
-    // light (kNoShadowCategory: all of them). Such lights are sampled by
-    // next-event estimation alone.
+    // light (0xFFFF: all of them). Continuations of non-delta events never
+    // collect such lights: most are sampled by next-event estimation alone
+    // (neeOnly; it covers their whole emission), a dome's BSDF samples are
+    // shadow rays of their own (core/integrator/path.h).
     uint16_t shadowCategory = 0xFFFFu;
     NOVA_INLINE bool shadowLinked() const { return shadowCategory != 0xFFFFu; }
+    NOVA_INLINE bool neeOnly() const { return shadowLinked() && type != LightType::Dome; }
 };
 
 // Applies the UsdLux conventions (see above) and transforms the shape to
@@ -521,18 +524,13 @@ NOVA_INLINE Spectrum escapedRadiance(const LightData *lights, const Pmf &pmf, ui
     Spectrum L{0.0f, 0.0f, 0.0f};
     for (uint32_t i = 0; i < count; ++i) {
         const LightData &light = lights[i];
-        const bool neeOnly = light.shadowLinked() && bsdfPdf >= 0.0f;
-        if (!pmf.links(i) || (neeOnly && light.type != LightType::Dome))
-            continue; // unlinked, or a shadow-linked light that only NEE samples (M9 D15)
+        // Unlinked, or shadow-linked after a non-delta event (M9 D15): only
+        // the light's own samples see its shadow set (LightData::shadowCategory).
+        if (!pmf.links(i) || (light.shadowLinked() && bsdfPdf >= 0.0f))
+            continue;
         if (light.type == LightType::Dome) {
-            // A shadow-linked dome is NEE-only where its distribution reaches;
-            // the directions it never produces (an untextured dome, texels at
-            // or below the mean) are left to BSDF samples with weight 1, or
-            // their light would be lost.
             const float weight =
-                neeOnly ? (domePdf(light, dir) > 0.0f && pmf(i) > 0.0f ? 0.0f : 1.0f)
-                        : bsdfSampleWeight(strategy, bsdfPdf,
-                                           misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * domePdf(light, dir) : 0.0f);
+                bsdfSampleWeight(strategy, bsdfPdf, misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * domePdf(light, dir) : 0.0f);
             if (weight > 0.0f) {
                 const Spectrum Li = domeRadiance(light, dir) * (lightMultiplier(light, diffuseShare) * weight);
                 L += Li;
@@ -701,7 +699,7 @@ NOVA_INLINE Spectrum areaLightsAlongRay(const LightData *lights, const Pmf &pmf,
     Spectrum L{0.0f, 0.0f, 0.0f};
     forEachAreaLightCrossing(lights, count, tree, o, d, tMax, [&](uint32_t i, float t, Vec3f n, bool) {
         const LightData &light = lights[i];
-        if (!pmf.links(i) || (light.shadowLinked() && bsdfPdf >= 0.0f))
+        if (!pmf.links(i) || (light.neeOnly() && bsdfPdf >= 0.0f))
             return; // unlinked, or a shadow-linked light that only NEE samples (M9 D15)
         const Vec3f p = o + d * t;
         const float weight = bsdfSampleWeight(

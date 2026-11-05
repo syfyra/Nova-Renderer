@@ -4,7 +4,9 @@
 // probabilities sum to at most 1 and to 1 where some light can reach the
 // receiver; lights at infinity share the selection by irradiance; the
 // tree's estimate of the direct light from many small lights is unbiased
-// and far less noisy than selection by power.
+// and far less noisy than selection by power. Light and shadow linking
+// (D15): exact for any number of receiver sets; shadow-linked domes keep
+// the light that their shadow set lets through.
 
 #include "test_helpers.h"
 
@@ -383,55 +385,288 @@ TEST_CASE("Spot lights wider than 90 degrees keep their light behind them", "[li
     CHECK(tree.pmf(0u, p, nr, Receiver::None, 0u) > 0.5f);
 }
 
-TEST_CASE("Light linking beyond 63 receiver sets drops no linked light", "[lights][linking]") {
-    // D15: light b links to category "c<b>"; object k (1..127) is in the
-    // categories of its index's bits: 127 distinct combinations. The first
-    // 62 get exact sets, the rest share the overflow set 63, which every
-    // light linked to one of their categories lights: every object is still
-    // lit by each light linked to it, exact sets by those alone, and an
-    // object without categories (set 0) by no linked light.
-    Scene scene;
-    for (int b = 0; b < 7; ++b) {
-        LightDesc l;
-        l.type = LightType::Sphere;
-        l.radius = 0.1f;
-        l.transform = translation({float(b), 0.0f, 3.0f});
-        l.lightLink = "c" + std::to_string(b);
-        scene.updateLight(scene.createLight(), l);
-    }
+namespace {
+
+// 256 objects in the categories of their index's bits ("c0".."c7"): object
+// k is a quad of a 16 x 16 grid on the plane z = 0 (cell centre (k % 16 -
+// 7.5, k / 16 - 7.5)), object 0 has no categories. 255 distinct light-link
+// combinations, far more than a 64-bit mask over receiver sets holds.
+std::vector<MeshId> addLinkGrid(Scene &scene) {
     std::vector<MeshId> objects;
-    for (int k = 1; k <= 127; ++k) {
+    for (int k = 0; k < 256; ++k) {
+        MeshDesc m = makeQuad(0.45f);
+        m.transform = translation({float(k % 16) - 7.5f, float(k / 16) - 7.5f, 0.0f});
         const MeshId id = scene.createMesh();
-        scene.updateMesh(id, makeQuad(0.1f));
+        scene.updateMesh(id, m);
         std::vector<std::string> categories;
-        for (int b = 0; b < 7; ++b)
+        for (int b = 0; b < 8; ++b)
             if ((k >> b) & 1)
                 categories.push_back("c" + std::to_string(b));
         scene.setMeshCategories(id, categories);
         objects.push_back(id);
     }
-    const MeshId plain = scene.createMesh();
-    scene.updateMesh(plain, makeQuad(0.1f));
+    return objects;
+}
+
+// Sphere light b (0..7) on a circle above the grid, linked to "c<b>"
+// (`linked`) or lighting everything.
+void addLinkLight(Scene &scene, int b, bool linked) {
+    LightDesc l;
+    l.type = LightType::Sphere;
+    l.radius = 0.5f;
+    l.intensity = 10.0f + 2.0f * float(b);
+    const float a = kTwoPi * float(b) / 8.0f;
+    l.transform = translation({6.0f * std::cos(a), 6.0f * std::sin(a), 4.0f});
+    if (linked)
+        l.lightLink = "c" + std::to_string(b);
+    scene.updateLight(scene.createLight(), l);
+}
+
+// The mean luminance of each grid cell's inner pixels (an orthographic view
+// of the grid, 4 x 4 pixels per cell; image row 0 at y = -8).
+std::vector<double> cellMeans(const Scene &scene, uint32_t spp, bool lightTree) {
+    Renderer renderer;
+    RenderSettings settings;
+    settings.maxSamples = spp;
+    settings.pixelFilterScale = 0.0f;
+    settings.clampIndirect = 0.0f;
+    settings.lightTree = lightTree;
+    renderer.setScene(&scene);
+    renderer.setSettings(settings);
+    renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 10.0f}, 8.0f, 64, 64));
+    renderer.resize(64, 64);
+    renderToConvergence(renderer);
+    std::vector<double> mean(256, 0.0);
+    for (int y = 0; y < 64; ++y)
+        for (int x = 0; x < 64; ++x)
+            mean[size_t((y / 4) * 16 + x / 4)] += double(luminance(pixelMean(renderer.film(), x, y))) / 16.0;
+    return mean;
+}
+
+} // namespace
+
+TEST_CASE("Light linking beyond 63 receiver sets is exact", "[lights][linking]") {
+    // D15 (R1-28): light b < 8 links to category "c<b>", light 8 lights
+    // every receiver; 255 distinct category combinations and set 0. Each
+    // object's set is lit by exactly its lights: the links, and the light
+    // tree's probabilities, 0 for every other light and summing to 1 over
+    // its own (nothing wasted on rejections), with sampling that follows
+    // them.
+    Scene scene;
+    const std::vector<MeshId> objects = addLinkGrid(scene);
+    for (int b = 0; b < 8; ++b)
+        addLinkLight(scene, b, true);
+    LightDesc all;
+    all.type = LightType::Sphere;
+    all.radius = 0.3f;
+    all.transform = translation({0.0f, 0.0f, 5.0f});
+    scene.updateLight(scene.createLight(), all);
     scene.commit();
-    const uint64_t *mask = scene.lightLinkMasks();
-    REQUIRE(mask != nullptr);
-    int exact = 0;
-    for (int k = 1; k <= 127; ++k) {
-        const uint32_t set = scene.receiverSet(objects[size_t(k - 1)], 0u);
+    const LightLinks links = scene.lightLinks();
+    REQUIRE(links.light != nullptr);
+    CHECK(scene.receiverSetCount() == 256u);
+    const LightTreeView tree = scene.lightTree();
+    REQUIRE(tree.nodeCount == 17u);
+    Rng rng = Rng::make(3u, 1u, 4u);
+    std::vector<uint32_t> sets;
+    for (int k = 0; k < 256; ++k) {
+        const uint32_t set = scene.receiverSet(objects[size_t(k)], 0u);
         INFO("object " << k << ", set " << set);
-        REQUIRE(set < 64u);
-        CHECK(set != 0u);
-        exact += set < 63u ? 1 : 0;
-        for (int b = 0; b < 7; ++b) {
-            const bool lit = ((mask[b] >> set) & 1u) != 0;
-            if ((k >> b) & 1)
-                CHECK(lit);
-            else if (set < 63u)
-                CHECK_FALSE(lit);
+        CHECK(std::find(sets.begin(), sets.end(), set) == sets.end());
+        sets.push_back(set);
+        const Vec3f p{float(k % 16) - 7.5f, float(k / 16) - 7.5f, 0.0f}, n{0.0f, 0.0f, 1.0f};
+        double sum = 0.0;
+        for (uint32_t b = 0; b <= 8; ++b) {
+            const bool lit = b == 8 || ((k >> b) & 1) != 0;
+            CHECK(links.links(b, set) == lit);
+            const float pm = tree.pmf(b, p, n, Receiver::OneSided, set);
+            if (lit)
+                CHECK(pm > 0.0f);
+            else
+                CHECK(pm == 0.0f);
+            sum += pm;
+        }
+        CHECK_THAT(sum, WithinAbs(1.0, 1e-5));
+        for (int d = 0; d < 32; ++d) {
+            float pm = 0.0f;
+            const uint32_t light = tree.sample((float(d) + rng.next()) / 32.0f, p, n, Receiver::OneSided, set, pm);
+            REQUIRE(light <= 8u);
+            CHECK((light == 8u || ((k >> light) & 1) != 0));
+            CHECK_THAT(pm, WithinAbs(tree.pmf(light, p, n, Receiver::OneSided, set), 1e-6));
         }
     }
-    CHECK(exact == 62);
-    CHECK(scene.receiverSet(plain, 0u) == 0u);
-    for (int b = 0; b < 7; ++b)
-        CHECK((mask[b] & 1u) == 0u);
+    CHECK(scene.receiverSet(objects[0], 0u) == 0u);
+    CHECK(links.links(8u, 0u));
+    for (uint32_t b = 0; b < 8; ++b)
+        CHECK_FALSE(links.links(b, 0u));
+}
+
+TEST_CASE("Light linking beyond 63 receiver sets renders each object with its lights", "[render][lights][linking]") {
+    // D15 (R1-28): every object of the grid is lit by exactly the lights
+    // linked to one of its categories, by the light tree and by selection
+    // by power: its mean equals the sum of what each of its lights alone
+    // gives it (light linking acts on direct light; the coplanar quads see
+    // no other object). Before, the objects past the 62nd combination shared
+    // one set lit by the lights of all their categories.
+    Scene linked;
+    addLinkGrid(linked);
+    for (int b = 0; b < 8; ++b)
+        addLinkLight(linked, b, true);
+    linked.commit();
+    std::vector<std::vector<double>> alone;
+    for (int b = 0; b < 8; ++b) {
+        Scene one;
+        addLinkGrid(one);
+        addLinkLight(one, b, false);
+        one.commit();
+        alone.push_back(cellMeans(one, 32, true));
+    }
+    for (const bool lightTree : {true, false}) {
+        INFO("light tree " << lightTree);
+        const std::vector<double> got = cellMeans(linked, lightTree ? 64 : 256, lightTree);
+        CHECK(got[0] == 0.0); // no categories: no linked light reaches it
+        double sumErr = 0.0, worst = 0.0;
+        int worstCell = 0;
+        for (int k = 1; k < 256; ++k) {
+            double want = 0.0;
+            for (int b = 0; b < 8; ++b)
+                if ((k >> b) & 1)
+                    want += alone[size_t(b)][size_t(k)];
+            REQUIRE(want > 0.0);
+            const double err = std::fabs(got[size_t(k)] - want) / want;
+            sumErr += err;
+            if (err > worst) {
+                worst = err;
+                worstCell = k;
+            }
+        }
+        INFO("mean relative error " << sumErr / 255.0 << ", worst " << worst << " at object " << worstCell);
+        CHECK(sumErr / 255.0 < 0.01);
+        CHECK(worst < 0.05);
+    }
+}
+
+namespace {
+
+// Shadow-linked domes (D15, R1-31): the ground z = 0 under a dome whose
+// shadow set is "casters" (`linked`; else no shadow link), a black caster in
+// it at z = 0.6 over x in [-3, -2.2], and a black wall x = 0.2 (z in [0, 4])
+// outside the shadow set (`wall` 1), in it (2) or absent (0). Black objects
+// add no light, so with the wall outside the set the ground renders as
+// without it; without the wall the shadow link changes nothing. The view
+// covers x in [-2, 0.2]: the ground next to the wall, never the wall.
+struct DomeLinkScene {
+    Scene scene;
+
+    DomeLinkScene(bool textured, bool metal, int wall, bool linked = true) {
+        const MeshId ground = scene.createMesh();
+        scene.updateMesh(ground, makeQuad(8.0f));
+        MaterialDesc g;
+        g.inputs = lambertDefaults(spectrum(0.5f));
+        if (metal) {
+            g.inputs = standardSurfaceDefaults();
+            g.inputs.set(surface_field::baseColor, Spectrum{0.9f, 0.8f, 0.6f});
+            g.inputs.set(surface_field::metalness, 1.0f);
+            g.inputs.set(surface_field::specularRoughness, 0.3f);
+        }
+        const MaterialId groundMaterial = scene.createMaterial();
+        scene.updateMaterial(groundMaterial, g);
+        scene.setMeshMaterials(ground, {groundMaterial});
+        MaterialDesc b;
+        b.inputs = lambertDefaults(spectrum(0.0f));
+        const MaterialId black = scene.createMaterial();
+        scene.updateMaterial(black, b);
+        const auto quad = [&](Vec3f o, Vec3f e1, Vec3f e2, bool caster) {
+            MeshDesc m;
+            m.points = {o, o + e1, o + e1 + e2, o + e2};
+            m.indices = {0, 1, 2, 0, 2, 3};
+            const MeshId id = scene.createMesh();
+            scene.updateMesh(id, m);
+            scene.setMeshMaterials(id, {black});
+            if (caster)
+                scene.setMeshCategories(id, {"casters"});
+        };
+        quad({-3.0f, -6.0f, 0.6f}, {0.8f, 0.0f, 0.0f}, {0.0f, 12.0f, 0.0f}, true);
+        if (wall > 0)
+            quad({0.2f, -6.0f, 0.0f}, {0.0f, 12.0f, 0.0f}, {0.0f, 0.0f, 4.0f}, wall == 2);
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        dome.shadowLink = linked ? "casters" : "";
+        if (textured) {
+            // A dim sky, below the mean (no light-sampling density there),
+            // and a bright patch.
+            auto sky = std::make_shared<Image>();
+            sky->width = 64;
+            sky->height = 32;
+            sky->pixels.assign(64 * 32, Spectrum{0.6f, 0.7f, 0.9f});
+            for (int y = 6; y < 10; ++y)
+                for (int x = 36; x < 42; ++x)
+                    sky->pixels[size_t(y) * 64 + size_t(x)] = spectrum(12.0f);
+            dome.texture = sky;
+        }
+        scene.updateLight(scene.createLight(), dome);
+        scene.commit();
+    }
+
+    // The mean luminance over the view and over its part next to the wall
+    // (x > -0.35, the 8 rightmost columns).
+    void render(LightStrategy strategy, uint32_t spp, double &all, double &nearWall) const {
+        Renderer renderer;
+        RenderSettings settings;
+        settings.maxSamples = spp;
+        settings.pixelFilterScale = 0.0f;
+        settings.clampIndirect = 0.0f;
+        settings.lightStrategy = strategy;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        renderer.setCamera(makeOrthoCamera({-0.9f, 0.0f, 5.0f}, 1.1f, 32, 32));
+        renderer.resize(32, 32);
+        renderToConvergence(renderer);
+        all = nearWall = 0.0;
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x) {
+                const double v = luminance(pixelMean(renderer.film(), x, y));
+                all += v / 1024.0;
+                nearWall += x >= 24 ? v / 256.0 : 0.0;
+            }
+    }
+};
+
+} // namespace
+
+TEST_CASE("Shadow-linked domes light through objects outside their shadow set", "[render][lights][linking]") {
+    // D15 (R1-31): only a dome's shadow set blocks its light, wherever its
+    // light samples have density or not: an untextured dome (BSDF samples
+    // only) and a textured one whose dim sky light sampling never picks,
+    // seen on a diffuse and on a rough metal ground, under every light
+    // strategy (the dome's BSDF samples are shadow rays of their own, MIS
+    // against its light samples): the wall outside the shadow set changes
+    // nothing, and without it the shadow-linked dome renders as the plain
+    // dome, whose BSDF samples ride on the continuations (the same decisions
+    // and weights: both agree up to rounding here, where only the caster is
+    // in the way). Before, objects outside the shadow set blocked the BSDF
+    // samples where the dome's light samples had no density.
+    for (const bool textured : {false, true})
+        for (const bool metal : {false, true}) {
+            const DomeLinkScene reference(textured, metal, 0), outside(textured, metal, 1), inside(textured, metal, 2),
+                plain(textured, metal, 0, false);
+            for (const LightStrategy strategy : {LightStrategy::MIS, LightStrategy::LightOnly, LightStrategy::BsdfOnly}) {
+                INFO("textured " << textured << ", metal " << metal << ", strategy " << int(strategy));
+                double refAll, refNear, outAll, outNear, plainAll, plainNear, inAll, inNear;
+                reference.render(strategy, 64, refAll, refNear);
+                outside.render(strategy, 64, outAll, outNear);
+                plain.render(strategy, 64, plainAll, plainNear);
+                REQUIRE(refNear > 0.0);
+                INFO("next to the wall: " << outNear << " (no wall " << refNear << ", unlinked " << plainNear
+                                          << "); all: " << outAll << " (" << refAll << ", " << plainAll << ")");
+                CHECK_THAT(outNear / refNear, WithinAbs(1.0, 0.002));
+                CHECK_THAT(outAll / refAll, WithinAbs(1.0, 0.002));
+                CHECK_THAT(refNear / plainNear, WithinAbs(1.0, 0.002));
+                CHECK_THAT(refAll / plainAll, WithinAbs(1.0, 0.002));
+                if (strategy == LightStrategy::MIS) { // the wall in the shadow set does shadow
+                    inside.render(strategy, 32, inAll, inNear);
+                    CHECK(inNear < 0.8 * refNear);
+                }
+            }
+        }
 }

@@ -640,11 +640,11 @@ void Scene::setMeshCategories(MeshId id, std::vector<std::string> categories,
 
 // Light linking (docs/design/M9.md D15, after Cycles): the categories lights
 // link to get bits; every object instance's bits form its receiver set
-// (distinct combinations numbered, 0 = none); per light, a mask of the sets
-// it lights (all if its link is empty). Shadow-link categories number
-// separately; each instance records which it is in. At most 64 categories
-// of each; 63 exact receiver sets, the instances beyond them share set 63,
-// which every light linked to one of their categories lights.
+// (distinct combinations numbered, 0 = none, as many as there are); per
+// light the bit of its category (kLinksEveryone if its link is empty), so a
+// light lights a set exactly when the set holds its category
+// (light_tree.h). Shadow-link categories number separately; each instance
+// records which it is in. At most 64 categories of each.
 void Scene::computeLinks() {
     m_linksDirty = false;
     std::unordered_map<std::string, int> linkCats, shadowCats;
@@ -654,20 +654,20 @@ void Scene::computeLinks() {
         if (!shadow.empty() && !shadowCats.count(shadow))
             shadowCats.emplace(shadow, int(shadowCats.size()));
     }
+    m_shadowDomes.clear();
     for (size_t i = 0; i < m_lightLinks.size(); ++i) { // emissive triangles (after them) link everything
         const auto it = shadowCats.find(m_lightLinks[i].second);
         m_lightData[i].shadowCategory = it != shadowCats.end() && it->second < 64 ? uint16_t(it->second) : 0xFFFFu;
+        if (m_lightData[i].type == LightType::Dome && m_lightData[i].shadowLinked())
+            m_shadowDomes.push_back(uint32_t(i));
     }
     if (linkCats.size() > 64 || shadowCats.size() > 64)
         std::fprintf(stderr, "[Nova] more than 64 light-link or shadow-link categories: the rest are ignored\n");
 
     // Set 0 is the instances without categories (only unlinked lights reach
-    // it); set 63 is the overflow, never in setMasks.
-    constexpr uint8_t kOverflowSet = 63;
-    std::vector<uint64_t> setMasks{0}; // receiver set -> its link-category bits
-    std::unordered_map<uint64_t, uint8_t> setOf{{0, 0}};
-    bool overflow = false;
-    uint64_t overflowCats = 0; // the link categories of the overflowed instances
+    // it).
+    m_receiverCategories.assign(1, 0u); // receiver set -> its link-category bits
+    std::unordered_map<uint64_t, uint32_t> setOf{{0, 0}};
     for (MeshRecord &rec : m_meshes) {
         rec.receiverSets.clear();
         rec.shadowMasks.clear();
@@ -697,41 +697,20 @@ void Scene::computeLinks() {
                 rec.shadowMasks[k] = shadow;
             if (rec.receiverSets.empty())
                 continue;
-            uint8_t set = kOverflowSet;
-            if (const auto it = setOf.find(link); it != setOf.end()) {
-                set = it->second;
-            } else if (setMasks.size() < kOverflowSet) {
-                set = uint8_t(setMasks.size());
-                setOf.emplace(link, set);
-                setMasks.push_back(link);
-            } else {
-                overflow = true;
-                overflowCats |= link;
-            }
-            rec.receiverSets[k] = set;
+            const auto [it, added] = setOf.try_emplace(link, uint32_t(m_receiverCategories.size()));
+            if (added)
+                m_receiverCategories.push_back(link);
+            rec.receiverSets[k] = it->second;
         }
     }
-    if (overflow)
-        std::fprintf(stderr, "[Nova] more than %d distinct light-link combinations: the rest share one set, lit by "
-                             "every light linked to any of their categories\n",
-                     int(kOverflowSet));
     m_linking = !linkCats.empty();
-    m_lightLinkMask.assign(m_lightData.size(), ~uint64_t(0));
+    m_lightLinkMask.assign(m_lightData.size(), kLinksEveryone);
     if (m_linking)
         for (size_t i = 0; i < m_lightLinks.size(); ++i) {
             const auto it = linkCats.find(m_lightLinks[i].first);
             if (m_lightLinks[i].first.empty() || it == linkCats.end() || it->second >= 64)
                 continue; // lights everything
-            uint64_t mask = 0;
-            for (size_t r = 0; r < setMasks.size(); ++r)
-                if ((setMasks[r] >> it->second) & 1u)
-                    mask |= uint64_t(1) << r;
-            // The overflow set: lit by every light linked to a category of
-            // any overflowed instance (an approximation of D15's rejection,
-            // which over-lights some of them but drops no linked light).
-            if ((overflowCats >> it->second) & 1u)
-                mask |= uint64_t(1) << kOverflowSet;
-            m_lightLinkMask[i] = mask;
+            m_lightLinkMask[i] = uint64_t(1) << it->second;
         }
 }
 
@@ -976,7 +955,8 @@ bool Scene::commit() {
                 bounds[i] = treeBounds(l, power[i], v ? v->lower : Vec3f{}, v ? v->upper : Vec3f{});
             }
             m_lightTree.update(bounds, infiniteLight, power, infiniteE, infiniteDir,
-                               m_linking ? m_lightLinkMask : std::vector<uint64_t>{});
+                               m_linking ? m_lightLinkMask : std::vector<uint64_t>{},
+                               m_linking ? m_receiverCategories : std::vector<uint64_t>{});
         }
         // A large scene (e.g. a huge ground plane) inflates the power of the
         // lights at infinity until local lights get no samples; cap them at

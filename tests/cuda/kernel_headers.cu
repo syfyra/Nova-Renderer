@@ -178,7 +178,7 @@ struct DeviceLightPmf {
     NOVA_INLINE float operator()(uint32_t i) const {
         return tree->pmf(i, Vec3f{0.0f, 0.0f, 0.0f}, Vec3f{0.0f, 0.0f, 1.0f}, Receiver::None, 0u);
     }
-    NOVA_INLINE bool links(uint32_t i) const { return tree->links(i, 0u); }
+    NOVA_INLINE bool links(uint32_t i) const { return tree->links.links(i, 0u); }
 };
 
 __global__ void lightHeadersCheck(float *out, const LightData *lights, uint32_t count, const LightTreeView tree) {

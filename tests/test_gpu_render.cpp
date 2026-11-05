@@ -324,6 +324,133 @@ TEST_CASE("XPU lights: tree, emissive meshes, linking", "[gpu][render][lights]")
     CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.002 * cpuMean));
 }
 
+// M9 D15 (R1-28): light linking with 255 distinct category combinations
+// (receiver sets) of a grid of quads, 8 lights linked to one category each
+// (test_light_tree.cpp has the exact references): the GPU's links and light
+// selection, by the tree and by power, are the CPU's.
+TEST_CASE("XPU light linking beyond 63 receiver sets", "[gpu][render][lights][linking]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    for (int k = 0; k < 256; ++k) {
+        MeshDesc m = makeQuad(0.45f);
+        m.transform = translation({float(k % 16) - 7.5f, float(k / 16) - 7.5f, 0.0f});
+        const MeshId id = scene.createMesh();
+        scene.updateMesh(id, m);
+        std::vector<std::string> categories;
+        for (int b = 0; b < 8; ++b)
+            if ((k >> b) & 1)
+                categories.push_back("c" + std::to_string(b));
+        scene.setMeshCategories(id, categories);
+    }
+    for (int b = 0; b < 8; ++b) {
+        LightDesc l;
+        l.type = LightType::Sphere;
+        l.radius = 0.5f;
+        l.intensity = 10.0f + 2.0f * float(b);
+        const float a = kTwoPi * float(b) / 8.0f;
+        l.transform = translation({6.0f * std::cos(a), 6.0f * std::sin(a), 4.0f});
+        l.lightLink = "c" + std::to_string(b);
+        scene.updateLight(scene.createLight(), l);
+    }
+    scene.commit();
+    REQUIRE(scene.receiverSetCount() == 256u);
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 10.0f}, 8.0f, 64, 64);
+    for (const bool tree : {true, false}) {
+        INFO("light tree " << tree);
+        const Render cpu = render(scene, camera, 64, 64, 64, RenderDevice::Cpu, 6, tree);
+        const Render gpu = render(scene, camera, 64, 64, 64, RenderDevice::Xpu, 6, tree);
+        REQUIRE(gpu.gpu);
+        const double close = closePixels(cpu.film, gpu.film), cpuMean = luminanceMean(cpu.film),
+                     gpuMean = luminanceMean(gpu.film);
+        INFO("pixels within 1e-3: " << close << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
+        CHECK(close >= 0.95);
+        CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.002 * cpuMean));
+    }
+}
+
+// M9 D15 (R1-31): a shadow-linked dome (textured: a dim sky light sampling
+// never picks and a bright patch, or constant) over a ground, with a wall
+// outside its shadow set next to the view and a caster in it: the dome's
+// BSDF samples are shadow rays of their own (kind 3) on the GPU as on the
+// CPU, beauty and light path expressions (unoccluded;, shadow;).
+TEST_CASE("XPU shadow-linked domes", "[gpu][render][lights][linking][lpe]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    for (const bool textured : {false, true}) {
+        INFO("textured " << textured);
+        Scene scene;
+        MeshDesc ground = makeQuad(8.0f);
+        ground.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), ground);
+        MeshDesc caster = wall({-3.0f, -6.0f, 0.6f}, {0.8f, 0.0f, 0.0f}, {0.0f, 12.0f, 0.0f}, spectrum(0.3f));
+        const MeshId casterId = scene.createMesh();
+        scene.updateMesh(casterId, caster);
+        scene.setMeshCategories(casterId, {"casters"});
+        scene.updateMesh(scene.createMesh(),
+                         wall({0.2f, -6.0f, 0.0f}, {0.0f, 12.0f, 0.0f}, {0.0f, 0.0f, 4.0f}, spectrum(0.3f)));
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        dome.shadowLink = "casters";
+        if (textured) {
+            auto sky = std::make_shared<Image>();
+            sky->width = 64;
+            sky->height = 32;
+            sky->pixels.assign(64 * 32, Spectrum{0.6f, 0.7f, 0.9f});
+            for (int y = 6; y < 10; ++y)
+                for (int x = 36; x < 42; ++x)
+                    sky->pixels[size_t(y) * 64 + size_t(x)] = spectrum(12.0f);
+            dome.texture = sky;
+        }
+        scene.updateLight(scene.createLight(), dome);
+        scene.commit();
+        REQUIRE(scene.shadowLinkedDomes().size() == 1u);
+        const Camera camera = makeOrthoCamera({-0.9f, 0.0f, 5.0f}, 1.1f, 32, 32);
+        const std::vector<std::string> expressions = {"C.*L", "unoccluded;C<RD>L", "shadow;C<RD>L"};
+        const auto compiled = std::make_shared<lpe::Compiled>(lpe::compile(expressions));
+        REQUIRE(compiled->ok());
+        const auto renderLpe = [&](RenderDevice device, bool &gpu) {
+            Renderer renderer;
+            RenderSettings settings;
+            settings.device = device;
+            settings.maxSamples = 128;
+            settings.lpe = compiled;
+            renderer.setScene(&scene);
+            renderer.setSettings(settings);
+            renderer.setCamera(camera);
+            renderer.resize(32, 32);
+            gpu = true;
+            while (!renderer.converged()) {
+                renderer.renderPass({});
+                gpu = gpu && renderer.lastPassOnGpu();
+            }
+            return renderer.film();
+        };
+        bool cpuGpu = false, gpuGpu = false;
+        const Film cpu = renderLpe(RenderDevice::Cpu, cpuGpu);
+        const Film gpu = renderLpe(RenderDevice::Xpu, gpuGpu);
+        REQUIRE(gpuGpu);
+        const double close = closePixels(cpu, gpu), cpuMean = luminanceMean(cpu), gpuMean = luminanceMean(gpu);
+        INFO("pixels within 1e-3: " << close << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
+        CHECK(close >= 0.95);
+        CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.002 * cpuMean));
+        REQUIRE(gpu.lpeOutputs == cpu.lpeOutputs);
+        for (uint32_t o = 0; o < cpu.lpeOutputs; ++o) {
+            double a = 0.0, b = 0.0;
+            for (size_t i = 0; i < size_t(32 * 32); ++i) {
+                a += double(luminance(cpu.lpe(o)[i]));
+                b += double(luminance(gpu.lpe(o)[i]));
+            }
+            INFO("output " << o << " (" << expressions[o] << "): CPU " << a << ", GPU " << b);
+            if (o < 2) // shadow;C<RD>L is about 0: nothing in the dome's shadow set is near the view
+                CHECK(a > 0.0);
+            CHECK_THAT(b, WithinAbs(a, 0.003 * a + 1e-3));
+        }
+    }
+}
+
 // docs/design/M10.md G4: first-hit AOVs (the CPU traces them for GPU passes,
 // so they are exact), the ambient occlusion AOV and cryptomattes (the GPU
 // records the camera hits, the host accumulates them).

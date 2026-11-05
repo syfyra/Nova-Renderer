@@ -48,6 +48,25 @@ struct LightBounds {
     bool crossable = false;   // an area light that BSDF rays collect by crossing it (not geometry)
 };
 
+// Light linking (docs/design/M9.md D15). A light links to one category of
+// objects (the bit of the category, 64 at most) or lights every receiver
+// (kLinksEveryone); a receiver set is a combination of categories (an object
+// instance's, set 0: none). A light lights a set if it lights every receiver
+// or the set holds its category: exact for any number of receiver sets.
+constexpr uint64_t kLinksEveryone = ~uint64_t(0);
+NOVA_INLINE bool lightLinks(uint64_t light, uint64_t receiver) {
+    return light == kLinksEveryone || (light & receiver) != 0;
+}
+
+// Per light its link (the category bit, or kLinksEveryone) and per receiver
+// set its categories; null `light`: no linking, every light lights everything.
+struct LightLinks {
+    const uint64_t *light = nullptr;
+    const uint64_t *receiver = nullptr;
+    NOVA_INLINE uint64_t categories(uint32_t set) const { return light ? receiver[set] : 0u; }
+    NOVA_INLINE bool links(uint32_t li, uint32_t set) const { return !light || lightLinks(light[li], receiver[set]); }
+};
+
 struct LightTreeNode {
     Vec3f lo;
     float phi;
@@ -56,9 +75,13 @@ struct LightTreeNode {
     Vec3f w;
     float cosE;
     uint32_t child; // interior: the second child (the first follows the node); leaf: the light
-    uint32_t flags; // kLeaf, kTwoSided, kCrossable (some light below is crossable)
-    uint64_t mask;  // light linking (M9 D15): the receiver sets some light below lights
-    static constexpr uint32_t kLeaf = 1u, kTwoSided = 2u, kCrossable = 4u;
+    uint32_t flags; // kLeaf, kTwoSided, kCrossable (some light below is crossable), kLinksAll
+    // Light linking (M9 D15): the categories the linked lights below link
+    // to; kLinksAll: some light below lights every receiver.
+    uint64_t mask;
+    static constexpr uint32_t kLeaf = 1u, kTwoSided = 2u, kCrossable = 4u, kLinksAll = 8u;
+    // Whether some light below lights a receiver of these categories.
+    NOVA_INLINE bool linksTo(uint64_t categories) const { return (flags & kLinksAll) || (mask & categories) != 0; }
 };
 
 namespace light_tree_detail {
@@ -122,7 +145,7 @@ NOVA_INLINE float lightImportance(const LightTreeNode &b, Vec3f p, Vec3f n, Rece
 struct LightTreeView {
     const LightTreeNode *nodes = nullptr;
     const uint64_t *trail = nullptr; // per light: its path from the root (bit k: level k went to the second child)
-    uint32_t lightCount = 0;         // the lights trail, infiniteSlot and lightMask cover
+    uint32_t lightCount = 0;         // the lights trail, infiniteSlot and links.light cover
     uint32_t nodeCount = 0;          // 0: no bounded light
     // Lights at infinity: their indices, the irradiance each gives at normal
     // incidence, whether it is a distant light (with its direction), and the
@@ -135,22 +158,29 @@ struct LightTreeView {
     const int32_t *infiniteSlot = nullptr; // per light: its index in `infinite`, or -1
     const uint32_t *cut = nullptr;         // tree nodes whose importances stand for the tree
     uint32_t cutCount = 0;
-    // Light linking (M9 D15): per light the receiver sets it lights (null:
-    // no linking). A subtree that lights no light of the receiver's set has
-    // importance 0, so selection and probabilities see only linked lights.
-    const uint64_t *lightMask = nullptr;
+    // Light linking (M9 D15; `links.light` covers lightCount lights, null:
+    // no linking): a subtree with no light that lights the receiver's set
+    // has importance 0, so selection and probabilities see only the lights
+    // that light it, for any number of receiver sets.
+    LightLinks links;
+    uint32_t receiverSetCount = 0; // the sets `links.receiver` covers
 
-    NOVA_INLINE float importance(uint32_t node, Vec3f p, Vec3f n, Receiver r, uint32_t set) const {
-        if (lightMask && !((nodes[node].mask >> set) & 1u))
+    // The importance of a node for a receiver whose set has these link
+    // categories (LightLinks::categories).
+    NOVA_INLINE float importance(uint32_t node, Vec3f p, Vec3f n, Receiver r, uint64_t categories) const {
+        if (links.light && !nodes[node].linksTo(categories))
             return 0.0f;
         return lightImportance(nodes[node], p, n, r);
     }
-    NOVA_INLINE bool links(uint32_t light, uint32_t set) const {
-        return !lightMask || ((lightMask[light] >> set) & 1u) != 0;
+    NOVA_INLINE bool linksTo(uint32_t light, uint64_t categories) const {
+        return !links.light || lightLinks(links.light[light], categories);
     }
 
-    // The share of the lights at infinity at a receiver.
+    // The share of the lights at infinity at a receiver of receiver set `set`.
     NOVA_INLINE float infiniteShare(Vec3f p, Vec3f n, Receiver r, uint32_t set) const {
+        return infiniteShareOf(p, n, r, links.categories(set));
+    }
+    NOVA_INLINE float infiniteShareOf(Vec3f p, Vec3f n, Receiver r, uint64_t categories) const {
         if (infiniteCount == 0)
             return 0.0f;
         float inf = 0.0f;
@@ -161,13 +191,13 @@ struct LightTreeView {
                 c = dot(n, dir);
                 c = r == Receiver::TwoSided ? std::fabs(c) : (c > 0.0f ? c : 0.0f);
             }
-            inf += links(infinite[i], set) ? infiniteE[i] * c : 0.0f;
+            inf += linksTo(infinite[i], categories) ? infiniteE[i] * c : 0.0f;
         }
         if (nodeCount == 0)
             return inf > 0.0f ? 1.0f : 0.0f;
         float tree = 0.0f;
         for (uint32_t i = 0; i < cutCount; ++i)
-            tree += importance(cut[i], p, n, r, set);
+            tree += importance(cut[i], p, n, r, categories);
         const float total = inf + tree;
         return total > 0.0f ? inf / total : 0.0f;
     }
@@ -175,11 +205,12 @@ struct LightTreeView {
     // Picks a light for u in [0, 1); kInvalidId if none can light the receiver.
     NOVA_INLINE uint32_t sample(float u, Vec3f p, Vec3f n, Receiver r, uint32_t set, float &pmf) const {
         pmf = 0.0f;
-        const float q = infiniteShare(p, n, r, set);
+        const uint64_t cats = links.categories(set);
+        const float q = infiniteShareOf(p, n, r, cats);
         if (u < q) {
             float pi = 0.0f;
             const uint32_t slot = infiniteTable.sample(nova::fmin(u / q, 0.99999994f), pi);
-            if (slot == kInvalidId || !links(infinite[slot], set)) // unlinked: rejected (unbiased)
+            if (slot == kInvalidId || !linksTo(infinite[slot], cats)) // unlinked: rejected (unbiased)
                 return kInvalidId;
             pmf = q * pi;
             return infinite[slot];
@@ -190,8 +221,8 @@ struct LightTreeView {
         float p0 = 1.0f - q;
         uint32_t k = 0;
         while (!(nodes[k].flags & LightTreeNode::kLeaf)) {
-            const float c0 = importance(k + 1, p, n, r, set);
-            const float c1 = importance(nodes[k].child, p, n, r, set);
+            const float c0 = importance(k + 1, p, n, r, cats);
+            const float c1 = importance(nodes[k].child, p, n, r, cats);
             if (!(c0 + c1 > 0.0f))
                 return kInvalidId;
             // The same arithmetic as pmf(), so both give the same numbers.
@@ -212,9 +243,10 @@ struct LightTreeView {
 
     // The probability with which sample() returns `light` at this receiver.
     NOVA_INLINE float pmf(uint32_t light, Vec3f p, Vec3f n, Receiver r, uint32_t set) const {
-        if (!links(light, set))
+        const uint64_t cats = links.categories(set);
+        if (!linksTo(light, cats))
             return 0.0f;
-        const float q = infiniteShare(p, n, r, set);
+        const float q = infiniteShareOf(p, n, r, cats);
         if (infiniteSlot && infiniteSlot[light] >= 0)
             return q * infiniteTable.pmf[infiniteSlot[light]];
         if (nodeCount == 0 || trail[light] == ~uint64_t(0))
@@ -223,8 +255,8 @@ struct LightTreeView {
         uint64_t bits = trail[light];
         uint32_t k = 0;
         while (!(nodes[k].flags & LightTreeNode::kLeaf)) {
-            const float c0 = importance(k + 1, p, n, r, set);
-            const float c1 = importance(nodes[k].child, p, n, r, set);
+            const float c0 = importance(k + 1, p, n, r, cats);
+            const float c1 = importance(nodes[k].child, p, n, r, cats);
             const float s = c0 + c1;
             if (!(s > 0.0f))
                 return 0.0f;
@@ -248,15 +280,19 @@ public:
     // infinity, lights that cannot be light-sampled); infinitePower and
     // infiniteE / infiniteDir: per light, for the lights at infinity (others
     // 0). The tree is rebuilt from scratch.
-    // masks: per light the receiver sets it lights (empty: no linking).
+    // masks: per light its link (LightLinks::light; empty: no linking);
+    // receivers: per receiver set its categories (LightLinks::receiver).
     void build(const std::vector<LightBounds> &bounds, const std::vector<bool> &atInfinity,
                const std::vector<float> &infinitePower, const std::vector<float> &infiniteE,
-               const std::vector<Vec3f> &infiniteDir, const std::vector<uint64_t> &masks = {});
+               const std::vector<Vec3f> &infiniteDir, const std::vector<uint64_t> &masks = {},
+               const std::vector<uint64_t> &receivers = {});
     // As build(), but when only the lights' powers changed (the same lights
-    // with the same boxes and cones) it only sums the powers up the tree.
+    // with the same boxes, cones and links) it only sums the powers up the
+    // tree; the receiver sets never need a build.
     void update(const std::vector<LightBounds> &bounds, const std::vector<bool> &atInfinity,
                 const std::vector<float> &infinitePower, const std::vector<float> &infiniteE,
-                const std::vector<Vec3f> &infiniteDir, const std::vector<uint64_t> &masks = {});
+                const std::vector<Vec3f> &infiniteDir, const std::vector<uint64_t> &masks = {},
+                const std::vector<uint64_t> &receivers = {});
     // New powers and boxes with the same lights (value edits; moves keep
     // working but select worse until the next build).
     void refit(const std::vector<LightBounds> &bounds);
@@ -269,6 +305,8 @@ private:
                    uint32_t depth, uint32_t index, std::atomic<uint32_t> &maxDepth);
     void setInfinite(const std::vector<bool> &atInfinity, const std::vector<float> &infinitePower,
                      const std::vector<float> &infiniteE, const std::vector<Vec3f> &infiniteDir);
+    void linkLeaf(LightTreeNode &node, uint32_t light) const;
+    static void linkInterior(LightTreeNode &node, const LightTreeNode &a, const LightTreeNode &b);
 
     std::vector<LightTreeNode> m_nodes;
     std::vector<uint64_t> m_trail;
@@ -278,7 +316,8 @@ private:
     std::vector<Vec3f> m_infiniteDir;
     std::vector<int32_t> m_infiniteSlot;
     std::vector<uint32_t> m_cut;
-    std::vector<uint64_t> m_mask; // per light (empty: no linking)
+    std::vector<uint64_t> m_mask;     // per light (empty: no linking)
+    std::vector<uint64_t> m_receiver; // per receiver set
     LightSampler m_infiniteTable;
     uint32_t m_depth = 0;
 };

@@ -67,13 +67,82 @@ NOVA_FORCEINLINE Vec3f leaveHit(const SurfaceHit &hit, Vec3f ng, bool tube, Vec3
 // MIS vertex's. Before the path has one (camera rays, then delta events
 // only) it is the set of the last delta surface, flagged with kPrevSetDelta
 // (the camera is not a receiver); every path starts with a defined value, so
-// no link decision reads a slot's earlier path. Sets are below 64.
-constexpr uint8_t kPrevSetDelta = 0x80u;
-NOVA_INLINE uint32_t prevLinkSet(uint8_t prevSet) { return uint32_t(prevSet) & 0x7Fu; }
+// no link decision reads a slot's earlier path. Sets are below 2^31.
+constexpr uint32_t kPrevSetDelta = 0x80000000u;
+NOVA_INLINE uint32_t prevLinkSet(uint32_t prevSet) { return prevSet & ~kPrevSetDelta; }
+
+// Shadow-linked dome lights (docs/design/M9.md D15): only the objects in a
+// dome's shadow set block its light, so the BSDF strategy of such a dome
+// cannot ride on the continuation ray, which every object stops. It is a
+// shadow ray of its own, traced from the scattering vertex along the
+// continuation's direction like the dome's light samples (the same
+// occluders, fake-caustic transmittance and volumes), and the continuation
+// never collects the dome when it escapes (escapedRadiance, non-delta). Both
+// strategies then see the same visibility and keep their MIS weights:
+// unbiased wherever either has density. A delta continuation (a mirror)
+// keeps collecting the dome as before.
+//
+// The sample: for a non-delta continuation `dir` of BSDF density `bsdfPdf`
+// with the light multipliers' `diffuseShare`, from a vertex whose light
+// selection probabilities and links `pmf` gives, one of the shadow-linked
+// domes `domes` chosen in proportion to the magnitude of its weighted
+// radiance along dir (u: a uniform number, read only with several domes).
+// Returns the dome's index (kInvalidId: none) with its MIS-weighted radiance
+// divided by the choice probability (Le, times the light multiplier) and the
+// MIS weight alone.
+template <typename Pmf>
+NOVA_INLINE uint32_t sampleShadowLinkedDome(const LightData *lights, const uint32_t *domes, uint32_t domeCount,
+                                            const Pmf &pmf, Vec3f dir, float bsdfPdf, LightStrategy strategy,
+                                            float diffuseShare, float u, Spectrum &Le, float &weight) {
+    const auto radiance = [&](uint32_t i, float &w) -> Spectrum {
+        const LightData &light = lights[i];
+        w = 0.0f;
+        if (!pmf.links(i))
+            return Spectrum{0.0f, 0.0f, 0.0f};
+        w = bsdfSampleWeight(strategy, bsdfPdf,
+                             misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * domePdf(light, dir) : 0.0f);
+        if (!(w > 0.0f))
+            return Spectrum{0.0f, 0.0f, 0.0f};
+        return domeRadiance(light, dir) * (lightMultiplier(light, diffuseShare) * w);
+    };
+    if (domeCount == 1) {
+        Le = radiance(domes[0], weight);
+        return isBlack(Le) ? kInvalidId : domes[0];
+    }
+    float total = 0.0f;
+    for (uint32_t d = 0; d < domeCount; ++d) {
+        float w;
+        total += maxComponent(absolute(radiance(domes[d], w)));
+    }
+    if (!(total > 0.0f))
+        return kInvalidId;
+    const float target = u * total;
+    float sum = 0.0f;
+    uint32_t last = kInvalidId;
+    for (uint32_t d = 0; d < domeCount; ++d) {
+        const Spectrum L = radiance(domes[d], weight);
+        const float m = maxComponent(absolute(L));
+        if (!(m > 0.0f))
+            continue;
+        sum += m;
+        last = d;
+        if (target < sum || d + 1 == domeCount) {
+            Le = L * (total / m);
+            return domes[d];
+        }
+    }
+    // Rounding past the last dome with radiance: that one.
+    Le = radiance(domes[last], weight);
+    Le = Le * (total / maxComponent(absolute(Le)));
+    return domes[last];
+}
 
 // The opacity seed of a hit's shadow rays: they decide independently of the
 // ray that found the surface (the same surface may be crossed again).
 NOVA_INLINE float shadowRaySeed(float seed) { return seed + 0.5f - std::floor(seed + 0.5f); }
+// The seed of a shadow-linked dome's BSDF-sample ray (sampleShadowLinkedDome),
+// another decision than the light sample's.
+NOVA_INLINE float domeRaySeed(float seed) { return seed + 0.125f - std::floor(seed + 0.125f); }
 
 // A light sample transmitted through the surface: the shadow ray starts
 // below it (`below`), towards the same point on the light as from `origin`
