@@ -26,6 +26,8 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -47,15 +49,22 @@ public:
 
     void sample2D(nova::TexSampler const &sampler, nova::TexQuery const &query, float *out,
                   uint8_t *status) const override;
-    // The prepared file's MIP levels (every UDIM tile's) for the GPU. A set
-    // that does not fit in host memory drops its finest levels.
-    bool textureData(nova::TextureId id, nova::TexData &out) const override;
+    // The prepared file's shape (every UDIM tile's stored MIP levels) for
+    // the GPU, from the files' headers.
+    bool textureInfo(nova::TextureId id, nova::TexInfo &out) const override;
+    // Reads only the requested levels of one tile, a band of rows at a time
+    // (ImageInput tiles or scanlines); a level the file does not store is
+    // made from its last stored level while that is read.
+    bool textureLevels(nova::TextureId id, nova::TexLevelRequest const &request,
+                       nova::TexRowSink &sink) const override;
     // Changes each time the texture is prepared again under its id (its
     // source changed on disk), so a device copy of its data is refreshed.
     uint32_t textureGeneration(nova::TextureId id) const override;
 
     // Textures acquired so far whose file was missing.
     uint32_t MissingCount() const { return _missing.load(); }
+    // Texels textureLevels read from files so far.
+    uint64_t DeviceTexelsRead() const { return _deviceTexelsRead.load(); }
     // OIIO's statistics (level 1..5) on stderr.
     void PrintStats(int level) const;
 
@@ -71,6 +80,8 @@ private:
         mutable std::atomic<bool> reported{false};
     };
     std::string Key(HdNovaTextureRequest const &request) const;
+    // The files of a texture for the GPU: (UDIM number or 0, path).
+    std::vector<std::pair<uint32_t, std::string>> DeviceFiles(Entry const &e) const;
 
     OIIO::ImageCache *_cache = nullptr;
     OIIO::TextureSystem *_ts = nullptr;
@@ -79,6 +90,7 @@ private:
     std::unordered_map<std::string, nova::TextureId> _byKey;
     HdNovaTextureOptions _options;
     std::atomic<uint32_t> _missing{0};
+    mutable std::atomic<uint64_t> _deviceTexelsRead{0};
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

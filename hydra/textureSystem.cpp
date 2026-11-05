@@ -2,6 +2,8 @@
 
 #include "diagnostics.h"
 
+#include "core/texture/texel_stream.h"
+
 #include <OpenImageIO/imagecache.h>
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/ustring.h>
@@ -9,7 +11,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <memory>
-#include <new>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -42,6 +44,106 @@ OIIO::TextureOpt::InterpMode toOiio(nova::TexFilter filter) {
 }
 
 bool outside(float x) { return !(x >= 0.0f && x <= 1.0f); }
+
+// A texture file opened for the GPU at the image of the requested layer (the
+// first if none is named or found).
+struct DeviceFile {
+    std::unique_ptr<OIIO::ImageInput> in;
+    int subimage = 0;
+};
+
+DeviceFile openDeviceFile(std::string const &file, std::string const &layer) {
+    DeviceFile f;
+    f.in = OIIO::ImageInput::open(file);
+    if (f.in && !layer.empty())
+        for (int s = 0; f.in->seek_subimage(s, 0); ++s)
+            if (f.in->spec().get_string_attribute("oiio:subimagename") == layer) {
+                f.subimage = s;
+                break;
+            }
+    return f;
+}
+
+// An image's MIP levels from its headers: level 0's size, the levels stored
+// from level 0 on with the sizes of a chain (nova::levelSize), and whether
+// any level has more than 16 bits per channel.
+struct StoredLevels {
+    int width = 0, height = 0;
+    uint32_t stored = 0;
+    bool wide = false;
+};
+
+StoredLevels storedLevels(OIIO::ImageInput &in, int subimage) {
+    StoredLevels s;
+    bool chain = true;
+    for (int level = 0; in.seek_subimage(subimage, level); ++level) {
+        OIIO::ImageSpec const &spec = in.spec();
+        if (spec.format.size() > 2)
+            s.wide = true;
+        if (spec.nchannels < 1)
+            break;
+        if (level == 0) {
+            s.width = spec.width;
+            s.height = spec.height;
+        }
+        chain = chain && spec.width > 0 && spec.height > 0 && spec.width == nova::levelSize(s.width, uint32_t(level)) &&
+                spec.height == nova::levelSize(s.height, uint32_t(level));
+        if (chain)
+            s.stored = uint32_t(level) + 1;
+    }
+    return s;
+}
+
+// Reads one level a band of rows at a time (whole rows of tiles, or
+// scanlines) as RGBA floats with the texture's conversions (grey to RGB, a
+// missing alpha 1 as fill = 1, the color matrix M if not null) and calls
+// row(rgba) per row, from the top down.
+template <class Row>
+bool readLevel(OIIO::ImageInput &in, int subimage, int level, float const *M, std::atomic<uint64_t> &texelsRead,
+               Row &&row) {
+    if (!in.seek_subimage(subimage, level))
+        return false;
+    OIIO::ImageSpec const &spec = in.spec();
+    const int width = spec.width, height = spec.height, x0 = spec.x, y0 = spec.y, z0 = spec.z;
+    const int nch = spec.nchannels;
+    const int tileRows = spec.tile_width > 0 ? std::max(1, spec.tile_height) : 0;
+    if (width <= 0 || height <= 0 || nch < 1)
+        return false;
+    const int band = tileRows > 0 ? tileRows * std::max(1, 64 / tileRows) : 64;
+    std::vector<float> texels(size_t(width) * size_t(std::min(band, height)) * 4);
+    const OIIO::stride_t stride = OIIO::stride_t(4 * sizeof(float));
+    for (int y = 0; y < height; y += band) {
+        const int rows = std::min(band, height - y);
+        const bool ok =
+            tileRows > 0 ? in.read_tiles(subimage, level, x0, x0 + width, y0 + y, y0 + y + rows, z0, z0 + 1, 0,
+                                         std::min(nch, 4), OIIO::TypeDesc::FLOAT, texels.data(), stride)
+                         : in.read_scanlines(subimage, level, y0 + y, y0 + y + rows, z0, 0, std::min(nch, 4),
+                                             OIIO::TypeDesc::FLOAT, texels.data(), stride);
+        if (!ok)
+            return false;
+        texelsRead += uint64_t(width) * uint64_t(rows);
+        const size_t n = size_t(width) * size_t(rows);
+        for (size_t i = 0; i < n; ++i) {
+            float *q = &texels[i * 4];
+            if (nch == 3) {
+                q[3] = 1.0f; // as fill = 1
+            } else if (nch < 3) { // gray_to_rgb, with alpha for two channels
+                q[3] = nch == 2 ? q[1] : 1.0f;
+                q[1] = q[2] = q[0];
+            }
+            if (M) {
+                const float x = q[0], y1 = q[1], z = q[2];
+                q[0] = M[0] * x + M[1] * y1 + M[2] * z;
+                q[1] = M[3] * x + M[4] * y1 + M[5] * z;
+                q[2] = M[6] * x + M[7] * y1 + M[8] * z;
+            }
+        }
+        for (int r = 0; r < rows; ++r)
+            if (!row(&texels[size_t(r) * size_t(width) * 4]))
+                return false;
+    }
+    return true;
+}
 
 } // namespace
 
@@ -187,17 +289,12 @@ void HdNovaTextureSystem::sample2D(nova::TexSampler const &sampler, nova::TexQue
     }
 }
 
-bool HdNovaTextureSystem::textureData(nova::TextureId id, nova::TexData &out) const {
-    const Entry *e = id < _entries.size() ? &_entries[id] : nullptr;
-    if (!e || !e->good)
-        return false;
-    out = nova::TexData{};
-    out.udim = e->prepared.udim;
-    std::vector<std::pair<uint32_t, std::string>> files; // UDIM number (0: none), file
-    if (out.udim) {
+std::vector<std::pair<uint32_t, std::string>> HdNovaTextureSystem::DeviceFiles(Entry const &e) const {
+    std::vector<std::pair<uint32_t, std::string>> files;
+    if (e.prepared.udim) {
         std::vector<OIIO::ustring> names;
         int nu = 0, nv = 0;
-        _ts->inventory_udim(e->handle, nullptr, names, nu, nv);
+        _ts->inventory_udim(e.handle, nullptr, names, nu, nv);
         for (int v = 0; v < nv; ++v)
             for (int u = 0; u < nu; ++u) {
                 const size_t i = size_t(v) * size_t(nu) + size_t(u);
@@ -205,82 +302,71 @@ bool HdNovaTextureSystem::textureData(nova::TextureId id, nova::TexData &out) co
                     files.emplace_back(uint32_t(1001 + u + 10 * v), names[i].string());
             }
     } else {
-        files.emplace_back(0u, e->prepared.lookupPath);
+        files.emplace_back(0u, e.prepared.lookupPath);
     }
-    const bool matrix = e->prepared.transform.kind == HdNovaColorTransform::Kind::Matrix;
-    const float *M = e->prepared.transform.matrix;
-    // Reads every tile from MIP level `skip` on.
-    const auto readFrom = [&](int skip) {
-        for (const auto &[udim, file] : files) {
-            std::unique_ptr<OIIO::ImageInput> in = OIIO::ImageInput::open(file);
-            if (!in)
-                continue;
-            int subimage = 0;
-            if (!e->request.layer.empty())
-                for (int s = 0; in->seek_subimage(s, 0); ++s)
-                    if (in->spec().get_string_attribute("oiio:subimagename") == e->request.layer) {
-                        subimage = s;
-                        break;
-                    }
-            nova::TexTile tile;
-            tile.udim = udim;
-            for (int level = 0; in->seek_subimage(subimage, level); ++level) {
-                const OIIO::ImageSpec &spec = in->spec();
-                if (spec.format.size() > 2)
-                    out.half = false;
-                if (level < skip)
-                    continue;
-                const int nch = spec.nchannels;
-                if (nch < 1)
-                    break;
-                const size_t n = size_t(spec.width) * size_t(spec.height);
-                nova::TexLevel l;
-                l.width = spec.width;
-                l.height = spec.height;
-                l.texels.resize(n * 4);
-                // Straight into the RGBA texels (no staging copy of the level).
-                if (!in->read_image(subimage, level, 0, std::min(nch, 4), OIIO::TypeDesc::FLOAT, l.texels.data(),
-                                    OIIO::stride_t(4 * sizeof(float))))
-                    break;
-                for (size_t i = 0; i < n; ++i) {
-                    float *q = &l.texels[i * 4];
-                    if (nch == 3) {
-                        q[3] = 1.0f; // as fill = 1
-                    } else if (nch < 3) { // gray_to_rgb, with alpha for two channels
-                        q[3] = nch == 2 ? q[1] : 1.0f;
-                        q[1] = q[2] = q[0];
-                    }
-                    if (matrix) {
-                        const float x = q[0], y = q[1], z = q[2];
-                        q[0] = M[0] * x + M[1] * y + M[2] * z;
-                        q[1] = M[3] * x + M[4] * y + M[5] * z;
-                        q[2] = M[6] * x + M[7] * y + M[8] * z;
-                    }
-                }
-                tile.levels.push_back(std::move(l));
-            }
-            if (!tile.levels.empty())
-                out.tiles.push_back(std::move(tile));
-        }
-    };
-    // A set that does not fit in host memory drops its finest levels, as the
-    // GPU texture budget does (D10), instead of ending the process.
-    constexpr int kMaxLevels = 32;
-    for (int skip = 0; skip < kMaxLevels; ++skip) {
-        try {
-            readFrom(skip);
-            if (skip > 0)
-                HD_NOVA_WARN("texture '%s' does not fit in memory for the GPU; its %d finest MIP levels are dropped",
-                             e->request.path.c_str(), skip);
-            return !out.tiles.empty();
-        } catch (std::bad_alloc const &) {
-            const bool udim = out.udim;
-            out = nova::TexData{}; // frees what was read
-            out.udim = udim;
-        }
+    return files;
+}
+
+bool HdNovaTextureSystem::textureInfo(nova::TextureId id, nova::TexInfo &out) const {
+    const Entry *e = id < _entries.size() ? &_entries[id] : nullptr;
+    if (!e || !e->good)
+        return false;
+    out = nova::TexInfo{};
+    out.udim = e->prepared.udim;
+    for (auto const &[udim, file] : DeviceFiles(*e)) {
+        DeviceFile f = openDeviceFile(file, e->request.layer);
+        if (!f.in)
+            continue;
+        const StoredLevels s = storedLevels(*f.in, f.subimage);
+        if (s.wide)
+            out.half = false;
+        if (s.stored == 0)
+            continue;
+        nova::TexTileInfo tile;
+        tile.udim = udim;
+        tile.width = s.width;
+        tile.height = s.height;
+        tile.stored = s.stored;
+        out.tiles.push_back(tile);
     }
-    HD_NOVA_WARN("texture '%s' does not fit in memory for the GPU; using the fallback", e->request.path.c_str());
-    return false;
+    return !out.tiles.empty();
+}
+
+bool HdNovaTextureSystem::textureLevels(nova::TextureId id, nova::TexLevelRequest const &request,
+                                        nova::TexRowSink &sink) const {
+    const Entry *e = id < _entries.size() ? &_entries[id] : nullptr;
+    if (!e || !e->good || request.count == 0)
+        return false;
+    std::string file;
+    for (auto const &[udim, path] : DeviceFiles(*e))
+        if (udim == request.udim) {
+            file = path;
+            break;
+        }
+    if (file.empty())
+        return false;
+    DeviceFile f = openDeviceFile(file, e->request.layer);
+    if (!f.in)
+        return false;
+    const StoredLevels s = storedLevels(*f.in, f.subimage);
+    if (s.stored == 0)
+        return false;
+    const float *M =
+        e->prepared.transform.kind == HdNovaColorTransform::Kind::Matrix ? e->prepared.transform.matrix : nullptr;
+    for (uint32_t level = request.first; level < request.first + request.count; ++level) {
+        nova::LevelWriter out(sink, level, nova::levelSize(s.width, level), nova::levelSize(s.height, level),
+                              request.half);
+        // A level the file does not store: made from its last stored one.
+        const uint32_t from = std::min(level, s.stored - 1);
+        std::optional<nova::LevelReducer> reduce;
+        if (from != level)
+            reduce.emplace(out, nova::levelSize(s.width, from), nova::levelSize(s.height, from));
+        const bool read = readLevel(*f.in, f.subimage, int(from), M, _deviceTexelsRead,
+                                    [&](float const *rgba) { return reduce ? reduce->row(rgba) : out.row(rgba); });
+        if (!read || !out.finish())
+            return false;
+    }
+    return true;
 }
 
 uint32_t HdNovaTextureSystem::textureGeneration(nova::TextureId id) const {

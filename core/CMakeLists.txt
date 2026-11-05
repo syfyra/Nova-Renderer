@@ -11,6 +11,8 @@ add_library(nova_core STATIC
     shading/ir.cpp
     shading/compiler.cpp
     texture/memory_sampler.cpp
+    texture/texel_stream.cpp
+    texture/texture_budget.cpp
     integrator/material_eval.cpp
     integrator/shading_queries.cpp
     accel/embree_accel.cpp

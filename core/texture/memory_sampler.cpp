@@ -1,5 +1,8 @@
 #include "core/texture/memory_sampler.h"
 
+#include "core/texture/texel_stream.h"
+
+#include <algorithm>
 #include <cmath>
 
 namespace nova {
@@ -28,8 +31,9 @@ bool wrapIndex(TexWrap wrap, int n, int &i) {
 
 } // namespace
 
-TextureId MemorySampler::add(int width, int height, int channels, std::vector<float> texels) {
-    m_textures.push_back({width, height, channels, std::move(texels)});
+TextureId MemorySampler::add(int width, int height, int channels, std::vector<float> texels,
+                             std::vector<std::vector<float>> mips) {
+    m_textures.push_back({width, height, channels, std::move(texels), std::move(mips)});
     return TextureId(m_textures.size() - 1);
 }
 
@@ -41,6 +45,7 @@ void MemorySampler::replace(TextureId id, int width, int height, int channels, s
     tex.height = height;
     tex.channels = channels;
     tex.texels = std::move(texels);
+    tex.mips.clear();
     ++tex.generation;
 }
 
@@ -96,24 +101,59 @@ void MemorySampler::sample2D(const TexSampler &sampler, const TexQuery &q, float
     }
 }
 
-bool MemorySampler::textureData(TextureId id, TexData &out) const {
+uint32_t MemorySampler::stored(const Texture &tex) {
+    uint32_t n = 1;
+    for (const std::vector<float> &mip : tex.mips) {
+        if (mip.size() != size_t(levelSize(tex.width, n)) * size_t(levelSize(tex.height, n)) * size_t(tex.channels))
+            break;
+        ++n;
+    }
+    return n;
+}
+
+bool MemorySampler::textureInfo(TextureId id, TexInfo &out) const {
     if (id >= m_textures.size())
         return false;
     const Texture &tex = m_textures[id];
-    out = TexData{};
+    out = TexInfo{};
     out.half = false; // test data: exact
-    TexLevel level;
-    level.width = tex.width;
-    level.height = tex.height;
-    level.texels.resize(size_t(tex.width) * size_t(tex.height) * 4);
-    for (size_t i = 0; i < size_t(tex.width) * size_t(tex.height); ++i) {
-        const float *p = &tex.texels[i * size_t(tex.channels)];
-        float *q = &level.texels[i * 4];
-        for (int c = 0; c < 4; ++c)
-            q[c] = tex.channels >= 3 ? (c < tex.channels ? p[c] : (c == 3 ? 1.0f : 0.0f))
-                                     : (c < 3 ? p[0] : (tex.channels == 2 ? p[1] : 1.0f));
+    TexTileInfo tile;
+    tile.width = tex.width;
+    tile.height = tex.height;
+    tile.stored = stored(tex);
+    out.tiles.push_back(tile);
+    return tex.width > 0 && tex.height > 0 && tex.channels > 0;
+}
+
+bool MemorySampler::textureLevels(TextureId id, const TexLevelRequest &request, TexRowSink &sink) const {
+    if (id >= m_textures.size() || request.udim != 0 || request.count == 0)
+        return false;
+    const Texture &tex = m_textures[id];
+    const uint32_t last = stored(tex) - 1;
+    std::vector<float> row;
+    for (uint32_t level = request.first; level < request.first + request.count; ++level) {
+        LevelWriter out(sink, level, levelSize(tex.width, level), levelSize(tex.height, level), request.half);
+        // A level past the stored ones is made from the last stored one.
+        const uint32_t from = std::min(level, last);
+        const std::vector<float> &src = from == 0 ? tex.texels : tex.mips[from - 1];
+        const int width = levelSize(tex.width, from), height = levelSize(tex.height, from);
+        LevelReducer reduce(out, width, height);
+        row.resize(size_t(width) * 4);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const float *p = &src[(size_t(y) * size_t(width) + size_t(x)) * size_t(tex.channels)];
+                float *q = &row[size_t(x) * 4];
+                for (int c = 0; c < 4; ++c)
+                    q[c] = tex.channels >= 3 ? (c < tex.channels ? p[c] : (c == 3 ? 1.0f : 0.0f))
+                                             : (c < 3 ? p[0] : (tex.channels == 2 ? p[1] : 1.0f));
+            }
+            m_texelsRead += uint64_t(width);
+            if (!(from == level ? out.row(row.data()) : reduce.row(row.data())))
+                return false;
+        }
+        if (!out.finish())
+            return false;
     }
-    out.tiles.push_back({0, {std::move(level)}});
     return true;
 }
 

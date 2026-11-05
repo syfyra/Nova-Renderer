@@ -13,6 +13,7 @@
 #include "hydra/textureSystem.h"
 
 #include "core/shading/compiler.h"
+#include "core/texture/texel_stream.h"
 
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/imagebufalgo.h>
@@ -24,10 +25,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <process.h>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -540,4 +544,150 @@ TEST_CASE("Ray cones pick Karma's MIP levels", "[hydra][textures][cones]") {
         REQUIRE(buf.write(checker, OIIO::TypeDesc::HALF));
     }
     CHECK_THAT(renderTextured(ts, ts.Acquire({checker, "raw", ""}), 16, 16), WithinAbs(0.5, 0.005));
+}
+
+namespace {
+
+// Keeps what textureLevels hands over, per level (texels as 4 x uint16_t
+// halfs or 4 floats), and the largest band.
+struct DeviceLevels final : nova::TexRowSink {
+    std::map<uint32_t, std::vector<uint8_t>> levels;
+    std::map<uint32_t, int> widths;
+    int largestBand = 0;
+    size_t texel = 8;
+    bool put(nova::TexRows const &r) override {
+        std::vector<uint8_t> &l = levels[r.level];
+        const size_t row = size_t(r.width) * texel;
+        l.resize(row * size_t(r.height));
+        std::memcpy(&l[size_t(r.y) * row], r.texels, row * size_t(r.rows));
+        widths[r.level] = r.width;
+        largestBand = std::max(largestBand, r.rows);
+        return true;
+    }
+    template <class T> T at(uint32_t level, size_t i) const {
+        T v;
+        std::memcpy(&v, &levels.at(level)[i * sizeof(T)], sizeof(T));
+        return v;
+    }
+};
+
+} // namespace
+
+// R1-48: the GPU's texture data. textureInfo reads only the headers;
+// textureLevels reads only the requested levels of one tile, a band of rows
+// at a time, and makes a level the file does not store from its last stored
+// one while reading that once.
+TEST_CASE("GPU texture data reads only the requested levels", "[hydra][textures][budget]") {
+    // 256^2 half, tiled and MIP-mapped (read directly), level l constant l + 1.
+    std::string list;
+    for (int l = 1, size = 128; size >= 1; ++l, size /= 2) {
+        const std::string name = "dev_level" + std::to_string(l) + ".exr";
+        writeImage(name, size, size, {float(l + 1)}, OIIO::TypeDesc::FLOAT);
+        list += (list.empty() ? "" : ";") + testDir() + "/" + name;
+    }
+    const std::string mipped = testDir() + "/dev_levels.exr";
+    {
+        OIIO::ImageBuf top(OIIO::ImageSpec(256, 256, 1, OIIO::TypeDesc::FLOAT));
+        const float one = 1.0f;
+        OIIO::ImageBufAlgo::fill(top, &one);
+        OIIO::ImageSpec config;
+        config.tile_width = config.tile_height = 32;
+        config.set_format(OIIO::TypeDesc::HALF);
+        config.attribute("maketx:mipimages", list);
+        REQUIRE(OIIO::ImageBufAlgo::make_texture(OIIO::ImageBufAlgo::MakeTxTexture, top, mipped, config));
+    }
+    HdNovaTextureSystem ts;
+    ts.SetOptions(testOptions());
+    const nova::TextureId id = ts.Acquire({mipped, "raw", ""});
+    nova::TexInfo info;
+    REQUIRE(ts.textureInfo(id, info));
+    REQUIRE(info.tiles.size() == 1);
+    CHECK(!info.udim);
+    CHECK(info.half);
+    CHECK((info.tiles[0].width == 256 && info.tiles[0].height == 256));
+    CHECK(info.tiles[0].stored == 9);
+    CHECK(ts.DeviceTexelsRead() == 0); // headers only
+
+    // Levels 3 to 8 (32^2 down to 1): only their texels are read.
+    DeviceLevels got;
+    nova::TexLevelRequest request;
+    request.first = 3;
+    request.count = 6;
+    REQUIRE(ts.textureLevels(id, request, got));
+    CHECK(ts.DeviceTexelsRead() == 32 * 32 + 16 * 16 + 8 * 8 + 4 * 4 + 2 * 2 + 1);
+    REQUIRE(got.levels.size() == 6);
+    CHECK(got.levels.count(2) == 0);
+    CHECK(got.widths[3] == 32);
+    CHECK(got.largestBand <= nova::LevelWriter::kBandRows);
+    bool constant = true;
+    for (uint32_t l = 3; l <= 8; ++l) {
+        const size_t n = size_t(got.widths[l]) * size_t(got.widths[l]);
+        for (size_t i = 0; i < n; ++i)
+            constant = constant && got.at<uint16_t>(l, i * 4) == nova::floatToHalf(float(l + 1)) &&
+                       got.at<uint16_t>(l, i * 4 + 2) == nova::floatToHalf(float(l + 1)) && // grey to RGB
+                       got.at<uint16_t>(l, i * 4 + 3) == nova::floatToHalf(1.0f);
+    }
+    CHECK(constant);
+
+    // A plain scanline file read directly (nova:textureAutoTx off): level 0
+    // only; its level 2 is made from it, a 4 x 4 box per texel.
+    const std::string ramp = testDir() + "/dev_ramp.exr";
+    {
+        std::vector<float> px(300 * 200);
+        for (int y = 0; y < 200; ++y)
+            for (int x = 0; x < 300; ++x)
+                px[size_t(y) * 300 + size_t(x)] = float(x);
+        auto out = OIIO::ImageOutput::create(ramp);
+        REQUIRE(out);
+        REQUIRE(out->open(ramp, OIIO::ImageSpec(300, 200, 1, OIIO::TypeDesc::FLOAT)));
+        REQUIRE(out->write_image(OIIO::TypeDesc::FLOAT, px.data()));
+        out->close();
+    }
+    HdNovaTextureOptions direct = testOptions();
+    direct.autoTx = false;
+    HdNovaTextureSystem plain;
+    plain.SetOptions(direct);
+    const nova::TextureId rid = plain.Acquire({ramp, "raw", ""});
+    nova::TexInfo rinfo;
+    REQUIRE(plain.textureInfo(rid, rinfo));
+    CHECK(!rinfo.half);
+    CHECK((rinfo.tiles[0].width == 300 && rinfo.tiles[0].stored == 1));
+    DeviceLevels made;
+    made.texel = 16;
+    request = {};
+    request.first = 2;
+    request.half = false;
+    REQUIRE(plain.textureLevels(rid, request, made));
+    CHECK(plain.DeviceTexelsRead() == 300 * 200);
+    REQUIRE(made.widths[2] == 75);
+    REQUIRE(made.levels[2].size() == size_t(75 * 50) * 16);
+    bool means = true;
+    for (size_t y = 0; y < 50; ++y)
+        for (size_t x = 0; x < 75; ++x) {
+            const size_t i = (y * 75 + x) * 4;
+            const float m = 4.0f * float(x) + 1.5f;
+            means = means && made.at<float>(2, i) == m && made.at<float>(2, i + 1) == m && made.at<float>(2, i + 3) == 1.0f;
+        }
+    CHECK(means);
+
+    // A UDIM set: each tile's shape, and one tile's coarsest level.
+    writeImage("devudim.1001.exr", 16, 16, {0.25f, 0.25f, 0.25f}, OIIO::TypeDesc::HALF, true);
+    writeImage("devudim.1002.exr", 32, 32, {0.5f, 0.75f, 1.0f}, OIIO::TypeDesc::HALF, true);
+    const nova::TextureId uid = ts.Acquire({testDir() + "/devudim.<UDIM>.exr", "raw", ""});
+    nova::TexInfo uinfo;
+    REQUIRE(ts.textureInfo(uid, uinfo));
+    CHECK(uinfo.udim);
+    REQUIRE(uinfo.tiles.size() == 2);
+    CHECK((uinfo.tiles[0].udim == 1001 && uinfo.tiles[0].width == 16 && uinfo.tiles[0].stored == 5));
+    CHECK((uinfo.tiles[1].udim == 1002 && uinfo.tiles[1].width == 32 && uinfo.tiles[1].stored == 6));
+    DeviceLevels tile;
+    request = {};
+    request.udim = 1002;
+    request.first = 5;
+    const uint64_t before = ts.DeviceTexelsRead();
+    REQUIRE(ts.textureLevels(uid, request, tile));
+    CHECK(ts.DeviceTexelsRead() == before + 1);
+    CHECK(tile.at<uint16_t>(5, 1) == nova::floatToHalf(0.75f));
+    request.udim = 1011; // no such tile
+    CHECK(!ts.textureLevels(uid, request, tile));
 }

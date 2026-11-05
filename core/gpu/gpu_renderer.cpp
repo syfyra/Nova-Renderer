@@ -5,12 +5,14 @@
 #include "core/gpu/embedded.h"
 #include "core/scene/scene.h"
 #include "core/texture/ray_cone.h"
+#include "core/texture/texel_stream.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace nova::gpu {
 
@@ -25,34 +27,54 @@ constexpr const float *BsdfTables::*kTableMembers[kBsdfTableCount] = {
     &BsdfTables::ggxE,       &BsdfTables::ggxEavg, &BsdfTables::ggxABC,   &BsdfTables::dielRT, &BsdfTables::dielRTinv,
     &BsdfTables::dielR,      &BsdfTables::fresnelAvg, &BsdfTables::charlieE, &BsdfTables::thinRT, &BsdfTables::thinR};
 
-// IEEE half of f, rounded to nearest even.
-uint16_t toHalf(float f) {
-    uint32_t x;
-    std::memcpy(&x, &f, 4);
-    const uint32_t sign = (x >> 16) & 0x8000u, biased = (x >> 23) & 0xFFu;
-    uint32_t mant = x & 0x7FFFFFu;
-    if (biased == 0xFFu)
-        return uint16_t(sign | 0x7C00u | (mant ? 0x200u : 0u));
-    const int32_t exp = int32_t(biased) - 127 + 15;
-    if (exp >= 31)
-        return uint16_t(sign | 0x7C00u);
-    if (exp <= 0) { // subnormal or zero
-        if (exp < -10)
-            return uint16_t(sign);
-        mant |= 0x800000u;
-        const uint32_t shift = uint32_t(14 - exp), half = 1u << (shift - 1);
-        uint32_t h = mant >> shift;
-        const uint32_t rest = mant & ((1u << shift) - 1u);
-        if (rest > half || (rest == half && (h & 1u)))
-            ++h;
-        return uint16_t(sign | h);
+// Uploads the bands of rows a sampler reads (ITextureSampler::textureLevels)
+// into the levels of a tile's chain as they come: no level is ever whole in
+// host memory.
+class ChainUpload final : public TexRowSink {
+public:
+    ChainUpload(Device &device, CUmipmappedArray chain, const TexTileInfo &tile, const TexTilePlan &plan,
+                size_t texel)
+        : m_device(device), m_chain(chain), m_tile(tile), m_plan(plan), m_texel(texel) {}
+    bool put(const TexRows &r) override {
+        const uint32_t l = r.level;
+        if (l < m_plan.first || l - m_plan.first >= m_plan.count || r.width != levelSize(m_tile.width, l) ||
+            r.height != levelSize(m_tile.height, l) || r.y < 0 || r.rows <= 0 || r.y + r.rows > r.height || !r.texels)
+            return false;
+        const CudaApi &cu = m_device.cu();
+        if (l != m_level) {
+            if (!m_device.check(cu.p_cuMipmappedArrayGetLevel(&m_array, m_chain, l - m_plan.first),
+                                "cuMipmappedArrayGetLevel"))
+                return false;
+            m_level = l;
+        }
+        CUDA_MEMCPY2D copy{};
+        copy.srcMemoryType = CU_MEMORYTYPE_HOST;
+        copy.srcHost = r.texels;
+        copy.srcPitch = size_t(r.width) * m_texel;
+        copy.dstMemoryType = CU_MEMORYTYPE_ARRAY;
+        copy.dstArray = m_array;
+        copy.dstY = size_t(r.y);
+        copy.WidthInBytes = size_t(r.width) * m_texel;
+        copy.Height = size_t(r.rows);
+        if (!m_device.check(cu.p_cuMemcpy2DAsync(&copy, m_device.stream()), "cuMemcpy2DAsync") ||
+            !m_device.sync()) // the band is reused
+            return false;
+        m_bytes += size_t(r.width) * size_t(r.rows) * m_texel;
+        return true;
     }
-    uint32_t h = (uint32_t(exp) << 10) | (mant >> 13);
-    const uint32_t rest = mant & 0x1FFFu;
-    if (rest > 0x1000u || (rest == 0x1000u && (h & 1u)))
-        ++h; // a carry into the exponent rounds up correctly
-    return uint16_t(sign | h);
-}
+    // Whether every planned level came whole.
+    bool complete() const { return m_bytes == m_plan.bytes; }
+
+private:
+    Device &m_device;
+    CUmipmappedArray m_chain;
+    const TexTileInfo &m_tile;
+    const TexTilePlan &m_plan;
+    size_t m_texel;
+    CUarray m_array = nullptr;
+    uint32_t m_level = ~0u;
+    size_t m_bytes = 0;
+};
 
 // Whether a material's closures can hold a subsurface walk: a native model
 // with a subsurface weight (uniform, or one its program writes), or a graph
@@ -93,7 +115,7 @@ GpuRenderer::~GpuRenderer() {
     }
 }
 
-void GpuRenderer::releaseTextures() {
+void GpuRenderer::freeTextureData() {
     if (m_texObjects.empty() && m_textures.empty())
         return;
     Device::Scope scope(m_device);
@@ -101,14 +123,23 @@ void GpuRenderer::releaseTextures() {
     m_device.sync();
     for (CUtexObject o : m_texObjects)
         cu.p_cuTexObjectDestroy(o);
-    for (auto &[id, tex] : m_textures)
+    for (auto &[id, tex] : m_textures) {
         for (auto &[udim, chain] : tex.tiles)
             cu.p_cuMipmappedArrayDestroy(chain);
+        tex.tiles.clear();
+        tex.levels.clear();
+        tex.ok = tex.uploaded = false;
+        tex.bytes = 0;
+    }
     m_texObjects.clear();
-    m_textures.clear();
     m_texSlots.clear();
     m_tileTables.clear();
     m_textureBytes = 0;
+}
+
+void GpuRenderer::releaseTextures() {
+    freeTextureData();
+    m_textures.clear();
 }
 
 bool GpuRenderer::texturesChanged(const ITextureSampler *sampler) const {
@@ -120,95 +151,121 @@ bool GpuRenderer::texturesChanged(const ITextureSampler *sampler) const {
     return false;
 }
 
-GpuRenderer::Texture &GpuRenderer::texture(const ITextureSampler *sampler, TextureId id) {
+GpuRenderer::Texture &GpuRenderer::textureEntry(const ITextureSampler *sampler, TextureId id) {
     auto [it, fresh] = m_textures.try_emplace(id);
     Texture &tex = it->second;
-    if (!fresh)
-        return tex;
-    // Also for a missing file: one that appears later is a new generation.
-    tex.generation = sampler->textureGeneration(id);
-    TexData data;
-    if (!sampler->textureData(id, data) || data.tiles.empty())
-        return tex;
-    const CudaApi &cu = m_device.cu();
+    if (fresh) {
+        // Also for a missing file: one that appears later is a new generation.
+        tex.generation = sampler->textureGeneration(id);
+        tex.known = sampler->textureInfo(id, tex.info) && !tex.info.tiles.empty();
+    }
+    return tex;
+}
+
+size_t GpuRenderer::textureBudget() {
     if (m_textureBudget == 0) { // nova:gpuTextureBudget's default: half the memory free at the first upload
         size_t free = 0, total = 0;
-        cu.p_cuMemGetInfo(&free, &total);
+        m_device.cu().p_cuMemGetInfo(&free, &total);
         m_textureBudget = std::max<size_t>(free / 2, 1);
     }
-    const size_t texel = data.half ? 8 : 16; // RGBA
-    tex.tiles.reserve(data.tiles.size()); // the emplace_back below cannot throw
-    tex.levels.reserve(data.tiles.size());
-    for (TexTile &tile : data.tiles) {
-        if (tile.levels.empty())
-            continue;
-        // The levels a CUDA chain holds: each half the size of the one before
-        // (rounded down, at least 1).
-        const int w0 = tile.levels[0].width, h0 = tile.levels[0].height;
-        uint32_t levels = 1;
-        while (levels < tile.levels.size() && tile.levels[levels].width == std::max(1, w0 >> levels) &&
-               tile.levels[levels].height == std::max(1, h0 >> levels))
-            ++levels;
-        const auto bytes = [&](uint32_t from) {
-            size_t b = 0;
-            for (uint32_t l = from; l < levels; ++l)
-                b += size_t(tile.levels[l].width) * size_t(tile.levels[l].height) * texel;
-            return b;
-        };
-        // Over the budget the finest levels are dropped (D10).
-        uint32_t first = 0;
-        while (first + 1 < levels && m_textureBytes + bytes(first) > m_textureBudget)
-            ++first;
-        if (first > 0 && !m_budgetWarned) {
-            m_budgetWarned = true;
-            std::fprintf(stderr, "[Nova] XPU: textures exceed the GPU texture budget (%.0f MB); finer MIP levels are dropped\n",
-                         double(m_textureBudget) / 1048576.0);
-        }
-        CUDA_ARRAY3D_DESCRIPTOR desc{};
-        desc.Width = size_t(tile.levels[first].width);
-        desc.Height = size_t(tile.levels[first].height);
-        desc.Format = data.half ? CU_AD_FORMAT_HALF : CU_AD_FORMAT_FLOAT;
-        desc.NumChannels = 4;
-        // Host memory first: nothing may throw (std::bad_alloc, which
-        // Renderer::gpuPass survives) while the chain has no owner.
-        std::vector<uint16_t> halves;
-        if (data.half)
-            halves.reserve(tile.levels[first].texels.size()); // the largest level copied
-        CUmipmappedArray chain = nullptr;
-        if (!m_device.check(cu.p_cuMipmappedArrayCreate(&chain, &desc, levels - first), "cuMipmappedArrayCreate"))
-            continue;
-        bool ok = true;
-        for (uint32_t l = first; l < levels && ok; ++l) {
-            const TexLevel &level = tile.levels[l];
-            CUarray array = nullptr;
-            ok = m_device.check(cu.p_cuMipmappedArrayGetLevel(&array, chain, l - first), "cuMipmappedArrayGetLevel");
-            const void *src = level.texels.data();
-            if (data.half) {
-                halves.resize(level.texels.size());
-                for (size_t i = 0; i < halves.size(); ++i)
-                    halves[i] = toHalf(level.texels[i]);
-                src = halves.data();
-            }
-            CUDA_MEMCPY2D copy{};
-            copy.srcMemoryType = CU_MEMORYTYPE_HOST;
-            copy.srcHost = src;
-            copy.srcPitch = size_t(level.width) * texel;
-            copy.dstMemoryType = CU_MEMORYTYPE_ARRAY;
-            copy.dstArray = array;
-            copy.WidthInBytes = size_t(level.width) * texel;
-            copy.Height = size_t(level.height);
-            ok = ok && m_device.check(cu.p_cuMemcpy2DAsync(&copy, m_device.stream()), "cuMemcpy2DAsync") &&
-                 m_device.sync(); // the staging buffer is reused
-        }
-        if (!ok) {
-            cu.p_cuMipmappedArrayDestroy(chain);
-            continue;
-        }
-        m_textureBytes += bytes(first);
-        tex.tiles.emplace_back(tile.udim, chain);
-        tex.levels.push_back(levels - first);
+    return m_textureBudget;
+}
+
+void GpuRenderer::planTextures(const Scene &scene) {
+    if (!m_sampler)
+        return;
+    // The textures the materials' programs sample (surfaces and volumes,
+    // incl. materials no object uses, as the upload below), in order of
+    // first use.
+    std::vector<TextureId> used;
+    std::unordered_set<TextureId> seen;
+    for (MaterialId id = 0; id < scene.materialCount(); ++id)
+        if (scene.hasMaterial(id))
+            for (const TexSampler &s : scene.material(id).samplers)
+                if (s.texture != kNoTexture && seen.insert(s.texture).second)
+                    used.push_back(s.texture);
+    std::vector<const TexInfo *> infos;
+    infos.reserve(used.size());
+    for (TextureId id : used) {
+        const Texture &tex = textureEntry(m_sampler, id);
+        infos.push_back(tex.known ? &tex.info : nullptr);
     }
-    tex.udim = data.udim;
+    const size_t budget = textureBudget();
+    TexBudgetPlan plan = planTextureBudget(infos, budget);
+    // Device copies stay while they hold what the plan keeps and the ones
+    // no longer used leave the room; otherwise everything is uploaded anew,
+    // so the device holds what a fresh upload of this scene would (IPR).
+    bool again = false;
+    size_t unused = m_textureBytes;
+    for (size_t i = 0; i < used.size(); ++i) {
+        const Texture &tex = m_textures[used[i]];
+        if (!tex.uploaded)
+            continue;
+        unused -= tex.bytes;
+        again = again || tex.plan != plan.textures[i];
+    }
+    if (again || (unused > 0 && unused + plan.bytes > budget))
+        freeTextureData();
+    for (size_t i = 0; i < used.size(); ++i)
+        m_textures[used[i]].plan = std::move(plan.textures[i]);
+    if (plan.reduced && !m_budgetWarned) {
+        m_budgetWarned = true;
+        std::fprintf(stderr,
+                     "[Nova] XPU: textures need %.0f MB, more than the GPU texture budget (%.0f MB); the finer MIP "
+                     "levels of the largest are left out (down to %d texels)\n",
+                     double(plan.fullBytes) / 1048576.0, double(budget) / 1048576.0, 1 << std::max(plan.cap, 0));
+    }
+}
+
+GpuRenderer::Texture &GpuRenderer::texture(const ITextureSampler *sampler, TextureId id) {
+    Texture &tex = textureEntry(sampler, id);
+    if (tex.uploaded)
+        return tex;
+    tex.uploaded = true;
+    if (!tex.known)
+        return tex;
+    if (tex.plan.size() != tex.info.tiles.size()) { // not planned: what the budget has left
+        const size_t budget = textureBudget(), left = budget > m_textureBytes ? budget - m_textureBytes : 0;
+        tex.plan = planTextureBudget({&tex.info}, left).textures[0];
+    }
+    const CudaApi &cu = m_device.cu();
+    const size_t texel = texelBytes(tex.info);
+    // Host memory first: nothing may throw (std::bad_alloc, which
+    // Renderer::gpuPass survives) while a chain has no owner.
+    tex.tiles.reserve(tex.info.tiles.size());
+    tex.levels.reserve(tex.info.tiles.size());
+    for (size_t i = 0; i < tex.info.tiles.size(); ++i) {
+        const TexTileInfo &tile = tex.info.tiles[i];
+        const TexTilePlan &plan = tex.plan[i];
+        if (plan.count == 0)
+            continue;
+        CUDA_ARRAY3D_DESCRIPTOR desc{};
+        desc.Width = size_t(levelSize(tile.width, plan.first));
+        desc.Height = size_t(levelSize(tile.height, plan.first));
+        desc.Format = tex.info.half ? CU_AD_FORMAT_HALF : CU_AD_FORMAT_FLOAT;
+        desc.NumChannels = 4;
+        CUmipmappedArray chain = nullptr;
+        if (!m_device.check(cu.p_cuMipmappedArrayCreate(&chain, &desc, plan.count), "cuMipmappedArrayCreate"))
+            continue;
+        tex.tiles.emplace_back(tile.udim, chain); // owned from here on (reserved: cannot throw)
+        tex.levels.push_back(plan.count);
+        ChainUpload upload(m_device, chain, tile, plan, texel);
+        TexLevelRequest request;
+        request.udim = tile.udim;
+        request.first = plan.first;
+        request.count = plan.count;
+        request.half = tex.info.half;
+        if (!sampler->textureLevels(id, request, upload) || !upload.complete()) {
+            m_device.sync();
+            cu.p_cuMipmappedArrayDestroy(chain);
+            tex.tiles.pop_back();
+            tex.levels.pop_back();
+            continue;
+        }
+        tex.bytes += plan.bytes;
+        m_textureBytes += plan.bytes;
+    }
+    tex.udim = tex.info.udim;
     tex.ok = !tex.tiles.empty();
     return tex;
 }
@@ -460,6 +517,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
         releaseTextures();
         m_sampler = scene.textureSampler();
     }
+    planTextures(scene);
     std::vector<DeviceTexSlot> texSlots;
     std::vector<SurfaceInputs> inputs(scene.materialCount(), lambertDefaults());
     std::vector<GpuMaterial> materials(scene.materialCount());
