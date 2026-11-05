@@ -46,6 +46,12 @@ constexpr const char *kPackagedVersion = "nova-usdz-1";
 constexpr const char *kLinkVersion = "nova-udim-link-1";
 constexpr const char *kRatVersion = "nova-rat-exr-1"; // a .rat as the EXR imaketx makes of it
 
+// How a .rat file is read (HdNovaReadableTexture), as part of cache names:
+// the version, the mode and, for decoding, the OCIO config.
+std::string ratPipeline(bool stored) {
+    return std::string("|") + kRatVersion + (stored ? std::string("|stored") : "|decoded|" + TfGetenv("OCIO"));
+}
+
 struct SourceFile {
     std::string path;
     std::string tile; // UDIM: "1001" or "u1_v1"; empty for a single file
@@ -174,6 +180,32 @@ std::string houdiniBin() {
     return {};
 }
 
+#ifdef _WIN32
+// One argument of a Windows command line, quoted as CommandLineToArgvW and
+// the C runtime parse it back.
+std::wstring quoteArgument(std::wstring const &arg) {
+    if (!arg.empty() && arg.find_first_of(L" \t\n\v\"") == std::wstring::npos)
+        return arg;
+    std::wstring q = L"\"";
+    for (auto it = arg.begin();; ++it) {
+        size_t backslashes = 0;
+        for (; it != arg.end() && *it == L'\\'; ++it)
+            ++backslashes;
+        if (it == arg.end()) {
+            q.append(backslashes * 2, L'\\'); // before the closing quote
+            break;
+        }
+        if (*it == L'"')
+            q.append(backslashes * 2 + 1, L'\\');
+        else
+            q.append(backslashes, L'\\');
+        q.push_back(*it);
+    }
+    q.push_back(L'"');
+    return q;
+}
+#endif
+
 // Runs imaketx <source> <target>, with `stored` the stored values unchanged
 // (-m builtin -l 0: no OCIO, no sRGB decoding), otherwise decoded by the
 // stored color space, named in the target's metadata (--disableparse: not
@@ -187,17 +219,29 @@ bool runImaketx(std::string const &source, std::string const &target, bool store
         return false;
     }
 #ifdef _WIN32
-    const std::wstring exe = tool.wstring(), src = fs::u8path(source).wstring(), dst = fs::u8path(target).wstring();
-    // _wspawnv passes the arguments unquoted: quote them.
-    const std::wstring a0 = L"\"" + exe + L"\"", a1 = L"\"" + src + L"\"", a2 = L"\"" + dst + L"\"";
-    std::vector<const wchar_t *> quoted{a0.c_str(), a1.c_str(), a2.c_str()};
-    for (const wchar_t *a : stored ? std::vector<const wchar_t *>{L"-m", L"builtin", L"-l", L"0"}
-                                   : std::vector<const wchar_t *>{L"--disableparse"})
-        quoted.push_back(a);
-    quoted.push_back(nullptr);
-    const intptr_t code = _wspawnv(_P_WAIT, exe.c_str(), quoted.data());
+    // imaketx is a console program: without CREATE_NO_WINDOW every conversion
+    // would open a console window in Houdini's GUI (the viewport). It
+    // inherits no handles and prints nothing that is needed.
+    const std::wstring exe = tool.wstring();
+    std::wstring commandLine = quoteArgument(exe) + L" " + quoteArgument(fs::u8path(source).wstring()) + L" " +
+                               quoteArgument(fs::u8path(target).wstring());
+    commandLine += stored ? L" -m builtin -l 0" : L" --disableparse";
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
+                        &startup, &process)) {
+        error = "cannot run imaketx (Windows error " + std::to_string(GetLastError()) + ")";
+        return false;
+    }
+    WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD code = 1;
+    if (!GetExitCodeProcess(process.hProcess, &code))
+        code = DWORD(-1);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
     if (code != 0) {
-        error = "imaketx failed (exit code " + std::to_string(code) + ")";
+        error = "imaketx failed (exit code " + std::to_string(int(code)) + ")";
         return false;
     }
     return true;
@@ -410,11 +454,9 @@ std::string HdNovaReadableTexture(std::string const &path, HdNovaTextureOptions 
         error = "the file does not exist";
         return {};
     }
-    // Named by the file and the mode; decoding goes through the OCIO config.
-    uint64_t key = fnv1a(kRatVersion);
-    key = fnv1a(utf8(fs::u8path(local).lexically_normal()) + "|" + std::to_string(f.size) + "|" +
-                    std::to_string(f.mtime) + "|" + (stored ? std::string("stored") : "decoded|" + TfGetenv("OCIO")),
-                key);
+    // Named by the file and the pipeline (decoding goes through the OCIO config).
+    const uint64_t key = fnv1a(utf8(fs::u8path(local).lexically_normal()) + "|" + std::to_string(f.size) + "|" +
+                                   std::to_string(f.mtime) + ratPipeline(stored));
     const fs::path dir = fs::u8path(HdNovaTextureCacheDir(options));
     std::error_code ec;
     fs::create_directories(dir, ec);
@@ -492,9 +534,12 @@ HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &path, std::string 
 
     // Cache name: the source(s), the color space and its transform to the
     // rendering space (the pixels are baked in it), the layer and the version.
+    // .rat sources also name their pipeline (HdNovaReadableTexture's version
+    // and mode), so files an older build made straight with imaketx are not
+    // reused; other files keep their names.
     uint64_t key = fnv1a(kFormatVersion);
     key = fnv1a(r.colorSpace + "|" + HdNovaSceneLinearTransformId(r.colorSpace) + "|" + layer + "|" +
-                    utf8(fs::u8path(path).lexically_normal()) + (stored ? "|stored" : ""),
+                    utf8(fs::u8path(path).lexically_normal()) + (rat ? ratPipeline(stored) : std::string()),
                 key);
     for (SourceFile const &f : files)
         key = fnv1a(f.tile + "|" + std::to_string(f.size) + "|" + std::to_string(f.mtime), key);

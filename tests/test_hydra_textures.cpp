@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <process.h>
@@ -350,6 +351,16 @@ TEST_CASE("Light and surface textures read .rat files as Karma does", "[hydra][t
     const std::string byteRat = testDir() + "/c128_light.rat";
     imaketx(writeImage("c128_light.png", 8, 8, {128 / 255.0f, 128 / 255.0f, 128 / 255.0f}, OIIO::TypeDesc::UINT8),
             byteRat);
+    // RGBA: imaketx decodes 4-channel 8-bit sRGB data too (its help names
+    // only 3 channels), as Karma does (measured: dome sky 0.6038, the same as
+    // the RGB file).
+    const std::string rgbaRat = testDir() + "/c128a_light.rat";
+    {
+        const std::string png = writeImage("c128a_light.png", 8, 8, {128 / 255.0f, 128 / 255.0f, 128 / 255.0f, 1.0f},
+                                           OIIO::TypeDesc::UINT8);
+        const std::string cmd = "\"\"" NOVA_HFS "/bin/iconvert.exe\" \"" + png + "\" \"" + rgbaRat + "\"\"";
+        REQUIRE(std::system(cmd.c_str()) == 0);
+    }
     // The same float file under names the file rules match.
     const std::string srgbRat = testDir() + "/hdri_srgb_tx.rat", acescgRat = testDir() + "/hdri_ACEScg.rat";
     fs::copy_file(fs::u8path(floatRat), fs::u8path(srgbRat), fs::copy_options::overwrite_existing);
@@ -365,6 +376,9 @@ TEST_CASE("Light and surface textures read .rat files as Karma does", "[hydra][t
     const std::shared_ptr<const nova::Image> decoded = lights.Load(byteRat);
     REQUIRE(decoded);
     CHECK_THAT(decoded->pixels[0].y, WithinAbs(0.215861, 1e-3)); // half float after imaketx
+    const std::shared_ptr<const nova::Image> rgba = lights.Load(rgbaRat);
+    REQUIRE(rgba);
+    CHECK_THAT(rgba->pixels[0].x, WithinAbs(0.215861, 1e-3));
     const std::shared_ptr<const nova::Image> named = lights.Load(srgbRat);
     REQUIRE(named);
     CHECK_THAT(named->pixels[0].x, WithinRel(srgbToLinear(c[0]), 1e-4f)); // Karma: 4.9539
@@ -382,6 +396,11 @@ TEST_CASE("Light and surface textures read .rat files as Karma does", "[hydra][t
     CHECK_THAT(sample(ts, ts.Acquire({floatRat, "", ""}), slot, 0.5f, 0.5f).v[1], WithinAbs(c[1], 1e-5));
     CHECK_THAT(sample(ts, ts.Acquire({byteRat, "", ""}), slot, 0.5f, 0.5f).v[1], WithinAbs(0.215861, 1e-3));
     CHECK_THAT(sample(ts, ts.Acquire({byteRat, "raw", ""}), slot, 0.5f, 0.5f).v[1], WithinAbs(128 / 255.0, 1e-3));
+    nova::TexSlot slot4 = slot;
+    slot4.channels = 4;
+    const Lookup rgbaLookup = sample(ts, ts.Acquire({rgbaRat, "", ""}), slot4, 0.5f, 0.5f);
+    CHECK_THAT(rgbaLookup.v[2], WithinAbs(0.215861, 1e-3));
+    CHECK_THAT(rgbaLookup.v[3], WithinAbs(1.0, 1e-3));
     CHECK_THAT(sample(ts, ts.Acquire({srgbRat, "", ""}), slot, 0.5f, 0.5f).v[0],
                WithinRel(srgbToLinear(c[0]), 2e-3f)); // converted to half
     const Lookup hinted = sample(ts, ts.Acquire({floatRat, "ACEScg", ""}), slot, 0.5f, 0.5f);
@@ -389,6 +408,54 @@ TEST_CASE("Light and surface textures read .rat files as Karma does", "[hydra][t
     for (int r = 0; r < 3; ++r)
         CHECK_THAT(hinted.v[r], WithinAbs(M[r][0] * c[0] + M[r][1] * c[1] + M[r][2] * c[2], 3e-3));
     CHECK(ts.MissingCount() == 0);
+}
+
+TEST_CASE("UDIM .rat sets do not reuse conversions of older builds", "[hydra][textures]") {
+    // Before HdNovaReadableTexture, imaketx converted .rat tiles straight into
+    // the cache (reading their names for a color space). A grey set (color
+    // space "") had the same cache names as now; files planted under those
+    // names must not be read.
+    const auto imaketx = [](std::string const &src, std::string const &dst) {
+        const std::string cmd = "\"\"" NOVA_HFS "/bin/imaketx.exe\" \"" + src + "\" \"" + dst + "\"\"";
+        REQUIRE(std::system(cmd.c_str()) == 0);
+    };
+    const std::string pattern = testDir() + "/greyrat.<UDIM>.rat";
+    imaketx(writeImage("greyrat_1001.exr", 16, 16, {0.25f}, OIIO::TypeDesc::FLOAT), testDir() + "/greyrat.1001.rat");
+    imaketx(writeImage("greyrat_1002.exr", 16, 16, {0.75f}, OIIO::TypeDesc::FLOAT), testDir() + "/greyrat.1002.rat");
+    // The pre-fix cache name: FNV-1a of "nova-tx-2", then of the color space,
+    // its transform id, the layer and the path, then of each tile.
+    const auto fnv1a = [](std::string const &s, uint64_t h) {
+        for (unsigned char c : s)
+            h = (h ^ c) * 1099511628211ull;
+        return h;
+    };
+    uint64_t key = fnv1a("nova-tx-2", 1469598103934665603ull);
+    key = fnv1a("|none||" + fs::u8path(pattern).lexically_normal().string(), key);
+    for (const char *tile : {"1001", "1002"}) {
+        const fs::path p = fs::u8path(testDir() + "/greyrat." + tile + ".rat");
+        key = fnv1a(std::string(tile) + "|" + std::to_string(fs::file_size(p)) + "|" +
+                        std::to_string(int64_t(fs::last_write_time(p).time_since_epoch().count())),
+                    key);
+    }
+    char hex[17];
+    std::snprintf(hex, sizeof(hex), "%016llx", static_cast<unsigned long long>(key));
+    for (const char *tile : {"1001", "1002"}) {
+        const std::string stale = testOptions().cacheDir + "/greyrat._" + hex + "." + tile + ".exr";
+        OIIO::ImageBuf buf(OIIO::ImageSpec(16, 16, 1, OIIO::TypeDesc::FLOAT));
+        OIIO::ImageBufAlgo::fill(buf, {9.0f});
+        OIIO::ImageSpec config;
+        config.tile_width = config.tile_height = 16;
+        config.set_format(OIIO::TypeDesc::HALF);
+        REQUIRE(OIIO::ImageBufAlgo::make_texture(OIIO::ImageBufAlgo::MakeTxTexture, buf, stale, config));
+    }
+    HdNovaTextureSystem ts;
+    ts.SetOptions(testOptions());
+    const nova::TextureId id = ts.Acquire({pattern, "", ""});
+    const nova::TexSlot slot = rgbSlot(nova::TexFilter::Closest);
+    const Lookup a = sample(ts, id, slot, 0.5f, 0.5f), b = sample(ts, id, slot, 1.5f, 0.5f);
+    REQUIRE((a.status == 0 && b.status == 0));
+    CHECK_THAT(a.v[0], WithinAbs(0.25, 1e-3));
+    CHECK_THAT(b.v[2], WithinAbs(0.75, 1e-3));
 }
 
 TEST_CASE("Direct UDIM sets see changed and added tiles", "[hydra][textures]") {
