@@ -190,14 +190,15 @@ NOVA_INLINE void lpeAlbedoEvents(const LpeView &t, Film &film, uint32_t pixel, l
 // never picks (pmf 0), along a continuation (direction, weight already in
 // beta). After a non-delta event (`nonDelta`) shadow-linked lights are left
 // out: the continuation never collects them, a dome's own shadow ray carries
-// its weight-1 parts (path.h).
+// its weight-1 parts (path.h). Lights whose illumination is off (sampling
+// quality 0, docs/design/M9.md D18) give nothing.
 template <class Film>
 NOVA_INLINE void lpeUnoccludedEnvironment(const LpeView &t, const LightData *lights, uint32_t lightCount,
                                           const float *pmf, Film &film, uint32_t pixel, lpe::State state, Vec3f dir,
                                           float diffuseShare, const Spectrum &beta, bool nonDelta) {
     for (uint32_t i = 0; i < lightCount; ++i) {
         const LightData &light = lights[i];
-        if (pmf[i] > 0.0f || (nonDelta && light.shadowLinked()))
+        if (pmf[i] > 0.0f || !light.illuminates() || (nonDelta && light.shadowLinked()))
             continue;
         Spectrum Le;
         if (light.type == LightType::Dome)

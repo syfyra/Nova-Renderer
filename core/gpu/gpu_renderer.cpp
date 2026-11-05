@@ -947,8 +947,9 @@ bool GpuRenderer::uploadLpe(const LpeTables &tables, uint64_t generation) {
 
 bool GpuRenderer::reserveLpe(uint32_t paths) {
     // Per shadow ray its parts' range, as many rays as the shadow queue holds
-    // (reserveWave ran first: m_shadowSlots per path, 3 with walks); up to 4
-    // parts per shadow ray on average, more are dropped (lpe_path.h).
+    // (reserveWave ran first: m_shadowSlots per path, 2 to 4 with walks and
+    // shadow-linked domes); up to 4 parts per shadow ray on average, more are
+    // dropped (lpe_path.h).
     const size_t rays = size_t(paths) * m_shadowSlots;
     if (paths > m_lpeCapacity || rays > m_lpeRayCapacity) {
         m_lpeWave.clear();

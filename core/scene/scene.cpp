@@ -658,7 +658,7 @@ void Scene::computeLinks() {
     for (size_t i = 0; i < m_lightLinks.size(); ++i) { // emissive triangles (after them) link everything
         const auto it = shadowCats.find(m_lightLinks[i].second);
         m_lightData[i].shadowCategory = it != shadowCats.end() && it->second < 64 ? uint16_t(it->second) : 0xFFFFu;
-        if (m_lightData[i].type == LightType::Dome && m_lightData[i].shadowLinked())
+        if (m_lightData[i].type == LightType::Dome && m_lightData[i].shadowLinked() && m_lightData[i].illuminates())
             m_shadowDomes.push_back(uint32_t(i));
     }
     if (linkCats.size() > 64 || shadowCats.size() > 64)
@@ -937,13 +937,10 @@ bool Scene::commit() {
             for (size_t i = 0; i < n; ++i) {
                 const LightData &l = m_lightData[i];
                 // Karma's per-light sampling mode Uniform (D18): chosen with
-                // the lights at infinity, by power, no direction. Emitting
-                // area lights with no selection weight (sampling quality 0)
-                // join them with weight 0: never chosen, but BSDF rays still
-                // find them there (forEachAreaLightCrossing), with full weight.
-                const bool unsampled = isAreaLight(l.type) && !l.delta && !(power[i] > 0.0f) &&
-                                       maxComponent(absolute(l.emission)) > 0.0f;
-                infiniteLight[i] = atInfinity(i) || l.outsideTree || unsampled;
+                // the lights at infinity, by power, no direction. Lights with
+                // no selection weight (sampling quality 0) illuminate nothing
+                // (LightData::illuminates(), as Karma): no tree entry.
+                infiniteLight[i] = atInfinity(i) || l.outsideTree;
                 if (infiniteLight[i]) {
                     infiniteE[i] = power[i] / disk;
                     if (l.type == LightType::Distant)
