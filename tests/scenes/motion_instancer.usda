@@ -1,0 +1,195 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 0
+    endTimeCode = 2
+)
+
+# Instancer motion blur reference scene (M2), rendered at frame 1 with the
+# camera shutter [-0.5, 0.5]. Orthographic camera: 40 x 12 units on 400 x 120
+# pixels (10 px per unit), x from -20 to 20, y from -6 to 6.
+# A 2 x 2 quad moves +5 units per frame in rows A, B, C and E, so during the
+# shutter its left edge sweeps x0 in [-2.5, 2.5] (E: [-14.5, -9.5]); the
+# coverage at x is |[x - 2, x] intersected with [-2.5, 2.5]| / 5:
+#   A (y 3..5)    instance positions
+#   B (y -1..1)   the point instancer's own transform
+#   C (y -5..-3)  nested point instancers, both levels moving (3 + 2 units)
+#   E (y -1..1)   the prototype's own transform
+# D: a 2 x 2 square centred at (12, 0) turns 90 degrees about Z during the
+# shutter (orientations -90, 0, +90 degrees at frames 0, 1, 2, slerped). By
+# its fourfold symmetry a point at distance r from the centre is covered for
+# the fraction c(r) = 1 (r <= 1), 4/pi asin(1/r) - 1 (1 < r < sqrt 2), 0.
+def Xform "World"
+{
+    def PointInstancer "A"
+    {
+        rel prototypes = [</World/A/Protos/quad>]
+        int[] protoIndices = [0]
+        point3f[] positions.timeSamples = {
+            0: [(-5, 3, 0)],
+            2: [(5, 3, 0)],
+        }
+
+        def Scope "Protos"
+        {
+            def Mesh "quad"
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def PointInstancer "B"
+    {
+        double3 xformOp:translate.timeSamples = {
+            0: (-5, -1, 0),
+            2: (5, -1, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel prototypes = [</World/B/Protos/quad>]
+        int[] protoIndices = [0]
+        point3f[] positions = [(0, 0, 0)]
+
+        def Scope "Protos"
+        {
+            def Mesh "quad"
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def PointInstancer "C"
+    {
+        rel prototypes = [</World/C/Protos/Row>]
+        int[] protoIndices = [0]
+        point3f[] positions.timeSamples = {
+            0: [(-3, -5, 0)],
+            2: [(3, -5, 0)],
+        }
+
+        def Scope "Protos"
+        {
+            def Xform "Row"
+            {
+                def PointInstancer "inner"
+                {
+                    rel prototypes = [</World/C/Protos/Row/inner/Protos/quad>]
+                    int[] protoIndices = [0]
+                    point3f[] positions.timeSamples = {
+                        0: [(-2, 0, 0)],
+                        2: [(2, 0, 0)],
+                    }
+
+                    def Scope "Protos"
+                    {
+                        def Mesh "quad"
+                        {
+                            int[] faceVertexCounts = [4]
+                            int[] faceVertexIndices = [0, 1, 2, 3]
+                            point3f[] points = [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)]
+                            uniform token subdivisionScheme = "none"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def PointInstancer "D"
+    {
+        rel prototypes = [</World/D/Protos/square>]
+        int[] protoIndices = [0]
+        point3f[] positions = [(12, 0, 0)]
+        quath[] orientations.timeSamples = {
+            0: [(0.70710677, 0, 0, -0.70710677)],
+            1: [(1, 0, 0, 0)],
+            2: [(0.70710677, 0, 0, 0.70710677)],
+        }
+
+        def Scope "Protos"
+        {
+            def Mesh "square"
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def PointInstancer "E"
+    {
+        rel prototypes = [</World/E/Protos/Mover>]
+        int[] protoIndices = [0]
+        point3f[] positions = [(-12, -1, 0)]
+
+        def Scope "Protos"
+        {
+            def Xform "Mover"
+            {
+                double3 xformOp:translate.timeSamples = {
+                    0: (-5, 0, 0),
+                    2: (5, 0, 0),
+                }
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+
+                def Mesh "quad"
+                {
+                    int[] faceVertexCounts = [4]
+                    int[] faceVertexIndices = [0, 1, 2, 3]
+                    point3f[] points = [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)]
+                    uniform token subdivisionScheme = "none"
+                }
+            }
+        }
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 400
+        float verticalAperture = 120
+        float2 clippingRange = (0.1, 100)
+        double shutter:open = -0.5
+        double shutter:close = 0.5
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "settings"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 120)
+        int nova:samples = 256
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+
+    def RenderSettings "nomotion"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 120)
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+        bool disableMotionBlur = 1
+    }
+}

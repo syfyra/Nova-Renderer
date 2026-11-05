@@ -1,0 +1,17 @@
+device: NVIDIA GeForce RTX 5080; NanoVDB 32.6.0
+grid: 3928309 active voxels, 28.1 MB NanoVDB buffer, built in 209 ms
+majorant grid: 28^3 cells of 8^3 voxels, 8952 empty (41 %)
+
+V1. trilinear lookups, 1048576 threads x 8
+  random points in the box:    0.826 ms   10.15 G lookups/s
+  points along the rays:       0.149 ms   56.48 G lookups/s
+
+V2-V4. trackers, 1048576 rays through the box (+z)
+  ratio tracking, global majorant    in order    0.542 ms    9.7 steps/ray   18.77 G steps/s  SIMD efficiency 58.6 %
+  ratio tracking, global majorant    shuffled    0.850 ms    9.7 steps/ray   11.96 G steps/s  SIMD efficiency 54.4 %
+  ratio tracking, majorant grid      in order    0.474 ms    2.1 steps/ray    4.62 G steps/s  SIMD efficiency 42.3 %
+  ratio tracking, majorant grid      shuffled    0.789 ms    2.1 steps/ray    2.77 G steps/s  SIMD efficiency 31.4 %
+  delta tracking free flight, grid   in order    0.376 ms    1.3 steps/ray    3.66 G steps/s  SIMD efficiency 35.3 %
+  delta tracking free flight, grid   shuffled    0.620 ms    1.3 steps/ray    2.22 G steps/s  SIMD efficiency 28.5 %
+
+done

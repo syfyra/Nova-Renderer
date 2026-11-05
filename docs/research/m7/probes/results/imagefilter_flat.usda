@@ -1,0 +1,45 @@
+#usda 1.0
+(
+    doc = """Generated from Composed Stage of root layer 
+"""
+    framesPerSecond = 24
+    metersPerUnit = 1
+    timeCodesPerSecond = 24
+)
+
+def HoudiniLayerInfo "HoudiniLayerInfo" (
+    customData = {
+        int HoudiniCreatorNode = 14
+        int[] HoudiniEditorNodes = [14, 12]
+        string HoudiniSaveControl = "Placeholder"
+    }
+)
+{
+}
+
+def Scope "Render"
+{
+    def Scope "ImageFilter"
+    {
+        def HoudiniImageFilterList "denoise_optix"
+        {
+            uniform string albedoscope = "albedo"
+            uniform string[] AOVlist = ["C", "color"]
+            uniform token AOVs = "color"
+            uniform string depthscope = "depth"
+            uniform string normalscope = "N"
+            rel orderedFilters = </Render/ImageFilter/denoise_optix/denoiseai1>
+
+            def HoudiniImageFilter "denoiseai1"
+            {
+                uniform bool bypass = 0
+                custom bool filterparm:auxareclean = 0
+                custom string filterparm:denoiser = "optix"
+                custom bool filterparm:onlycpu = 0
+                custom bool filterparm:prefilteraux = 0
+                uniform string type = "denoiseai"
+            }
+        }
+    }
+}
+

@@ -1,0 +1,28 @@
+{
+  "scene": "vex_builder",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/vex_builder.usda": "dd02e87460ace27b33e76d5e02b4992f82e18cb4",
+    "scenes/assets/sky_soft.exr": "a5f902ce2ce339472feca019aa6fee226e8ed97c",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/assets/sphere_st.usda": "e1a1a3ae636cea8cbb70e11bcd9779b67a1c3a89",
+    "scenes/assets/normal_checks.png": "18f37824c9de76bc34326b9aa3b068e0e9cff58e",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/vex_builder.exr",
+  "sigma": "images/vex_builder.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.043026,
+    "flip_test_pair": 0.053343,
+    "relmse": 0.025575,
+    "global_z": [
+      -0.188,
+      -0.567,
+      -0.446,
+      0.0
+    ]
+  }
+}

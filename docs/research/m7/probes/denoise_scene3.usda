@@ -1,0 +1,78 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./denoise_scene.usda@, @../../../../tests/reference/scenes/mtl_textured.usda@]
+)
+# M7 denoise probe scene 3: the textured reference (checker ground, UDIM card,
+# roughness-mapped metal ball, rect key light, soft sky) at 960x480 and few
+# samples, to see whether the albedo/normal guides preserve texture detail.
+# Reuses denoise_scene.usda's render vars and filter lists; the Cornell box,
+# its light and camera are deactivated (cam3 = the textured scene's camera).
+#
+# Settings prims: /Render/s3_noisy, /Render/s3_optix, /Render/s3_truth,
+# /Render/s3_noisy_hd (adds Nova's Hydra albedo plane).
+
+over "World"
+{
+    over "floor" (active = false) {}
+    over "back" (active = false) {}
+    over "left" (active = false) {}
+    over "right" (active = false) {}
+    over "ceiling" (active = false) {}
+    over "shortBox" (active = false) {}
+    over "tallBox" (active = false) {}
+    over "light" (active = false) {}
+
+    def Camera "cam3"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 18
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 1, 3.2)
+        float3 xformOp:rotateXYZ = (-9, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+over "Render"
+{
+    def RenderSettings "s3_noisy" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam3>
+        int2 resolution = (960, 480)
+        float nova:object:diffuseLimit = 1
+        float nova:object:reflectLimit = 4
+        float nova:object:refractLimit = 4
+        float karma:object:diffuselimit = 1
+        float karma:object:reflectlimit = 4
+        float karma:object:refractlimit = 4
+        int nova:samples = 4
+        rel products = [</Render/DnProducts/full>]
+    }
+
+    def RenderSettings "s3_optix" (
+        inherits = </Render/s3_noisy>
+    )
+    {
+        rel husk:orderedImageFilters = [</Render/ImageFilter/denoise_optix>]
+    }
+
+    def RenderSettings "s3_truth" (
+        inherits = </Render/s3_noisy>
+    )
+    {
+        int nova:samples = 2048
+    }
+
+    def RenderSettings "s3_noisy_hd" (
+        inherits = </Render/s3_noisy>
+    )
+    {
+        rel products = [</Render/DnProducts/full2>]
+    }
+}

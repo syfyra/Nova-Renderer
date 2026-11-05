@@ -1,0 +1,20 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "HdVolumeProbeRendererPlugin": {
+                        "bases": ["HdRendererPlugin"],
+                        "displayName": "VolumeProbe",
+                        "priority": 0
+                    }
+                }
+            },
+            "LibraryPath": "../hdVolumeProbe.dll",
+            "Name": "hdVolumeProbe",
+            "ResourcePath": "resources",
+            "Root": "..",
+            "Type": "library"
+        }
+    ]
+}

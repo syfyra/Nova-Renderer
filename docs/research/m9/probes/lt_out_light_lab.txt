@@ -1,0 +1,145 @@
+lt_light_lab: e1, 8 threads
+
+== E1: relative variance (MSE / E^2, mean over 256 receivers) at one light sample per estimate
+   (split: samples per estimate in brackets; eff = 1 / (relVar x samples), normalised to power)
+   street N=  1000  ref 0.09s | build alias 0.03 ms, bvh 6.1 ms (1999 nodes, depth 13) | pmf eval 385 ns
+     uniform  relVar        141  z +1.70      22 ns/est  eff   0.876
+     power    relVar      123.6  z +1.19      26 ns/est  eff   1.000
+     bvh      relVar      1.157  z -0.55     409 ns/est  eff 106.852
+     split0.50 relVar     0.4522  z +2.12    2656 ns/est  eff  34.166  [8.00 samples]
+     split0.25 relVar     0.5742  z +1.88    3371 ns/est  eff  26.905  [8.00 samples]
+   street N= 10000  ref 0.30s | build alias 0.15 ms, bvh 74.8 ms (19999 nodes, depth 17) | pmf eval 485 ns
+     uniform  relVar       1578  z +0.84      21 ns/est  eff   0.921
+     power    relVar       1454  z +1.57      28 ns/est  eff   1.000
+     bvh      relVar      2.995  z +0.32     575 ns/est  eff 485.532
+     split0.50 relVar      1.455  z +1.21    4679 ns/est  eff 124.955  [8.00 samples]
+     split0.25 relVar      1.691  z +1.41    4113 ns/est  eff 107.477  [8.00 samples]
+   street N=100000  ref 2.24s | build alias 1.04 ms, bvh 949.3 ms (199999 nodes, depth 20) | pmf eval 623 ns
+     uniform  relVar   1.82e+04  z +1.36      28 ns/est  eff   0.639
+     power    relVar  1.163e+04  z -0.50      35 ns/est  eff   1.000
+     bvh      relVar      6.592  z -1.34     858 ns/est  eff 1764.374
+     split0.50 relVar      3.508  z -0.61    6735 ns/est  eff 414.429  [8.00 samples]
+     split0.25 relVar      4.106  z -0.17    6769 ns/est  eff 354.057  [8.00 samples]
+   cloud  N=  1000  ref 0.16s | build alias 0.03 ms, bvh 6.2 ms (1999 nodes, depth 13) | pmf eval 478 ns
+     uniform  relVar      39.54  z -0.67      29 ns/est  eff   0.933
+     power    relVar      36.88  z +0.52      33 ns/est  eff   1.000
+     bvh      relVar      1.661  z -0.23     521 ns/est  eff  22.202
+     split0.50 relVar     0.7208  z -2.49    2218 ns/est  eff   6.395  [8.00 samples]
+     split0.25 relVar     0.7257  z -2.18    1899 ns/est  eff   6.353  [8.00 samples]
+   cloud  N= 10000  ref 0.36s | build alias 0.19 ms, bvh 86.2 ms (19999 nodes, depth 16) | pmf eval 487 ns
+     uniform  relVar      97.77  z +0.88      30 ns/est  eff   0.700
+     power    relVar      68.41  z +0.01      34 ns/est  eff   1.000
+     bvh      relVar      1.877  z -0.60     475 ns/est  eff  36.452
+     split0.50 relVar     0.7671  z +0.06    2976 ns/est  eff  11.148  [8.00 samples]
+     split0.25 relVar     0.7682  z +0.34    3031 ns/est  eff  11.132  [8.00 samples]
+   cloud  N=100000  ref 2.19s | build alias 1.07 ms, bvh 954.2 ms (199999 nodes, depth 20) | pmf eval 598 ns
+     uniform  relVar      172.4  z -1.21      41 ns/est  eff   0.590
+     power    relVar      101.7  z -2.84      42 ns/est  eff   1.000
+     bvh      relVar      2.211  z +0.83     853 ns/est  eff  46.008
+     split0.50 relVar      1.007  z +1.40    4956 ns/est  eff  12.633  [8.00 samples]
+     split0.25 relVar      1.009  z +2.29    4963 ns/est  eff  12.604  [8.00 samples]
+   tris   N=  1000  ref 0.14s | build alias 0.02 ms, bvh 8.2 ms (1999 nodes, depth 12) | pmf eval 474 ns
+     uniform  relVar      222.1  z -0.55      22 ns/est  eff   0.992
+     power    relVar      220.3  z -0.66      24 ns/est  eff   1.000
+     bvh      relVar      2.655  z -0.74     372 ns/est  eff  82.965
+     split0.50 relVar      1.286  z +0.69    2541 ns/est  eff  21.412  [8.00 samples]
+     split0.25 relVar      1.555  z -0.24    2422 ns/est  eff  17.702  [8.00 samples]
+   tris   N= 10000  ref 0.20s | build alias 0.13 ms, bvh 95.4 ms (19999 nodes, depth 16) | pmf eval 582 ns
+     uniform  relVar       2268  z +1.13      20 ns/est  eff   0.980
+     power    relVar       2222  z +1.34      26 ns/est  eff   1.000
+     bvh      relVar      5.562  z -0.30     668 ns/est  eff 399.457
+     split0.50 relVar      2.969  z -0.63    4479 ns/est  eff  93.560  [8.00 samples]
+     split0.25 relVar      3.434  z +0.71    4374 ns/est  eff  80.881  [8.00 samples]
+   tris   N=100000  ref 1.04s | build alias 1.06 ms, bvh 1280.0 ms (199999 nodes, depth 20) | pmf eval 787 ns
+     uniform  relVar  1.216e+04  z -2.98      30 ns/est  eff   0.617
+     power    relVar       7499  z -1.67      34 ns/est  eff   1.000
+     bvh      relVar      11.38  z -0.91     901 ns/est  eff 658.934
+     split0.50 relVar       6.06  z -2.96    6185 ns/est  eff 154.674  [8.00 samples]
+     split0.25 relVar      7.002  z -1.48    6248 ns/est  eff 133.860  [8.00 samples]
+lt_light_lab: e2, 8 threads
+
+== E2: PMF consistency of the BVH (sum over all lights; frequency test, 20M draws per receiver)
+   street rcv 0: sum PMF = 1.0000001; sample-vs-PMF rel. err max 1.64e-06; chi2/dof = 1.007 (dof 9998), max |z| 3.97
+   street rcv 1: sum PMF = 1.0000000; sample-vs-PMF rel. err max 1.63e-06; chi2/dof = 1.006 (dof 9586), max |z| 3.91
+   street rcv 2: sum PMF = 0.9999999; sample-vs-PMF rel. err max 1.03e-06; chi2/dof = 1.014 (dof 9812), max |z| 4.25
+   street rcv 3: sum PMF = 1.0000001; sample-vs-PMF rel. err max 1.43e-06; chi2/dof = 0.980 (dof 9986), max |z| 3.99
+   cloud  rcv 0: sum PMF = 0.7818988; sample-vs-PMF rel. err max 1.34e-06; chi2/dof = 0.985 (dof 6381), max |z| 3.86
+   cloud  rcv 1: sum PMF = 0.9198737; sample-vs-PMF rel. err max 2.11e-06; chi2/dof = 1.005 (dof 9300), max |z| 4.82
+   cloud  rcv 2: sum PMF = 0.7247629; sample-vs-PMF rel. err max 2.14e-06; chi2/dof = 0.980 (dof 4174), max |z| 3.94
+   cloud  rcv 3: sum PMF = 0.5781824; sample-vs-PMF rel. err max 7.22e-06; chi2/dof = 1.030 (dof 3718), max |z| 4.43
+   tris   rcv 0: sum PMF = 0.9679814; sample-vs-PMF rel. err max 8.55e-06; chi2/dof = 1.005 (dof 4619), max |z| 4.17
+   tris   rcv 1: sum PMF = 0.8771787; sample-vs-PMF rel. err max 5.26e-06; chi2/dof = 1.004 (dof 4450), max |z| 3.48
+   tris   rcv 2: sum PMF = 0.9637564; sample-vs-PMF rel. err max 6.69e-06; chi2/dof = 0.950 (dof 4723), max |z| 3.66
+   tris   rcv 3: sum PMF = 0.9464852; sample-vs-PMF rel. err max 1.56e-05; chi2/dof = 0.992 (dof 4516), max |z| 3.39
+lt_light_lab: e3, 8 threads
+
+== E3: build / refit after edits (street, single thread) and the variance afterwards
+   N= 10000 build 69.7 ms, relVar 2.966
+     all intensities x U[0.5,2]: refit 0.36 ms -> relVar 3.017; rebuild -> 2.924
+     1% of the lights moved anywhere: refit 0.36 ms -> relVar 2254; rebuild -> 2.912
+     10% of the lights moved anywhere: refit 0.35 ms -> relVar 6117; rebuild -> 2.873
+   N=100000 build 942.5 ms, relVar 6.42
+     all intensities x U[0.5,2]: refit 3.74 ms -> relVar 6.441; rebuild -> 6.524
+     1% of the lights moved anywhere: refit 3.84 ms -> relVar 1146; rebuild -> 6.472
+     10% of the lights moved anywhere: refit 3.75 ms -> relVar 5.387e+06; rebuild -> 6.42
+﻿lt_light_lab: e4, 8 threads
+
+== E4: BSDF (cosine) rays from the receivers collecting every light they cross
+   street N=  1000  brute       2275 ns/ray (0.0031 hits/ray) | ray BVH build 0.8 ms,      98 ns/ray (0.0031 hits/ray, 17.1 nodes/ray) | selection BVH    102 ns/ray (0.0031 hits/ray, 18.1 nodes/ray)
+   street N= 10000  brute      22603 ns/ray (0.0029 hits/ray) | ray BVH build 8.9 ms,     136 ns/ray (0.0029 hits/ray, 24.1 nodes/ray) | selection BVH    150 ns/ray (0.0029 hits/ray, 25.3 nodes/ray)
+   street N=100000  brute     234794 ns/ray (0.0040 hits/ray) | ray BVH build 99.6 ms,     183 ns/ray (0.0041 hits/ray, 30.7 nodes/ray) | selection BVH    202 ns/ray (0.0041 hits/ray, 31.7 nodes/ray)
+   cloud  N=  1000  brute       2303 ns/ray (0.0104 hits/ray) | ray BVH build 0.8 ms,     272 ns/ray (0.0104 hits/ray, 34.6 nodes/ray) | selection BVH    279 ns/ray (0.0104 hits/ray, 38.3 nodes/ray)
+   cloud  N= 10000  brute      23394 ns/ray (0.0207 hits/ray) | ray BVH build 8.5 ms,     662 ns/ray (0.0207 hits/ray, 79.1 nodes/ray) | selection BVH   1194 ns/ray (0.0207 hits/ray, 86.8 nodes/ray)
+   cloud  N=100000  brute     233573 ns/ray (0.0435 hits/ray) | ray BVH build 131.6 ms,    1522 ns/ray (0.0476 hits/ray, 160.0 nodes/ray) | selection BVH   1899 ns/ray (0.0475 hits/ray, 176.1 nodes/ray)
+   tris   N=  1000  brute      10746 ns/ray (0.0084 hits/ray) | ray BVH build 0.8 ms,     134 ns/ray (0.0084 hits/ray, 17.7 nodes/ray) | selection BVH    112 ns/ray (0.0084 hits/ray, 19.0 nodes/ray)
+   tris   N= 10000  brute     107007 ns/ray (0.0083 hits/ray) | ray BVH build 9.0 ms,     173 ns/ray (0.0083 hits/ray, 24.5 nodes/ray) | selection BVH    172 ns/ray (0.0083 hits/ray, 26.0 nodes/ray)
+   tris   N=100000  brute    1065106 ns/ray (0.0090 hits/ray) | ray BVH build 101.4 ms,     206 ns/ray (0.0086 hits/ray, 31.5 nodes/ray) | selection BVH    217 ns/ray (0.0086 hits/ray, 32.8 nodes/ray)
+﻿lt_light_lab: e5, 8 threads
+
+== E5: a distant light next to N street lights: probability of picking it
+   N=  1000 sun share 0.1: relVar half 2.614 | capped power (q=0.079) 1.147 | importance root 1.398 | cut16 1.269 | oracle 1.129  (z +0.18 +0.69 +0.76 +0.51 +0.43)
+   N=  1000 sun share 0.5: relVar half 0.7215 | capped power (q=0.434) 0.6808 | importance root 1.134 | cut16 0.8636 | oracle 0.634  (z +0.23 +1.86 +1.94 +1.58 +0.48)
+   N=  1000 sun share 0.9: relVar half 0.6928 | capped power (q=0.500) 0.6928 | importance root 0.2931 | cut16 0.2004 | oracle 0.1403  (z +0.16 +0.16 +1.15 +1.55 +0.03)
+   N= 10000 sun share 0.1: relVar half 5.365 | capped power (q=0.086) 2.677 | importance root 2.919 | cut16 2.785 | oracle 2.681  (z -0.67 +0.01 +0.85 +0.42 +0.21)
+   N= 10000 sun share 0.5: relVar half 1.672 | capped power (q=0.458) 1.567 | importance root 2.067 | cut16 1.692 | oracle 1.512  (z -0.66 -0.48 +1.47 +0.77 -0.46)
+   N= 10000 sun share 0.9: relVar half 0.7441 | capped power (q=0.500) 0.7441 | importance root 0.5427 | cut16 0.3872 | oracle 0.336  (z -0.16 -0.16 -0.37 +1.46 +1.13)
+lt_light_lab: e6, 8 threads
+
+== E6: float vs double reuse of the uniform number during traversal (street, 100k lights)
+   rcv 0 float : chi2/dof 1.002 (dof 56270), max |z| 4.15, lights expected >= 5 times but never drawn: 21
+   rcv 0 double: chi2/dof 1.003 (dof 56270), max |z| 4.89, lights expected >= 5 times but never drawn: 12
+   rcv 1 float : chi2/dof 1.008 (dof 59887), max |z| 4.70, lights expected >= 5 times but never drawn: 7
+   rcv 1 double: chi2/dof 1.006 (dof 59887), max |z| 4.70, lights expected >= 5 times but never drawn: 12
+lt_light_lab: e7, 8 threads
+
+== E7: splitting criteria (sin half-angle threshold tau, sample budget) and bias over 3 seeds
+   street N= 10000
+     bvh             relVar    3.006  [1.00 samples]  eff vs bvh 1.000     644 ns/est  z -0.81 -0.56 -0.88
+     split tau 0.50 b8 relVar    1.446  [8.00 samples]  eff vs bvh 0.260    5429 ns/est  z +0.84 -0.02 +0.53
+     split tau 1.00 b4 relVar    1.429  [4.00 samples]  eff vs bvh 0.526    2550 ns/est  z -0.01 -0.65 -0.01
+     split tau 2.00 b4 relVar    2.036  [2.31 samples]  eff vs bvh 0.639    1186 ns/est  z -0.27 -0.83 +1.40
+     split tau 2.00 b2 relVar    2.475  [1.61 samples]  eff vs bvh 0.755     812 ns/est  z -1.08 -0.17 +0.97
+   cloud  N=  1000
+     bvh             relVar    1.662  [1.00 samples]  eff vs bvh 1.000     331 ns/est  z -0.38 -0.29 -0.47
+     split tau 0.50 b8 relVar   0.7257  [8.00 samples]  eff vs bvh 0.286    1638 ns/est  z +0.43 -0.69 +1.56
+     split tau 1.00 b4 relVar   0.6817  [4.00 samples]  eff vs bvh 0.610    1074 ns/est  z -1.24 +0.64 +1.93
+     split tau 2.00 b4 relVar   0.9227  [2.51 samples]  eff vs bvh 0.718     635 ns/est  z +0.20 -0.51 -0.19
+     split tau 2.00 b2 relVar    1.223  [1.63 samples]  eff vs bvh 0.832     468 ns/est  z +0.47 -1.38 +1.29
+   tris   N= 10000
+     bvh             relVar     5.54  [1.00 samples]  eff vs bvh 1.000     479 ns/est  z +0.94 +0.04 +1.94
+     split tau 0.50 b8 relVar    3.003  [8.00 samples]  eff vs bvh 0.231    3277 ns/est  z +2.04 +2.08 +2.10
+     split tau 1.00 b4 relVar    2.902  [4.00 samples]  eff vs bvh 0.477    1811 ns/est  z +2.31 -0.08 +1.28
+     split tau 2.00 b4 relVar    3.856  [2.24 samples]  eff vs bvh 0.642    1184 ns/est  z +1.04 +0.34 +1.91
+     split tau 2.00 b2 relVar    4.538  [1.58 samples]  eff vs bvh 0.774     969 ns/est  z +1.15 +1.11 +2.65
+   tris   N=100000
+     bvh             relVar    11.39  [1.00 samples]  eff vs bvh 1.000     738 ns/est  z -0.24 +0.20 -1.46
+     split tau 0.50 b8 relVar    6.109  [8.00 samples]  eff vs bvh 0.233    7116 ns/est  z +0.80 +0.46 -0.40
+     split tau 1.00 b4 relVar    6.071  [4.00 samples]  eff vs bvh 0.469    3548 ns/est  z +0.19 -0.04 +1.42
+     split tau 2.00 b4 relVar    7.724  [2.41 samples]  eff vs bvh 0.612    2033 ns/est  z +0.64 -0.25 -1.23
+     split tau 2.00 b2 relVar    9.288  [1.68 samples]  eff vs bvh 0.730    1347 ns/est  z +0.72 -0.73 -0.48
+lt_light_lab: e8, 8 threads
+
+== E8: receiver bound, one-sided (upper hemisphere) vs pbrt-v4 |cos| (cloud)
+   N=  1000 relVar one-sided 1.661 | |cos| 2.038  (draws that yield a light: 0.799 | 1.000)
+   N= 10000 relVar one-sided 1.877 | |cos| 2.184  (draws that yield a light: 0.788 | 1.000)
+   N=100000 relVar one-sided 2.211 | |cos| 2.704  (draws that yield a light: 0.783 | 1.000)

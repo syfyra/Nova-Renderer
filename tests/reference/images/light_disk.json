@@ -1,0 +1,25 @@
+{
+  "scene": "light_disk",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/light_disk.usda": "00959059bb81a9aa0d3f8f51ca062e495141d806",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/light_disk.exr",
+  "sigma": "images/light_disk.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.023102,
+    "flip_test_pair": 0.03584,
+    "relmse": 0.000295,
+    "global_z": [
+      0.068,
+      -0.018,
+      -0.254,
+      2.823
+    ]
+  }
+}

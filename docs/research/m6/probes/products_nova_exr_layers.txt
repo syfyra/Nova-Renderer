@@ -1,0 +1,23 @@
+﻿| part | name | channels | formats | min | max | mean | nonzero px |
+|---|---|---|---|---|---|---|---|
+| 0 | C | R, G, B, A | half | 0 0 0 1 | 0.7251 0.3794 0.6362 1 | 0.3055 0.3066 0.3349 1 | 17120 |
+| 1 | c3h | c3h.R, c3h.G, c3h.B | half | 0 0 0 | 0.7251 0.3794 0.6362 | 0.3055 0.3066 0.3349 | 17108 |
+| 2 | c3f_fmt_c3h | c3f_fmt_c3h.R, c3f_fmt_c3h.G, c3f_fmt_c3h.B | half | 0 0 0 | 0.7251 0.3794 0.6362 | 0.3055 0.3066 0.3349 | 17108 |
+| 3 | half1 | half1.Z | half | 0 | 18.02 | 4.86 | 10776 |
+| 4 | half3 | half3.R, half3.G, half3.B | half | -0.9429 -0.9067 -0.06567 | 0.9717 1 0.9995 | 0.002296 0.5158 0.08694 | 10776 |
+| 5 | float2 | float2.R, float2.G | float | -0.9427 -0.9069 | 0.9715 1 | 0.0023 0.5158 | 10776 |
+| 6 | int1 | int1.Z | uint | 0 | 1 | 0.3706 | 8533 |
+| 7 | int1_fmt_float | int1_fmt_float.Z | float | 0 | 7.932e+34 | 4.638e+31 | 3354 |
+| 8 | uint1 | uint1.Z | uint | 0 | 1 | 0.3706 | 6344 |
+| 9 | N | N.x, N.y, N.z | half | -0.9429 -0.9067 -0.06567 | 0.9717 1 0.9995 | 0.002296 0.5158 0.08694 | 10776 |
+| 10 | P | P.x, P.y, P.z | float | 0 0 0 | 0 0 0 | 0 0 0 | 0 |
+| 11 | vec_noformat | vec_noformat.x, vec_noformat.y, vec_noformat.z | float | -0.9427 -0.9069 -0.06568 | 0.9715 1 0.9997 | 0.0023 0.5158 0.08693 | 10776 |
+| 12 | noschema | noschema.R, noschema.G, noschema.B | float | 0 0 0 | 0.8 0.5 0.8 | 0.3178 0.2916 0.3082 | 10776 |
+| 13 | clear_one | clear_one.Z | float | 0 | 18.02 | 4.86 | 10776 |
+| 14 | ms_off | ms_off.R, ms_off.G, ms_off.B | float | 0 0 0 | 0.8 0.5 0.8 | 0.3178 0.2916 0.3082 | 10776 |
+| 15 | st | st.R, st.G | float | 0 0 | 0 0 | 0 0 | 0 |
+| 16 | unknown | unknown.R, unknown.G, unknown.B | float | 0 0 0 | 0 0 0 | 0 0 0 | 0 |
+| 17 | prefixed | pfx.r, pfx.g, pfx.b | float | 0 0 0 | 0.8 0.5 0.8 | 0.3178 0.2916 0.3082 | 10776 |
+| part | name | channels | formats | min | max | mean | nonzero px |
+|---|---|---|---|---|---|---|---|
+| 0 | C | R, G, B, A, N.x, N.y, N.z, directdiffuse.R, directdiffuse.G, directdiffuse.B | float/half | 0 0 0 1 -0.9429 -0.9067 -0.06567 0 0 0 | 0.7251 0.3794 0.6362 1 0.9717 1 0.9995 0 0 0 | 0.3055 0.3066 0.3349 1 0.002296 0.5158 0.08694 0 0 0 | 17120 |

@@ -1,0 +1,15 @@
+#usda 1.0
+(
+    subLayers = [@./motion.usda@]
+)
+
+# motion.usda with the deprecated instantaneousShutter: husk does not pass it,
+# so the image stays blurred (Karma alike); nova_cli must match
+# (tests/cli/check_cli.py).
+over "Render"
+{
+    over "settings"
+    {
+        bool instantaneousShutter = 1
+    }
+}

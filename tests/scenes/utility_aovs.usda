@@ -1,0 +1,354 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 1
+    endTimeCode = 1
+    timeCodesPerSecond = 24
+)
+
+# Utility AOVs (docs/design/M6.md D9, M6.4) with Karma-authored-style render vars:
+# a 3-face mesh (faces 0..2), a quad moving +1 in x and y per frame (shutter [0, 1]),
+# a lid over the floor (ambient occlusion) and a tilted quad. tests/husk/check_aovs.py
+# checks the planes against the geometry; the conventions were measured in Karma.
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "red"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/red/s.outputs:out>
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.8, 0.2, 0.1)
+                float inputs:specular = 0
+                token outputs:out
+            }
+        }
+    }
+    def Mesh "still" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 3, 3]
+        int[] faceVertexIndices = [0, 1, 4, 3, 1, 2, 5, 1, 5, 4]
+        point3f[] points = [(-3, -2.5, 0), (-1.5, -2.5, 0), (0, -2.5, 0), (-3, -0.5, 0), (-1.5, -0.5, 0), (0, -0.5, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (0.5, 0), (1, 0), (0, 1), (0.5, 1), (1, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/red>
+    }
+    def Mesh "mover" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-0.8, 0.5, -1), (0.8, 0.5, -1), (0.8, 2.1, -1), (-0.8, 2.1, -1)]
+        uniform token subdivisionScheme = "none"
+        double3 xformOp:translate.timeSamples = { 0: (-1, -1, 0), 1: (0, 0, 0), 2: (1, 1, 0) }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel material:binding = </World/Looks/red>
+    }
+    def Mesh "lid" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 3, 2, 1]
+        point3f[] points = [(-3.0, -2.5, 0.5), (-2.6, -2.5, 0.5), (-2.6, -0.5, 0.5), (-3.0, -0.5, 0.5)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/red>
+    }
+    def Mesh "tilted" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(1, -2.5, 0), (3, -2.5, -1.5), (3, -0.5, -1.5), (1, -0.5, 0)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/red>
+    }
+    def DistantLight "sun"
+    {
+        float inputs:intensity = 1
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 24
+        float2 clippingRange = (0.1, 1000)
+        float fStop = 0
+        double shutter:open = 0
+        double shutter:close = 1
+        double3 xformOp:translate = (0, 0, 6)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "s"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (180, 120)
+        rel products = </Render/p>
+        int karma:global:pathtracedsamples = 16
+        token karma:global:convergence_mode = "Path Traced"
+        string karma:global:pixeloracle = '["uniform",{}]'
+        int nova:samples = 16
+    }
+    def RenderProduct "p"
+    {
+        token productName = "utility_aovs.exr"
+        rel orderedVars = [
+            </Render/Vars/C>,
+            </Render/Vars/P>,
+            </Render/Vars/P_camera>,
+            </Render/Vars/N>,
+            </Render/Vars/Ng>,
+            </Render/Vars/N_camera>,
+            </Render/Vars/Ng_camera>,
+            </Render/Vars/FN>,
+            </Render/Vars/FNg>,
+            </Render/Vars/hitdist>,
+            </Render/Vars/depth>,
+            </Render/Vars/primid>,
+            </Render/Vars/element>,
+            </Render/Vars/objectid>,
+            </Render/Vars/mv>,
+            </Render/Vars/vel>,
+            </Render/Vars/UV>,
+            </Render/Vars/st>,
+            </Render/Vars/AO>,
+            </Render/Vars/basecolor>
+        ]
+    }
+    def Scope "Vars"
+    {
+        def RenderVar "C" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:husk:format = "color4f"
+            string driver:parameters:aov:husk:name = "C"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "P" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "point3f"
+            uniform string sourceName = "ray:hitP"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "P"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "P_camera" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "point3f"
+            uniform string sourceName = "ray:hitP_camera"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "P_camera"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "N" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "normal3f"
+            uniform string sourceName = "ray:hitN"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "N"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "Ng" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "normal3f"
+            uniform string sourceName = "ray:hitNg"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "Ng"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "N_camera" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "normal3f"
+            uniform string sourceName = "ray:hitN_camera"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "N_camera"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "Ng_camera" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "normal3f"
+            uniform string sourceName = "ray:hitNg_camera"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "Ng_camera"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "FN" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float"
+            uniform string sourceName = "ray:hitN_facingratio"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float"
+            string driver:parameters:aov:husk:name = "FN"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "FNg" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float"
+            uniform string sourceName = "ray:hitNg_facingratio"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float"
+            string driver:parameters:aov:husk:name = "FNg"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "hitdist" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float"
+            uniform string sourceName = "ray:hitdist"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float"
+            string driver:parameters:aov:husk:name = "hitdist"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "depth" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float"
+            uniform string sourceName = "ray:hitPz"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float"
+            string driver:parameters:aov:husk:name = "depth"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "primid" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "int"
+            uniform string sourceName = "ray:primid"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float"
+            string driver:parameters:aov:husk:name = "primid"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "element" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "int"
+            uniform string sourceName = "ray:element"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float"
+            string driver:parameters:aov:husk:name = "element"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "objectid" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "int"
+            uniform string sourceName = "ray:objectid"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float"
+            string driver:parameters:aov:husk:name = "objectid"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "mv" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "vector3f"
+            uniform string sourceName = "ray:motionvector"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "mv"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "vel" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "vector3f"
+            uniform string sourceName = "ray:velocity"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "vel"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "UV" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float3"
+            uniform string sourceName = "st"
+            uniform token sourceType = "primvar"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "UV"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "st" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "vector3f"
+            uniform string sourceName = "st"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "st"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "AO" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "AO"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "AO"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+        def RenderVar "basecolor" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "export_basecolor"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "basecolor"
+            string driver:parameters:aov:karma:filter = '["point",{}]'
+        }
+    }
+}

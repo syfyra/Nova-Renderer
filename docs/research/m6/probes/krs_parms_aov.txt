@@ -1,0 +1,159 @@
+Image Output > AOVs (Render Vars)                            | existingvars                       | Existing Render Vars         | String   | ['/Render/Products/Vars/*'] | 
+Image Output > AOVs (Render Vars)                            | importsecondaryinputvars           | Import Render Vars From Seco | Toggle   | None | 
+Image Output > AOVs (Render Vars)                            | importsecondaryproducts            | Import Render Products From  | Toggle   | None | 
+Image Output > AOVs (Render Vars)                            | pixelfilter                        | Pixel Filter                 | String   | ['gauss'] | 
+Image Output > AOVs (Render Vars)                            | pixelfilterscale                   | Pixel Filter Scale           | Float    | [1.0] | 
+Image Output > AOVs (Render Vars)                            | globalaovmaterial                  | Global AOV Material          | String   | [''] | 
+Image Output > AOVs (Render Vars)                            | splitrendervars                    | Split Render Product by Rend | Toggle   | None | 
+Image Output > AOVs (Render Vars)                            | pixelfiltersize                    | Pixel Filter Size            | Float    | [2.0] | 
+Image Output > AOVs (Render Vars) > Component Level Output   | lpeaovlimit                        | LPE Tag AOV Limit            | Int      | [100] | 
+Image Output > AOVs (Render Vars) > Component Level Output   | doomitlpes                         | Omit LPE Tags                | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Component Level Output   | omitlpes                           | Omit LPE Tags                | String   | ['Untagged_Lights'] | 
+Image Output > AOVs (Render Vars) > Component Level Output   | dooutputcs                         | Output Colorspace            | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Component Level Output   | outputcs                           | Output Colorspace            | String   | [''] | 
+Image Output > AOVs (Render Vars) > Component Level Output   | channel_lower_rgb                  | Lower Case OpenEXR Channel N | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Beauty | beauty                             | Beauty                       | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Beauty | beautyperlpe                       | Split per LPE Tag            | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Beauty | beautyunshadowed                   | Beauty Unshadowed            | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Beauty | beautyunshadowedperlpe             | Split per LPE Tag            | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Beauty | shadow                             | Shadow                       | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Beauty | shadowperlpe                       | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | combineddiffuse                    | Combined Diffuse             | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | combineddiffuseperlpe              | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | directdiffuse                      | Direct Diffuse               | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | directdiffuseperlpe                | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | indirectdiffuse                    | Indirect Diffuse             | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | indirectdiffuseperlpe              | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | combineddiffuseunshadowed          | Combined Diffuse Unshadowed  | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | combineddiffuseunshadowedperlpe    | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | directdiffuseunshadowed            | Direct Diffuse Unshadowed    | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | directdiffuseunshadowedperlpe      | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | indirectdiffuseunshadowed          | Indirect Diffuse Unshadowed  | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | indirectdiffuseunshadowedperlpe    | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | combineddiffuseshadow              | Combined Diffuse Shadow      | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | combineddiffuseshadowperlpe        | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | directdiffuseshadow                | Direct Diffuse Shadow        | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | directdiffuseshadowperlpe          | Split per LPE Tag            | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | indirectdiffuseshadow              | Indirect Diffuse Shadow      | Toggle   | None | 
+tput > AOVs (Render Vars) > Component Level Output > Diffuse | indirectdiffuseshadowperlpe        | Split per LPE Tag            | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | combinedglossyreflection           | Combined Glossy Reflection   | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | combinedglossyreflectionperlpe     | Split per LPE Tag            | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | directglossyreflection             | Direct Glossy Reflection     | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | directglossyreflectionperlpe       | Split per LPE Tag            | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | indirectglossyreflection           | Indirect Glossy Reflection   | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | indirectglossyreflectionperlpe     | Split per LPE Tag            | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | glossytransmission                 | Glossy Transmission          | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | glossytransmissionperlpe           | Split per LPE Tag            | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | coat                               | BSDF Labelled 'coat'         | Toggle   | None | 
+Vars) > Component Level Output > Reflections and Refractions | coatperlpe                         | Split per LPE Tag            | Toggle   | None | 
+(Render Vars) > Component Level Output > Lights and Emission | combinedemission                   | Combined Emission            | Toggle   | None | 
+(Render Vars) > Component Level Output > Lights and Emission | directemission                     | Direct Emission              | Toggle   | None | 
+(Render Vars) > Component Level Output > Lights and Emission | indirectemission                   | Indirect Emission            | Toggle   | None | 
+(Render Vars) > Component Level Output > Lights and Emission | visiblelights                      | Visible Lights               | Toggle   | None | 
+(Render Vars) > Component Level Output > Lights and Emission | visiblelightsperlpe                | Split per LPE Tag            | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Volume | combinedvolume                     | Combined Volume              | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Volume | combinedvolumeperlpe               | Split per LPE Tag            | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Volume | directvolume                       | Direct Volume                | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Volume | directvolumeperlpe                 | Split per LPE Tag            | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Volume | indirectvolume                     | Indirect Volume              | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Volume | indirectvolumeperlpe               | Split per LPE Tag            | Toggle   | None | 
+e Output > AOVs (Render Vars) > Component Level Output > SSS | sss                                | BSDF Labelled 'sss'          | Toggle   | None | 
+e Output > AOVs (Render Vars) > Component Level Output > SSS | sssperlpe                          | Split per LPE Tag            | Toggle   | None | 
+utput > AOVs (Render Vars) > Component Level Output > Albedo | albedo                             | Albedo                       | Toggle   | None | 
+s (Render Vars) > Component Level Output > Ambient Occlusion | ambientocclusion                   | Ambient Occlusion            | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hitP                               | P (World Space)              | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hitPfilter                         | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitPprecision                      | Precision                    | String   | ['float3'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitP_camera                        | P (Camera Space)             | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hitP_camerafilter                  | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitP_cameraprecision               | Precision                    | String   | ['float3'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitPz                              | Depth (Camera Space)         | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hitPzfilter                        | Sample Blending              | String   | ['["minmax",{"mode":"zmin"}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitPzprecision                     | Precision                    | String   | ['float'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitPzfarclip                       | Camera's Far Clip as Backgro | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | element                            | Element (Raw Id)             | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | elementfilter                      | Sample Blending              | String   | ['["minmax",{"mode":"idcover"}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | elementprecision                   | Precision                    | String   | ['float'] | 
+Image Output > AOVs (Render Vars) > Utility                  | primid                             | Prim Id                      | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | primidfilter                       | Sample Blending              | String   | ['["minmax",{"mode":"idcover"}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | primidprecision                    | Precision                    | String   | ['float'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hituv                              | Texture Coordinates (st)     | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hituvfilter                        | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hituvprecision                     | Precision                    | String   | ['float3'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitN                               | N (Smooth Normal)            | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hitNfilter                         | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitNprecision                      | Precision                    | String   | ['half3'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitNg                              | Ng (Geometric Normal)        | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hitNgfilter                        | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitNgprecision                     | Precision                    | String   | ['half3'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitN_facingratio                   | Facing Ratio (N.I)           | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hitN_facingratiofilter             | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitN_facingratioprecision          | Precision                    | String   | ['half'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitNg_facingratio                  | Geometric Facing Ratio (Ng.I | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | hitNg_facingratiofilter            | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | hitNg_facingratioprecision         | Precision                    | String   | ['half'] | 
+Image Output > AOVs (Render Vars) > Utility                  | motionvectors                      | Motion Vectors               | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | motionvectorsfilter                | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | motionvectorsprecision             | Precision                    | String   | ['half3'] | 
+Image Output > AOVs (Render Vars) > Utility                  | velocity                           | Velocity                     | Toggle   | None | 
+Image Output > AOVs (Render Vars) > Utility                  | velocityfilter                     | Sample Blending              | String   | ['["ubox",{}]'] | 
+Image Output > AOVs (Render Vars) > Utility                  | velocityprecision                  | Precision                    | String   | ['half3'] | 
+utput > AOVs (Render Vars) > Extra Render Vars > Render Vars | enable#                            | Enable                       | Toggle   | None | 
+(Render Vars) > Extra Render Vars > Render Vars > Render Var | name#                              | Name                         | String   | [''] | 
+(Render Vars) > Extra Render Vars > Render Vars > Render Var | split#                             | Split per LPE Tag            | Toggle   | None | 
+(Render Vars) > Extra Render Vars > Render Vars > Render Var | format#                            | Format                       | String   | ['float'] | 
+(Render Vars) > Extra Render Vars > Render Vars > Render Var | dataType#                          | Data Type                    | String   | ['color3f'] | 
+(Render Vars) > Extra Render Vars > Render Vars > Render Var | sourceName#                        | Source Name                  | String   | [''] | 
+(Render Vars) > Extra Render Vars > Render Vars > Render Var | sourceType#                        | Source Type                  | String   | ['raw'] | 
+Vars) > Extra Render Vars > Render Vars > Render Var > Karma | filter#                            | Sample Blending              | String   | ['["ubox",{}]'] | 
+Vars) > Extra Render Vars > Render Vars > Render Var > Karma | cryptomatte#                       | Cryptomatte                  | Toggle   | None | 
+Vars) > Extra Render Vars > Render Vars > Render Var > Karma | cryptomatterank#                   | Overlap Limit                | Int      | [6] | 
+Vars) > Extra Render Vars > Render Vars > Render Var > Karma | cryptomattesidecar#                | Manifest File                | String   | [''] | 
+Vars) > Extra Render Vars > Render Vars > Render Var > Karma | dooutputcs#                        | Output Colorspace            | Toggle   | None | 
+Vars) > Extra Render Vars > Render Vars > Render Var > Karma | outputcs#                          | Output Colorspace            | String   | [''] | 
+Vars) > Extra Render Vars > Render Vars > Render Var > Karma | utilitypathexpression#             | Utility Path Expression      | String   | ['CO'] | 
+Image Output > Shadow Catcher                                | holdout_shadows                    | Add Holdout Shadows To Beaut | Toggle   | None | 
+Image Output > Shadow Catcher                                | holdout_shadow_alpha               | Holdout Shadow Alpha         | Float    | [1.0] | 
+Image Output > Filters                                       | cop_createaovs                     | Automatically Create Require | Toggle   | None | 
+Image Output > Filters > COP Image Filter Lists              | cop_filter_enable_#                | Enable                       | Toggle   | None | 
+Image Output > Filters > COP Image Filter Lists              | cop_filter_#                       | Filter Prim                  | String   | [''] | 
+Image Output > Filters > COP Image Filter Lists              | cop_filter_create_#                | New Filter                   | Button   | None | 
+Image Output > Filters > Karma Built-in Image Filters        | denoiser                           | Denoiser                     | String   | ['off'] | 
+Image Output > Filters > Karma Built-in Image Filters        | denoise_aovs                       | AOV List                     | String   | ['C'] | 
+Image Output > Filters > Karma Built-in Image Filters        | denoise_usealbedo                  | Use Albedo                   | Toggle   | None | 
+Image Output > Filters > Karma Built-in Image Filters        | denoise_useN                       | Use N Input                  | Toggle   | None | 
+Image Output > Filters > Karma Built-in Image Filters        | denoise_separate_aovs              | Create Separate Denoised AOV | Toggle   | None | 
+Image Output > Filters > Karma Built-in Image Filters        | denoise_cpu_only                   | Use CPU Only                 | Toggle   | None | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap                            | Tone Map                     | String   | ['off'] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_aovs                       | AOV List                     | String   | ['C'] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemapcurve                       | Tonemap Curve                | Ramp     | None | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_toe                        | Toe                          | Float    | [0.5] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_shoulder                   | Shoulder                     | Float    | [0.5] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_utoe                       | Toe                          | Float    | [0.55] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_ushoulder                  | Shoulder                     | Float    | [0.26] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_slope                      | Slope                        | Float    | [0.88] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_linear                     | Linear                       | Float    | [0.3] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_linearangle                | Linear Angle                 | Float    | [0.1] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_toelength                  | Toe Length                   | Float    | [0.5] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_shoulderlength             | Shoulder Length              | Float    | [0.5] | 
+Image Output > Filters > Karma Built-in Image Filters        | tonemap_shoulderangle              | Shoulder Angle               | Float    | [1.0] | 
+Image Output > Filters > Karma Built-in Image Filters > OCIO | ocio_enable#                       | Enable                       | Toggle   | None | 
+Image Output > Filters > Karma Built-in Image Filters > OCIO | ocio_planes#                       | Planes                       | String   | [''] | 
+Image Output > Filters > Karma Built-in Image Filters > OCIO | ocio_outputspace#                  | Output Space                 | String   | [''] | 
+Image Output > Filters > Karma Built-in Image Filters > OCIO | ocio_inputspace#                   | Input Space                  | String   | ['data'] | 
+Image Output > Filters > Karma Built-in Image Filters > OCIO | ocio_looks#                        | Looks                        | String   | [''] | 
+Image Output > Aspect Ratio                                  | aspectRatioConformPolicy           | Aspect Ratio Conform Policy  | String   | ['expandAperture'] | 
+Image Output > Aspect Ratio                                  | dataWindowNDC                      | Data Window NDC              | Float    | [0.0, 0.0, 1.0, 1.0] | 
+Image Output > Aspect Ratio                                  | dataWindowNDCmenu                  | Choose Overscan              | Button   | None | 
+Image Output > Aspect Ratio                                  | pixelAspectRatio                   | Pixel Aspect Ratio           | Float    | [1.0] | 
+Image Output > Metadata                                      | image_artist                       | Artist                       | String   | [''] | 
+Image Output > Metadata                                      | image_comment                      | Comment                      | String   | [''] | 
+Image Output > Metadata                                      | image_hostname                     | Hostname                     | String   | [''] | 
+Image Output > Metadata                                      | image_exr_compression              | EXR Compression              | String   | ['zips'] | 
+Image Output > Metadata                                      | image_dwa_compression              | DWA Compression Level        | Float    | [85.0] | 
+Image Output > Metadata > Custom Metadata                    | metadata_type_#                    | Type                         | String   | ['string'] | 
+Image Output > Metadata > Custom Metadata                    | metadata_key_#                     | Key                          | String   | [''] | 
+Image Output > Metadata > Custom Metadata                    | metadata_string_#                  | Value                        | String   | [''] | 
+Image Output > Metadata > Custom Metadata                    | metadata_int_#                     | Value                        | Int      | [0] | 
+Image Output > Metadata > Custom Metadata                    | metadata_float_#                   | Value                        | Float    | [0.0] | 
+Image Output > Metadata > Custom Metadata                    | metadata_color_#                   | Value                        | Float    | [1.0, 1.0, 1.0] | 

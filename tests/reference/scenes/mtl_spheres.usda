@@ -1,0 +1,229 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "ss_gold"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_gold/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 1
+                color3f inputs:base_color = (0.94, 0.78, 0.37)
+                float inputs:metalness = 1
+                float inputs:specular_roughness = 0.3
+                token outputs:out
+            }
+        }
+        def Material "ss_chrome"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_chrome/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.9, 0.9, 0.9)
+                float inputs:metalness = 1
+                float inputs:specular_roughness = 0.08
+                token outputs:out
+            }
+        }
+        def Material "ss_plastic"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_plastic/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.1, 0.08)
+                float inputs:specular_roughness = 0.25
+                token outputs:out
+            }
+        }
+        def Material "ss_coat"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_coat/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.1, 0.2, 0.6)
+                float inputs:specular_roughness = 0.5
+                float inputs:coat = 1
+                float inputs:coat_roughness = 0.05
+                token outputs:out
+            }
+        }
+        def Material "ss_sheen"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_sheen/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.2, 0.05, 0.1)
+                float inputs:specular = 0
+                float inputs:sheen = 1
+                color3f inputs:sheen_color = (0.9, 0.6, 0.8)
+                token outputs:out
+            }
+        }
+        def Material "pbr_copper"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/pbr_copper/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+                color3f inputs:base_color = (0.95, 0.64, 0.54)
+                float inputs:base_metalness = 1
+                color3f inputs:specular_color = (0.98, 0.82, 0.76)
+                float inputs:specular_roughness = 0.25
+                token outputs:out
+            }
+        }
+        def Material "pbr_plastic"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/pbr_plastic/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+                color3f inputs:base_color = (0.1, 0.5, 0.15)
+                float inputs:specular_roughness = 0.35
+                token outputs:out
+            }
+        }
+        def Material "pbr_fuzz"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/pbr_fuzz/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+                color3f inputs:base_color = (0.3, 0.3, 0.35)
+                float inputs:fuzz_weight = 1
+                color3f inputs:fuzz_color = (1, 0.9, 0.7)
+                float inputs:fuzz_roughness = 0.5
+                token outputs:out
+            }
+        }
+    }
+    def Mesh "ball_ss_gold" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_gold>
+        double3 xformOp:translate = (-1.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_ss_chrome" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_chrome>
+        double3 xformOp:translate = (-0.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_ss_plastic" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_plastic>
+        double3 xformOp:translate = (0.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_ss_coat" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_coat>
+        double3 xformOp:translate = (1.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_ss_sheen" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_sheen>
+        double3 xformOp:translate = (-1.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_pbr_copper" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/pbr_copper>
+        double3 xformOp:translate = (-0.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_pbr_plastic" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/pbr_plastic>
+        double3 xformOp:translate = (0.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_pbr_fuzz" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/pbr_fuzz>
+        double3 xformOp:translate = (1.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+        asset inputs:texture:file = @./assets/sky_soft.exr@
+        token inputs:texture:format = "latlong"
+        float inputs:karma:light:misbias = -1
+        bool inputs:karma:light:renderlightgeo = 1
+        uniform token[] xformOpOrder = []
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 18
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 0, 5.2)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 80)
+        float nova:object:diffuseLimit = 0
+        float nova:object:reflectLimit = 0
+        float nova:object:refractLimit = 0
+        float karma:object:diffuselimit = 0
+        float karma:object:reflectlimit = 0
+        float karma:object:refractlimit = 0
+    }
+}

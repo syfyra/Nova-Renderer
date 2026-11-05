@@ -1,0 +1,24 @@
+device: NVIDIA GeForce RTX 5080, 84 SMs
+
+T1. MIP chain creation (4096^2, 13 levels)
+  RGBA16F: 180.4 MB allocated (theory 179.0 MB), allocate + upload 68.7 ms
+  RGBA8:   90.2 MB allocated (theory 89.5 MB), allocate + upload 48.9 ms
+
+T2. tex2DGrad throughput, 4194304 threads x 4 lookups
+  RGBA16F 4096^2, coherent                                     0.047 ms  354.01 G lookups/s
+  RGBA16F 4096^2, random                                       0.346 ms   48.55 G lookups/s
+  RGBA8 4096^2, coherent                                       0.041 ms  407.37 G lookups/s
+  RGBA8 4096^2, random                                         0.310 ms   54.21 G lookups/s
+  RGBA16F, random, footprint 1/4096 (level 0)                  1.944 ms    8.63 G lookups/s
+  RGBA16F, random, footprint 8/4096 (level 3)                  0.342 ms   49.01 G lookups/s
+  RGBA16F, random, anisotropic 8:1 (8/4096 x 1/4096)           4.356 ms    3.85 G lookups/s
+  RGBA16F, coherent, anisotropic 8:1 (8/4096 x 1/4096)         0.289 ms   58.04 G lookups/s
+  bindless 64 x 1024^2 RGBA16F, handle per warp                0.259 ms   64.79 G lookups/s
+  bindless 64 x 1024^2 RGBA16F, handle per lane (random)       2.124 ms    7.90 G lookups/s
+
+T3. Bilinear precision and software filtering
+  hardware linear filter on a 0/1 step: max |error| 0.00195 of the step (1/512); 257 distinct values between two texels
+  float4 2048^2 bilinear, hardware (tex2D)                     0.174 ms   96.18 G lookups/s
+  float4 2048^2 bilinear, software (4 global loads)            0.121 ms  138.55 G lookups/s
+
+done

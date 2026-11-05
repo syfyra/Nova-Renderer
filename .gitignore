@@ -1,0 +1,24 @@
+build/
+dist/
+*.exr
+.vs/
+# Reference images and texture assets are part of the tests.
+!tests/reference/images/*.exr
+!tests/reference/scenes/assets/*.exr
+tools/installer/target/
+tools/installer/payload/
+tools/installer/gen/
+__pycache__/
+*.pyc
+# Houdini-generated files stay out of version control: scenes, test HDAs and
+# the built nova_lops.hda (houdini/tools/build_nova_hdas.py makes it).
+*.hip
+*.hipnc
+*.hiplc
+*.hda
+*.hdanc
+*.hdalc
+*.otl
+backup/
+# Agent worktrees
+.claude/worktrees/

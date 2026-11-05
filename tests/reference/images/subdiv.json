@@ -1,0 +1,25 @@
+{
+  "scene": "subdiv",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/subdiv.usda": "8bb95f9b585ac7cc37cdbd96f04ed1be1d358821",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3",
+    "scenes/subdiv_karma.usda": "9c56246d416b4616f2f8694756756edfff49d8de"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/subdiv.exr",
+  "sigma": "images/subdiv.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.006106,
+    "flip_test_pair": 0.010022,
+    "relmse": 0.000195,
+    "global_z": [
+      0.847,
+      1.109,
+      1.272,
+      -0.582
+    ]
+  }
+}

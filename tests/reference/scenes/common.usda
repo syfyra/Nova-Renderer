@@ -1,0 +1,87 @@
+#usda 1.0
+(
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Shared by every reference scene (as a subLayer). Each scene's
+# RenderSettings prim inherits _class_RefSettings and adds camera,
+# resolution and the ray limits (the same for both renderers). The Karma
+# attributes make Karma CPU compute the same estimator expectation as Nova;
+# see tests/reference/README.md for the measurements.
+class "_class_RefSettings"
+{
+    # Nova
+    float nova:clampIndirect = 0
+    token nova:pixelFilter = "gauss"
+    float nova:pixelFilterScale = 1
+
+    # Karma CPU
+    token karma:global:convergence_mode = "Path Traced"
+    string karma:global:pixeloracle = '["uniform",{}]'
+    string karma:global:pixelfilter = "gauss"
+    float karma:global:pixelfilterscale = 1
+    float karma:global:colorlimit = 1e9
+    float karma:global:colorlimitindirect = 1e9
+    bool karma:global:colorlimitindlinked = 1
+    bool karma:global:constrainmaxrough = 0
+    # True caustics, as Nova (Karma's default fakes them: glass passes shadow
+    # rays and diffuse rays, and glossy lobes are skipped after a diffuse bounce).
+    bool karma:object:causticsenable = 1
+    float karma:object:causticsroughnessclamp = 0
+
+    # Both renderers write the beauty as 32-bit float (husk's default
+    # product is half float, which quantizes flat images by up to 2^-12).
+    rel products = [</Render/Products/beauty>]
+}
+
+def Scope "Render"
+{
+    def Scope "Products"
+    {
+        def RenderProduct "beauty"
+        {
+            token productName = "beauty.exr"
+            rel orderedVars = [</Render/Vars/C>]
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+    }
+}
+
+# Lambert with the albedo from primvars:displayColor, which is what Nova
+# shades until M3 (standard_surface without specular is Lambert in Karma).
+def Scope "Looks"
+{
+    def Material "displayColorLambert"
+    {
+        token outputs:mtlx:surface.connect = </Looks/displayColorLambert/surface.outputs:out>
+
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color.connect = </Looks/displayColorLambert/primvar.outputs:out>
+            float inputs:specular = 0
+            token outputs:out
+        }
+
+        def Shader "primvar"
+        {
+            uniform token info:id = "ND_geompropvalue_color3"
+            string inputs:geomprop = "displayColor"
+            color3f inputs:default = (1, 0, 1)
+            color3f outputs:out
+        }
+    }
+}

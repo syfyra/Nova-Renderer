@@ -1,0 +1,85 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 0
+    endTimeCode = 2
+)
+
+# Motion blur reference scene (M2), rendered at frame 1 with the camera
+# shutter [-0.25, 0.25]. Orthographic camera: 40 x 8 units on 400 x 80
+# pixels (10 px per unit), x from -20 to 20, y from -4 to 4.
+# Both quads are 2 units wide and move +10 units per frame, so during the
+# shutter their left edge sweeps x0 in [-2.5, 2.5]: the coverage at x is
+# |[x - 2, x] intersected with [-2.5, 2.5]| / 5, a trapezoid with plateau 0.4
+# on [-0.5, 2.5] that vanishes at -2.5 and 4.5.
+def Xform "World"
+{
+    # Transform blur: translate samples at frames 0 and 2.
+    def Mesh "mover"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 1, 0), (2, 1, 0), (2, 3, 0), (0, 3, 0)]
+        uniform token subdivisionScheme = "none"
+        double3 xformOp:translate.timeSamples = {
+            0: (-10, 0, 0),
+            2: (10, 0, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    # Deformation blur: points at frames 0, 1 and 2 (Hydra also delivers the
+    # bracketing samples outside the shutter).
+    def Mesh "deformer"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points.timeSamples = {
+            0: [(-10, -3, 0), (-8, -3, 0), (-8, -1, 0), (-10, -1, 0)],
+            1: [(0, -3, 0), (2, -3, 0), (2, -1, 0), (0, -1, 0)],
+            2: [(10, -3, 0), (12, -3, 0), (12, -1, 0), (10, -1, 0)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 400
+        float verticalAperture = 80
+        float2 clippingRange = (0.1, 100)
+        double shutter:open = -0.25
+        double shutter:close = 0.25
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "settings"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 80)
+        int nova:samples = 64
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+
+    def RenderSettings "nomotion"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 80)
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+        bool disableMotionBlur = 1
+    }
+}

@@ -1,0 +1,116 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "ss_glass"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_glass/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 0
+                float inputs:transmission = 1
+                float inputs:specular_roughness = 0
+                token outputs:out
+            }
+        }
+        def Material "ss_rough"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_rough/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 0
+                float inputs:transmission = 1
+                float inputs:specular_roughness = 0.3
+                token outputs:out
+            }
+        }
+        def Material "pbr_glass"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/pbr_glass/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+                float inputs:transmission_weight = 1
+                float inputs:specular_roughness = 0
+                color3f inputs:transmission_color = (0.9, 0.95, 1)
+                token outputs:out
+            }
+        }
+    }
+    def Mesh "ball_ss_glass" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_glass>
+        double3 xformOp:translate = (-1.1, 0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_ss_rough" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_rough>
+        double3 xformOp:translate = (0, 0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_pbr_glass" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/pbr_glass>
+        double3 xformOp:translate = (1.1, 0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+        asset inputs:texture:file = @./assets/sky_soft.exr@
+        token inputs:texture:format = "latlong"
+        float inputs:karma:light:misbias = -1
+        bool inputs:karma:light:renderlightgeo = 1
+        uniform token[] xformOpOrder = []
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 18
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 0.4, 4)
+        float3 xformOp:rotateXYZ = (-5, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 80)
+        float nova:object:diffuseLimit = 7
+        float nova:object:reflectLimit = 7
+        float nova:object:refractLimit = 7
+        float karma:object:diffuselimit = 7
+        float karma:object:reflectlimit = 7
+        float karma:object:refractlimit = 7
+    }
+}

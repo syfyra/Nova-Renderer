@@ -1,0 +1,487 @@
+{
+ "camera": "/World/cam",
+ "RenderSettings": {
+  "aspectRatioConformPolicy": "expandAperture",
+  "camera": [
+   "/World/cam"
+  ],
+  "dataWindowNDC": [
+   0,
+   0,
+   1,
+   1
+  ],
+  "disableDepthOfField": false,
+  "disableMotionBlur": false,
+  "houdini:fps": 24,
+  "houdini:frame": 0,
+  "houdini:renderer": "husk",
+  "husk:default_delegate": "",
+  "husk:orderedImageFilters": [],
+  "husk:scene_lights": true,
+  "husk:scene_materials": true,
+  "huskDelegateOptions": "",
+  "includedPurposes": [
+   "default",
+   "render"
+  ],
+  "instantaneousShutter": false,
+  "karma:global:samplesperpixel": 4,
+  "materialBindingPurposes": [
+   "full",
+   ""
+  ],
+  "nova:samples": 4,
+  "pixelAspectRatio": 1,
+  "products": [
+   "/Render/Products/main",
+   "/Render/Products/second"
+  ],
+  "renderCameraPath": "/World/cam",
+  "renderMode": "batch",
+  "resolution": [
+   160,
+   107
+  ],
+  "shutter:close": 0,
+  "shutter:open": 0,
+  "usdFileTimeStamp": 1791904486,
+  "usdSettingsPrim": "/Render/probe"
+ },
+ "RenderProducts": [
+  {
+   "settings": {
+    "orderedVars": [
+     "/Render/Vars/C",
+     "/Render/Vars/c3h",
+     "/Render/Vars/c3f_fmt_c3h",
+     "/Render/Vars/half1",
+     "/Render/Vars/half3",
+     "/Render/Vars/float2",
+     "/Render/Vars/int1",
+     "/Render/Vars/int1_fmt_float",
+     "/Render/Vars/uint1",
+     "/Render/Vars/normal3h",
+     "/Render/Vars/point3f",
+     "/Render/Vars/vector3f_noformat",
+     "/Render/Vars/noschema",
+     "/Render/Vars/clear_one",
+     "/Render/Vars/ms_off",
+     "/Render/Vars/primvar_st",
+     "/Render/Vars/unknown_raw",
+     "/Render/Vars/prefix"
+    ],
+    "productName": "probe_main.exr",
+    "productType": "raster",
+    "sourcePrim": "/Render/Products/main"
+   },
+   "expandedProductName": "",
+   "RenderVariables": [
+    {
+     "AOVName": "C",
+     "AOVPixelFormat": "float16",
+     "AOVChannelSize": 4,
+     "HdFormat": "HdFormatFloat32Vec4",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color4f",
+      "driver:parameters:aov:husk:format": "color4h",
+      "driver:parameters:aov:husk:name": "C",
+      "sourceName": "C.*[LO]",
+      "sourcePrim": "/Render/Vars/C",
+      "sourceType": "lpe"
+     }
+    },
+    {
+     "AOVName": "c3h",
+     "AOVPixelFormat": "float16",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat16Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color3h",
+      "driver:parameters:aov:husk:name": "c3h",
+      "sourceName": "color",
+      "sourcePrim": "/Render/Vars/c3h",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "c3f_fmt_c3h",
+     "AOVPixelFormat": "float16",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat32Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color3f",
+      "driver:parameters:aov:husk:format": "color3h",
+      "driver:parameters:aov:husk:name": "c3f_fmt_c3h",
+      "sourceName": "color",
+      "sourcePrim": "/Render/Vars/c3f_fmt_c3h",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "half1",
+     "AOVPixelFormat": "float16",
+     "AOVChannelSize": 1,
+     "HdFormat": "HdFormatFloat16",
+     "HdMultiSampled": true,
+     "HdClearValue": null,
+     "settings": {
+      "dataType": "half",
+      "driver:parameters:aov:husk:name": "half1",
+      "sourceName": "depth",
+      "sourcePrim": "/Render/Vars/half1",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "half3",
+     "AOVPixelFormat": "float16",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat16Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "half3",
+      "driver:parameters:aov:husk:name": "half3",
+      "sourceName": "normal",
+      "sourcePrim": "/Render/Vars/half3",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "float2",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 2,
+     "HdFormat": "HdFormatFloat32Vec2",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "float2",
+      "driver:parameters:aov:husk:name": "float2",
+      "sourceName": "normal",
+      "sourcePrim": "/Render/Vars/float2",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "int1",
+     "AOVPixelFormat": "int32",
+     "AOVChannelSize": 1,
+     "HdFormat": "HdFormatInt32",
+     "HdMultiSampled": true,
+     "HdClearValue": 0,
+     "settings": {
+      "dataType": "int",
+      "driver:parameters:aov:husk:name": "int1",
+      "sourceName": "primId",
+      "sourcePrim": "/Render/Vars/int1",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "int1_fmt_float",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 1,
+     "HdFormat": "HdFormatInt32",
+     "HdMultiSampled": true,
+     "HdClearValue": 0,
+     "settings": {
+      "dataType": "int",
+      "driver:parameters:aov:husk:format": "float",
+      "driver:parameters:aov:husk:name": "int1_fmt_float",
+      "sourceName": "primId",
+      "sourcePrim": "/Render/Vars/int1_fmt_float",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "uint1",
+     "AOVPixelFormat": "int32",
+     "AOVChannelSize": 1,
+     "HdFormat": "HdFormatInt32",
+     "HdMultiSampled": true,
+     "HdClearValue": 0,
+     "settings": {
+      "dataType": "uint",
+      "driver:parameters:aov:husk:name": "uint1",
+      "sourceName": "instanceId",
+      "sourcePrim": "/Render/Vars/uint1",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "N",
+     "AOVPixelFormat": "float16",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat16Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "normal3h",
+      "driver:parameters:aov:husk:name": "N",
+      "sourceName": "normal",
+      "sourcePrim": "/Render/Vars/normal3h",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "P",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat32Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "point3f",
+      "driver:parameters:aov:husk:format": "float3",
+      "driver:parameters:aov:husk:name": "P",
+      "sourceName": "Peye",
+      "sourcePrim": "/Render/Vars/point3f",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "vec_noformat",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat32Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "vector3f",
+      "driver:parameters:aov:husk:name": "vec_noformat",
+      "sourceName": "normal",
+      "sourcePrim": "/Render/Vars/vector3f_noformat",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "noschema",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat32Vec3",
+     "HdMultiSampled": false,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color3f",
+      "driver:parameters:aov:husk:name": "noschema",
+      "sourceName": "albedo",
+      "sourcePrim": "/Render/Vars/noschema",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "clear_one",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 1,
+     "HdFormat": "HdFormatFloat32",
+     "HdMultiSampled": true,
+     "HdClearValue": 1,
+     "settings": {
+      "dataType": "float",
+      "driver:parameters:aov:husk:clearValue": 1,
+      "driver:parameters:aov:husk:name": "clear_one",
+      "sourceName": "depth",
+      "sourcePrim": "/Render/Vars/clear_one",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "ms_off",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat32Vec3",
+     "HdMultiSampled": false,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color3f",
+      "driver:parameters:aov:husk:multiSampled": false,
+      "driver:parameters:aov:husk:name": "ms_off",
+      "sourceName": "albedo",
+      "sourcePrim": "/Render/Vars/ms_off",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "st",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 2,
+     "HdFormat": "HdFormatFloat32Vec2",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "float2",
+      "driver:parameters:aov:husk:name": "st",
+      "sourceName": "st",
+      "sourcePrim": "/Render/Vars/primvar_st",
+      "sourceType": "primvar"
+     }
+    },
+    {
+     "AOVName": "unknown",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat32Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color3f",
+      "driver:parameters:aov:husk:name": "unknown",
+      "sourceName": "ray:hitP",
+      "sourcePrim": "/Render/Vars/unknown_raw",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "prefixed",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat32Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color3f",
+      "driver:parameters:aov:husk:channel_lower_rgb": true,
+      "driver:parameters:aov:husk:channel_prefix": "pfx",
+      "driver:parameters:aov:husk:name": "prefixed",
+      "sourceName": "albedo",
+      "sourcePrim": "/Render/Vars/prefix",
+      "sourceType": "raw"
+     }
+    }
+   ]
+  },
+  {
+   "settings": {
+    "driver:parameters:husk:OpenEXR:multipart": false,
+    "orderedVars": [
+     "/Render/Vars/C",
+     "/Render/Vars/normal3h",
+     "/Render/Vars/lpe_diffuse"
+    ],
+    "productName": "probe_second.exr",
+    "productType": "raster",
+    "sourcePrim": "/Render/Products/second"
+   },
+   "expandedProductName": "",
+   "RenderVariables": [
+    {
+     "AOVName": "C",
+     "AOVPixelFormat": "float16",
+     "AOVChannelSize": 4,
+     "HdFormat": "HdFormatFloat32Vec4",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color4f",
+      "driver:parameters:aov:husk:format": "color4h",
+      "driver:parameters:aov:husk:name": "C",
+      "sourceName": "C.*[LO]",
+      "sourcePrim": "/Render/Vars/C",
+      "sourceType": "lpe"
+     }
+    },
+    {
+     "AOVName": "N",
+     "AOVPixelFormat": "float16",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat16Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "normal3h",
+      "driver:parameters:aov:husk:name": "N",
+      "sourceName": "normal",
+      "sourcePrim": "/Render/Vars/normal3h",
+      "sourceType": "raw"
+     }
+    },
+    {
+     "AOVName": "directdiffuse",
+     "AOVPixelFormat": "float32",
+     "AOVChannelSize": 3,
+     "HdFormat": "HdFormatFloat32Vec3",
+     "HdMultiSampled": true,
+     "HdClearValue": [
+      0,
+      0,
+      0
+     ],
+     "settings": {
+      "dataType": "color3f",
+      "driver:parameters:aov:husk:name": "directdiffuse",
+      "sourceName": "C<RD>L",
+      "sourcePrim": "/Render/Vars/lpe_diffuse",
+      "sourceType": "lpe"
+     }
+    }
+   ]
+  }
+ ]
+}

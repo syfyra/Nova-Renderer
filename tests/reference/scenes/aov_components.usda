@@ -1,0 +1,390 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "coat"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/coat/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.15, 0.1)
+                float inputs:specular_roughness = 0.35
+                float inputs:coat = 0.7
+                float inputs:coat_roughness = 0.1
+                token outputs:out
+            }
+        }
+        def Material "glass"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/glass/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 0
+                float inputs:transmission = 1
+                float inputs:specular_roughness = 0.15
+                token outputs:out
+            }
+        }
+        def Material "metal"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/metal/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.95, 0.8, 0.5)
+                float inputs:metalness = 1
+                float inputs:specular_roughness = 0.25
+                token outputs:out
+            }
+        }
+        def Material "emit"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/emit/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 0
+                float inputs:specular = 0
+                float inputs:emission = 1
+                color3f inputs:emission_color = (4, 2, 0.8)
+                token outputs:out
+            }
+        }
+    }
+    def Mesh "floor" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-6, 0, 6), (6, 0, 6), (6, 0, -6), (-6, 0, -6)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+        rel material:binding = </Looks/displayColorLambert>
+    }
+    def Mesh "ball_coat" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/coat>
+        double3 xformOp:translate = (-1.5, 0.5, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_glass" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/glass>
+        double3 xformOp:translate = (-0.35, 0.5, 0.45)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_metal" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        string primvars:karma:object:lpetag = "metal" (interpolation = "constant")
+        rel material:binding = </World/Looks/metal>
+        double3 xformOp:translate = (0.8, 0.5, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_emit" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/emit>
+        double3 xformOp:translate = (1.75, 0.25, 0.65)
+        double3 xformOp:scale = (0.25, 0.25, 0.25)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def RectLight "key"
+    {
+        float inputs:intensity = 5
+        float inputs:width = 2
+        float inputs:height = 2
+        string inputs:karma:light:lpetag = "key"
+        double3 xformOp:translate = (0.4, 3.5, 1.2)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def DistantLight "fill"
+    {
+        float inputs:intensity = 0.8
+        float inputs:angle = 5
+        string inputs:karma:light:lpetag = "fill"
+        float3 xformOp:rotateXYZ = (-40, 30, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 0.25
+        color3f inputs:color = (0.6, 0.7, 1)
+        uniform token[] xformOpOrder = []
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 21.6
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 1.6, 4.6)
+        float3 xformOp:rotateXYZ = (-15, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 90)
+        float nova:object:diffuseLimit = 1
+        float karma:object:diffuselimit = 1
+        rel products = [</Render/aovs>]
+    }
+    def RenderProduct "aovs"
+    {
+        token productName = "aov_components.exr"
+        rel orderedVars = [
+                </Render/AovVars/C>,
+                </Render/AovVars/C_key>,
+                </Render/AovVars/C_fill>,
+                </Render/AovVars/C_emission>,
+                </Render/AovVars/beautyunshadowed>,
+                </Render/AovVars/shadow>,
+                </Render/AovVars/combineddiffuse>,
+                </Render/AovVars/directdiffuse>,
+                </Render/AovVars/indirectdiffuse>,
+                </Render/AovVars/directdiffuseunshadowed>,
+                </Render/AovVars/directdiffuseshadow>,
+                </Render/AovVars/combinedglossyreflection>,
+                </Render/AovVars/directglossyreflection>,
+                </Render/AovVars/indirectglossyreflection>,
+                </Render/AovVars/glossytransmission>,
+                </Render/AovVars/directemission>,
+                </Render/AovVars/indirectemission>,
+                </Render/AovVars/coat>,
+                </Render/AovVars/metal_glossy>,
+                </Render/AovVars/albedo>,
+                </Render/AovVars/albedoglossyreflection>,
+                </Render/AovVars/albedoglossytransmission>,
+                </Render/AovVars/albedotransmitteddiffuse>,
+                </Render/AovVars/alphatransmission>
+        ]
+    }
+    def Scope "AovVars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+        def RenderVar "C_key"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C.*<L.'key'>"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "C_key"
+        }
+        def RenderVar "C_fill"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C.*<L.'fill'>"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "C_fill"
+        }
+        def RenderVar "C_emission"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C.*O"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "C_emission"
+        }
+        def RenderVar "beautyunshadowed"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "unoccluded;C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "beautyunshadowed"
+        }
+        def RenderVar "shadow"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "shadow;C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "shadow"
+        }
+        def RenderVar "combineddiffuse"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RD>.*L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "combineddiffuse"
+        }
+        def RenderVar "directdiffuse"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RD>L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "directdiffuse"
+        }
+        def RenderVar "indirectdiffuse"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RD>.+L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "indirectdiffuse"
+        }
+        def RenderVar "directdiffuseunshadowed"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "unoccluded;C<RD>L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "directdiffuseunshadowed"
+        }
+        def RenderVar "directdiffuseshadow"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "shadow;C<RD>L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "directdiffuseshadow"
+        }
+        def RenderVar "combinedglossyreflection"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RG>.*L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "combinedglossyreflection"
+        }
+        def RenderVar "directglossyreflection"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RG>L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "directglossyreflection"
+        }
+        def RenderVar "indirectglossyreflection"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RG>.+L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "indirectglossyreflection"
+        }
+        def RenderVar "glossytransmission"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<TG>.*L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "glossytransmission"
+        }
+        def RenderVar "directemission"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "CO"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "directemission"
+        }
+        def RenderVar "indirectemission"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C.+O"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "indirectemission"
+        }
+        def RenderVar "coat"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<...'coat'>.*L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "coat"
+        }
+        def RenderVar "metal_glossy"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RG'metal'>.*L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "metal_glossy"
+        }
+        def RenderVar "albedo"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "CDA"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "albedo"
+        }
+        def RenderVar "albedoglossyreflection"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RG>A"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "albedoglossyreflection"
+        }
+        def RenderVar "albedoglossytransmission"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<TG>A"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "albedoglossytransmission"
+        }
+        def RenderVar "albedotransmitteddiffuse"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<TG>*DA"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "albedotransmitteddiffuse"
+        }
+        def RenderVar "alphatransmission"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "!C<TG>*B"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "alphatransmission"
+        }
+    }
+}

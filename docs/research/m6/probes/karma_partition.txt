@@ -1,0 +1,12 @@
+﻿C  vs  CL + C<RD>.*L + C<RG>.*L + C<TG>.*L + C<TD>.*L + CV.*L + C.*O   mean|diff| = 0.00004  (0.02 % of mean beauty)
+combineddiffuse  vs  directdiffuse + indirectdiffuse                   mean|diff| = 0.00002  (0.01 % of mean beauty)
+combinedglossyreflection  vs  direct + indirect                        mean|diff| = 0.00001  (0.00 % of mean beauty)
+combinedemission  vs  directemission + indirectemission                mean|diff| = 0.00000  (0.00 % of mean beauty)
+C  vs  C_key + C_fill + C_emission (+ untagged dome, not split)        mean|diff| = 0.07838  (35.65 % of mean beauty)
+C_key  vs  custom C.*<L.'key'> ... combineddiffuse_key vs key_diffuse  mean|diff| = 0.00002  (0.01 % of mean beauty)
+C_fill  vs  custom fill_all (C.*<L.'fill'>)                            mean|diff| = 0.00000  (0.00 % of mean beauty)
+albedo (CDA) vs albedodiffuse (CDA)                                    mean|diff| = 0.00000  (0.00 % of mean beauty)
+coat <= combinedglossyreflection everywhere: True (max excess 0)
+beautyunshadowed >= C (mean 0.2545 vs 0.2199)
+shadow vs 1 - C/unshadowed (where unshadowed > 0): mean shadow 0.1405, mean (1 - C/U) 0.1387
+alphatransmission (!C<TG>*B) vs C alpha: mean 0.6193 vs 0.6331, mean|diff| 0.0138

@@ -1,0 +1,31 @@
+﻿product /Render/Products/main: {"orderedVars": ["/Render/Vars/C", "/Render/Vars/c3h", "/...
+
+| AOVName | HdFormat | multiSampled | clear | pixel format x channels | aovSettings (besides sourceName/sourceType/dataType/sourcePrim) |
+|---|---|---|---|---|---|
+| C | HdFormatFloat32Vec4 | True | [0, 0, 0, 0] | float16 x4 | husk:format="color4h", husk:name="C" |
+| c3h | HdFormatFloat16Vec3 | True | [0, 0, 0] | float16 x3 | husk:name="c3h" |
+| c3f_fmt_c3h | HdFormatFloat32Vec3 | True | [0, 0, 0] | float16 x3 | husk:format="color3h", husk:name="c3f_fmt_c3h" |
+| half1 | HdFormatFloat16 | True | null | float16 x1 | husk:name="half1" |
+| half3 | HdFormatFloat16Vec3 | True | [0, 0, 0] | float16 x3 | husk:name="half3" |
+| float2 | HdFormatFloat32Vec2 | True | [0, 0] | float32 x2 | husk:name="float2" |
+| int1 | HdFormatInt32 | True | 0 | int32 x1 | husk:name="int1" |
+| int1_fmt_float | HdFormatInt32 | True | 0 | float32 x1 | husk:format="float", husk:name="int1_fmt_float" |
+| uint1 | HdFormatInt32 | True | 0 | int32 x1 | husk:name="uint1" |
+| N | HdFormatFloat16Vec3 | True | [0, 0, 0] | float16 x3 | husk:name="N" |
+| P | HdFormatFloat32Vec3 | True | [0, 0, 0] | float32 x3 | husk:format="float3", husk:name="P" |
+| vec_noformat | HdFormatFloat32Vec3 | True | [0, 0, 0] | float32 x3 | husk:name="vec_noformat" |
+| noschema | HdFormatFloat32Vec3 | False | [0, 0, 0] | float32 x3 | husk:name="noschema" |
+| clear_one | HdFormatFloat32 | True | 1 | float32 x1 | husk:clearValue=1, husk:name="clear_one" |
+| ms_off | HdFormatFloat32Vec3 | False | [0, 0, 0] | float32 x3 | husk:multiSampled=false, husk:name="ms_off" |
+| st | HdFormatFloat32Vec2 | True | [0, 0] | float32 x2 | husk:name="st" |
+| unknown | HdFormatFloat32Vec3 | True | [0, 0, 0] | float32 x3 | husk:name="unknown" |
+| prefixed | HdFormatFloat32Vec3 | True | [0, 0, 0] | float32 x3 | husk:channel_lower_rgb=true, husk:channel_prefix="pfx", husk:name="prefixed" |
+
+product /Render/Products/second: {"driver:parameters:husk:OpenEXR:multipart": false, "orde...
+
+| AOVName | HdFormat | multiSampled | clear | pixel format x channels | aovSettings (besides sourceName/sourceType/dataType/sourcePrim) |
+|---|---|---|---|---|---|
+| C | HdFormatFloat32Vec4 | True | [0, 0, 0, 0] | float16 x4 | husk:format="color4h", husk:name="C" |
+| N | HdFormatFloat16Vec3 | True | [0, 0, 0] | float16 x3 | husk:name="N" |
+| directdiffuse | HdFormatFloat32Vec3 | True | [0, 0, 0] | float32 x3 | husk:name="directdiffuse" |
+

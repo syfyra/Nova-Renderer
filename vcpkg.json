@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "nova",
+  "version": "0.1.0",
+  "description": "Nova render engine. vcpkg provides only Embree 4 and Catch2; everything else comes from Houdini ($HFS).",
+  "builtin-baseline": "e456309491fd875487bf02b8a0dca76c1b1b00cc",
+  "dependencies": [
+    {
+      "name": "embree",
+      "default-features": false,
+      "features": [
+        "geometry-triangle",
+        "geometry-quad",
+        "geometry-curve",
+        "geometry-point",
+        "geometry-instance",
+        "geometry-user",
+        "filter-function",
+        "ray-mask",
+        "ray-packets"
+      ]
+    },
+    "catch2"
+  ]
+}

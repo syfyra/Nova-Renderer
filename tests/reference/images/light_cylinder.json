@@ -1,0 +1,25 @@
+{
+  "scene": "light_cylinder",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/light_cylinder.usda": "f1e90d265c1cfd49afaa89d47658dc4c1589c5f0",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/light_cylinder.exr",
+  "sigma": "images/light_cylinder.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.020328,
+    "flip_test_pair": 0.033777,
+    "relmse": 3.6e-05,
+    "global_z": [
+      -0.586,
+      -1.046,
+      -1.652,
+      2.823
+    ]
+  }
+}

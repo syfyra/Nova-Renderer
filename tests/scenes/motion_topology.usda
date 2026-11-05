@@ -1,0 +1,162 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 0
+    endTimeCode = 2
+)
+
+# Array lengths that change within the shutter (tests/husk/check_motion.py).
+# Nothing here moves: every prim must render sharp, as USD holds it at frame 1
+# (arrays of different length are not interpolated), for the forward shutter
+# [0, 0.5] and the centred one [-0.25, 0.25]. Rows, top to bottom:
+#   dies:     three particles; the first one dies at frame 2 and the survivors
+#             shift down one index. Quads at x0 = -10, 0, 10, y 3.5..5.5.
+#   diesSub:  the same with subframe samples 0.75, 1, 1.25 (the drop at 1.25).
+#             Quads at x0 = -10, 0, 10, y 0.5..2.5.
+#   shrink:   a mesh sampled at 0.75 (two quads, x0 = -10 and 10) and 1.25 (one
+#             quad, x0 = 0); held at 0.75: two quads, y -2.5..-0.5.
+#   grow:     a mesh sampled at 0.75 (one quad, x0 = -10) and 1.25 (two quads,
+#             x0 = 0 and 10); held at 0.75: one quad, y -5.5..-3.5.
+# Orthographic camera: x in -20..20, y in -6..6, 10 pixels per unit.
+def Xform "World"
+{
+    def PointInstancer "dies"
+    {
+        rel prototypes = [</World/dies/Protos/quad>]
+        int[] protoIndices.timeSamples = {
+            0: [0, 0, 0],
+            1: [0, 0, 0],
+            2: [0, 0],
+        }
+        point3f[] positions.timeSamples = {
+            0: [(-10, 3.5, 0), (0, 3.5, 0), (10, 3.5, 0)],
+            1: [(-10, 3.5, 0), (0, 3.5, 0), (10, 3.5, 0)],
+            2: [(0, 3.5, 0), (10, 3.5, 0)],
+        }
+
+        def Scope "Protos"
+        {
+            def Mesh "quad"
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def PointInstancer "diesSub"
+    {
+        rel prototypes = [</World/diesSub/Protos/quad>]
+        int[] protoIndices.timeSamples = {
+            0.75: [0, 0, 0],
+            1: [0, 0, 0],
+            1.25: [0, 0],
+        }
+        point3f[] positions.timeSamples = {
+            0.75: [(-10, 0.5, 0), (0, 0.5, 0), (10, 0.5, 0)],
+            1: [(-10, 0.5, 0), (0, 0.5, 0), (10, 0.5, 0)],
+            1.25: [(0, 0.5, 0), (10, 0.5, 0)],
+        }
+
+        def Scope "Protos"
+        {
+            def Mesh "quad"
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def Mesh "shrink"
+    {
+        int[] faceVertexCounts.timeSamples = {
+            0.75: [4, 4],
+            1.25: [4],
+        }
+        int[] faceVertexIndices.timeSamples = {
+            0.75: [0, 1, 2, 3, 4, 5, 6, 7],
+            1.25: [0, 1, 2, 3],
+        }
+        point3f[] points.timeSamples = {
+            0.75: [(-10, -2.5, 0), (-8, -2.5, 0), (-8, -0.5, 0), (-10, -0.5, 0),
+                   (10, -2.5, 0), (12, -2.5, 0), (12, -0.5, 0), (10, -0.5, 0)],
+            1.25: [(0, -2.5, 0), (2, -2.5, 0), (2, -0.5, 0), (0, -0.5, 0)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "grow"
+    {
+        int[] faceVertexCounts.timeSamples = {
+            0.75: [4],
+            1.25: [4, 4],
+        }
+        int[] faceVertexIndices.timeSamples = {
+            0.75: [0, 1, 2, 3],
+            1.25: [0, 1, 2, 3, 4, 5, 6, 7],
+        }
+        point3f[] points.timeSamples = {
+            0.75: [(-10, -5.5, 0), (-8, -5.5, 0), (-8, -3.5, 0), (-10, -3.5, 0)],
+            1.25: [(0, -5.5, 0), (2, -5.5, 0), (2, -3.5, 0), (0, -3.5, 0),
+                   (10, -5.5, 0), (12, -5.5, 0), (12, -3.5, 0), (10, -3.5, 0)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam_fwd"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 400
+        float verticalAperture = 120
+        float2 clippingRange = (0.1, 100)
+        double shutter:open = 0
+        double shutter:close = 0.5
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "cam_ctr"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 400
+        float verticalAperture = 120
+        float2 clippingRange = (0.1, 100)
+        double shutter:open = -0.25
+        double shutter:close = 0.25
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "fwd"
+    {
+        rel camera = </World/cam_fwd>
+        int2 resolution = (400, 120)
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+
+    def RenderSettings "ctr"
+    {
+        rel camera = </World/cam_ctr>
+        int2 resolution = (400, 120)
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+}

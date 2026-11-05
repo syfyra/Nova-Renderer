@@ -1,0 +1,181 @@
+﻿[ch_author] nurbs convert menu ('poly', 'mesh', 'bezCurve', 'bezSurf', 'nurbCurve', 'nurbSurf', 'pasteSurf', 'circle', 'trimBezSurf', 'trimNurbSurf', 'tribez', 'polySoup', 'volume', 'vdb') -> nurbCurve
+[ch_author] bezier convert menu ('poly', 'mesh', 'bezCurve', 'bezSurf', 'nurbCurve', 'nurbSurf', 'pasteSurf', 'circle', 'trimBezSurf', 'trimNurbSurf', 'tribez', 'polySoup', 'volume', 'vdb') -> bezCurve
+[ch_author] circle_nurbs circle type menu ('prim', 'poly', 'nurbs', 'bezier') -> nurbs
+[ch_author] circle_bezier circle type menu ('prim', 'poly', 'nurbs', 'bezier') -> bezier
+[ch_author] SOP poly_nowidth prims 1 ['Polygon'] points 6 {'pointAttribs': ['P'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(None, 0, None)]
+[ch_author] SOP poly_ptwidth prims 1 ['Polygon'] points 6 {'pointAttribs': ['P', 'width', 'uv', 'Cd'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(None, 0, None)]
+[ch_author] SOP poly_primwidth prims 1 ['Polygon'] points 6 {'pointAttribs': ['P'], 'vertexAttribs': [], 'primAttribs': ['width', 'Cd'], 'globalAttribs': []} [(None, 0, None)]
+[ch_author] SOP poly_detailwidth prims 1 ['Polygon'] points 6 {'pointAttribs': ['P'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': ['width']} [(None, 0, None)]
+[ch_author] SOP poly_pscale prims 1 ['Polygon'] points 6 {'pointAttribs': ['P', 'pscale'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(None, 0, None)]
+[ch_author] SOP poly_vtxuv prims 1 ['Polygon'] points 6 {'pointAttribs': ['P'], 'vertexAttribs': ['uv'], 'primAttribs': [], 'globalAttribs': []} [(None, 0, None)]
+[ch_author] SOP poly_N prims 1 ['Polygon'] points 6 {'pointAttribs': ['N', 'P', 'width'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(None, 0, None)]
+[ch_author] SOP poly_closed prims 1 ['Polygon'] points 6 {'pointAttribs': ['P'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(None, 1, None)]
+[ch_author] SOP nurbs prims 1 ['NURBSCurve'] points 6 {'pointAttribs': ['P', 'width', 'uv', 'Cd'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(4, 0, (0.0, 0.0, 0.0, 0.0, 0.3333333333333333, 0.6666666666666666, 1.0, 1.0, 1.0, 1.0))]
+[ch_author] SOP bezier prims 1 ['BezierCurve'] points 7 {'pointAttribs': ['P', 'width'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(4, 0, (0.0, 0.5, 1.0))]
+[ch_author] SOP hairgen prims 623 ['Polygon'] points 5607 {'pointAttribs': ['P', 'width'], 'vertexAttribs': [], 'primAttribs': ['id', 'skinprim', 'skinprimuv'], 'globalAttribs': ['gl_shadeopencurves']} [(None, 0, None)]
+[ch_author] SOP circle_nurbs prims 1 ['NURBSCurve'] points 8 {'pointAttribs': ['P'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(4, 1, (-0.2499999975663368, -0.2499999975663368, -0.1249999987831684, 0.0, 0.1249999987831684, 0.25000000730098954, 0.3749999963495052, 0.50000000486732 ...
+[ch_author] SOP circle_bezier prims 1 ['BezierCurve'] points 24 {'pointAttribs': ['P'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} [(4, 1, (0.0, 0.1249999987831684, 0.25000000730098954, 0.3749999963495052, 0.5000000048673263, 0.6250000231198002, 0.7500000024336632, 0.87500004989009 ...
+[ch_author] SOP points_pscale prims 0 [] points 5 {'pointAttribs': ['P', 'pscale', 'Cd'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} []
+[ch_author] SOP points_width prims 0 [] points 5 {'pointAttribs': ['P', 'width'], 'vertexAttribs': [], 'primAttribs': [], 'globalAttribs': []} []
+[ch_author] nurbscurvehandling menu ('basiscurves', 'pinnedbasiscurves', 'nurbscurves') default basiscurves
+[ch_author] setmissingwidths default 0.01 polygonsassubd default 0
+[ch_author] saved C:/Users/Synti/AppData/Local/Temp/claude/C--Users-Synti--claude-spares-spare-oP4bjv/130aaf07-bd8e-41b6-877e-893f27509a27/scratchpad/ch/author/ch_authored.usda
+[ch_author] PRIM /curves/poly_nowidth/curve_0 BasisCurves
+[ch_author]    basis                              token        
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    type                               token        linear
+[ch_author]    widths                             float[]      [0.01] (len 1)  interp=constant
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): constant  normals interpolation: vertex
+[ch_author] PRIM /curves/poly_ptwidth/curve_0 BasisCurves
+[ch_author]    basis                              token        
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    primvars:displayColor              color3f[]    [(0.0, 0.5, 1.0), (0.2, 0.5, 0.8), (0.4, 0.5, 0.6), (0.6, 0.5, 0.4), (0.8, 0.5, 0.2), (1.0, 0.5, 0.0)] (len 6)  interp=vertex
+[ch_author]    primvars:st                        texCoord2f[] [(0.0, 0.0), (0.2, 0.0), (0.4, 0.0), (0.6, 0.0), (0.8, 0.0), (1.0, 0.0)] (len 6)  interp=vertex
+[ch_author]    type                               token        linear
+[ch_author]    widths                             float[]      [0.02, 0.03, 0.04, 0.05, 0.06, 0.07] (len 6)  interp=vertex
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): vertex  normals interpolation: vertex
+[ch_author] PRIM /curves/poly_primwidth/curve_0 BasisCurves
+[ch_author]    basis                              token        
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    primvars:displayColor              color3f[]    [(1.0, 0.0, 0.0)] (len 1)  interp=uniform
+[ch_author]    type                               token        linear
+[ch_author]    widths                             float[]      [0.05] (len 1)  interp=uniform
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): uniform  normals interpolation: vertex
+[ch_author] PRIM /curves/poly_detailwidth/curve_0 BasisCurves
+[ch_author]    basis                              token        
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    type                               token        linear
+[ch_author]    widths                             float[]      [0.07] (len 1)  interp=constant
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): constant  normals interpolation: vertex
+[ch_author] PRIM /curves/poly_pscale/curve_0 BasisCurves
+[ch_author]    basis                              token        
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    type                               token        linear
+[ch_author]    widths                             float[]      [0.06, 0.06, 0.06, 0.06, 0.06, 0.06] (len 6)  interp=vertex
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): vertex  normals interpolation: vertex
+[ch_author] PRIM /curves/poly_vtxuv/curve_0 BasisCurves
+[ch_author]    basis                              token        
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    primvars:st                        texCoord2f[] [(0.0, 0.25), (0.2, 0.25), (0.4, 0.25), (0.6, 0.25), (0.8, 0.25), (1.0, 0.25)] (len 6)  interp=vertex
+[ch_author]    type                               token        linear
+[ch_author]    widths                             float[]      [0.01] (len 1)  interp=constant
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): constant  normals interpolation: vertex
+[ch_author] PRIM /curves/poly_N/curve_0 BasisCurves
+[ch_author]    basis                              token        
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    normals                            normal3f[]   [(0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)] (len 6)  interp=vertex
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    type                               token        linear
+[ch_author]    widths                             float[]      [0.05, 0.05, 0.05, 0.05, 0.05, 0.05] (len 6)  interp=vertex
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): vertex  normals interpolation: vertex
+[ch_author] PRIM /curves/nurbs/curve_0 BasisCurves
+[ch_author]    basis                              token        bspline
+[ch_author]    curveVertexCounts                  int[]        [10] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)]... (len 10)  interp=vertex
+[ch_author]    primvars:displayColor              color3f[]    [(0.0, 0.5, 1.0), (0.0, 0.5, 1.0), (0.0, 0.5, 1.0), (0.2, 0.5, 0.8), (0.4, 0.5, 0.6), (0.6, 0.5, 0.4), (0.8, 0.5, 0.2), (1.0, 0.5, 0.0)]... (len 10)  interp=vertex
+[ch_author]    primvars:st                        texCoord2f[] [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.2, 0.0), (0.4, 0.0), (0.6, 0.0), (0.8, 0.0), (1.0, 0.0)]... (len 10)  interp=vertex
+[ch_author]    type                               token        cubic
+[ch_author]    widths                             float[]      [0.02, 0.02, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07]... (len 10)  interp=vertex
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): vertex  normals interpolation: vertex
+[ch_author] PRIM /curves/bezier/curve_0 BasisCurves
+[ch_author]    basis                              token        bezier
+[ch_author]    curveVertexCounts                  int[]        [7] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.4, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0), (2.4, -0.0559, 0.0)] (len 7)  interp=vertex
+[ch_author]    type                               token        cubic
+[ch_author]    widths                             float[]      [0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08] (len 7)  interp=vertex
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): vertex  normals interpolation: vertex
+[ch_author] PRIM /curves/hairgen/curve_0 BasisCurves
+[ch_author]    basis                              token        
+[ch_author]    curveVertexCounts                  int[]        [9, 9, 9, 9, 9, 9, 9, 9]... (len 623)
+[ch_author]    extent                             float3[]     [(-0.5446, -0.5224, -0.5394), (0.5391, 0.5228, 0.5382)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0464, 0.2244, -0.4267), (0.047, 0.2272, -0.432), (0.0476, 0.23, -0.4373), (0.0481, 0.2328, -0.4427), (0.0487, 0.2356, -0.448), (0.0493, 0.2384, -0.4533), (0.0499, 0.2412, -0.4587), (0.0505, 0.244, -0.464)]... (len 5607)  interp=verte ...
+[ch_author]    primvars:gl_shadeopencurves        int          1
+[ch_author]    primvars:id                        int[]        [0, 1, 2, 3, 4, 5, 6, 7]... (len 623)  interp=uniform
+[ch_author]    primvars:skinprim                  int[]        [0, 0, 0, 0, 0, 0, 16, 0]... (len 623)  interp=uniform
+[ch_author]    primvars:skinprimuv                float3[]     [(0.7963, 0.0181, 0.0), (0.0148, 0.2349, 0.0), (0.3792, 0.5949, 0.0), (0.5782, 0.0292, 0.0), (0.2854, 0.1249, 0.0), (0.1601, 0.5132, 0.0), (0.0064, 0.3664, 0.0), (0.4187, 0.3087, 0.0)]... (len 623)  interp=uniform
+[ch_author]    type                               token        linear
+[ch_author]    widths                             float[]      [0.001, 0.001, 0.001, 0.001, 0.001, 0.0009, 0.0009, 0.0006]... (len 5607)  interp=vertex
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): vertex  normals interpolation: vertex
+[ch_author] PRIM /curves/circle_nurbs/curve_0 BasisCurves
+[ch_author]    basis                              token        bspline
+[ch_author]    curveVertexCounts                  int[]        [11] (len 1)
+[ch_author]    extent                             float3[]     [(-1.1082, -1.1082, 0.0), (1.1082, 1.1082, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.7836, 0.7836, 0.0), (1.1082, 0.0, 0.0), (0.7836, -0.7836, 0.0), (-0.0, -1.1082, 0.0), (-0.7836, -0.7836, 0.0), (-1.1082, 0.0, 0.0), (-0.7836, 0.7836, 0.0), (0.0, 1.1082, 0.0)]... (len 11)  interp=vertex
+[ch_author]    type                               token        cubic
+[ch_author]    widths                             float[]      [0.01] (len 1)  interp=constant
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): constant  normals interpolation: vertex
+[ch_author] PRIM /curves/circle_bezier/curve_0 BasisCurves
+[ch_author]    basis                              token        bezier
+[ch_author]    curveVertexCounts                  int[]        [25] (len 1)
+[ch_author]    extent                             float3[]     [(-1.0, -1.0, 0.0), (1.0, 1.0, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(1.0, 0.0, 0.0), (1.0, -0.2612, 0.0), (0.8918, -0.5224, 0.0), (0.7071, -0.7071, 0.0), (0.5224, -0.8918, 0.0), (0.2612, -1.0, 0.0), (-0.0, -1.0, 0.0), (-0.2612, -1.0, 0.0)]... (len 25)  interp=vertex
+[ch_author]    type                               token        cubic
+[ch_author]    widths                             float[]      [0.01] (len 1)  interp=constant
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): constant  normals interpolation: vertex
+[ch_author] PRIM /curves/points_pscale/points_0 Points
+[ch_author]    extent                             float3[]     [(0.0, 0.0, 0.0), (1.2, 0.0, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.3, 0.0, 0.0), (0.6, 0.0, 0.0), (0.9, 0.0, 0.0), (1.2, 0.0, 0.0)] (len 5)  interp=vertex
+[ch_author]    primvars:displayColor              color3f[]    [(1.0, 0.0, 0.0), (1.0, 0.25, 0.0), (1.0, 0.5, 0.0), (1.0, 0.75, 0.0), (1.0, 1.0, 0.0)] (len 5)  interp=vertex
+[ch_author]    widths                             float[]      [0.1, 0.12, 0.14, 0.16, 0.18] (len 5)  interp=vertex
+[ch_author] PRIM /curves/points_width/points_0 Points
+[ch_author]    extent                             float3[]     [(0.0, 0.5, 0.0), (1.2, 0.5, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.5, 0.0), (0.3, 0.5, 0.0), (0.6, 0.5, 0.0), (0.9, 0.5, 0.0), (1.2, 0.5, 0.0)] (len 5)  interp=vertex
+[ch_author]    widths                             float[]      [0.1, 0.1, 0.1, 0.1, 0.1] (len 5)  interp=vertex
+[ch_author] PRIM /curves/nurbs_pinnedbasiscurves/curve_0 BasisCurves
+[ch_author]    basis                              token        bspline
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    primvars:displayColor              color3f[]    [(0.0, 0.5, 1.0), (0.2, 0.5, 0.8), (0.4, 0.5, 0.6), (0.6, 0.5, 0.4), (0.8, 0.5, 0.2), (1.0, 0.5, 0.0)] (len 6)  interp=vertex
+[ch_author]    primvars:st                        texCoord2f[] [(0.0, 0.0), (0.2, 0.0), (0.4, 0.0), (0.6, 0.0), (0.8, 0.0), (1.0, 0.0)] (len 6)  interp=vertex
+[ch_author]    type                               token        cubic
+[ch_author]    widths                             float[]      [0.02, 0.03, 0.04, 0.05, 0.06, 0.07] (len 6)  interp=vertex
+[ch_author]    wrap                               token        pinned
+[ch_author]    widths interpolation (schema): vertex  normals interpolation: vertex
+[ch_author] PRIM /curves/nurbs_nurbscurves/curve_0 NurbsCurves
+[ch_author]    curveVertexCounts                  int[]        [6] (len 1)
+[ch_author]    extent                             float3[]     [(0.0, -0.1918, 0.0), (2.0, 0.1819, 0.0)] (len 2)
+[ch_author]    knots                              double[]     [0.0, 0.0, 0.0, 0.0, 0.3333, 0.6667, 1.0, 1.0]... (len 10)
+[ch_author]    order                              int[]        [4] (len 1)
+[ch_author]    points                             point3f[]    [(0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0)] (len 6)  interp=vertex
+[ch_author]    primvars:displayColor              color3f[]    [(0.0, 0.5, 1.0), (0.2, 0.5, 0.8), (0.4, 0.5, 0.6), (0.6, 0.5, 0.4), (0.8, 0.5, 0.2), (1.0, 0.5, 0.0)] (len 6)  interp=vertex
+[ch_author]    primvars:st                        texCoord2f[] [(0.0, 0.0), (0.2, 0.0), (0.4, 0.0), (0.6, 0.0), (0.8, 0.0), (1.0, 0.0)] (len 6)  interp=vertex
+[ch_author]    ranges                             double2[]    [(0.0, 1.0)] (len 1)
+[ch_author]    widths                             float[]      [0.02, 0.03, 0.04, 0.05, 0.06, 0.07] (len 6)  interp=vertex
+[ch_author] PRIM /curves/poly_N_subd/curve_0 BasisCurves
+[ch_author]    basis                              token        bspline
+[ch_author]    curveVertexCounts                  int[]        [8] (len 1)
+[ch_author]    extent                             float3[]     [(-0.4, -0.2322, 0.0), (2.4, 0.1819, 0.0)] (len 2)
+[ch_author]    normals                            normal3f[]   [(0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)] (len 8)  interp=vertex
+[ch_author]    points                             point3f[]    [(-0.4, -0.1683, 0.0), (0.0, 0.0, 0.0), (0.4, 0.1683, 0.0), (0.8, 0.1819, 0.0), (1.2, 0.0282, 0.0), (1.6, -0.1514, 0.0), (2.0, -0.1918, 0.0), (2.4, -0.2322, 0.0)] (len 8)  interp=vertex
+[ch_author]    type                               token        cubic
+[ch_author]    widths                             float[]      [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05] (len 8)  interp=vertex
+[ch_author]    wrap                               token        nonperiodic
+[ch_author]    widths interpolation (schema): vertex  normals interpolation: vertex

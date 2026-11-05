@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nova Setup</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="titlebar" data-tauri-drag-region>
+    <svg class="mark" viewBox="-50 -50 100 100" aria-hidden="true">
+      <path d="M0,-46 C4,-14 14,-4 46,0 C14,4 4,14 0,46 C-4,14 -14,4 -46,0 C-14,-4 -4,-14 0,-46 Z"/>
+    </svg>
+    <span class="title" data-tauri-drag-region>Nova Setup</span>
+    <div class="controls">
+      <button class="ctl" id="btn-min" title="Minimize" aria-label="Minimize">
+        <svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg>
+      </button>
+      <button class="ctl close" id="btn-close" title="Close" aria-label="Close">
+        <svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Install (or, for the uninstaller, Remove) -->
+    <section class="page" id="page-start">
+      <h1 id="start-title">Install Nova</h1>
+      <p class="lead" id="start-lead">Nova is a path tracer for Houdini Solaris. It adds Nova CPU and Nova XPU to the
+        viewport's renderer menu and to husk.</p>
+      <dl class="rows" id="rows">
+        <div class="row">
+          <dt>Location</dt>
+          <dd class="location">
+            <input id="dir" spellcheck="false" aria-label="Install location">
+            <button class="link" id="btn-browse">Change…</button>
+          </dd>
+        </div>
+        <div class="row">
+          <dt>Houdini</dt>
+          <dd id="houdini"></dd>
+        </div>
+        <div class="row">
+          <dt>Graphics</dt>
+          <dd id="gpu"></dd>
+        </div>
+      </dl>
+      <p class="note" id="start-note"></p>
+    </section>
+
+    <!-- Progress -->
+    <section class="page" id="page-progress">
+      <h1 id="progress-title">Installing Nova</h1>
+      <div class="bar"><div id="bar-fill"></div></div>
+      <div class="bar-text"><span id="status">Starting</span><span id="percent">0 %</span></div>
+      <p class="message hidden" id="message"></p>
+    </section>
+
+    <!-- Done -->
+    <section class="page" id="page-done">
+      <h1 id="done-title">Nova is installed</h1>
+      <p class="lead" id="done-lead">In Solaris, choose Nova CPU or Nova XPU in the viewport's renderer menu.</p>
+      <p class="lead husk" id="done-husk">For husk: <code>--renderer Nova</code> or <code>--renderer "Nova XPU"</code></p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span class="step" id="step">Step 1 of 3</span>
+    <div class="buttons">
+      <button class="btn" id="btn-secondary">Cancel</button>
+      <button class="btn primary" id="btn-primary">Install</button>
+    </div>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

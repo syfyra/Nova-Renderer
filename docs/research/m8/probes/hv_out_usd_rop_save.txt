@@ -1,0 +1,43 @@
+===== merge_all errors [] warnings []
+   wrote usd/merge_all.usda (205 bytes)
+   wrote usd/sopcreate_vdb.usd (7218 bytes)
+   wrote usd/sopcreate_vdb.usd.volumes/0.bgeo.sc (5233225 bytes)
+   wrote usd/sopcreate_vdb.usd.volumes/10.vdb (151813 bytes)
+   wrote usd/sopcreate_vdb.usd.volumes/2.vdb (585078 bytes)
+   wrote usd/sopcreate_vdb.usd.volumes/4.bgeo.sc (5233222 bytes)
+   wrote usd/sopcreate_vdb.usd.volumes/6.bgeo.sc (62430 bytes)
+   wrote usd/sopcreate_vdb.usd.volumes/8.vdb (160520 bytes)
+   /vdbfile/density                         OpenVDBAsset      {"asset": "../pyro.vdb", "resolved": "<scratch>\\scene\\p... name=density idx=0 ts=0
+   /vdbfile/flame                           OpenVDBAsset      {"asset": "../pyro.vdb", "resolved": "<scratch>\\scene\\p... name=flame idx=0 ts=0
+   /vdbfile/temperature                     OpenVDBAsset      {"asset": "../pyro.vdb", "resolved": "<scratch>\\scene\\p... name=temperature idx=0 ts=0
+   /bgeofile/density                        HoudiniFieldAsset {"asset": "../native.bgeo.sc", "resolved": "<scratch>\\sc... name=density idx=0 ts=0
+   /bgeofile/temperature                    HoudiniFieldAsset {"asset": "../native.bgeo.sc", "resolved": "<scratch>\\sc... name=temperature idx=1 ts=0
+   /sop_pyro/volume_0/vel_z                 HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=vel.z idx=0 ts=1
+   /sop_pyro/volume_0/vel_y                 HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=vel.y idx=1 ts=1
+   /sop_pyro/volume_0/vel_x                 HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=vel.x idx=2 ts=1
+   /sop_pyro/volume_0/flame                 HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=flame idx=3 ts=1
+   /sop_pyro/volume_0/temperature           HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=temperature idx=4 ts=1
+   /sop_pyro/volume_0/density               HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=density idx=5 ts=1
+   /sop_pyro_vdb/volume_0/flame             OpenVDBAsset      {"asset": "./sopcreate_vdb.usd.volumes/2.vdb", "resolved": "<scratch-path> name=flame idx=0 ts=1
+   /sop_pyro_vdb/volume_0/temperature       OpenVDBAsset      {"asset": "./sopcreate_vdb.usd.volumes/2.vdb", "resolved": "<scratch-path> name=temperature idx=0 ts=1
+   /sop_pyro_vdb/volume_0/density           OpenVDBAsset      {"asset": "./sopcreate_vdb.usd.volumes/2.vdb", "resolved": "<scratch-path> name=density idx=0 ts=1
+   /sop_cached/volume_0/vel_z               HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/4.bgeo.sc", "resolved": "<scratch-path> name=vel.z idx=0 ts=0
+   /sop_cached/volume_0/vel_y               HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/4.bgeo.sc", "resolved": "<scratch-path> name=vel.y idx=1 ts=0
+   /sop_cached/volume_0/vel_x               HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/4.bgeo.sc", "resolved": "<scratch-path> name=vel.x idx=2 ts=0
+   /sop_cached/volume_0/flame               HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/4.bgeo.sc", "resolved": "<scratch-path> name=flame idx=3 ts=0
+   /sop_cached/volume_0/temperature         HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/4.bgeo.sc", "resolved": "<scratch-path> name=temperature idx=4 ts=0
+   /sop_cached/volume_0/density             HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/4.bgeo.sc", "resolved": "<scratch-path> name=density idx=5 ts=0
+   /sop_native/volume_0/temperature         HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/6.bgeo.sc", "resolved": "<scratch-path> name=temperature idx=0 ts=0
+   /sop_native/volume_0/density             HoudiniFieldAsset {"asset": "./sopcreate_vdb.usd.volumes/6.bgeo.sc", "resolved": "<scratch-path> name=density idx=1 ts=0
+   /sop_vdbsops/volume_0/density            OpenVDBAsset      {"asset": "./sopcreate_vdb.usd.volumes/8.vdb", "resolved": "<scratch-path> name=density idx=0 ts=0
+   /sopcreate/volume_0/density              OpenVDBAsset      {"asset": "./sopcreate_vdb.usd.volumes/10.vdb", "resolved": "<scratch-path> name=density idx=0 ts=0
+===== pyro_stage errors [] warnings []
+   wrote usd/import_pyro.usd (31624 bytes)
+   wrote usd/import_pyro.usd.volumes/0.bgeo.sc (5233225 bytes)
+   wrote usd/pyro_stage.usda (203 bytes)
+   /pyro/OUT/volume_0/vel_z                 HoudiniFieldAsset {"asset": "./import_pyro.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=vel.z idx=0 ts=1
+   /pyro/OUT/volume_0/vel_y                 HoudiniFieldAsset {"asset": "./import_pyro.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=vel.y idx=1 ts=1
+   /pyro/OUT/volume_0/vel_x                 HoudiniFieldAsset {"asset": "./import_pyro.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=vel.x idx=2 ts=1
+   /pyro/OUT/volume_0/flame                 HoudiniFieldAsset {"asset": "./import_pyro.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=flame idx=3 ts=1
+   /pyro/OUT/volume_0/temperature           HoudiniFieldAsset {"asset": "./import_pyro.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=temperature idx=4 ts=1
+   /pyro/OUT/volume_0/density               HoudiniFieldAsset {"asset": "./import_pyro.usd.volumes/0.bgeo.sc", "resolved": "<scratch-path> name=density idx=5 ts=1

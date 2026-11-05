@@ -1,0 +1,15 @@
+{
+  "scene": "furnace_materials",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/furnace_materials.usda": "41c17e3f1d5bfbdaceda9580274b3cc071acb11d",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "value": [
+    1,
+    1,
+    1,
+    1
+  ]
+}

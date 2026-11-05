@@ -1,0 +1,25 @@
+bindings {'/pyro/OUT': '/materials/karmapyromaterial1'}
+karmaAttributes {
+ "/pyro/OUT": {
+  "primvars:karma:object:lightsource_diffusescale": 1.0,
+  "primvars:karma:object:lightsource_specularscale": 1.0,
+  "primvars:karma:object:mblur": true,
+  "primvars:karma:object:treat_as_lightsource": 1,
+  "primvars:karma:object:vblur": 1,
+  "primvars:karma:object:volumevblurscale": 1.0
+ },
+ "/materials/karmapyromaterial1/Vars/aov_scatter": {
+  "driver:parameters:aov:karma:filter": "[\"ubox\",{}]"
+ },
+ "/materials/karmapyromaterial1/Vars/aov_fire": {
+  "driver:parameters:aov:karma:filter": "[\"ubox\",{}]"
+ },
+ "/Render/Products/Vars/aov_scatter": {
+  "driver:parameters:aov:karma:filter": "[\"ubox\",{}]"
+ },
+ "/Render/Products/Vars/aov_fire": {
+  "driver:parameters:aov:karma:filter": "[\"ubox\",{}]"
+ }
+}
+MATERIAL /materials/karmapyromaterial1 {'outputs:aov_fire': ['/materials/karmapyromaterial1/kma_pyroshader1.aov_fire'], 'outputs:aov_scatter': ['/materials/karmapyromaterial1/kma_pyroshader1.aov_scatter'], 'outputs:kma:volume': ['/materials/karmapyromaterial1/kma_pyroshader1.volume']}
+  materialInputs {}

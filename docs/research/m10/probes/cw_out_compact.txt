@@ -1,0 +1,40 @@
+device: NVIDIA GeForce RTX 5080, 84 SMs; CUB 200802
+n = 2073600; CUB temp storage: select-flagged 3583 B, select-if 3071 B, scan 6143 B
+
+survival 10 % (207009 of 2073600)
+  1 atomicAdd per element                           0.0564 ms   36.80 G elem/s  ok, order differs
+  2 warp-aggregated atomic                          0.0382 ms   54.27 G elem/s  ok, order differs
+  3 block-aggregated atomic (BlockScan)             0.0193 ms  107.46 G elem/s  ok, order differs
+  4 CUB DeviceSelect::Flagged (byte flags)          0.0156 ms  132.79 G elem/s  ok, stable order
+  5 CUB DeviceSelect::If (predicate)                0.0168 ms  123.66 G elem/s  ok, stable order
+  6 CUB ExclusiveSum + scatter                      0.0279 ms   74.23 G elem/s  ok, stable order
+  7 thrust::copy_if (predicate)                     0.0428 ms   48.43 G elem/s  ok, stable order
+  8 rays: fused warp-aggregated push                0.0681 ms
+  9 rays: fixed slots + Select::Flagged + gather    0.1428 ms
+  10 rays: fixed slots only (no compaction)         0.0984 ms
+
+survival 50 % (1037475 of 2073600)
+  1 atomicAdd per element                           0.0402 ms   51.59 G elem/s  ok, order differs
+  2 warp-aggregated atomic                          0.0402 ms   51.59 G elem/s  ok, order differs
+  3 block-aggregated atomic (BlockScan)             0.0196 ms  106.06 G elem/s  ok, order differs
+  4 CUB DeviceSelect::Flagged (byte flags)          0.0174 ms  118.90 G elem/s  ok, stable order
+  5 CUB DeviceSelect::If (predicate)                0.0175 ms  118.25 G elem/s  ok, stable order
+  6 CUB ExclusiveSum + scatter                      0.0298 ms   69.53 G elem/s  ok, stable order
+  7 thrust::copy_if (predicate)                     0.0433 ms   47.89 G elem/s  ok, stable order
+  8 rays: fused warp-aggregated push                0.0647 ms
+  9 rays: fixed slots + Select::Flagged + gather    0.3128 ms
+  10 rays: fixed slots only (no compaction)         0.1373 ms
+
+survival 90 % (1865729 of 2073600)
+  1 atomicAdd per element                           0.0422 ms   49.09 G elem/s  ok, order differs
+  2 warp-aggregated atomic                          0.0428 ms   48.50 G elem/s  ok, order differs
+  3 block-aggregated atomic (BlockScan)             0.0197 ms  105.02 G elem/s  ok, order differs
+  4 CUB DeviceSelect::Flagged (byte flags)          0.0181 ms  114.49 G elem/s  ok, stable order
+  5 CUB DeviceSelect::If (predicate)                0.0178 ms  116.55 G elem/s  ok, stable order
+  6 CUB ExclusiveSum + scatter                      0.0710 ms   29.20 G elem/s  ok, stable order
+  7 thrust::copy_if (predicate)                     0.1060 ms   19.57 G elem/s  ok, stable order
+  8 rays: fused warp-aggregated push                0.0770 ms
+  9 rays: fixed slots + Select::Flagged + gather    0.3974 ms
+  10 rays: fixed slots only (no compaction)         0.1404 ms
+
+done

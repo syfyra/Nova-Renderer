@@ -1,0 +1,25 @@
+﻿> C:\Program Files\Side Effects Software\Houdini 22.0.466\bin\husk.exe --renderer BRAY_HdKarma --filters
+Image Filters:
+  Denoiser-Optix
+  background
+  denoise
+  ocio
+  range
+  shadow
+  shift
+  tonemap
+  uv_enlarger
+Pixel Filters:
+  accumulate
+  minmax
+  point
+  stats
+  ubox
+Sample Filters:
+  colorlimit
+  copyalpha
+  ocio
+Pixel Oracles:
+  uniform
+  variance
+

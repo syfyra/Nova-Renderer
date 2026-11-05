@@ -1,0 +1,241 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Native Hydra instancing reference scene (M2): point instancers with quath
+# and quatf orientations, scales, a prototype transform and invisibleIds, a
+# nested point instancer, and USD native instancing.
+# Orthographic camera looking down -Z, 20 x 20 world units on 200 x 200
+# pixels (10 px per unit): pixel (x, y) (EXR, y down) sees world
+#   X = -10 + (x + 0.5) / 10,   Y = 10 - (y + 0.5) / 10.
+# All cards lie in z = 0 and face +Z; a white dome (intensity 1) lights them,
+# so a Lambert card shows exactly its displayColor. Total covered area = 15.12
+# units^2 = 1512 px; every polygon edge lies on a pixel boundary or misses all
+# pixel centres, so the pixel-centre coverage of the first-hit AOVs is exact.
+def Xform "World"
+{
+    # --- Point instancer with quath orientations, scales, proto xform, invisibleIds
+    def PointInstancer "PI"
+    {
+        double3 xformOp:translate = (-6, 4, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel prototypes = [</World/PI/Protos/Tri>, </World/PI/Protos/Sq>]
+        int[] protoIndices = [0, 0, 1, 0, 1]
+        point3f[] positions = [(0, 0, 0), (4, 0, 0), (8, 0, 0), (0, -4, 0), (4, -4, 0)]
+        # (real, i, j, k): identity, +90 deg about Z, identity, +90 deg about Z, identity
+        quath[] orientations = [(1, 0, 0, 0), (0.70710677, 0, 0, 0.70710677), (1, 0, 0, 0), (0.70710677, 0, 0, 0.70710677), (1, 0, 0, 0)]
+        float3[] scales = [(1, 1, 1), (1, 1, 1), (2, 2, 1), (1, 3, 1), (1, 1, 1)]
+        int64[] invisibleIds = [4]
+
+        def Scope "Protos"
+        {
+            # Right triangle (0,0) (2,0) (0,1), area 1. The prototype root has its
+            # own xform, which USD applies before the instance scale/rotation.
+            def Xform "Tri"
+            {
+                double3 xformOp:translate = (0.5, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+                def Mesh "geo"
+                {
+                    int[] faceVertexCounts = [3]
+                    int[] faceVertexIndices = [0, 1, 2]
+                    point3f[] points = [(0, 0, 0), (2, 0, 0), (0, 1, 0)]
+                    uniform token subdivisionScheme = "none"
+                    color3f[] primvars:displayColor = [(0.8, 0.1, 0.1)]
+                }
+            }
+            # Unit square centred at the origin, area 1.
+            def Xform "Sq"
+            {
+                def Mesh "geo"
+                {
+                    int[] faceVertexCounts = [4]
+                    int[] faceVertexIndices = [0, 1, 2, 3]
+                    point3f[] points = [(-0.5, -0.5, 0), (0.5, -0.5, 0), (0.5, 0.5, 0), (-0.5, 0.5, 0)]
+                    uniform token subdivisionScheme = "none"
+                    color3f[] primvars:displayColor = [(0.1, 0.1, 0.8)]
+                }
+            }
+        }
+    }
+
+    # --- Point instancer with quatf orientations
+    def PointInstancer "PIf"
+    {
+        double3 xformOp:translate = (6, -6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel prototypes = [</World/PIf/Protos/Tri>]
+        int[] protoIndices = [0]
+        point3f[] positions = [(0, 0, 0)]
+        # -90 deg about Z: (x, y) -> (y, -x)
+        quatf[] orientationsf = [(0.70710677, 0, 0, -0.70710677)]
+
+        def Scope "Protos"
+        {
+            def Mesh "Tri"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 0), (2, 0, 0), (0, 1, 0)]
+                uniform token subdivisionScheme = "none"
+                color3f[] primvars:displayColor = [(0.8, 0.8, 0.1)]
+            }
+        }
+    }
+
+    # --- Nested point instancers: 2 rows x 3 dots
+    def PointInstancer "Outer"
+    {
+        double3 xformOp:translate = (2, -2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel prototypes = [</World/Outer/Protos/Row>]
+        int[] protoIndices = [0, 0]
+        point3f[] positions = [(0, 0, 0), (0, -1.5, 0)]
+
+        def Scope "Protos"
+        {
+            def Xform "Row"
+            {
+                def PointInstancer "nested"
+                {
+                    # Instancer transform of the inner level (relative to the outer prototype root).
+                    double3 xformOp:translate = (1, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate"]
+                    rel prototypes = [</World/Outer/Protos/Row/nested/Protos/Dot>]
+                    int[] protoIndices = [0, 0, 0]
+                    point3f[] positions = [(0, 0, 0), (1.5, 0, 0), (3, 0, 0)]
+
+                    def Scope "Protos"
+                    {
+                        # 0.6 x 0.6 square, area 0.36 (edges on pixel boundaries)
+                        def Mesh "Dot"
+                        {
+                            int[] faceVertexCounts = [4]
+                            int[] faceVertexIndices = [0, 1, 2, 3]
+                            point3f[] points = [(-0.3, -0.3, 0), (0.3, -0.3, 0), (0.3, 0.3, 0), (-0.3, 0.3, 0)]
+                            uniform token subdivisionScheme = "none"
+                            color3f[] primvars:displayColor = [(0.1, 0.8, 0.1)]
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    # --- Native (instanceable) instancing
+    def Xform "NI_A" (
+        instanceable = true
+        references = </ProtoSrc>
+    )
+    {
+        double3 xformOp:translate = (-6, -6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "NI_B" (
+        instanceable = true
+        references = </ProtoSrc>
+    )
+    {
+        double3 xformOp:translate = (-3, -6, 0)
+        float3 xformOp:scale = (1.4, 1.4, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 200
+        float verticalAperture = 200
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+class Xform "ProtoSrc"
+{
+    def Mesh "geo"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-0.5, -0.5, 0), (0.5, -0.5, 0), (0.5, 0.5, 0), (-0.5, 0.5, 0)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:displayColor = [(0.8, 0.4, 0.1)]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "settings"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (200, 200)
+        rel products = </Render/Products/aovs>
+        int nova:samples = 16
+        int nova:maxDepth = 1
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "aovs"
+        {
+            token productName = "instancing.exr"
+            token productType = "raster"
+            rel orderedVars = [
+                </Render/Vars/color>,
+                </Render/Vars/albedo>,
+                </Render/Vars/instanceId>,
+                </Render/Vars/primId>,
+            ]
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "color" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            string driver:parameters:aov:husk:name = "C"
+            uniform string sourceName = "color"
+            uniform token sourceType = "raw"
+            uniform token dataType = "color4f"
+        }
+        def RenderVar "albedo" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            string driver:parameters:aov:husk:name = "albedo"
+            uniform string sourceName = "albedo"
+            uniform token sourceType = "raw"
+            uniform token dataType = "color3f"
+        }
+        def RenderVar "instanceId" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            string driver:parameters:aov:husk:name = "instanceId"
+            uniform string sourceName = "instanceId"
+            uniform token sourceType = "raw"
+            uniform token dataType = "int"
+        }
+        def RenderVar "primId" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            string driver:parameters:aov:husk:name = "primId"
+            uniform string sourceName = "primId"
+            uniform token sourceType = "raw"
+            uniform token dataType = "int"
+        }
+    }
+}

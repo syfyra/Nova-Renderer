@@ -1,0 +1,51 @@
+﻿numpy port matches the golden values of tests/test_sobol.cpp
+
+n = 16: share of pixels whose half A is a (0,3,2)-net (first 300 pixels; stream 0)
+   prefix   100.0%
+   evenodd    0.0%
+   classA     0.0%
+   calibration sqrt(E[(A-B)^2/4] / E[(I-mu)^2]) and Spearman rank correlation of |A-B|/2 with |I-mu|:
+   vertical edge      rms err 2.54e-02 | prefix   1.68 (+0.05) | evenodd   5.77 (+0.02) | classA   3.66 (-0.00) | random   4.89 (-0.04)
+   slanted edge       rms err 4.63e-02 | prefix   1.36 (+0.06) | evenodd   3.19 (-0.04) | classA   2.09 (+0.05) | random   2.60 (-0.02)
+   smooth bump        rms err 1.89e-02 | prefix   2.04 (-0.12) | evenodd   3.81 (+0.01) | classA   3.67 (-0.08) | random   3.59 (-0.03)
+   small bright spot  rms err 3.51e-01 | prefix   1.23 (-0.68) | evenodd   1.26 (-0.65) | classA   1.25 (-0.66) | random   1.25 (-0.66)
+
+n = 32: share of pixels whose half A is a (0,4,2)-net (first 300 pixels; stream 0)
+   prefix   100.0%
+   evenodd    0.0%
+   classA     0.0%
+   calibration sqrt(E[(A-B)^2/4] / E[(I-mu)^2]) and Spearman rank correlation of |A-B|/2 with |I-mu|:
+   vertical edge      rms err 1.30e-02 | prefix   1.69 (-0.04) | evenodd   8.10 (-0.01) | classA   5.08 (+0.01) | random   6.66 (-0.05)
+   slanted edge       rms err 2.72e-02 | prefix   1.36 (+0.02) | evenodd   3.91 (+0.02) | classA   2.45 (-0.02) | random   3.22 (+0.00)
+   smooth bump        rms err 8.01e-03 | prefix   2.15 (-0.04) | evenodd   6.38 (-0.03) | classA   6.17 (+0.06) | random   5.81 (-0.02)
+   small bright spot  rms err 2.15e-01 | prefix   1.30 (-0.56) | evenodd   1.43 (-0.48) | classA   1.45 (-0.47) | random   1.45 (-0.45)
+
+n = 64: share of pixels whose half A is a (0,5,2)-net (first 300 pixels; stream 0)
+   prefix   100.0%
+   evenodd    0.0%
+   classA     0.0%
+   calibration sqrt(E[(A-B)^2/4] / E[(I-mu)^2]) and Spearman rank correlation of |A-B|/2 with |I-mu|:
+   vertical edge      rms err 6.41e-03 | prefix   1.75 (-0.00) | evenodd  11.73 (+0.05) | classA   7.33 (+0.01) | random   9.53 (-0.00)
+   slanted edge       rms err 1.62e-02 | prefix   1.34 (+0.03) | evenodd   4.56 (-0.06) | classA   2.95 (+0.04) | random   3.68 (-0.03)
+   smooth bump        rms err 3.36e-03 | prefix   2.18 (-0.07) | evenodd  10.76 (+0.01) | classA  10.43 (+0.00) | random  10.07 (-0.01)
+   small bright spot  rms err 1.25e-01 | prefix   1.40 (+0.17) | evenodd   1.73 (+0.05) | classA   1.77 (+0.01) | random   1.73 (-0.03)
+
+n = 128: share of pixels whose half A is a (0,6,2)-net (first 300 pixels; stream 0)
+   prefix   100.0%
+   evenodd    0.0%
+   classA     0.0%
+   calibration sqrt(E[(A-B)^2/4] / E[(I-mu)^2]) and Spearman rank correlation of |A-B|/2 with |I-mu|:
+   vertical edge      rms err 3.19e-03 | prefix   1.75 (+0.00) | evenodd  16.87 (+0.04) | classA  10.54 (+0.04) | random  12.99 (-0.01)
+   slanted edge       rms err 9.60e-03 | prefix   1.34 (+0.07) | evenodd   5.40 (-0.03) | classA   3.49 (+0.02) | random   4.31 (-0.00)
+   smooth bump        rms err 1.31e-03 | prefix   2.36 (-0.03) | evenodd  19.93 (-0.07) | classA  19.02 (+0.06) | random  17.83 (+0.01)
+   small bright spot  rms err 7.25e-02 | prefix   1.39 (+0.17) | evenodd   2.11 (-0.03) | classA   2.18 (-0.02) | random   2.14 (-0.00)
+
+n = 256: share of pixels whose half A is a (0,7,2)-net (first 300 pixels; stream 0)
+   prefix   100.0%
+   evenodd    0.0%
+   classA     0.0%
+   calibration sqrt(E[(A-B)^2/4] / E[(I-mu)^2]) and Spearman rank correlation of |A-B|/2 with |I-mu|:
+   vertical edge      rms err 1.57e-03 | prefix   1.75 (-0.01) | evenodd  24.10 (+0.00) | classA  14.84 (-0.00) | random  18.52 (+0.00)
+   slanted edge       rms err 5.72e-03 | prefix   1.33 (+0.07) | evenodd   6.40 (-0.02) | classA   4.15 (-0.01) | random   5.18 (+0.00)
+   smooth bump        rms err 5.06e-04 | prefix   2.38 (-0.02) | evenodd  36.05 (+0.02) | classA  34.29 (+0.02) | random  32.39 (-0.03)
+   small bright spot  rms err 4.34e-02 | prefix   1.33 (+0.11) | evenodd   2.57 (+0.07) | classA   2.60 (+0.01) | random   2.53 (+0.01)

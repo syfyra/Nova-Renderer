@@ -1,0 +1,135 @@
+== no rules
+  light /lights/key (RectLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+  light /lights/key2 (SphereLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+  light /lights/dome (DomeLight_1), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+== rules 1-4
+  light /lights/key (RectLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = ['/World/ground']
+    attr collection:lightLink:expansionRule = 'expandPrims'
+    attr collection:lightLink:includeRoot = False
+    rel  collection:lightLink:includes = ['/World/sphA']
+    rel  collection:shadowLink:excludes = ['/World/sphB']
+    attr collection:shadowLink:expansionRule = 'expandPrims'
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink False, shadowLink True
+    lightLink includes: sphA:1 sphB:0 ground:0 other:0
+    shadowLink includes: sphA:1 sphB:0 ground:1 other:1
+  light /lights/key2 (SphereLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = ['/World/ground']
+    attr collection:lightLink:expansionRule = 'expandPrims'
+    rel  collection:lightLink:includes = ['/World/sphA', '/World/sphB']
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:0 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+  light /lights/dome (DomeLight_1), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    attr collection:lightLink:expansionRule = 'expandPrims'
+    rel  collection:lightLink:includes = ['/World/ground']
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+== rule 2 only (shadow link excludes sphB)
+  light /lights/key (RectLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = ['/World/sphB']
+    attr collection:shadowLink:expansionRule = 'expandPrims'
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:0 ground:1 other:1
+  light /lights/key2 (SphereLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+  light /lights/dome (DomeLight_1), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+== rule 1 only
+  light /lights/key (RectLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    attr collection:lightLink:expansionRule = 'expandPrims'
+    attr collection:lightLink:includeRoot = False
+    rel  collection:lightLink:includes = ['/World/sphA']
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink False, shadowLink True
+    lightLink includes: sphA:1 sphB:0 ground:0 other:0
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+  light /lights/key2 (SphereLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+  light /lights/dome (DomeLight_1), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+== rule 4 only
+  light /lights/key (RectLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+  light /lights/key2 (SphereLight), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportLightAPI', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    attr collection:lightLink:expansionRule = 'expandPrims'
+    rel  collection:lightLink:includes = []
+    attr collection:lightLink:membershipExpression = Sdf.PathExpression('/World/sph*')
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink None, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:0 other:0
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1
+  light /lights/dome (DomeLight_1), applied schemas ['LightAPI', 'CollectionAPI:lightLink', 'CollectionAPI:shadowLink', 'HoudiniViewportGuideAPI']
+    rel  collection:lightLink:excludes = []
+    rel  collection:lightLink:includes = []
+    rel  collection:shadowLink:excludes = []
+    rel  collection:shadowLink:includes = []
+    resolved includeRoot: lightLink True, shadowLink True
+    lightLink includes: sphA:1 sphB:1 ground:1 other:1
+    shadowLink includes: sphA:1 sphB:1 ground:1 other:1

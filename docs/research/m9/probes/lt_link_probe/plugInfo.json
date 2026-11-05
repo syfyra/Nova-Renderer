@@ -1,0 +1,20 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "HdLinkProbeRendererPlugin": {
+                        "bases": ["HdRendererPlugin"],
+                        "displayName": "LinkProbe",
+                        "priority": 0
+                    }
+                }
+            },
+            "LibraryPath": "../hdLinkProbe.dll",
+            "Name": "hdLinkProbe",
+            "ResourcePath": "resources",
+            "Root": "..",
+            "Type": "library"
+        }
+    ]
+}

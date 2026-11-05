@@ -1,0 +1,102 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./denoise_scene.usda@, @../../../../tests/reference/scenes/mtl_spheres.usda@]
+)
+# M7 denoise probe scene 2: the eight material spheres of the mtl_spheres
+# reference (gold, chrome, plastic, coat, sheen, copper, plastic, fuzz), a
+# grey ground, a small sphere light (hard-ish shadows) and the soft sky dome,
+# seen by a camera rotated 31 degrees around Y and -20 around X, so that
+# camera space and world space differ (normal-guide experiment).
+# Reuses the render vars, products and image filter lists of
+# denoise_scene.usda; the Cornell box and its light are deactivated.
+#
+# Settings prims: /Render/s2_noisy, /Render/s2_optix (husk image filter),
+# /Render/s2_truth, /Render/s2_noisy_hd (adds Nova's Hydra albedo plane).
+
+over "World"
+{
+    over "floor" (active = false) {}
+    over "back" (active = false) {}
+    over "left" (active = false) {}
+    over "right" (active = false) {}
+    over "ceiling" (active = false) {}
+    over "shortBox" (active = false) {}
+    over "tallBox" (active = false) {}
+    over "light" (active = false) {}
+
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-6, -1.1, 6), (6, -1.1, 6), (6, -1.1, -6), (-6, -1.1, -6)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+        rel material:binding = </Looks/displayColorLambert>
+    }
+
+    def SphereLight "key"
+    {
+        float inputs:intensity = 60
+        float inputs:radius = 0.15
+        bool inputs:normalize = 0
+        double3 xformOp:translate = (2.0, 3.0, 1.5)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "cam_rot"
+    {
+        float focalLength = 30
+        float horizontalAperture = 36
+        float verticalAperture = 20.25
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (2.5, 1.8, 4.2)
+        float3 xformOp:rotateXYZ = (-20.2, 30.8, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+over "Render"
+{
+    def RenderSettings "s2_noisy" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam_rot>
+        int2 resolution = (960, 540)
+        float nova:object:diffuseLimit = 1
+        float nova:object:reflectLimit = 4
+        float nova:object:refractLimit = 4
+        float karma:object:diffuselimit = 1
+        float karma:object:reflectlimit = 4
+        float karma:object:refractlimit = 4
+        int nova:samples = 16
+        rel products = [</Render/DnProducts/full>]
+    }
+
+    def RenderSettings "s2_optix" (
+        inherits = </Render/s2_noisy>
+    )
+    {
+        rel husk:orderedImageFilters = [</Render/ImageFilter/denoise_optix>]
+    }
+
+    def RenderSettings "s2_truth" (
+        inherits = </Render/s2_noisy>
+    )
+    {
+        int nova:samples = 2048
+    }
+
+    def RenderSettings "s2_noisy_hd" (
+        inherits = </Render/s2_noisy>
+    )
+    {
+        rel products = [</Render/DnProducts/full2>]
+    }
+}

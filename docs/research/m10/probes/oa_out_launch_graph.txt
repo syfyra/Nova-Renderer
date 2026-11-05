@@ -1,0 +1,5 @@
+# OA_GRAPH=1 (graph recorded with the probe's context), then OA_GRAPH=fresh (a fresh OptixDeviceContext)
+oa_probe.cpp:200 CUDA CUDA_ERROR_ILLEGAL_ADDRESS in cu.p_cuEventSynchronize(b)
+== launch: overhead of small launches (64-instance world; per-launch averages)
+oa_probe.cpp:200 CUDA CUDA_ERROR_ILLEGAL_ADDRESS in cu.p_cuEventSynchronize(b)
+== launch: overhead of small launches (64-instance world; per-launch averages)

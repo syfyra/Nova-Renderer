@@ -1,0 +1,1758 @@
+#usda 1.0
+(
+    doc = """Generated from Composed Stage of root layer 
+"""
+    framesPerSecond = 24
+    metersPerUnit = 1
+    renderSettingsPrimPath = "/Render/krs"
+    timeCodesPerSecond = 24
+)
+
+def HoudiniLayerInfo "HoudiniLayerInfo" (
+    customData = {
+        int HoudiniCreatorNode = 31
+        int[] HoudiniEditorNodes = [31, 40]
+        string HoudiniSaveControl = "Placeholder"
+    }
+)
+{
+}
+
+def Camera "cam"
+{
+    float2 clippingRange = (0.1, 1000)
+    float focalLength = 35
+    float horizontalAperture = 36
+    double shutter:close = 0.25
+    double shutter:open = -0.25
+    float verticalAperture = 20.25
+    float xformOp:rotateX = -8
+    double3 xformOp:translate = (0, 1.6, 8)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateX"]
+}
+
+def Scope "World"
+{
+    def "geo"
+    {
+        def Mesh "ground" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            custom rel material:binding = </materials/kma_ground>
+            point3f[] points = [(-10, 0, 10), (10, 0, 10), (10, 0, -10), (-10, 0, -10)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+                interpolation = "faceVarying"
+            )
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Sphere "coat" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            custom rel material:binding = </World/mtl/coat>
+            double radius = 0.7
+            double3 xformOp:translate = (-2.4, 0.7, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Sphere "glass" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            custom rel material:binding = </World/mtl/glass>
+            double radius = 0.7
+            double3 xformOp:translate = (-0.8, 0.7, 0.6)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Sphere "sss" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            custom rel material:binding = </World/mtl/sss>
+            double radius = 0.7
+            double3 xformOp:translate = (0.8, 0.7, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Sphere "metal" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            custom rel material:binding = </World/mtl/metal>
+            string primvars:karma:object:lpetag = "metal" (
+                interpolation = "constant"
+            )
+            double radius = 0.7
+            double3 xformOp:translate = (2.4, 0.7, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Sphere "emitter" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            custom rel material:binding = </World/mtl/emit>
+            double radius = 0.25
+            double3 xformOp:translate = (0, 0.25, 2.2)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Cube "mover" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            custom rel material:binding = </World/mtl/grey>
+            double size = 0.8
+            double3 xformOp:translate.timeSamples = {
+                0: (-0.5, 0.4, -1.8),
+                1: (0.09999999999999998, 0.4, -1.8),
+                2: (0.7, 0.4, -1.8),
+            }
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def "mtl"
+    {
+        def Material "coat"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/coat/ss.outputs:out>
+
+            def Shader "ss"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.8, 0.05, 0.05)
+                float inputs:coat = 1
+                float inputs:coat_roughness = 0.05
+                float inputs:specular_roughness = 0.5
+                token outputs:out
+            }
+        }
+
+        def Material "glass"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/glass/ss.outputs:out>
+
+            def Shader "ss"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 0
+                float inputs:specular_roughness = 0
+                float inputs:transmission = 1
+                token outputs:out
+            }
+        }
+
+        def Material "sss"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/sss/ss.outputs:out>
+
+            def Shader "ss"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:subsurface = 1
+                color3f inputs:subsurface_color = (0.9, 0.6, 0.4)
+                color3f inputs:subsurface_radius = (1, 0.5, 0.25)
+                float inputs:subsurface_scale = 0.3
+                token outputs:out
+            }
+        }
+
+        def Material "metal"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/metal/ss.outputs:out>
+
+            def Shader "ss"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.95, 0.8, 0.5)
+                float inputs:metalness = 1
+                float inputs:specular_roughness = 0.25
+                token outputs:out
+            }
+        }
+
+        def Material "emit"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/emit/ss.outputs:out>
+
+            def Shader "ss"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 0
+                float inputs:emission = 1
+                color3f inputs:emission_color = (4, 1.5, 0.3)
+                token outputs:out
+            }
+        }
+
+        def Material "grey"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/grey/ss.outputs:out>
+
+            def Shader "ss"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.5, 0.5, 0.5)
+                token outputs:out
+            }
+        }
+    }
+
+    def "lights"
+    {
+        def SphereLight "key"
+        {
+            float inputs:intensity = 100
+            custom string inputs:karma:light:lpetag = "key"
+            float inputs:radius = 0.5
+            double3 xformOp:translate = (3, 5, 4)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def DistantLight "fill"
+        {
+            float inputs:angle = 5
+            float inputs:intensity = 0.8
+            custom string inputs:karma:light:lpetag = "fill"
+            float xformOp:rotateX = -50
+            float xformOp:rotateY = -35
+            uniform token[] xformOpOrder = ["xformOp:rotateY", "xformOp:rotateX"]
+        }
+
+        def DomeLight "env"
+        {
+            color3f inputs:color = (0.6, 0.7, 1)
+            float inputs:intensity = 0.3
+        }
+    }
+}
+
+def Scope "materials"
+{
+    def Material "kma_ground" (
+        apiSchemas = ["MaterialXConfigAPI"]
+        customData = {
+            int[] HoudiniPrimEditorNodes = [12]
+        }
+    )
+    {
+        string config:mtlx:version = "1.39"
+        token outputs:kma:displacement.connect = </materials/kma_ground/mtlxdisplacement.outputs:out>
+        token outputs:kma:surface.connect = </materials/kma_ground/mtlxstandard_surface.outputs:out>
+        vector3f outputs:myaov.connect = </materials/kma_ground/pos.outputs:out>
+        token outputs:surface.connect = </materials/kma_ground/mtlxstandard_preview.outputs:surface>
+
+        def Shader "mtlxstandard_surface" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+            customData = {
+                bool HoudiniHasAutoPreviewShader = 1
+            }
+        )
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            vector3f inputs:aov:myaov.connect = </materials/kma_ground/pos.outputs:out>
+            float inputs:base (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 1
+                        string ogl_diff_intensity = "1"
+                    }
+                }
+            )
+            color3f inputs:base_color = (0.5, 0.5, 0.5) (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double3 default_value = (0.8, 0.8, 0.8)
+                        string ogl_diff = "1"
+                    }
+                }
+            )
+            float inputs:coat (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 0
+                        string ogl_coat_intensity = "1"
+                    }
+                }
+            )
+            float inputs:coat_roughness (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 0.1
+                        string ogl_coat_rough = "1"
+                    }
+                }
+            )
+            float inputs:emission (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 0
+                        string ogl_emit_intensity = "1"
+                    }
+                }
+            )
+            color3f inputs:emission_color (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double3 default_value = (1, 1, 1)
+                        string ogl_emit = "1"
+                    }
+                }
+            )
+            float inputs:metalness (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 0
+                        string ogl_metallic = "1"
+                    }
+                }
+            )
+            float inputs:specular (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 1
+                        string ogl_spec_intensity = "1"
+                    }
+                }
+            )
+            color3f inputs:specular_color (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double3 default_value = (1, 1, 1)
+                        string ogl_spec = "1"
+                    }
+                }
+            )
+            float inputs:specular_IOR (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 1.5
+                        string ogl_ior = "1"
+                    }
+                }
+            )
+            float inputs:specular_roughness (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 0.2
+                        string ogl_rough = "1"
+                    }
+                }
+            )
+            float inputs:transmission (
+                customData = {
+                    dictionary HoudiniPreviewTags = {
+                        double default_value = 0
+                        string ogl_transparency = "1"
+                    }
+                }
+            )
+            token outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-0.2883, 0.0376)
+        }
+
+        def Shader "mtlxdisplacement" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_displacement_float"
+            token outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-0.2883, -2.4334)
+        }
+
+        def Shader "pos" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_position_vector3"
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (0, 0)
+        }
+
+        def Scope "Vars"
+        {
+            def RenderVar "myaov"
+            {
+                uniform token dataType = "vector3f"
+                custom string driver:parameters:aov:husk:channel_prefix = "myaov"
+                custom token driver:parameters:aov:husk:format = "float3"
+                custom string driver:parameters:aov:husk:name = "myaov"
+                custom string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "myaov"
+                uniform token sourceType = "raw"
+            }
+        }
+
+        def Shader "mtlxstandard_preview" (
+            customData = {
+                bool HoudiniIsAutoCreatedShader = 1
+            }
+        )
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            float inputs:clearcoatRoughness = 0.1
+            color3f inputs:diffuseColor = (0.5, 0.5, 0.5)
+            float inputs:roughness = 0.2
+            color3f inputs:specularColor = (1, 1, 1)
+            token outputs:surface
+        }
+    }
+}
+
+def Scope "Render"
+{
+    def Scope "Products"
+    {
+        def Scope "Vars"
+        {
+            def RenderVar "myaov"
+            {
+                uniform token dataType = "vector3f"
+                custom string driver:parameters:aov:husk:channel_prefix = "myaov"
+                custom token driver:parameters:aov:husk:format = "float3"
+                custom string driver:parameters:aov:husk:name = "myaov"
+                custom string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "myaov"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "CryptoPrimitives" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+                customData = {
+                    int[] HoudiniPrimEditorNodes = [63]
+                }
+            )
+            {
+                uniform token dataType = "float3" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                float driver:parameters:aov:husk:clearValue = 0 (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                token driver:parameters:aov:husk:format = "float3" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                bool driver:parameters:aov:husk:multiSampled = 0 (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                string driver:parameters:aov:husk:name = "CryptoPrimitives" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                bool driver:parameters:aov:karma:cryptomatte = 1 (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                int driver:parameters:aov:karma:cryptomatterank = 6 (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                string driver:parameters:aov:karma:cryptomattesidecar = "" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                string driver:parameters:aov:karma:filter = '["ubox",{}]' (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                uniform string sourceName = "__name" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+                uniform token sourceType = "primvar" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [63]
+                    }
+                )
+            }
+
+            def RenderVar "CryptoMaterials" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+                customData = {
+                    int[] HoudiniPrimEditorNodes = [66]
+                }
+            )
+            {
+                uniform token dataType = "float3" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                float driver:parameters:aov:husk:clearValue = 0 (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                token driver:parameters:aov:husk:format = "float3" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                bool driver:parameters:aov:husk:multiSampled = 0 (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                string driver:parameters:aov:husk:name = "CryptoMaterials" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                bool driver:parameters:aov:karma:cryptomatte = 1 (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                int driver:parameters:aov:karma:cryptomatterank = 6 (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                string driver:parameters:aov:karma:cryptomattesidecar = "" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                string driver:parameters:aov:karma:filter = '["ubox",{}]' (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                uniform string sourceName = "__materialname" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+                uniform token sourceType = "primvar" (
+                    customData = {
+                        int[] HoudiniPrimEditorNodes = [66]
+                    }
+                )
+            }
+        }
+    }
+
+    def RenderSettings "krs" (
+        apiSchemas = ["KarmaRenderSettingsAPI", "HuskRenderSettingsAPI", "HuskRenderProductAPI"]
+        customData = {
+            int[] HoudiniPrimEditorNodes = [33]
+        }
+    )
+    {
+        uniform token aspectRatioConformPolicy = "expandAperture" (
+            customData = {
+                int[] HoudiniPrimEditorNodes = [33]
+            }
+        )
+        rel camera = </cam>
+        uniform float4 dataWindowNDC = (0, 0, 1, 1) (
+            customData = {
+                int[] HoudiniPrimEditorNodes = [33]
+            }
+        )
+        uniform bool disableDepthOfField = 0 (
+            customData = {
+                int[] HoudiniPrimEditorNodes = [33]
+            }
+        )
+        uniform bool disableMotionBlur = 0 (
+            customData = {
+                int[] HoudiniPrimEditorNodes = [33]
+            }
+        )
+        string husk:default_delegate = "BRAY_HdKarma"
+        rel husk:orderedImageFilters
+        bool husk:scene_lights = 1
+        bool husk:scene_materials = 1
+        uniform token[] includedPurposes = ["default", "render"] (
+            customData = {
+                int[] HoudiniPrimEditorNodes = [33]
+            }
+        )
+        bool karma:global:abortmissingtexture = 0
+        bool karma:global:abortnogpudevice = 0
+        bool karma:global:autoraybias = 1
+        token karma:global:bucketorder = "Middle"
+        int karma:global:bucketsize = 32
+        float karma:global:cacheratio = 0.25
+        int karma:global:cachesize = 1000
+        float karma:global:colorlimit = 20
+        float karma:global:colorlimitindirect = 20
+        bool karma:global:colorlimitindlinked = 1
+        bool karma:global:constrainmaxrough = 1
+        token karma:global:convergence_mode = "Variance"
+        bool karma:global:dcm_excludeholdouts = 0
+        bool karma:global:dcm_usehitdist = 0
+        float karma:global:dicingqualityscale = 1
+        string karma:global:diffusecomponents = "diffuse"
+        custom bool karma:global:enable_dof = 1
+        string karma:global:exportcomponents = "diffuse reflect coat refract volume sss"
+        string karma:global:globalaovmaterial = ""
+        bool karma:global:guiding_enable = 0
+        int karma:global:guiding_samples = 0
+        bool karma:global:image_blur = 1
+        string karma:global:imagefilter = "[]"
+        token karma:global:imagemode = "Progressive"
+        token karma:global:light_sampling_mode = "Light Tree"
+        float karma:global:light_sampling_quality = 1
+        float karma:global:offscreenquality = 0.1
+        bool karma:global:outline_apply = 1
+        float3 karma:global:outline_color = (1, 0, 1)
+        bool karma:global:outline_debug = 0
+        float karma:global:outline_depthblend = 0
+        float karma:global:outline_depththreshold = 1
+        bool karma:global:outline_enable = 0
+        float karma:global:outline_fitmax = 1
+        float karma:global:outline_fitmin = 0
+        float karma:global:outline_intensity = 1
+        bool karma:global:outline_linesaovs = 0
+        bool karma:global:outline_mode = 0
+        bool karma:global:outline_primary = 1
+        int karma:global:outline_primary_samples = 4
+        int karma:global:outline_primary_stencils = 1
+        float karma:global:outline_radius = 1
+        bool karma:global:outline_secondary = 1
+        int karma:global:outline_secondary_samples = 4
+        int karma:global:outline_secondary_stencils = 1
+        int karma:global:pathtracedsamples = 128
+        string karma:global:pixelfilter = "gauss"
+        float karma:global:pixelfilterscale = 1
+        string karma:global:pixeloracle = '["variance", {"minrays": -1, "plane": "C", "variance": 0.01, "ociomode": 0, "ociodisplay": "sRGB - Display", "ocioview": "", "ociocolorspace": "default"}]'
+        float karma:global:raybias = 0.001
+        string karma:global:refractcomponents = "refract"
+        int karma:global:russianroulette_cutoff = 2
+        int karma:global:samplesperpixel = 16
+        int karma:global:screendoorlimit = 4
+        string karma:global:ssscomponents = "sss"
+        bool karma:global:usecacheratio = 1
+        string karma:global:volumecomponents = "volume"
+        custom token karma:object:blurstyle = "Rotation Blur"
+        custom bool karma:object:causticsenable = 0
+        custom float karma:object:causticsroughnessclamp = 0.2
+        custom token karma:object:cull_backface = "Off"
+        custom int karma:object:curve_basis = 0
+        custom token karma:object:curve_style = "Rounded Curves"
+        custom float karma:object:diffuselimit = 1
+        custom float karma:object:diffusequality = 1
+        custom int karma:object:geosamples = 2
+        custom int karma:object:instance_samples = 2
+        custom token karma:object:instance_vblur = "No Velocity Blur"
+        custom bool karma:object:mblur = 1
+        custom token karma:object:point_style = "Spheres"
+        custom float karma:object:reflectlimit = 4
+        custom float karma:object:reflectquality = 1
+        custom float karma:object:refractlimit = 4
+        custom float karma:object:refractquality = 1
+        custom bool karma:object:samplesfromstage = 1
+        custom float karma:object:ssslimit = 1
+        custom float karma:object:sssquality = 1
+        custom string karma:object:truedisplace = "True Displacement"
+        custom int karma:object:varianceaa_maxsamples = 9
+        custom int karma:object:varianceaa_minsamples = 1
+        custom float karma:object:varianceaa_thresh = 0.01
+        custom token karma:object:vblur = "No Velocity Blur"
+        custom float karma:object:volumelimit = 0
+        custom float karma:object:volumequality = 1
+        custom float karma:object:volumesteprate = 0.25
+        custom float karma:object:volumevblurscale = 1
+        custom int karma:object:xformsamples = 2
+        uniform token[] materialBindingPurposes = ["full", ""] (
+            customData = {
+                int[] HoudiniPrimEditorNodes = [33]
+            }
+        )
+        uniform float pixelAspectRatio = 1 (
+            customData = {
+                int[] HoudiniPrimEditorNodes = [33]
+            }
+        )
+        rel products = </Render/krs/Products/renderproduct>
+        uniform int2 resolution = (480, 270) (
+            customData = {
+                int[] HoudiniPrimEditorNodes = [33]
+            }
+        )
+
+        def Scope "Products"
+        {
+            def RenderProduct "renderproduct" (
+                apiSchemas = ["HuskRenderProductAPI"]
+            )
+            {
+                string driver:parameters:husk:artist = ""
+                string driver:parameters:husk:comment = ""
+                string driver:parameters:husk:hostname = ""
+                string driver:parameters:husk:OpenEXR:compression = "zips"
+                int driver:parameters:husk:OpenEXR:dwa_compression = 85
+                rel orderedVars = [
+                    </Render/krs/Vars/beauty>,
+                    </Render/krs/Vars/beauty_emission>,
+                    </Render/krs/Vars/beauty_fill>,
+                    </Render/krs/Vars/beauty_key>,
+                    </Render/krs/Vars/beautyunshadowed>,
+                    </Render/krs/Vars/shadow>,
+                    </Render/krs/Vars/combineddiffuse>,
+                    </Render/krs/Vars/combineddiffuse_emission>,
+                    </Render/krs/Vars/combineddiffuse_fill>,
+                    </Render/krs/Vars/combineddiffuse_key>,
+                    </Render/krs/Vars/directdiffuse>,
+                    </Render/krs/Vars/indirectdiffuse>,
+                    </Render/krs/Vars/combineddiffuseunshadowed>,
+                    </Render/krs/Vars/directdiffuseunshadowed>,
+                    </Render/krs/Vars/indirectdiffuseunshadowed>,
+                    </Render/krs/Vars/combineddiffuseshadow>,
+                    </Render/krs/Vars/directdiffuseshadow>,
+                    </Render/krs/Vars/indirectdiffuseshadow>,
+                    </Render/krs/Vars/combinedglossyreflection>,
+                    </Render/krs/Vars/directglossyreflection>,
+                    </Render/krs/Vars/indirectglossyreflection>,
+                    </Render/krs/Vars/glossytransmission>,
+                    </Render/krs/Vars/visiblelights>,
+                    </Render/krs/Vars/combinedemission>,
+                    </Render/krs/Vars/directemission>,
+                    </Render/krs/Vars/indirectemission>,
+                    </Render/krs/Vars/combinedvolume>,
+                    </Render/krs/Vars/directvolume>,
+                    </Render/krs/Vars/indirectvolume>,
+                    </Render/krs/Vars/coat>,
+                    </Render/krs/Vars/sss>,
+                    </Render/krs/Vars/hitP>,
+                    </Render/krs/Vars/hitP_camera>,
+                    </Render/krs/Vars/hitPz>,
+                    </Render/krs/Vars/element>,
+                    </Render/krs/Vars/primid>,
+                    </Render/krs/Vars/hituv>,
+                    </Render/krs/Vars/hitN>,
+                    </Render/krs/Vars/hitNg>,
+                    </Render/krs/Vars/hitN_facingratio>,
+                    </Render/krs/Vars/hitNg_facingratio>,
+                    </Render/krs/Vars/motionvectors>,
+                    </Render/krs/Vars/velocity>,
+                    </Render/krs/Vars/albedo>,
+                    </Render/krs/Vars/ambientocclusion>,
+                    </Render/Products/Vars/CryptoMaterials>,
+                    </Render/Products/Vars/CryptoPrimitives>,
+                    </Render/Products/Vars/myaov>,
+                    </Render/krs/Vars/st>,
+                    </Render/krs/Vars/albedodiffuse>,
+                    </Render/krs/Vars/albedoglossyreflection>,
+                    </Render/krs/Vars/albedoglossytransmission>,
+                    </Render/krs/Vars/albedotransmitteddiffuse>,
+                    </Render/krs/Vars/basecolor>,
+                    </Render/krs/Vars/alphatransmission>,
+                    </Render/krs/Vars/holdout>,
+                    </Render/krs/Vars/hitdist>,
+                    </Render/krs/Vars/primarysamples>,
+                    </Render/krs/Vars/cputime>,
+                    </Render/krs/Vars/N_camera>,
+                    </Render/krs/Vars/Ng_camera>,
+                    </Render/krs/Vars/CryptoObject>,
+                    </Render/krs/Vars/CryptoMaterial>,
+                    </Render/krs/Vars/metal_glossy>,
+                    </Render/krs/Vars/key_diffuse>,
+                    </Render/krs/Vars/fill_all>,
+                ]
+                token productName = "karma_aovs.exr"
+                uniform token productType = "raster"
+            }
+        }
+
+        def Scope "Vars"
+        {
+            def RenderVar "beauty" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color4f"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color4h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "C"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "beauty_emission" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color4f"
+                string driver:parameters:aov:husk:channel_prefix = "C_emission"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color4h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "C_emission"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C.*O"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "beauty_fill" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color4f"
+                string driver:parameters:aov:husk:channel_prefix = "C_fill"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color4h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "C_fill"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C.*<L.'fill'>"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "beauty_key" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color4f"
+                string driver:parameters:aov:husk:channel_prefix = "C_key"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color4h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "C_key"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C.*<L.'key'>"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "beautyunshadowed" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "beautyunshadowed"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "beautyunshadowed"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "unoccluded;C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "shadow" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "shadow"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "shadow"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "shadow;C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combineddiffuse" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combineddiffuse"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combineddiffuse"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RD>.*L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combineddiffuse_emission" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combineddiffuse_emission"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combineddiffuse_emission"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RD>.*O"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combineddiffuse_fill" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combineddiffuse_fill"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combineddiffuse_fill"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RD>.*<L.'fill'>"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combineddiffuse_key" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combineddiffuse_key"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combineddiffuse_key"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RD>.*<L.'key'>"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "directdiffuse" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "directdiffuse"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "directdiffuse"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RD>L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "indirectdiffuse" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "indirectdiffuse"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "indirectdiffuse"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RD>.+L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combineddiffuseunshadowed" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combineddiffuseunshadowed"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combineddiffuseunshadowed"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "unoccluded;C<RD>.*L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "directdiffuseunshadowed" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "directdiffuseunshadowed"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "directdiffuseunshadowed"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "unoccluded;C<RD>L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "indirectdiffuseunshadowed" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "indirectdiffuseunshadowed"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "indirectdiffuseunshadowed"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "unoccluded;C<RD>.+L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combineddiffuseshadow" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combineddiffuseshadow"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combineddiffuseshadow"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "shadow;C<RD>.*L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "directdiffuseshadow" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "directdiffuseshadow"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "directdiffuseshadow"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "shadow;C<RD>L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "indirectdiffuseshadow" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "indirectdiffuseshadow"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "indirectdiffuseshadow"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "shadow;C<RD>.+L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combinedglossyreflection" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combinedglossyreflection"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combinedglossyreflection"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RG>.*L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "directglossyreflection" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "directglossyreflection"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "directglossyreflection"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RG>L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "indirectglossyreflection" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "indirectglossyreflection"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "indirectglossyreflection"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<RG>.+L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "glossytransmission" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "glossytransmission"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "glossytransmission"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<TG>.*L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "visiblelights" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "visiblelights"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "visiblelights"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "CL"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combinedemission" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combinedemission"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combinedemission"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C.*O"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "directemission" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "directemission"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "directemission"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "CO"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "indirectemission" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "indirectemission"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "indirectemission"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C.+O"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "combinedvolume" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "combinedvolume"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "combinedvolume"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "CV.*L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "directvolume" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "directvolume"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "directvolume"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "CVL"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "indirectvolume" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "indirectvolume"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "indirectvolume"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "CV.+L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "coat" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "coat"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "coat"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<...'coat'>.*L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "sss" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "sss"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "sss"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C<TD>.*L"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "hitP" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "point3f"
+                string driver:parameters:aov:husk:channel_prefix = "P"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "P"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitP"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitP_camera" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "point3f"
+                string driver:parameters:aov:husk:channel_prefix = "P_camera"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "P_camera"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitP_camera"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitPz" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "depth"
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"zmin"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "element" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "int"
+                string driver:parameters:aov:husk:channel_prefix = "id"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "element"
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"idcover"}]'
+                uniform string sourceName = "ray:element"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "primid" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "int"
+                string driver:parameters:aov:husk:channel_prefix = "id"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "primid"
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"idcover"}]'
+                uniform string sourceName = "ray:primid"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hituv" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float3"
+                string driver:parameters:aov:husk:channel_prefix = "uv"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "UV"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "st"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "hitN" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "normal3f"
+                string driver:parameters:aov:husk:channel_prefix = "N"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "N"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitN"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitNg" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "normal3f"
+                string driver:parameters:aov:husk:channel_prefix = "Ng"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "Ng"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitNg"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitN_facingratio" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "Facingratio_N"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "Facingratio_N"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitN_facingratio"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitNg_facingratio" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "Facingratio_Ng"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "Facingratio_Ng"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitNg_facingratio"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "motionvectors" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "vector3f"
+                string driver:parameters:aov:husk:channel_prefix = "motionvectors"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "motionvectors"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:motionvector"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "velocity" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "vector3f"
+                string driver:parameters:aov:husk:channel_prefix = "velocity"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "velocity"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:velocity"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "albedo" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "albedo"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "albedo"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "CDA"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "ambientocclusion" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "ao"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "AO"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "AO"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "st" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "vector3f"
+                string driver:parameters:aov:husk:channel_prefix = "st"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "st"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "st"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "albedodiffuse" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "albedodiffuse"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "albedodiffuse"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "CDA"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "albedoglossyreflection" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "albedoglossyreflection"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "albedoglossyreflection"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "C<RG>A"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "albedoglossytransmission" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "albedoglossytransmission"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "albedoglossytransmission"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "C<TG>A"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "albedotransmitteddiffuse" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "albedotransmitteddiffuse"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "albedotransmitteddiffuse"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "C<TG>*DA"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "basecolor" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "basecolor"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "basecolor"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "export_basecolor"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "alphatransmission" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "alphatransmission"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "alphatransmission"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "!C<TG>*B"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "holdout" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "holdout"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "holdout"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "holdout;C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "hitdist" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "hitdist"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "hitdist"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "ray:hitdist"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "primarysamples" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "int"
+                string driver:parameters:aov:husk:channel_prefix = "primarysamples"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "int"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "primarysamples"
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"max"}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "ray:pixelsamples"
+                uniform token sourceType = "intrinsic"
+            }
+
+            def RenderVar "cputime" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "cputime"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "cputime"
+                string driver:parameters:aov:karma:filter = '["accumulate",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "stat:cputime"
+                uniform token sourceType = "intrinsic"
+            }
+
+            def RenderVar "N_camera" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "normal3f"
+                string driver:parameters:aov:husk:channel_prefix = "N_camera"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "normal3h"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "N_camera"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "ray:hitN_camera"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "Ng_camera" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "normal3f"
+                string driver:parameters:aov:husk:channel_prefix = "Ng_camera"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "normal3h"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "Ng_camera"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "ray:hitNg_camera"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "CryptoObject" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float3"
+                string driver:parameters:aov:husk:channel_prefix = "CryptoObject"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "CryptoObject"
+                bool driver:parameters:aov:karma:cryptomatte = 1
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "__name"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "CryptoMaterial" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float3"
+                string driver:parameters:aov:husk:channel_prefix = "CryptoMaterial"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "CryptoMaterial"
+                bool driver:parameters:aov:karma:cryptomatte = 1
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "__materialname"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "metal_glossy" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "metal_glossy"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "metal_glossy"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "C<RG'metal'>.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "key_diffuse" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "key_diffuse"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "key_diffuse"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "C<RD>.*<L.'key'>"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "fill_all" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "fill_all"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "fill_all"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                string driver:parameters:aov:karma:utilitypathexpression = "CO"
+                uniform string sourceName = "C.*<L.'fill'>"
+                uniform token sourceType = "lpe"
+            }
+        }
+    }
+}
+

@@ -1,0 +1,10 @@
+{
+    "HdCryptoProbeRendererPlugin" : {
+        "valid" : true,
+        "menulabel" : "CryptoProbe",
+        "menupriority" : 1,
+        "aovsupport" : true,
+        "viewportrenderer" : false,
+        "husk.default_output" : "cryptoprobe.exr"
+    }
+}

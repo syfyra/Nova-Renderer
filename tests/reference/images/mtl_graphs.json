@@ -1,0 +1,26 @@
+{
+  "scene": "mtl_graphs",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/mtl_graphs.usda": "0bcab7e3fd4c685521b55c06d37f5d8cc69a8720",
+    "scenes/assets/sky_soft.exr": "a5f902ce2ce339472feca019aa6fee226e8ed97c",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/mtl_graphs.exr",
+  "sigma": "images/mtl_graphs.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.0602,
+    "flip_test_pair": 0.066812,
+    "relmse": 0.049776,
+    "global_z": [
+      -0.52,
+      -1.288,
+      -1.626,
+      0.0
+    ]
+  }
+}

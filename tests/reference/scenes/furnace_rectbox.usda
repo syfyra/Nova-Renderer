@@ -1,0 +1,123 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Mesh "cup" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+        point3f[] points = [(-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, -0.5, -0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (0.5, 0.5, 0.5), (0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, 0.5, 0.5), (-0.5, 0.5, -0.5), (-0.5, -0.5, -0.5)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(1, 1, 1)]
+        rel material:binding = </Looks/displayColorLambert>
+    }
+    def Mesh "ball" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        color3f[] primvars:displayColor = [(1, 1, 1)]
+        rel material:binding = </Looks/displayColorLambert>
+        double3 xformOp:translate = (0, -0.15, 0)
+        double3 xformOp:scale = (0.3, 0.3, 0.3)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def RectLight "wall_px"
+    {
+        float inputs:intensity = 1
+        float inputs:width = 6
+        float inputs:height = 6
+        bool inputs:normalize = 0
+        bool inputs:karma:light:renderlightgeo = 1
+        double3 xformOp:translate = (3, 0, 0)
+        float3 xformOp:rotateXYZ = (0, 90, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def RectLight "wall_nx"
+    {
+        float inputs:intensity = 1
+        float inputs:width = 6
+        float inputs:height = 6
+        bool inputs:normalize = 0
+        bool inputs:karma:light:renderlightgeo = 1
+        double3 xformOp:translate = (-3, 0, 0)
+        float3 xformOp:rotateXYZ = (0, -90, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def RectLight "wall_py"
+    {
+        float inputs:intensity = 1
+        float inputs:width = 6
+        float inputs:height = 6
+        bool inputs:normalize = 0
+        bool inputs:karma:light:renderlightgeo = 1
+        double3 xformOp:translate = (0, 3, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def RectLight "wall_ny"
+    {
+        float inputs:intensity = 1
+        float inputs:width = 6
+        float inputs:height = 6
+        bool inputs:normalize = 0
+        bool inputs:karma:light:renderlightgeo = 1
+        double3 xformOp:translate = (0, -3, 0)
+        float3 xformOp:rotateXYZ = (90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def RectLight "wall_pz"
+    {
+        float inputs:intensity = 1
+        float inputs:width = 6
+        float inputs:height = 6
+        bool inputs:normalize = 0
+        bool inputs:karma:light:renderlightgeo = 1
+        double3 xformOp:translate = (0, 0, 3)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def RectLight "wall_nz"
+    {
+        float inputs:intensity = 1
+        float inputs:width = 6
+        float inputs:height = 6
+        bool inputs:normalize = 0
+        bool inputs:karma:light:renderlightgeo = 1
+        double3 xformOp:translate = (0, 0, -3)
+        float3 xformOp:rotateXYZ = (0, 180, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def Camera "cam"
+    {
+        float focalLength = 25
+        float horizontalAperture = 25.4
+        float verticalAperture = 25.4
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 1.2, 1.9)
+        float3 xformOp:rotateXYZ = (-35, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (64, 64)
+        float nova:object:diffuseLimit = 63
+        float karma:object:diffuselimit = 63
+    }
+}

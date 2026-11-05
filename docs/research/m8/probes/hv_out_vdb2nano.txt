@@ -1,0 +1,12 @@
+OpenVDB 13.0.0 (ABI 13), NanoVDB 32.6.0
+open: 0.65 ms, file version 13.0/225
+grid 'density' type float class fog volume active 40641 bbox (18 20 17)-(61 107 61) voxel 0.0500 read 0.93 ms
+    -> NanoVDB float grid 740320 bytes, 1.30 ms
+grid 'flame' type float class fog volume active 35716 bbox (18 20 18)-(61 107 61) voxel 0.0500 read 0.97 ms
+    -> NanoVDB float grid 746752 bytes, 1.20 ms
+grid 'temperature' type float class fog volume active 53038 bbox (17 20 17)-(61 107 62) voxel 0.0500 read 0.90 ms
+    -> NanoVDB float grid 789632 bytes, 0.97 ms
+NanoVDB readGrids(<scratch>\hv_pyro.nvdb): 3 handles, 1.49 ms
+    'density' compared 40641 voxels, 0 mismatches; world bbox (-1.075 -0.175 -1.125)-(1.125 4.225 1.125)
+    'flame' compared 35716 voxels, 0 mismatches; world bbox (-1.075 -0.175 -1.075)-(1.125 4.225 1.125)
+    'temperature' compared 53038 voxels, 0 mismatches; world bbox (-1.125 -0.175 -1.125)-(1.125 4.225 1.175)

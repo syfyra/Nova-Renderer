@@ -1,0 +1,134 @@
+husk exit 0, LT_LINK_SI=hdsi
+[linkprobe] CreateRenderDelegate with 25 settings (LT_LINK_SI=hdsi); light-related:
+[linkprobe] appending HdsiLightLinkingSceneIndex
+[linkprobe] light distantLight /lights/sun dirty 0x1001f
+    instancerId '', transform translation (0, 0, 0)
+    param lightLink =  (TfToken)
+    param shadowLink =  (TfToken)
+    param filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7D80> (vector<SdfPath,allocator<SdfPath> >)
+    param collection:lightLink:includeRoot = 1 (bool)
+    param inputs:karma:light:samplingquality = <empty>
+    param inputs:karma:light:samplingmode = <empty>
+    param inputs:karma:light:category = <empty>
+    scene index prim type 'distantLight' data sources: __usdPrimInfo primOrigin visibility xform material light collections usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    light schema: filters isLight materialSyncMode lightLink shadowLink lightFilterLink
+    light.lightLink =  (TfToken)
+    light.shadowLink =  (TfToken)
+    light.filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7680> (vector<SdfPath,allocator<SdfPath> >)
+    collection lightLink membershipExpression = ~//*.*
+    collection shadowLink membershipExpression = ~//*.*
+[linkprobe] light domeLight /lights/dome dirty 0x1001f
+    instancerId '', transform translation (0, 0, 0)
+    param lightLink = group_3 (TfToken)
+    param shadowLink =  (TfToken)
+    param filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7640> (vector<SdfPath,allocator<SdfPath> >)
+    param collection:lightLink:includeRoot = 1 (bool)
+    param inputs:karma:light:samplingquality = <empty>
+    param inputs:karma:light:samplingmode = <empty>
+    param inputs:karma:light:category = <empty>
+    scene index prim type 'domeLight' data sources: light __usdPrimInfo primOrigin visibility xform material collections usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    light schema: cameraVisibility portals filters isLight materialSyncMode lightLink shadowLink lightFilterLink
+    light.lightLink = group_3 (TfToken)
+    light.shadowLink =  (TfToken)
+    light.filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF78C0> (vector<SdfPath,allocator<SdfPath> >)
+    collection lightLink membershipExpression = ~//*.* - /World/ground//
+    collection shadowLink membershipExpression = ~//*.*
+[linkprobe] light sphereLight /UsdNiPropagatedPrototypes/NoPrimvars/__Prototype_1/UsdNiInstancer/UsdNiPrototype/l dirty 0x1001f
+    instancerId '/UsdNiPropagatedPrototypes/NoPrimvars/__Prototype_1/UsdNiInstancer', transform translation (0, 0, 0)
+    param lightLink =  (TfToken)
+    param shadowLink =  (TfToken)
+    param filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7960> (vector<SdfPath,allocator<SdfPath> >)
+    param collection:lightLink:includeRoot = 1 (bool)
+    param inputs:karma:light:samplingquality = <empty>
+    param inputs:karma:light:samplingmode = <empty>
+    param inputs:karma:light:category = <empty>
+    scene index prim type 'sphereLight' data sources: __usdPrimInfo primOrigin visibility xform extent dataSharing material light collections instancedBy usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    light schema: filters isLight materialSyncMode lightLink shadowLink lightFilterLink
+    light.lightLink =  (TfToken)
+    light.shadowLink =  (TfToken)
+    light.filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7500> (vector<SdfPath,allocator<SdfPath> >)
+    collection lightLink membershipExpression = ~//*.*
+    collection shadowLink membershipExpression = ~//*.*
+[linkprobe] light sphereLight /lights/key2 dirty 0x1001f
+    instancerId '', transform translation (0, 5, -3)
+    param lightLink =  (TfToken)
+    param shadowLink =  (TfToken)
+    param filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF74E0> (vector<SdfPath,allocator<SdfPath> >)
+    param collection:lightLink:includeRoot = 1 (bool)
+    param inputs:karma:light:samplingquality = <empty>
+    param inputs:karma:light:samplingmode = <empty>
+    param inputs:karma:light:category = <empty>
+    scene index prim type 'sphereLight' data sources: __usdPrimInfo primOrigin visibility xform geomXformVectors extent material light collections usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    light schema: filters isLight materialSyncMode lightLink shadowLink lightFilterLink
+    light.lightLink =  (TfToken)
+    light.shadowLink =  (TfToken)
+    light.filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7720> (vector<SdfPath,allocator<SdfPath> >)
+    collection lightLink membershipExpression = ~//*.*
+    collection shadowLink membershipExpression = ~//*.*
+[linkprobe] light sphereLight /lights/key3 dirty 0x1001f
+    instancerId '', transform translation (3, 5, 0)
+    param lightLink = group_2 (TfToken)
+    param shadowLink =  (TfToken)
+    param filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7740> (vector<SdfPath,allocator<SdfPath> >)
+    param collection:lightLink:includeRoot = 1 (bool)
+    param inputs:karma:light:samplingquality = <empty>
+    param inputs:karma:light:samplingmode = <empty>
+    param inputs:karma:light:category = <empty>
+    scene index prim type 'sphereLight' data sources: __usdPrimInfo primOrigin visibility xform geomXformVectors extent material light collections usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    light schema: filters isLight materialSyncMode lightLink shadowLink lightFilterLink
+    light.lightLink = group_2 (TfToken)
+    light.shadowLink =  (TfToken)
+    light.filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7BA0> (vector<SdfPath,allocator<SdfPath> >)
+    collection lightLink membershipExpression = ~//*.* - /World/ni2/m//
+    collection shadowLink membershipExpression = ~//*.*
+[linkprobe] light sphereLight /World/lpi/protos/l0/ForInstancer9deb480b00fd9dda dirty 0x1001f
+    instancerId '/World/lpi', transform translation (0, 0, 0)
+    param lightLink =  (TfToken)
+    param shadowLink =  (TfToken)
+    param filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7940> (vector<SdfPath,allocator<SdfPath> >)
+    param collection:lightLink:includeRoot = 1 (bool)
+    param inputs:karma:light:samplingquality = <empty>
+    param inputs:karma:light:samplingmode = <empty>
+    param inputs:karma:light:category = <empty>
+    scene index prim type 'sphereLight' data sources: system xform __usdPrimInfo primOrigin visibility extent material light collections instancedBy usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    light schema: filters isLight materialSyncMode lightLink shadowLink lightFilterLink
+    light.lightLink =  (TfToken)
+    light.shadowLink =  (TfToken)
+    light.filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7960> (vector<SdfPath,allocator<SdfPath> >)
+    collection lightLink membershipExpression = ~//*.*
+    collection shadowLink membershipExpression = ~//*.*
+[linkprobe] light rectLight /lights/key dirty 0x1001f
+    instancerId '', transform translation (0, 5, 3)
+    param lightLink = group_0 (TfToken)
+    param shadowLink = group_1 (TfToken)
+    param filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF7420> (vector<SdfPath,allocator<SdfPath> >)
+    param collection:lightLink:includeRoot = 0 (bool)
+    param inputs:karma:light:samplingquality = 2 (float)
+    param inputs:karma:light:samplingmode = <empty>
+    param inputs:karma:light:category = <empty>
+    scene index prim type 'rectLight' data sources: __usdPrimInfo primOrigin visibility xform geomXformVectors extent material light collections usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    light schema: filters isLight materialSyncMode lightLink shadowLink lightFilterLink
+    light.lightLink = group_0 (TfToken)
+    light.shadowLink = group_1 (TfToken)
+    light.filters = <'vector<SdfPath,allocator<SdfPath> >' @ 0000000043AF77C0> (vector<SdfPath,allocator<SdfPath> >)
+    collection lightLink membershipExpression = (/World/ni1// - //*.*) + (/World/pi// - //*.*) + (/World/sphA// - //*.*)
+    collection shadowLink membershipExpression = ~//*.* - /World/sphB//
+[linkprobe] rprim /UsdNiPropagatedPrototypes/NoPrimvars/__Prototype_2/UsdNiInstancer/UsdNiPrototype/m dirty 0xfff3fffc categories []
+    scene index prim type 'mesh', no categories schema
+    instancer /UsdNiPropagatedPrototypes/NoPrimvars/__Prototype_2/UsdNiInstancer categories [], instance categories (2): ['group_2', 'group_0', 'group_1', 'group_3'] ['group_2', 'group_1', 'group_3']
+    instancer scene index prim 'instancer' data sources: instancedBy instancerTopology primvars materialBindings displayStyle instanceCategories categories __dependencies
+[linkprobe] rprim /World/glow dirty 0xfff3fffc categories ['group_2', 'group_1', 'group_3']
+    scene index prim type 'mesh', categories schema ['group_2', 'group_1', 'group_3']
+[linkprobe] rprim /World/ground dirty 0xfff3fffc categories ['group_2', 'group_1']
+    scene index prim type 'mesh', categories schema ['group_2', 'group_1']
+[linkprobe] rprim /World/other dirty 0xfff3fffc categories ['group_2', 'group_1', 'group_3']
+    scene index prim type 'mesh', categories schema ['group_2', 'group_1', 'group_3']
+[linkprobe] rprim /World/pi/protos/p0/ForInstancer9e1446bf2ec8b4ea dirty 0xfff3fffc categories []
+    scene index prim type 'mesh', no categories schema
+    instancer /World/pi categories ['group_2', 'group_0', 'group_1', 'group_3'], instance categories (0):
+    instancer scene index prim 'instancer' data sources: instancerTopology __usdPrimInfo primOrigin visibility xform extent primvars usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings displayStyle instanceCategories categories __dependencies
+[linkprobe] rprim /World/sphA dirty 0xfff3fffc categories ['group_2', 'group_0', 'group_1', 'group_3']
+    scene index prim type 'mesh', categories schema ['group_2', 'group_0', 'group_1', 'group_3']
+[linkprobe] rprim /World/sphB dirty 0xfff3fffc categories ['group_2', 'group_3']
+    scene index prim type 'mesh', categories schema ['group_2', 'group_3']
+[linkprobe] render pass executed (LT_LINK_SI=hdsi)

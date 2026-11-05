@@ -1,0 +1,113 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-20, 0, 20), (20, 0, 20), (20, 0, -20), (-20, 0, -20)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.6, 0.6, 0.6)]
+        rel material:binding = </Looks/displayColorLambert>
+    }
+    def Mesh "smooth" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1, 7, 5, 3, 6, 0, 2, 4]
+        point3f[] points = [(-2.1, 0, 0.5), (-1.1, 0, 0.5), (-2.1, 1, 0.5), (-1.1, 1, 0.5), (-2.1, 1, -0.5), (-1.1, 1, -0.5), (-2.1, 0, -0.5), (-1.1, 0, -0.5)]
+        uniform token subdivisionScheme = "catmullClark"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.8, 0.35, 0.25)]
+        rel material:binding = </Looks/displayColorLambert>
+    }
+    def Mesh "creased" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 3, 2, 4, 5, 7, 6, 6, 7, 1, 0, 1, 7, 5, 3, 6, 0, 2, 4]
+        point3f[] points = [(-0.5, 0, 0.2), (0.5, 0, 0.2), (-0.5, 1, 0.2), (0.5, 1, 0.2), (-0.5, 1, -0.8), (0.5, 1, -0.8), (-0.5, 0, -0.8), (0.5, 0, -0.8)]
+        uniform token subdivisionScheme = "catmullClark"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.75, 0.75, 0.75)]
+        rel material:binding = </Looks/displayColorLambert>
+        uniform token interpolateBoundary = "edgeOnly"
+    }
+    def Mesh "creasedTop" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-0.5, 1, 0.2), (0.5, 1, 0.2), (0.5, 1, -0.8), (-0.5, 1, -0.8)]
+        uniform token subdivisionScheme = "catmullClark"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.75, 0.75, 0.75)]
+        rel material:binding = </Looks/displayColorLambert>
+        uniform token interpolateBoundary = "edgeOnly"
+    }
+    def Mesh "cornered" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1, 7, 5, 3, 6, 0, 2, 4]
+        point3f[] points = [(1.1, 0, 0.5), (2.1, 0, 0.5), (1.1, 1, 0.5), (2.1, 1, 0.5), (1.1, 1, -0.5), (2.1, 1, -0.5), (1.1, 0, -0.5), (2.1, 0, -0.5)]
+        uniform token subdivisionScheme = "catmullClark"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.25, 0.4, 0.8)]
+        rel material:binding = </Looks/displayColorLambert>
+        int[] cornerIndices = [0, 3, 5, 6]
+        float[] cornerSharpnesses = [10, 10, 10, 10]
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 0.5
+        uniform token[] xformOpOrder = []
+    }
+    def RectLight "key"
+    {
+        float inputs:intensity = 8
+        float inputs:width = 2
+        float inputs:height = 1
+        double3 xformOp:translate = (1, 3, 2)
+        float3 xformOp:rotateXYZ = (-60, 25, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 21.6
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 1.6, 4.5)
+        float3 xformOp:rotateXYZ = (-14, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 96)
+        float nova:object:diffuseLimit = 2
+        float karma:object:diffuselimit = 2
+        int nova:subdivLevel = 4
+    }
+}

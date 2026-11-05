@@ -1,0 +1,3 @@
+cw_header_check: lights, light tree, LPE, phase, subsurface, hair, distribution compile as device code
+docs/research/m10/probes/../../../..\core/volume/majorant.h(118): error: calling a __host__ function("nova::MajorantLayout::index(int, int, int) const") from a __host__ __device__ function("nova::MajorantDda::next") is not allowed
+1 error detected in the compilation of "docs/research/m10/probes/cw_header_check.cu".

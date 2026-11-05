@@ -1,0 +1,219 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "ss_r0"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_r0/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.45, 0.3)
+                float inputs:specular = 0
+                token outputs:out
+            }
+        }
+        def Material "ss_r05"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_r05/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.45, 0.3)
+                float inputs:specular = 0
+                float inputs:diffuse_roughness = 0.5
+                token outputs:out
+            }
+        }
+        def Material "ss_r1"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_r1/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.45, 0.3)
+                float inputs:specular = 0
+                float inputs:diffuse_roughness = 1
+                token outputs:out
+            }
+        }
+        def Material "ss_default"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/ss_default/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                token outputs:out
+            }
+        }
+        def Material "pbr_r0"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/pbr_r0/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.45, 0.3)
+                float inputs:specular_weight = 0
+                token outputs:out
+            }
+        }
+        def Material "pbr_r05"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/pbr_r05/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.45, 0.3)
+                float inputs:specular_weight = 0
+                float inputs:base_diffuse_roughness = 0.5
+                token outputs:out
+            }
+        }
+        def Material "pbr_r1"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/pbr_r1/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.45, 0.3)
+                float inputs:specular_weight = 0
+                float inputs:base_diffuse_roughness = 1
+                token outputs:out
+            }
+        }
+        def Material "preview"
+        {
+            token outputs:surface.connect = </World/Looks/preview/surface.outputs:surface>
+            def Shader "surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.7, 0.45, 0.3)
+                token outputs:surface
+            }
+        }
+    }
+    def Mesh "ball_ss_r0" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_r0>
+        double3 xformOp:translate = (-1.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_ss_r05" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_r05>
+        double3 xformOp:translate = (-0.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_ss_r1" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_r1>
+        double3 xformOp:translate = (0.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_ss_default" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/ss_default>
+        double3 xformOp:translate = (1.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_pbr_r0" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/pbr_r0>
+        double3 xformOp:translate = (-1.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_pbr_r05" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/pbr_r05>
+        double3 xformOp:translate = (-0.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_pbr_r1" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/pbr_r1>
+        double3 xformOp:translate = (0.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_preview" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/preview>
+        double3 xformOp:translate = (1.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+        asset inputs:texture:file = @./assets/sky_soft.exr@
+        token inputs:texture:format = "latlong"
+        float inputs:karma:light:misbias = -1
+        bool inputs:karma:light:renderlightgeo = 1
+        uniform token[] xformOpOrder = []
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 18
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 0, 5.2)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 80)
+        float nova:object:diffuseLimit = 0
+        float nova:object:reflectLimit = 0
+        float nova:object:refractLimit = 0
+        float karma:object:diffuselimit = 0
+        float karma:object:reflectlimit = 0
+        float karma:object:refractlimit = 0
+    }
+}

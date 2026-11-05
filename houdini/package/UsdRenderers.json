@@ -1,0 +1,48 @@
+{
+    "HdNovaRendererPlugin" : {
+        "valid" : true,
+        "menulabel" : "Nova CPU",
+        "menupriority" : 60,
+        "aovsupport" : true,
+        "complexitymultiplier" : 1.3,
+        "depthstyle" : "linear",
+        "needsdepth" : false,
+        "needsselection" : true,
+        "drawmodesupport" : false,
+        "viewportrenderer" : false,
+        "allowbackgroundupdate" : true,
+        "pauseonupdate" : true,
+        "destroyifdeactivated" : false,
+        "restartrendersettings" : [ "nova:textureAutoTx", "nova:textureCacheDir" ],
+        "defaultpurposes" : [ "render" ],
+        "viewstats" : [ "Samples" ],
+        "statsdatapaths" : {
+            "Samples" : "samples"
+        },
+        "husk.default_output" : "nova.exr",
+        "husk.fast-exit" : 1
+    },
+    "HdNovaXpuRendererPlugin" : {
+        "valid" : true,
+        "menulabel" : "Nova XPU",
+        "menupriority" : 59,
+        "aovsupport" : true,
+        "complexitymultiplier" : 1.3,
+        "depthstyle" : "linear",
+        "needsdepth" : false,
+        "needsselection" : true,
+        "drawmodesupport" : false,
+        "viewportrenderer" : false,
+        "allowbackgroundupdate" : true,
+        "pauseonupdate" : true,
+        "destroyifdeactivated" : false,
+        "restartrendersettings" : [ "nova:textureAutoTx", "nova:textureCacheDir" ],
+        "defaultpurposes" : [ "render" ],
+        "viewstats" : [ "Samples" ],
+        "statsdatapaths" : {
+            "Samples" : "samples"
+        },
+        "husk.default_output" : "nova.exr",
+        "husk.fast-exit" : 1
+    }
+}

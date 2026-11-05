@@ -1,0 +1,236 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "plane_mtlx" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-1, 0, -1), (1, 0, -1), (1, 0, 1), (-1, 0, 1)]
+        uniform token subdivisionScheme = "none"
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "faceVarying"
+        )
+        int[] primvars:st:indices = [0, 1, 2, 3]
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)] (
+            interpolation = "constant"
+        )
+        float[] primvars:mask = [0, 1, 1, 0] (
+            interpolation = "vertex"
+        )
+        normal3f[] primvars:normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (
+            interpolation = "vertex"
+        )
+        float3[] primvars:tangentu = [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </materials/mtlxmaterial>
+        rel material:binding:preview = </materials/previewmat>
+    }
+
+    def Mesh "plane_kma" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </materials/kmamaterial>
+    }
+
+    def Mesh "plane_openpbr" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-1, 2, -1), (1, 2, -1), (1, 2, 1), (-1, 2, 1)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding:full = </materials/openpbr>
+        rel material:binding = </materials/previewmat>
+    }
+
+    def Mesh "plane_preview" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-1, 3, -1), (1, 3, -1), (1, 3, 1), (-1, 3, 1)]
+        uniform token subdivisionScheme = "none"
+        texCoord2f[] primvars:uv = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </materials/previewmat>
+    }
+}
+
+def Scope "materials"
+{
+    def Material "mtlxmaterial" (
+        prepend apiSchemas = ["MaterialXConfigAPI"]
+    )
+    {
+        string config:mtlx:version = "1.39"
+        float inputs:rough = 0.35
+        token outputs:mtlx:surface.connect = </materials/mtlxmaterial/mtlxstandard_surface1.outputs:out>
+        token outputs:mtlx:displacement.connect = </materials/mtlxmaterial/mtlxdisplacement1.outputs:out>
+
+        def Shader "mtlxstandard_surface1"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color.connect = </materials/mtlxmaterial/mtlximage1.outputs:out>
+            float inputs:specular_roughness.connect = </materials/mtlxmaterial.inputs:rough>
+            float inputs:metalness = 0.25
+            float inputs:coat.connect = </materials/mtlxmaterial/NodeGraph1.outputs:mask_out>
+            vector3f inputs:normal.connect = </materials/mtlxmaterial/mtlxnormalmap1.outputs:out>
+            token outputs:out
+        }
+
+        def Shader "mtlximage1"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file = @./tex/pattern.exr@ (
+                colorSpace = "srgb_texture"
+            )
+            string inputs:filtertype = "linear"
+            float2 inputs:texcoord.connect = </materials/mtlxmaterial/mtlxtexcoord1.outputs:out>
+            color3f outputs:out
+        }
+
+        def Shader "mtlxtexcoord1"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+            int inputs:index = 0
+            float2 outputs:out
+        }
+
+        def Shader "mtlxnormalmap1"
+        {
+            uniform token info:id = "ND_normalmap_vector3"
+            vector3f inputs:in.connect = </materials/mtlxmaterial/mtlximage2.outputs:out>
+            vector3f outputs:out
+        }
+
+        def Shader "mtlximage2"
+        {
+            uniform token info:id = "ND_image_vector3"
+            asset inputs:file = @./tex/pattern.<UDIM>.exr@
+            vector3f outputs:out
+        }
+
+        def NodeGraph "NodeGraph1"
+        {
+            float outputs:mask_out.connect = </materials/mtlxmaterial/NodeGraph1/geomprop1.outputs:out>
+
+            def Shader "geomprop1"
+            {
+                uniform token info:id = "ND_geompropvalue_float"
+                string inputs:geomprop = "mask"
+                float inputs:default = 0
+                float outputs:out
+            }
+        }
+
+        def Shader "mtlxdisplacement1"
+        {
+            uniform token info:id = "ND_displacement_float"
+            float inputs:displacement = 0.1
+            float inputs:scale = 1
+            token outputs:out
+        }
+
+        def Shader "unconnected1"
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1 = 1
+            float outputs:out
+        }
+    }
+
+    def Material "kmamaterial" (
+        prepend apiSchemas = ["MaterialXConfigAPI"]
+    )
+    {
+        string config:mtlx:version = "1.39"
+        token outputs:kma:surface.connect = </materials/kmamaterial/mtlxstandard_surface.outputs:out>
+        token outputs:surface.connect = </materials/kmamaterial/usdpreviewsurface.outputs:surface>
+
+        def Shader "mtlxstandard_surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.2, 0.4, 0.8)
+            color3f inputs:aov:mymask.connect = </materials/kmamaterial/kma_fake.outputs:out>
+            token outputs:out
+        }
+
+        def Shader "kma_fake"
+        {
+            uniform token info:id = "kma_rayimport"
+            string inputs:var = "Cd"
+            color3f outputs:out
+        }
+
+        def Shader "usdpreviewsurface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.2, 0.4, 0.8)
+            token outputs:surface
+        }
+    }
+
+    def Material "openpbr" (
+        prepend apiSchemas = ["MaterialXConfigAPI"]
+    )
+    {
+        string config:mtlx:version = "1.39"
+        token outputs:mtlx:surface.connect = </materials/openpbr/open_pbr_surface1.outputs:out>
+
+        def Shader "open_pbr_surface1"
+        {
+            uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+            color3f inputs:base_color = (0.8, 0.1, 0.1)
+            float inputs:specular_roughness = 0.2
+            float inputs:coat_weight = 1
+            token outputs:out
+        }
+    }
+
+    def Material "previewmat"
+    {
+        token outputs:surface.connect = </materials/previewmat/PreviewSurface.outputs:surface>
+
+        def Shader "PreviewSurface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor.connect = </materials/previewmat/Texture.outputs:rgb>
+            float inputs:roughness = 0.4
+            token outputs:surface
+        }
+
+        def Shader "Texture"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @./tex/pattern.exr@
+            token inputs:sourceColorSpace = "raw"
+            float2 inputs:st.connect = </materials/previewmat/Primvar.outputs:result>
+            token inputs:wrapS = "repeat"
+            float3 outputs:rgb
+        }
+
+        def Shader "Primvar"
+        {
+            uniform token info:id = "UsdPrimvarReader_float2"
+            string inputs:varname = "uv"
+            float2 outputs:result
+        }
+    }
+}

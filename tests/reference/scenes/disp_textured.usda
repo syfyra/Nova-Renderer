@@ -1,0 +1,163 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "bumps"
+        {
+            token outputs:mtlx:displacement.connect = </World/Looks/bumps/disp.outputs:out>
+            token outputs:mtlx:surface.connect = </World/Looks/bumps/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.6, 0.55, 0.5)
+                float inputs:specular_roughness = 0.4
+                token outputs:out
+            }
+            def Shader "tex"
+            {
+                uniform token info:id = "ND_image_float"
+                asset inputs:file = @./assets/height_bumps.exr@
+                float outputs:out
+            }
+            def Shader "disp"
+            {
+                uniform token info:id = "ND_displacement_float"
+                float inputs:displacement.connect = </World/Looks/bumps/tex.outputs:out>
+                float inputs:scale = 0.08
+                token outputs:out
+            }
+        }
+        def Material "cube_bumps"
+        {
+            token outputs:mtlx:displacement.connect = </World/Looks/cube_bumps/disp.outputs:out>
+            token outputs:mtlx:surface.connect = </World/Looks/cube_bumps/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.35, 0.45, 0.7)
+                float inputs:specular_roughness = 0.4
+                token outputs:out
+            }
+            def Shader "tex"
+            {
+                uniform token info:id = "ND_image_float"
+                asset inputs:file = @./assets/height_bumps.exr@
+                float outputs:out
+            }
+            def Shader "disp"
+            {
+                uniform token info:id = "ND_displacement_float"
+                float inputs:displacement.connect = </World/Looks/cube_bumps/tex.outputs:out>
+                float inputs:scale = 0.08
+                token outputs:out
+            }
+        }
+        def Material "vector"
+        {
+            token outputs:mtlx:displacement.connect = </World/Looks/vector/disp.outputs:out>
+            token outputs:mtlx:surface.connect = </World/Looks/vector/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.7, 0.35, 0.3)
+                float inputs:specular_roughness = 0.4
+                token outputs:out
+            }
+            def Shader "disp"
+            {
+                uniform token info:id = "ND_displacement_vector3"
+                vector3f inputs:displacement = (0.03, 0, 0.06)
+                token outputs:out
+            }
+        }
+    }
+    def Mesh "plane" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-1.6, 0, 1), (0.4, 0, 1), (0.4, 0, -1), (-1.6, 0, -1)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/bumps>
+    }
+    def Mesh "cube" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1, 7, 5, 3, 6, 0, 2, 4]
+        point3f[] points = [(0.7, 0, 0.4), (1.5, 0, 0.4), (0.7, 0.8, 0.4), (1.5, 0.8, 0.4), (0.7, 0.8, -0.4), (1.5, 0.8, -0.4), (0.7, 0, -0.4), (1.5, 0, -0.4)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (1, 0), (1, 1), (0, 1), (0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "faceVarying"
+        )
+        uniform token subdivisionScheme = "catmullClark"
+        uniform bool doubleSided = 1
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/cube_bumps>
+    }
+    def Mesh "ball" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere_st.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/vector>
+        double3 xformOp:translate = (-0.6, 0.45, 0.2)
+        double3 xformOp:scale = (0.35, 0.35, 0.35)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 0.4
+        uniform token[] xformOpOrder = []
+    }
+    def RectLight "key"
+    {
+        float inputs:intensity = 12
+        float inputs:width = 1.5
+        float inputs:height = 0.6
+        double3 xformOp:translate = (-3, 1.2, 0.5)
+        float3 xformOp:rotateXYZ = (-15, -80, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 21.6
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 2.2, 3.6)
+        float3 xformOp:rotateXYZ = (-30, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 96)
+        float nova:object:diffuseLimit = 1
+        float karma:object:diffuselimit = 1
+    }
+}

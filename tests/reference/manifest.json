@@ -1,0 +1,955 @@
+{
+  "version": 1,
+  "defaults": {
+    "test": {
+      "spp": 64,
+      "seeds": [11, 12]
+    },
+    "reference": {
+      "spp_half": 2048,
+      "seeds": [1, 2],
+      "check_seeds": [21, 22]
+    },
+    "compare": {
+      "block": 8,
+      "alpha_fwer": 0.001,
+      "k_global": 4.0,
+      "block_rel_tol": 0.01,
+      "global_rel_tol": 0.002,
+      "abs_tol": 0.001
+    }
+  },
+  "scenes": [
+    {
+      "name": "cornell_rect",
+      "file": "scenes/cornell_rect.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "light_sphere",
+      "file": "scenes/light_sphere.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "light_disk",
+      "file": "scenes/light_disk.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "light_cylinder",
+      "file": "scenes/light_cylinder.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "light_spot",
+      "file": "scenes/light_spot.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "light_point",
+      "file": "scenes/light_point.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "light_rect_textured",
+      "file": "scenes/light_rect_textured.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "dome_sky",
+      "file": "scenes/dome_sky.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma",
+        "spp_half": 8192
+      }
+    },
+    {
+      "name": "dome_plane",
+      "file": "scenes/dome_plane.usda",
+      "settings": "/Render/ref",
+      "test": {
+        "spp": 256
+      },
+      "reference": {
+        "type": "dome_irradiance",
+        "texture": "scenes/assets/sky_soft.exr",
+        "albedo": 0.5,
+        "intensity": 1.0,
+        "karma_check": true
+      },
+      "compare": {
+        "block_rel_tol": 0.0,
+        "global_rel_tol": 0.0005,
+        "abs_tol": 0.0
+      }
+    },
+    {
+      "name": "furnace_rectbox",
+      "file": "scenes/furnace_rectbox.usda",
+      "settings": "/Render/ref",
+      "test": {
+        "spp": 128
+      },
+      "reference": {
+        "type": "constant",
+        "value": [1, 1, 1, 1],
+        "karma_check": true
+      },
+      "compare": {
+        "block_rel_tol": 0.0,
+        "global_rel_tol": 0.0005,
+        "abs_tol": 0.0
+      }
+    },
+    {
+      "name": "instancer",
+      "file": "scenes/instancer.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "subdiv",
+      "file": "scenes/subdiv.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma",
+        "file": "scenes/subdiv_karma.usda"
+      }
+    },
+    {
+      "name": "dof",
+      "file": "scenes/dof.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "motion_blur",
+      "file": "scenes/motion_blur.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "furnace_materials",
+      "file": "scenes/furnace_materials.usda",
+      "settings": "/Render/ref",
+      "test": {
+        "spp": 128
+      },
+      "reference": {
+        "type": "constant",
+        "value": [1, 1, 1, 1]
+      },
+      "compare": {
+        "block_rel_tol": 0.0,
+        "global_rel_tol": 0.003,
+        "abs_tol": 0.0
+      }
+    },
+    {
+      "name": "mtl_spheres",
+      "file": "scenes/mtl_spheres.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "ss_chrome",
+            "center": [65, 23.5],
+            "radius": 15,
+            "rel_tol": 0.02,
+            "block_rel_tol": 0.03,
+            "reason": "Karma's artistic-IOR conductor at roughness 0.08: Nova +1 %"
+          },
+          {
+            "name": "ss_plastic",
+            "center": [95, 23.5],
+            "radius": 15,
+            "rel_tol": 0.04,
+            "block_rel_tol": 0.04,
+            "reason": "Karma's Schlick-fit dielectric specular layer (docs/design/M3.md 5): Nova +1.5..2.5 % in G, B"
+          },
+          {
+            "name": "ss_coat",
+            "center": [124.9, 23.5],
+            "radius": 15,
+            "rel_tol": 0.08,
+            "block_rel_tol": 0.15,
+            "reason": "Karma's Schlick-fit dielectric coat: Nova +3..5.5 % in R, G (the coat dominates)"
+          },
+          {
+            "name": "ss_sheen",
+            "center": [35.1, 56.4],
+            "radius": 15,
+            "rel_tol": 0.13,
+            "block_rel_tol": 0.7,
+            "reason": "Karma's Lambert-shaped Standard Surface sheen vs MaterialX's Charlie: Nova +6..10 % on the sphere, up to 53 % in 8x8 blocks at the silhouette"
+          }
+        ]
+      }
+    },
+    {
+      "name": "implicit_spheres",
+      "file": "scenes/implicit_spheres.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma",
+        "file": "scenes/implicit_spheres_karma.usda"
+      }
+    },
+    {
+      "name": "mtl_textured",
+      "file": "scenes/mtl_textured.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "rough_metal",
+            "center": [157.5, 41],
+            "radius": 27,
+            "rel_tol": 0.14,
+            "block_rel_tol": 0.2,
+            "reason": "Karma's rough OpenPBR conductor (roughness map 0.1-0.95): Karma brighter by up to 12 % in G, B (4.5 % at a constant r 0.5; the raw map itself reads identically, see raw_card)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "mtl_normals",
+      "file": "scenes/mtl_normals.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "global_rel_tol": 0.003,
+        "reason": "Nova renders this scene 0.29 % brighter than Karma (normal maps, bump, anisotropy under a textured dome), already before M9 (M8 dist: 0.289 %, at the 0.2 % + 4 sigma edge); open, docs/design/M9.md notes"
+      }
+    },
+    {
+      "name": "mtl_diffuse",
+      "file": "scenes/mtl_diffuse.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "ss_qon_r1",
+            "center": [95, 23.5],
+            "radius": 15,
+            "rel_tol": 0.05,
+            "block_rel_tol": 0.08,
+            "reason": "Standard Surface's Oren-Nayar at diffuse_roughness 1 on Karma CPU: Nova +3 % (docs/design/M3.md 5)"
+          },
+          {
+            "name": "pbr_eon_r05",
+            "center": [65, 56.5],
+            "radius": 15,
+            "rel_tol": 0.1,
+            "block_rel_tol": 0.14,
+            "reason": "OpenPBR EON at roughness 0.5: Karma brighter by 3-8 %, most in dark channels; Nova follows the EON paper, whose multiple scattering (rho^2) darkens dark albedos more"
+          },
+          {
+            "name": "pbr_eon_r1",
+            "center": [95, 56.5],
+            "radius": 15,
+            "rel_tol": 0.18,
+            "block_rel_tol": 0.24,
+            "reason": "OpenPBR EON at roughness 1: Karma brighter by 7-16 %, most in dark channels (as pbr_eon_r05)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "mtl_kma_context",
+      "file": "scenes/mtl_kma_context.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
+      "name": "mtl_nodes",
+      "file": "scenes/mtl_nodes.usda",
+      "settings": "/Render/ref",
+      "test": {
+        "spp": 1
+      },
+      "reference": {
+        "type": "karma",
+        "spp_half": 1,
+        "float": true
+      },
+      "compare": {
+        "pixel_tol": [2e-05, 0.0001]
+      }
+    },
+    {
+      "name": "mtl_glass",
+      "file": "scenes/mtl_glass.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "ss_glass",
+            "center": [37.4, 41.9],
+            "radius": 21,
+            "rel_tol": 0.045,
+            "block_rel_tol": 0.2,
+            "reason": "Karma's Schlick-fit dielectric (exact Fresnel in Nova): Nova +1.5..2.5 %, up to 15 % in blocks at the rim"
+          },
+          {
+            "name": "ss_rough",
+            "center": [80, 41.9],
+            "radius": 21,
+            "rel_tol": 0.045,
+            "block_rel_tol": 0.2,
+            "reason": "Karma's Schlick-fit dielectric, uncompensated rough glass: Nova +1.6..2.5 %"
+          },
+          {
+            "name": "pbr_glass",
+            "center": [122.6, 41.9],
+            "radius": 21,
+            "rel_tol": 0.045,
+            "block_rel_tol": 0.2,
+            "reason": "Karma's Schlick-fit dielectric: Nova +2..2.9 %"
+          }
+        ]
+      }
+    },
+    {
+      "name": "mtl_graphs",
+      "file": "scenes/mtl_graphs.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "film_metal",
+            "center": [35.1, 56.5],
+            "radius": 16,
+            "rel_tol": 0.07,
+            "block_rel_tol": 0.15,
+            "reason": "Thin-film colour matrix (docs/design/M4.md D9: Nova's grey-normalized Rec.709): Nova +11 % in B, +2 % in G on the sphere"
+          },
+          {
+            "name": "disney",
+            "center": [124.9, 56.5],
+            "radius": 16,
+            "rel_tol": 0.22,
+            "block_rel_tol": 0.3,
+            "reason": "Disney principled's burley_diffuse_bsdf: MaterialX Burley in Nova, QON in Karma (docs/design/M4.md D6): Nova +20..22 % on the sphere"
+          }
+        ]
+      }
+    },
+    {
+      "name": "disp_textured",
+      "file": "scenes/disp_textured.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "cc_cube",
+            "center": [123, 40],
+            "radius": 22,
+            "rel_tol": 0.03,
+            "block_rel_tol": 0.15,
+            "reason": "Dicing rule on a displaced Catmull-Clark cage: Nova's rates come from the control edges (docs/design/M4.md 3.6), Karma dices this cube as Nova would at quality 0.72; Nova's finer bumps give +1.3 % coverage, a brighter rim and a 2-4 % darker inside"
+          }
+        ]
+      }
+    },
+    {
+      "name": "limits_caustics",
+      "file": "scenes/limits_caustics.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "caustic",
+            "center": [112, 70],
+            "radius": 22,
+            "rel_tol": 0.05,
+            "block_rel_tol": 0.08,
+            "reason": "Fake-caustic shadow of the glass sphere: physical (1-F) per crossing in Nova, Karma's extra (1-F) on front faces (docs/design/M4.md D14): Nova +1.3 % (region), up to +2.8 % in the core"
+          },
+          {
+            "name": "glass",
+            "center": [113, 48],
+            "radius": 18,
+            "rel_tol": 0.04,
+            "block_rel_tol": 0.2,
+            "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova +1.8 %"
+          }
+        ]
+      }
+    },
+    {
+      "name": "vex_principled",
+      "file": "scenes/vex_principled.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "p_aniso",
+            "center": [65, 56.5],
+            "radius": 16,
+            "rel_tol": 0.1,
+            "block_rel_tol": 0.3,
+            "reason": "Anisotropic Schlick metal (alpha 0.32 x 0.09): Nova compensates GGX multiple scattering, Karma's VEX GGX does not: Nova +6..8 %"
+          },
+          {
+            "name": "p_tex",
+            "center": [95, 56.5],
+            "radius": 16,
+            "rel_tol": 0.07,
+            "block_rel_tol": 0.15,
+            "reason": "Roughness map up to 0.95 drives the diffuse roughness: Nova's QON vs Karma's VEX Oren-Nayar (as mtl_diffuse ss_qon_r1): Nova +3..6 %"
+          },
+          {
+            "name": "p_coat",
+            "center": [95, 23.5],
+            "radius": 16,
+            "rel_tol": 0.05,
+            "block_rel_tol": 0.1,
+            "reason": "Disney clearcoat as Standard Surface's coat with an effective IOR (docs/design/M5.md 3.3): Nova +1.6..3.6 %"
+          },
+          {
+            "name": "p_sheen",
+            "center": [124.9, 23.5],
+            "radius": 16,
+            "rel_tol": 0.03,
+            "block_rel_tol": 0.1,
+            "reason": "Diffuse roughness 0.6: Nova's QON vs Karma's VEX Oren-Nayar: Nova +2 %"
+          },
+          {
+            "name": "p_disp",
+            "center": [124.9, 56.5],
+            "radius": 16,
+            "rel_tol": 0.03,
+            "block_rel_tol": 0.25,
+            "reason": "Texture displacement: the same bump shape, but Karma's shading shows finer detail on the bumps (cause not isolated): Nova +2 %, blocks along the bumps"
+          }
+        ]
+      }
+    },
+    {
+      "name": "vex_builder",
+      "file": "scenes/vex_builder.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "regions": [
+          {
+            "name": "vb_roughnoise",
+            "center": [65, 56.5],
+            "radius": 16,
+            "rel_tol": 0.03,
+            "block_rel_tol": 0.05,
+            "reason": "GGX with noise-driven roughness 0.1..0.6: Karma at 64 spp misses its own 2048-spp reference by 1.07x the block tolerance at the grazing rim (Karma noise)"
+          },
+          {
+            "name": "vb_displaced",
+            "center": [94.9, 56.5],
+            "radius": 16,
+            "rel_tol": 0.04,
+            "block_rel_tol": 0.15,
+            "reason": "VEX displacement through the bridge (D8): the same bump shape (silhouettes identical at 4x resolution and 3x amplitude), but Karma shades the micropolygons with a pixel-scale speckle (as vex_principled p_disp), Nova with the displaced mesh's smooth normals: disc -0.7 %, inner disc -2.8 %, blocks up to +-12 %"
+          }
+        ]
+      }
+    },
+    {
+      "name": "aov_components",
+      "file": "scenes/aov_components.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      },
+      "aovs": ["C_key", "C_fill", "C_emission", "beautyunshadowed", "shadow", "combineddiffuse", "directdiffuse", "indirectdiffuse", "directdiffuseunshadowed", "directdiffuseshadow", "combinedglossyreflection", "directglossyreflection", "indirectglossyreflection", "glossytransmission", "directemission", "indirectemission", "coat", "metal_glossy", "albedo", "albedoglossyreflection", "albedoglossytransmission", "albedotransmitteddiffuse", "alphatransmission"],
+      "compare": {
+        "regions": [],
+        "aovs": {
+          "C_key": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: -0.5..+0.9 %"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: -1.1 %"
+              }
+            ]
+          },
+          "C_fill": {
+            "global_rel_tol": 0.03,
+            "abs_tol": 0.05,
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.15,
+                "block_rel_tol": 0.3,
+                "reason": "the fill light grazes the balls (+1..10 % of 0.03 % of the beauty)"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.15,
+                "block_rel_tol": 0.3,
+                "reason": "the fill light grazes the balls: +10 %"
+              },
+              {
+                "name": "metal_ball",
+                "center": [105.0, 40.9],
+                "radius": 18,
+                "rel_tol": 0.12,
+                "block_rel_tol": 0.3,
+                "reason": "the fill light grazes the balls: +8..9 %"
+              }
+            ]
+          },
+          "C_emission": {
+            "abs_tol": 0.05,
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.16,
+                "block_rel_tol": 0.4,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: the emitter's reflection -9..-13 %"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.22,
+                "block_rel_tol": 0.5,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: the emitter's reflection +19 %"
+              }
+            ],
+            "reason": "rare paths (the small emitter reflected or bounced): blocks where a 64-spp render draws none fail even for Karma against its own reference"
+          },
+          "beautyunshadowed": {
+            "global_rel_tol": 0.008,
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.05,
+                "block_rel_tol": 0.1,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: -0.9..+3.7 %"
+              },
+              {
+                "name": "metal_ball",
+                "center": [105.0, 40.9],
+                "radius": 18,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "unoccluded light on the metal: -1.4 %"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.1,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less"
+              }
+            ]
+          },
+          "shadow": {
+            "global_rel_tol": 0.03,
+            "block_rel_tol": 0.1,
+            "abs_tol": 0.02,
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.05,
+                "block_rel_tol": 0.15,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees"
+              },
+              {
+                "name": "metal_ball",
+                "center": [105.0, 40.9],
+                "radius": 18,
+                "rel_tol": 0.04,
+                "block_rel_tol": 0.15,
+                "reason": "the occluded fraction on the metal: +1.4 %"
+              },
+              {
+                "name": "emitter",
+                "center": [141.6, 54.9],
+                "radius": 11,
+                "rel_tol": 0.06,
+                "block_rel_tol": 0.2,
+                "reason": "the occluded fraction around the emitter: +3 %"
+              }
+            ],
+            "reason": "an occluded fraction (1 - lit / unoccluded of the pixel's sums in Nova): +1.4 % overall, unstable where the unoccluded light is near 0"
+          },
+          "indirectdiffuse": {
+            "global_rel_tol": 0.05,
+            "block_rel_tol": 0.1,
+            "abs_tol": 0.03,
+            "reason": "light bounced off the coat ball (whose diffuse base is 1.4 % darker, R_COAT) and the glass: -2.3..-4 %; sparse (Karma fails its own 64-spp check)"
+          },
+          "directdiffuseunshadowed": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: -1.4 %"
+              },
+              {
+                "name": "emitter",
+                "center": [141.6, 54.9],
+                "radius": 11,
+                "rel_tol": 0.04,
+                "block_rel_tol": 0.1,
+                "reason": "the floor around the emitter: +3.3 %"
+              }
+            ]
+          },
+          "directdiffuse": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: -1.4 %"
+              },
+              {
+                "name": "emitter",
+                "center": [141.6, 54.9],
+                "radius": 11,
+                "rel_tol": 0.04,
+                "block_rel_tol": 0.1,
+                "reason": "the floor around the emitter: +2.4..3.6 %"
+              }
+            ]
+          },
+          "combineddiffuse": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: -1.1 %"
+              },
+              {
+                "name": "emitter",
+                "center": [141.6, 54.9],
+                "radius": 11,
+                "rel_tol": 0.03,
+                "block_rel_tol": 0.1,
+                "reason": "the floor around the emitter"
+              }
+            ]
+          },
+          "directdiffuseshadow": {
+            "global_rel_tol": 0.04,
+            "block_rel_tol": 0.1,
+            "abs_tol": 0.03,
+            "reason": "an occluded fraction (as shadow): -2.8 % overall; edges where the unoccluded light is near 0 fail even for Karma's own 64-spp check"
+          },
+          "combinedglossyreflection": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.1,
+                "block_rel_tol": 0.2,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: +7.5..8.5 %"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.18,
+                "block_rel_tol": 0.3,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: +14..15 %"
+              }
+            ]
+          },
+          "directglossyreflection": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.1,
+                "block_rel_tol": 0.2,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: +7.7..8.7 %"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.17,
+                "block_rel_tol": 0.3,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: +14 %"
+              }
+            ]
+          },
+          "indirectglossyreflection": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.1,
+                "block_rel_tol": 0.2,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: +6.8..7.9 %"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.19,
+                "block_rel_tol": 0.3,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: +16 %"
+              }
+            ]
+          },
+          "glossytransmission": {
+            "regions": [
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.03,
+                "block_rel_tol": 0.2,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: -1.3 %, -10 % at the rim"
+              }
+            ]
+          },
+          "indirectemission": {
+            "abs_tol": 0.05,
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.16,
+                "block_rel_tol": 0.4,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: the emitter's reflection -9..-13 %"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.22,
+                "block_rel_tol": 0.5,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: the emitter's reflection +19 %"
+              }
+            ],
+            "reason": "rare paths (the small emitter reflected or bounced): blocks where a 64-spp render draws none fail even for Karma against its own reference"
+          },
+          "coat": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.13,
+                "block_rel_tol": 0.25,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: the coat lobe +11 %, -5 % at the rim"
+              }
+            ]
+          },
+          "albedo": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: the base's albedo -1.4 %"
+              },
+              {
+                "name": "emitter",
+                "center": [141.6, 54.9],
+                "radius": 11,
+                "rel_tol": 0.05,
+                "block_rel_tol": 0.1,
+                "reason": "the floor around the emitter: +3.4 %"
+              }
+            ]
+          },
+          "albedoglossyreflection": {
+            "regions": [
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.15,
+                "block_rel_tol": 0.25,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: +13 %"
+              },
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.16,
+                "block_rel_tol": 0.3,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: +15 %"
+              },
+              {
+                "name": "metal_ball",
+                "center": [105.0, 40.9],
+                "radius": 22,
+                "rel_tol": 0.2,
+                "block_rel_tol": 0.45,
+                "reason": "Karma's conductor albedo for A events stays nearer the base color: Nova's directional albedo with the edge tint is +1/+5/+18 % (RGB) over the ball and rim, up to +26 % at the rim; the metal's beauty agrees"
+              }
+            ],
+            "global_rel_tol": 1.0,
+            "reason": "outside the balls the floor has no glossy lobe: Karma 2e-4 (its filter spreads the rims), Nova 0; the blocks test it absolutely"
+          },
+          "albedoglossytransmission": {
+            "regions": [
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: -0.7 %"
+              }
+            ]
+          },
+          "albedotransmitteddiffuse": {
+            "regions": [
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.07,
+                "block_rel_tol": 0.15,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: -5.7 %"
+              },
+              {
+                "name": "coat_ball",
+                "center": [33.2, 40.8],
+                "radius": 19,
+                "rel_tol": 0.02,
+                "block_rel_tol": 0.05,
+                "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less, the beauty agrees: -1.4 %"
+              },
+              {
+                "name": "emitter",
+                "center": [141.6, 54.9],
+                "radius": 11,
+                "rel_tol": 0.05,
+                "block_rel_tol": 0.1,
+                "reason": "the floor around the emitter: +3.4 %"
+              }
+            ]
+          },
+          "alphatransmission": {
+            "regions": [
+              {
+                "name": "glass_ball",
+                "center": [68.0, 44.6],
+                "radius": 19,
+                "rel_tol": 0.03,
+                "block_rel_tol": 0.15,
+                "reason": "Karma's Schlick-fit dielectric (as mtl_glass): Nova reflects more at the glass and transmits less: +2.4 % (less seen through the glass)"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "pyro_bare",
+      "file": "scenes/pyro_bare.usda",
+      "settings": "/Render/ref",
+      "test": {"spp": 256},
+      "reference": {"type": "karma"}
+    },
+    {
+      "name": "pyro_bare_vl4",
+      "file": "scenes/pyro_bare_vl4.usda",
+      "settings": "/Render/ref",
+      "test": {"spp": 256},
+      "reference": {"type": "karma"}
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+node type: karmarendersettings
+{"folder": "Image Output > Filters", "name": "cop_createaovs", "label": "Automatically Create Required COP Image Filter AOVs", "type": "Toggle", "default": null}
+{"folder": "Image Output > Filters > COP Image Filter Lists", "name": "cop_filter_enable_#", "label": "Enable", "type": "Toggle", "default": null}
+{"folder": "Image Output > Filters > COP Image Filter Lists", "name": "cop_filter_#", "label": "Filter Prim", "type": "String", "default": [""]}
+{"folder": "Image Output > Filters > COP Image Filter Lists", "name": "cop_filter_create_#", "label": "New Filter", "type": "Button", "default": null}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "denoiser", "label": "Denoiser", "type": "String", "default": ["off"], "menu": [["off", "No Denoiser"], ["optix", "NVIDIA OptiX Denoiser"], ["oidn", "Intel OIDN"]]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "denoise_aovs", "label": "AOV List", "type": "String", "default": ["C"]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "denoise_usealbedo", "label": "Use Albedo", "type": "Toggle", "default": null}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "denoise_useN", "label": "Use N Input", "type": "Toggle", "default": null}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "denoise_separate_aovs", "label": "Create Separate Denoised AOVs", "type": "Toggle", "default": null}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "denoise_cpu_only", "label": "Use CPU Only", "type": "Toggle", "default": null}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap", "label": "Tone Map", "type": "String", "default": ["off"], "menu": [["off", "No Tonemapping"], ["reinhard", "Reinhard"], ["ward", "Ward"], ["unreal", "Unreal"], ["aces", "Aces"], ["hable", "Hable"], ["hable2", "Hable2"]]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_aovs", "label": "AOV List", "type": "String", "default": ["C"]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemapcurve", "label": "Tonemap Curve", "type": "Ramp", "default": null}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_toe", "label": "Toe", "type": "Float", "default": [0.5]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_shoulder", "label": "Shoulder", "type": "Float", "default": [0.5]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_utoe", "label": "Toe", "type": "Float", "default": [0.55]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_ushoulder", "label": "Shoulder", "type": "Float", "default": [0.26]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_slope", "label": "Slope", "type": "Float", "default": [0.88]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_linear", "label": "Linear", "type": "Float", "default": [0.3]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_linearangle", "label": "Linear Angle", "type": "Float", "default": [0.1]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_toelength", "label": "Toe Length", "type": "Float", "default": [0.5]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_shoulderlength", "label": "Shoulder Length", "type": "Float", "default": [0.5]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters", "name": "tonemap_shoulderangle", "label": "Shoulder Angle", "type": "Float", "default": [1.0]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters > OCIO", "name": "ocio_enable#", "label": "Enable", "type": "Toggle", "default": null}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters > OCIO", "name": "ocio_planes#", "label": "Planes", "type": "String", "default": [""]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters > OCIO", "name": "ocio_outputspace#", "label": "Output Space", "type": "String", "default": [""]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters > OCIO", "name": "ocio_inputspace#", "label": "Input Space", "type": "String", "default": ["data"]}
+{"folder": "Image Output > Filters > Karma Built-in Image Filters > OCIO", "name": "ocio_looks#", "label": "Looks", "type": "String", "default": [""]}
+{"folder": "Advanced > Sampling > Primary Samples", "name": "oracle", "label": "Pixel Oracle", "type": "String", "default": ["variance"], "menu": [["variance", "Variance"], ["uniform", "Uniform"]]}
+{"folder": "Advanced > Sampling > Primary Samples", "name": "oracle_minsamples", "label": "Minimum Samples", "type": "Int", "default": [-1]}
+{"folder": "Advanced > Sampling > Primary Samples", "name": "oracle_plane", "label": "Planes", "type": "String", "default": ["C"]}
+{"folder": "Advanced > Sampling > Primary Samples", "name": "oracle_variance", "label": "Variance Threshold", "type": "Float", "default": [0.01]}
+{"folder": "Advanced > Sampling > Primary Samples", "name": "oracle_ociomode", "label": "OCIO Transform", "type": "Menu", "default": null, "menu": [["0", "Disabled"], ["1", "Display View"], ["2", "Explicit"]]}
+{"folder": "Advanced > Sampling > Primary Samples", "name": "oracle_ociodisplay", "label": "Display", "type": "String", "default": [""]}
+{"folder": "Advanced > Sampling > Primary Samples", "name": "oracle_ocioview", "label": "View", "type": "String", "default": [""]}
+{"folder": "Advanced > Sampling > Primary Samples", "name": "oracle_ociocolorspace", "label": "Color Space", "type": "String", "default": ["default"]}

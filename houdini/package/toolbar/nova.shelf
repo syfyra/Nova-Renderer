@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Nova's tools (docs/design/M4.md 3.7). -->
+<shelfDocument>
+  <tool name="lop_nova_setup" label="Nova (Setup)" icon="ROP_karma">
+    <helpText><![CDATA[A Nova render setup, as Karma (Setup) builds one for Karma: a Nova Render Settings LOP, a
+Render Pass that uses it and a USD Render ROP that renders the pass with Nova.]]></helpText>
+    <toolMenuContext name="viewer">
+      <contextNetType>LOP</contextNetType>
+    </toolMenuContext>
+    <toolMenuContext name="network">
+      <contextNetType>LOP</contextNetType>
+    </toolMenuContext>
+    <toolSubmenu>Rendering/Nova</toolSubmenu>
+    <script scriptType="python"><![CDATA[
+import novautils
+novautils.createSetupTool(kwargs)
+]]></script>
+  </tool>
+  <tool name="vop_novamtlxsubnet" label="Nova Material Builder" icon="MISC_karma">
+    <helpText><![CDATA[A MaterialX material builder for Nova: Standard Surface, displacement and Karma's material
+properties, written into the kma context so the material also renders in Karma. The TAB menu offers MaterialX and the
+Karma nodes Nova renders.]]></helpText>
+    <toolMenuContext name="network">
+      <contextOpType>Vop/materialbuilder</contextOpType>
+    </toolMenuContext>
+    <toolSubmenu>Nova</toolSubmenu>
+    <script scriptType="python"><![CDATA[
+import novautils
+novautils.createBuilderTool(kwargs)
+]]></script>
+  </tool>
+</shelfDocument>

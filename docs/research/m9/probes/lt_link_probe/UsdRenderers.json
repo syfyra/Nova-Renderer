@@ -1,0 +1,10 @@
+{
+    "HdLinkProbeRendererPlugin" : {
+        "valid" : true,
+        "menulabel" : "LinkProbe",
+        "menupriority" : 1,
+        "aovsupport" : true,
+        "viewportrenderer" : true,
+        "husk.default_output" : "linkprobe.exr"
+    }
+}

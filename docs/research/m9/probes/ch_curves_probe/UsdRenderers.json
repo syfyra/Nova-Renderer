@@ -1,0 +1,10 @@
+{
+    "HdCurvesProbeRendererPlugin" : {
+        "valid" : true,
+        "menulabel" : "CurvesProbe",
+        "menupriority" : 1,
+        "aovsupport" : true,
+        "viewportrenderer" : true,
+        "husk.default_output" : "curvesprobe.exr"
+    }
+}

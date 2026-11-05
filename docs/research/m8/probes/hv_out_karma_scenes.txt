@@ -1,0 +1,99 @@
+[hv_karma] wrote <scratch>/karma/box_d1.vdb [('density', 'VDB', (20, 20, 20)), ('temperature', 'VDB', (20, 20, 20)), ('flame', 'VDB', (20, 20, 20))]
+[hv_karma] wrote <scratch>/karma/box_e_t0p5.vdb [('density', 'VDB', (20, 20, 20)), ('temperature', 'VDB', (20, 20, 20)), ('flame', 'VDB', (20, 20, 20))]
+[hv_karma] wrote <scratch>/karma/box_e_t1p0.vdb [('density', 'VDB', (20, 20, 20)), ('temperature', 'VDB', (20, 20, 20)), ('flame', 'VDB', (20, 20, 20))]
+[hv_karma] wrote <scratch>/karma/box_e_t2p0.vdb [('density', 'VDB', (20, 20, 20)), ('temperature', 'VDB', (20, 20, 20)), ('flame', 'VDB', (20, 20, 20))]
+[hv_karma] saved pyromat.usda, errors ()
+[hv_karma] material /materials/karmapyromaterial1 outputs ['outputs:aov_fire', 'outputs:aov_scatter', 'outputs:kma:volume'] interface []
+[hv_karma]   pyro input Alpha                        <- /mtlxgeompropvalue7.out
+[hv_karma]   pyro input Cd                           <- /mtlxgeompropvalue6.out
+[hv_karma]   pyro input absorpcolor                  color3f = Gf.Vec3f(1.0, 1.0, 1.0)
+[hv_karma]   pyro input absorpcolor_remapmode        int = 0
+[hv_karma]   pyro input absorpcolor_sourcerange      float2 = Gf.Vec2f(0.0, 1.0)
+[hv_karma]   pyro input absorpcolorsource            <- /mtlxgeompropvalue4.out
+[hv_karma]   pyro input absorpcolorsource_volume     int = 1
+[hv_karma]   pyro input albedocontribution           float = 1.0
+[hv_karma]   pyro input anisotropy                   float = 0.0
+[hv_karma]   pyro input anisotropyroughness          float = 1.0
+[hv_karma]   pyro input density                      <- /mtlxgeompropvalue1.out
+[hv_karma]   pyro input density_controlrange         float2 = Gf.Vec2f(0.0, 1.0)
+[hv_karma]   pyro input density_controlrangemode     int = 0
+[hv_karma]   pyro input density_controlscale         float2 = Gf.Vec2f(0.0, 1.0)
+[hv_karma]   pyro input density_enablecontrolscale   int = 0
+[hv_karma]   pyro input density_remapmode            int = 0
+[hv_karma]   pyro input density_sourcerange          float2 = Gf.Vec2f(0.0, 1.0)
+[hv_karma]   pyro input densitycontrol               <- /mtlxgeompropvalue2.out
+[hv_karma]   pyro input densityscale                 float = 1.0
+[hv_karma]   pyro input docc                         int = 0
+[hv_karma]   pyro input emission                     color3f = Gf.Vec3f(0.0, 0.0, 0.0)
+[hv_karma]   pyro input enablefire                   int = 0
+[hv_karma]   pyro input enablescatter                int = 0
+[hv_karma]   pyro input enablesmoke                  int = 1
+[hv_karma]   pyro input extinctionfalloff            float = 0.0
+[hv_karma]   pyro input fireAlpha                    <- /mtlxgeompropvalue13.out
+[hv_karma]   pyro input firealpha_volume             int = 1
+[hv_karma]   pyro input firecolor                    <- /mtlxgeompropvalue11.out
+[hv_karma]   pyro input firecolormode                int = 0
+[hv_karma]   pyro input firecolorrange               float2 = Gf.Vec2f(0.0, 1.0)
+[hv_karma]   pyro input fireenablemask               int = 0
+[hv_karma]   pyro input fireint                      <- /mtlxgeompropvalue10.out
+[hv_karma]   pyro input fireintmode                  int = 1
+[hv_karma]   pyro input fireintrange                 float2 = Gf.Vec2f(0.0, 1.0)
+[hv_karma]   pyro input fireintscale                 float = 1.0
+[hv_karma]   pyro input firemask                     <- /mtlxgeompropvalue12.out
+[hv_karma]   pyro input firemask_volume              int = 1
+[hv_karma]   pyro input firemaskcenter               float = 0.20000000298023224
+[hv_karma]   pyro input firemaskwidth                float = 0.10000000149011612
+[hv_karma]   pyro input firetempscale                float = 2500.0
+[hv_karma]   pyro input fireusemaskramp              int = 0
+[hv_karma]   pyro input firevolumemask               int3 = Gf.Vec3i(0, 0, 0)
+[hv_karma]   pyro input hotcoreint                   float = 0.0
+[hv_karma]   pyro input hue                          float = 0.0
+[hv_karma]   pyro input mixusingalpha                int = 0
+[hv_karma]   pyro input saturation                   float = 1.0
+[hv_karma]   pyro input scatterAlpha                 <- /mtlxgeompropvalue9.out
+[hv_karma]   pyro input scatteralpha_volume          int = 1
+[hv_karma]   pyro input scattercolormode             int = 0
+[hv_karma]   pyro input scatterenablemask            int = 1
+[hv_karma]   pyro input scatterint                   float = 1.0
+[hv_karma]   pyro input scattermask                  <- /mtlxgeompropvalue8.out
+[hv_karma]   pyro input scattermask_volume           int = 1
+[hv_karma]   pyro input scattermaskcenter            float = 0.20000000298023224
+[hv_karma]   pyro input scattermaskwidth             float = 0.10000000149011612
+[hv_karma]   pyro input scattersignature             int = 1
+[hv_karma]   pyro input scattertempscale             float = 2500.0
+[hv_karma]   pyro input scattertint                  int = 0
+[hv_karma]   pyro input scattertintstrength          float = 0.5
+[hv_karma]   pyro input scatterusemaskramp           int = 0
+[hv_karma]   pyro input scattervolumemask            int3 = Gf.Vec3i(0, 0, 0)
+[hv_karma]   pyro input secondaryanisotropy          float = 0.0
+[hv_karma]   pyro input secondarymix                 float = 0.5
+[hv_karma]   pyro input shadowcolor                  color3f = Gf.Vec3f(1.0, 1.0, 1.0)
+[hv_karma]   pyro input shadowcolor_remapmode        int = 0
+[hv_karma]   pyro input shadowcolor_sourcerange      float2 = Gf.Vec2f(0.0, 1.0)
+[hv_karma]   pyro input shadowcolorsource            <- /mtlxgeompropvalue5.out
+[hv_karma]   pyro input shadowcolorsource_volume     int = 1
+[hv_karma]   pyro input shadowint                    float = 1.0
+[hv_karma]   pyro input smokecolor                   color3f = Gf.Vec3f(1.0, 1.0, 1.0)
+[hv_karma]   pyro input smokecolor_remapmode         int = 0
+[hv_karma]   pyro input smokecolor_sourcerange       float2 = Gf.Vec2f(0.0, 1.0)
+[hv_karma]   pyro input smokecolorsource             <- /mtlxgeompropvalue3.out
+[hv_karma]   pyro input smokecolorsource_volume      int = 1
+[hv_karma]   pyro input smokeint                     float = 1.0
+[hv_karma]   pyro input startlevel                   int = 0
+[hv_karma]   pyro input tintwithcd                   int = 0
+[hv_karma]   pyro input useanisotropyroughness       int = 0
+[hv_karma]   pyro input usesecondaryanisotropy       int = 0
+[hv_karma]   geomprop /kma_pyroshader1/kma_pyroscatteremission1/kma_pyroscattercolor1/IN_scatter1 __scatter__
+[hv_karma]   geomprop /mtlxgeompropvalue1 density
+[hv_karma]   geomprop /mtlxgeompropvalue2 temperature
+[hv_karma]   geomprop /mtlxgeompropvalue3 density
+[hv_karma]   geomprop /mtlxgeompropvalue4 density
+[hv_karma]   geomprop /mtlxgeompropvalue5 density
+[hv_karma]   geomprop /mtlxgeompropvalue7 Alpha
+[hv_karma]   geomprop /mtlxgeompropvalue8 density
+[hv_karma]   geomprop /mtlxgeompropvalue9 density
+[hv_karma]   geomprop /mtlxgeompropvalue10 temperature
+[hv_karma]   geomprop /mtlxgeompropvalue11 temperature
+[hv_karma]   geomprop /mtlxgeompropvalue12 density
+[hv_karma]   geomprop /mtlxgeompropvalue13 density
+[hv_karma] scenes ['pyro_bare', 'pyro_bare_vl4', 'pyro_mat', 'pyro_mat_vl4', 'pyro_fire', 'pyro_fire_bb', 'pyro_fire_vl4', 'pyro_fire_sr1', 'pyro_mtlx', 'cal_alpha', 'cal_furnace_vl0', 'cal_furnace_vl64', 'cal_emit_ramp', 'cal_emit_bb', 'cal_emit_smokeoff', 'cal_emit_bare']

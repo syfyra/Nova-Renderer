@@ -1,0 +1,24 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "UsdImagingCameraAdapter": {
+                        "bases": ["UsdImagingPrimAdapter"],
+                        "isInternal": true,
+                        "primTypeName": "Camera"
+                    },
+                    "UsdImagingDrawModeAdapter": {
+                        "bases": ["UsdImagingInstanceablePrimAdapter"],
+                        "isInternal": true,
+                        "primTypeName": "__drawModeAdapter"
+                    }
+                }
+            },
+            "LibraryPath": "",
+            "Name": "novaUsdImagingAdapters",
+            "ResourcePath": ".",
+            "Type": "library"
+        }
+    ]
+}

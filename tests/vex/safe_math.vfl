@@ -1,0 +1,33 @@
+// VEX safe-math probe behind the goldens in tests/test_shading_vm.cpp.
+// vcc safe_math.vfl -o safe_math.vex && vexexec safe_math.vex (Houdini 22.0.466)
+
+cvex main() {
+    float z = 0;
+    float neg = -4;
+    float one = 1;
+    printf("div %g %g %g\n", one/z, -one/z, z/z);
+    printf("mod %g %g %g %g\n", 5.5 % z, -5.5 % 2.0, 5.5 % -2.0, -0.5 % 2.0);
+    printf("sqrt %g log %g log0 %g pow %g %g %g\n", sqrt(neg), log(neg), log(z), pow(neg, 0.5), pow(neg, 2.0), pow(z, -one));
+    printf("asin %g acos %g atan2 %g %g\n", asin(2*one), acos(-2*one), atan2(z, z), atan2(one, -one));
+    float fl = floor(-1.5); float ce = ceil(-1.5);
+    printf("exp %g floor %g ceil %g rint %g %g %g\n", exp(100*one), fl, ce, rint(-1.5), rint(2.5), rint(0.5));
+    vector nz = normalize(set(z,z,z));
+    printf("normalize %g %g %g length0 %g\n", nz.x, nz.y, nz.z, length(set(z,z,z)));
+    printf("sign %g %g %g frac %g %g\n", sign(-3*one), sign(z), sign(2*one), frac(-1.25*one), frac(1.25*one));
+    printf("smooth %g %g %g\n", smooth(z, one, 0.25*one), smooth(one, z, 0.25*one), smooth(0.5*one,0.5*one,0.5*one));
+    printf("tan %g\n", tan(1.5707963*one));
+    printf("log10 %g ln %g\n", log10(100*one), log(2.718281828*one));
+}
+cvex pow_and_clamp() {
+    float one = 1;
+    printf("pow %g %g %g %g %g %g\n", pow(-4*one, 0.25), pow(-8*one, 1.0/3), pow(-2*one, 1.5), pow(-2*one, -2.0), pow(-2*one, 3.0), pow(-0.5*one, 0.5));
+    printf("pow0 %g %g %g\n", pow(0*one, 0.0), pow(0*one, 0.5), pow(2*one, -0.5));
+    vector v = set(1,2,3); vector w = set(0,0,0);
+    printf("vdiv %g %g %g\n", (v/w).x, (v/w).y, (v/0.0).z);
+    printf("clamp %g %g lerp %g\n", clamp(5*one, 2*one, 1*one), clamp(-5*one, 2*one, 1*one), lerp(1*one, 3*one, 0.5));
+    printf("fit %g %g\n", fit(0.5*one, 0.0, 0.0, 1.0, 2.0), fit(2*one, 0.0, 1.0, 0.0, 10.0));
+    printf("exp2 %g log0n %g\n", exp(-1000*one), log(1e-40*one));
+    printf("trunc %g %g\n", trunc(-1.7*one), trunc(1.7*one));
+    printf("atan %g\n", atan(1*one));
+    printf("abs %g min %g max %g\n", abs(-0.0*one), min(-0.0*one, 0.0), max(-0.0*one, 0.0));
+}

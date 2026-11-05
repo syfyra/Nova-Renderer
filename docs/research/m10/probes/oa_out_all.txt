@@ -1,0 +1,705 @@
+== info
+device NVIDIA GeForce RTX 5080, sm_120, 84 SMs, CUDA driver API 13040, OptiX headers 90100 (ABI 118)
+  max trace depth                      31 (0x1f)
+  max traversable graph depth          31 (0x1f)
+  max primitives per GAS               536870912 (0x20000000)
+  max instances per IAS                268435456 (0x10000000)
+  RT core version                      40 (0x28)
+  max instance id                      268435455 (0xfffffff)
+  visibility mask bits                 8 (0x8)
+  max SBT records per GAS              16777216 (0x1000000)
+  max SBT offset                       268435455 (0xfffffff)
+  shader execution reordering flags    1 (0x1)
+  cluster accel flags                  1 (0x1)
+module creation (all probe programs; wall ms):
+  OptiX-IR cache off      128.1 ms  (63324 bytes of input)
+  OptiX-IR cache cold     120.9 ms  (63324 bytes of input)
+  OptiX-IR cache warm       0.5 ms  (63324 bytes of input)
+  PTX      cache off      117.2 ms  (55256 bytes of input)
+  PTX      cache cold     120.5 ms  (55256 bytes of input)
+  PTX      cache warm       0.6 ms  (55256 bytes of input)
+pipeline (5 hit groups, 6 raygens), first: module 0.9 ms, total 8.2 ms
+pipeline (5 hit groups, 6 raygens), second: module 0.8 ms, total 1.7 ms
+device memory: 14963 MB free of 16275 MB
+(info: 0.5 s)
+
+== tri: GAS builds of the blob (GPU ms, median of 3)
+1000000 triangles, 501501 vertices (input 17.2 MB; host upload 1.6 ms, generation 13 ms)
+  FAST_TRACE                             build     1.51 ms  out    59.0 MB  temp    13.7 MB  update-temp    0.0 MB
+  FAST_BUILD                             build     1.11 ms  out    51.2 MB  temp     7.7 MB  update-temp    0.0 MB
+  default (no preference)                build     1.36 ms  out    55.1 MB  temp     8.1 MB  update-temp    0.0 MB
+  FAST_TRACE|ALLOW_UPDATE                build     1.32 ms  out    57.4 MB  temp     3.8 MB  update-temp    3.8 MB
+  FAST_TRACE + compaction                build     1.54 ms  out    59.1 MB  temp    13.7 MB  update-temp    0.0 MB  compacted    19.8 MB (34 %) in 0.05 ms
+  FAST_BUILD + compaction                build     1.13 ms  out    51.3 MB  temp     7.8 MB  update-temp    0.0 MB  compacted    27.3 MB (53 %) in 0.06 ms
+  FAST_TRACE|ALLOW_UPDATE + compaction   build     1.35 ms  out    57.4 MB  temp     3.8 MB  update-temp    3.8 MB  compacted    49.1 MB (86 %) in 0.10 ms
+  FAST_TRACE, float4 vertices            build     1.55 ms  (16-byte vertex stride)
+4000000 triangles, 2003001 vertices (input 68.7 MB; host upload 4.3 ms, generation 49 ms)
+  FAST_TRACE                             build     5.85 ms  out   235.9 MB  temp    54.7 MB  update-temp    0.0 MB
+  FAST_BUILD                             build     4.83 ms  out   204.9 MB  temp    31.0 MB  update-temp    0.0 MB
+  default (no preference)                build     5.55 ms  out   220.2 MB  temp    32.5 MB  update-temp    0.0 MB
+  FAST_TRACE|ALLOW_UPDATE                build     5.07 ms  out   229.5 MB  temp    15.3 MB  update-temp   15.3 MB
+  FAST_TRACE + compaction                build     5.84 ms  out   236.3 MB  temp    54.7 MB  update-temp    0.0 MB  compacted    73.7 MB (31 %) in 0.20 ms
+  FAST_BUILD + compaction                build     4.85 ms  out   205.2 MB  temp    31.2 MB  update-temp    0.0 MB  compacted   109.7 MB (53 %) in 0.29 ms
+  FAST_TRACE|ALLOW_UPDATE + compaction   build     5.12 ms  out   229.5 MB  temp    15.3 MB  update-temp   15.3 MB  compacted   196.8 MB (86 %) in 0.50 ms
+  FAST_TRACE, float4 vertices            build     5.87 ms  (16-byte vertex stride)
+16000000 triangles, 8006001 vertices (input 274.7 MB; host upload 18.3 ms, generation 196 ms)
+  FAST_TRACE                             build    25.01 ms  out   943.7 MB  temp   218.9 MB  update-temp    0.0 MB
+  FAST_BUILD                             build    21.91 ms  out   819.5 MB  temp   124.0 MB  update-temp    0.0 MB
+  default (no preference)                build    24.13 ms  out   880.9 MB  temp   130.2 MB  update-temp    0.0 MB
+  FAST_TRACE|ALLOW_UPDATE                build    22.33 ms  out   918.0 MB  temp    61.0 MB  update-temp   61.0 MB
+  FAST_TRACE + compaction                build    25.05 ms  out   945.2 MB  temp   218.9 MB  update-temp    0.0 MB  compacted   284.8 MB (30 %) in 0.80 ms
+  FAST_BUILD + compaction                build    21.96 ms  out   820.8 MB  temp   124.6 MB  update-temp    0.0 MB  compacted   436.3 MB (53 %) in 1.22 ms
+  FAST_TRACE|ALLOW_UPDATE + compaction   build    22.36 ms  out   918.0 MB  temp    61.0 MB  update-temp   61.0 MB  compacted   785.1 MB (86 %) in 2.22 ms
+  FAST_TRACE, float4 vertices            build    25.38 ms  (16-byte vertex stride)
+tracing the 1M blob (one instance), primary 1920x1080 and bounce rays:
+  FAST_TRACE primary                            16722.6 Mrays/s    0.124 ms  hit  30.1 %
+  FAST_TRACE bounce                             10493.9 Mrays/s    0.198 ms  hit  30.5 %
+  FAST_BUILD primary                            16572.9 Mrays/s    0.125 ms  hit  30.1 %
+  FAST_BUILD bounce                              9914.3 Mrays/s    0.209 ms  hit  30.5 %
+  default (no preference) primary               16778.9 Mrays/s    0.124 ms  hit  30.1 %
+  default (no preference) bounce                10482.0 Mrays/s    0.198 ms  hit  30.5 %
+  FAST_TRACE|ALLOW_UPDATE primary               16870.6 Mrays/s    0.123 ms  hit  30.1 %
+  FAST_TRACE|ALLOW_UPDATE bounce                10512.7 Mrays/s    0.197 ms  hit  30.5 %
+  FAST_TRACE + compaction primary               16875.0 Mrays/s    0.123 ms  hit  30.1 %
+  FAST_TRACE + compaction bounce                10524.6 Mrays/s    0.197 ms  hit  30.5 %
+  FAST_BUILD + compaction primary               16787.6 Mrays/s    0.124 ms  hit  30.1 %
+  FAST_BUILD + compaction bounce                 9912.8 Mrays/s    0.209 ms  hit  30.5 %
+  FAST_TRACE|ALLOW_UPDATE + compaction primary  16818.1 Mrays/s    0.123 ms  hit  30.1 %
+  FAST_TRACE|ALLOW_UPDATE + compaction bounce   10475.3 Mrays/s    0.198 ms  hit  30.5 %
+refit (OPTIX_BUILD_OPERATION_UPDATE) of the 1M blob, FAST_TRACE|ALLOW_UPDATE:
+  build 1.35 ms, update temp 3.82 MB
+  small edit (bump +0.02)                  vertex upload 0.28 ms, update 0.222 ms (median of 3)
+      after update: primary                     16787.6 Mrays/s    0.124 ms  hit  30.3 %
+      after update: bounce                       9908.3 Mrays/s    0.209 ms  hit  39.8 %
+    rebuild instead: 1.37 ms
+      after rebuild: primary                    16831.2 Mrays/s    0.123 ms  hit  30.3 %
+      after rebuild: bounce                      9900.7 Mrays/s    0.209 ms  hit  39.8 %
+  large edit (twist 1.5 rad per unit y)    vertex upload 0.29 ms, update 0.219 ms (median of 3)
+      after update: primary                     15052.3 Mrays/s    0.138 ms  hit  29.6 %
+      after update: bounce                       7646.9 Mrays/s    0.271 ms  hit  38.9 %
+    rebuild instead: 1.37 ms
+      after rebuild: primary                    16774.5 Mrays/s    0.124 ms  hit  29.6 %
+      after rebuild: bounce                     10343.2 Mrays/s    0.200 ms  hit  38.9 %
+  very large edit (twist 4 rad, bump 0.1)  vertex upload 0.29 ms, update 0.232 ms (median of 3)
+      after update: primary                      8425.4 Mrays/s    0.246 ms  hit  34.0 %
+      after update: bounce                       3484.2 Mrays/s    0.595 ms  hit  46.9 %
+    rebuild instead: 1.30 ms
+      after rebuild: primary                    14117.6 Mrays/s    0.147 ms  hit  34.0 %
+      after rebuild: bounce                      8378.6 Mrays/s    0.247 ms  hit  46.9 %
+(tri: 1.5 s)
+
+== trace: 64 instances of a 1M-triangle blob + ground (64M instanced triangles)
+GAS 1.53 ms (19.8 MB compacted), IAS of 65 instances 5.314 ms (0.021 MB)
+pipeline: SINGLE_LEVEL_INSTANCING, no motion
+  closest, hit object: primary 1080p             9827.1 Mrays/s    0.211 ms  hit  81.4 %
+  closest, hit object: bounce                    7299.8 Mrays/s    0.284 ms  hit  57.8 %
+  closest, payload + CH: primary 1080p           9881.1 Mrays/s    0.210 ms  hit  81.4 %
+  closest, payload + CH: bounce                  7315.4 Mrays/s    0.283 ms  hit  57.8 %
+  occlusion, trace + miss: shadow                9902.2 Mrays/s    0.209 ms  hit  35.6 %
+  occlusion, hit object: shadow                  9311.7 Mrays/s    0.223 ms  hit  35.6 %
+  occlusion, hit object: bounce (tmax inf)       8703.8 Mrays/s    0.238 ms  hit  57.8 %
+  closest, hit object: primary 2160p            12012.8 Mrays/s    0.690 ms  hit  81.4 %
+pipeline: SINGLE_GAS|SINGLE_LEVEL_INSTANCING
+  closest, hit object: primary 1080p             8828.3 Mrays/s    0.235 ms  hit  81.4 %
+  closest, hit object: bounce                    6460.6 Mrays/s    0.321 ms  hit  57.8 %
+  closest, payload + CH: primary 1080p           8871.9 Mrays/s    0.234 ms  hit  81.4 %
+  closest, payload + CH: bounce                  6242.2 Mrays/s    0.332 ms  hit  57.8 %
+  occlusion, trace + miss: shadow                7902.4 Mrays/s    0.262 ms  hit  35.6 %
+  occlusion, hit object: shadow                  8024.8 Mrays/s    0.258 ms  hit  35.6 %
+  occlusion, hit object: bounce (tmax inf)       7217.6 Mrays/s    0.287 ms  hit  57.8 %
+pipeline: ALLOW_ANY (depth 2)
+  closest, hit object: primary 1080p             8924.4 Mrays/s    0.232 ms  hit  81.4 %
+  closest, hit object: bounce                    6449.0 Mrays/s    0.322 ms  hit  57.8 %
+  closest, payload + CH: primary 1080p           8879.1 Mrays/s    0.234 ms  hit  81.4 %
+  closest, payload + CH: bounce                  6191.5 Mrays/s    0.335 ms  hit  57.8 %
+  occlusion, trace + miss: shadow                7857.4 Mrays/s    0.264 ms  hit  35.6 %
+  occlusion, hit object: shadow                  8023.8 Mrays/s    0.258 ms  hit  35.6 %
+  occlusion, hit object: bounce (tmax inf)       7200.8 Mrays/s    0.288 ms  hit  57.8 %
+pipeline: SINGLE_LEVEL_INSTANCING, usesMotionBlur
+  closest, hit object: primary 1080p             9102.4 Mrays/s    0.228 ms  hit  81.4 %
+  closest, hit object: bounce                    6469.6 Mrays/s    0.321 ms  hit  57.8 %
+  closest, payload + CH: primary 1080p           8884.0 Mrays/s    0.233 ms  hit  81.4 %
+  closest, payload + CH: bounce                  6241.0 Mrays/s    0.332 ms  hit  57.8 %
+  occlusion, trace + miss: shadow                7861.2 Mrays/s    0.264 ms  hit  35.6 %
+  occlusion, hit object: shadow                  8021.8 Mrays/s    0.258 ms  hit  35.6 %
+  occlusion, hit object: bounce (tmax inf)       7157.8 Mrays/s    0.290 ms  hit  57.8 %
+pipeline: ALLOW_ANY (depth 3), usesMotionBlur
+  closest, hit object: primary 1080p             8853.7 Mrays/s    0.234 ms  hit  81.4 %
+  closest, hit object: bounce                    6411.4 Mrays/s    0.323 ms  hit  57.8 %
+  closest, payload + CH: primary 1080p           8864.6 Mrays/s    0.234 ms  hit  81.4 %
+  closest, payload + CH: bounce                  6203.9 Mrays/s    0.334 ms  hit  57.8 %
+  occlusion, trace + miss: shadow                7637.9 Mrays/s    0.271 ms  hit  35.6 %
+  occlusion, hit object: shadow                  7848.8 Mrays/s    0.264 ms  hit  35.6 %
+  occlusion, hit object: bounce (tmax inf)       7000.1 Mrays/s    0.296 ms  hit  57.8 %
+pipeline: SINGLE_LEVEL_INSTANCING, PTX module
+  closest, hit object: primary 1080p             9905.2 Mrays/s    0.209 ms  hit  81.4 %
+  closest, hit object: bounce                    7270.3 Mrays/s    0.285 ms  hit  57.8 %
+  closest, payload + CH: primary 1080p           9899.2 Mrays/s    0.209 ms  hit  81.4 %
+  closest, payload + CH: bounce                  7270.3 Mrays/s    0.285 ms  hit  57.8 %
+  occlusion, trace + miss: shadow                9897.7 Mrays/s    0.210 ms  hit  35.6 %
+  occlusion, hit object: shadow                  9358.8 Mrays/s    0.222 ms  hit  35.6 %
+  occlusion, hit object: bounce (tmax inf)       8648.1 Mrays/s    0.240 ms  hit  57.8 %
+one blob (IAS of 1 instance), baseline pipeline:
+  closest, hit object: primary 1080p            16628.2 Mrays/s    0.125 ms  hit  30.1 %
+  closest, hit object: bounce                   10438.1 Mrays/s    0.199 ms  hit  30.5 %
+(trace: 0.5 s)
+
+== anyhit: 64-instance world, closest (hit object) and occlusion (hit object)
+geometry DISABLE_ANYHIT (no AH program)
+  closest: primary                               9824.1 Mrays/s    0.211 ms  hit  81.4 %
+  closest: bounce                                7303.9 Mrays/s    0.284 ms  hit  57.8 %
+  occlusion: shadow                              9350.6 Mrays/s    0.222 ms  hit  35.6 %
+  occlusion: bounce (tmax inf)                   8389.4 Mrays/s    0.247 ms  hit  57.8 %
+AH empty (accept all)
+  closest: primary                               8702.7 Mrays/s    0.238 ms  hit  81.4 %
+  closest: bounce                                6948.3 Mrays/s    0.298 ms  hit  57.8 %
+  occlusion: shadow                              8985.0 Mrays/s    0.231 ms  hit  35.6 %
+  occlusion: bounce (tmax inf)                   8367.8 Mrays/s    0.248 ms  hit  57.8 %
+AH opacity hash, opacity 1 (accept all)
+  closest: primary                               8405.8 Mrays/s    0.247 ms  hit  81.4 %
+  closest: bounce                                6699.8 Mrays/s    0.310 ms  hit  57.8 %
+  occlusion: shadow                              9342.6 Mrays/s    0.222 ms  hit  35.6 %
+  occlusion: bounce (tmax inf)                   8454.0 Mrays/s    0.245 ms  hit  57.8 %
+AH opacity hash, opacity 0.5
+  closest: primary                               6018.4 Mrays/s    0.345 ms  hit  51.1 %
+  closest: bounce                                4537.2 Mrays/s    0.457 ms  hit  41.4 %
+  occlusion: shadow                              6012.8 Mrays/s    0.345 ms  hit  26.4 %
+  occlusion: bounce (tmax inf)                   4957.9 Mrays/s    0.418 ms  hit  41.4 %
+AH opacity, REQUIRE_SINGLE_ANYHIT_CALL
+  closest: primary                               8392.7 Mrays/s    0.247 ms  hit  81.4 %
+  closest: bounce                                6699.8 Mrays/s    0.310 ms  hit  57.8 %
+  occlusion: shadow                              9349.3 Mrays/s    0.222 ms  hit  35.6 %
+  occlusion: bounce (tmax inf)                   8438.6 Mrays/s    0.246 ms  hit  57.8 %
+AH opacity, instance flag DISABLE_ANYHIT
+  closest: primary                               9891.6 Mrays/s    0.210 ms  hit  81.4 %
+  closest: bounce                                7303.9 Mrays/s    0.284 ms  hit  57.8 %
+  occlusion: shadow                              9373.6 Mrays/s    0.221 ms  hit  35.6 %
+  occlusion: bounce (tmax inf)                   8387.3 Mrays/s    0.247 ms  hit  57.8 %
+AH opacity, ray flag DISABLE_ANYHIT
+  closest: primary                               9896.2 Mrays/s    0.210 ms  hit  81.4 %
+  closest: bounce                                7506.1 Mrays/s    0.276 ms  hit  57.8 %
+  occlusion: shadow                              9361.5 Mrays/s    0.222 ms  hit  35.6 %
+  occlusion: bounce (tmax inf)                   8391.6 Mrays/s    0.247 ms  hit  57.8 %
+AH opacity on 1 of 64 instances (others flag)
+  closest: primary                               9361.5 Mrays/s    0.222 ms  hit  81.4 %
+  closest: bounce                                7021.3 Mrays/s    0.295 ms  hit  57.8 %
+  occlusion: shadow                              9373.6 Mrays/s    0.221 ms  hit  35.6 %
+  occlusion: bounce (tmax inf)                   8448.5 Mrays/s    0.245 ms  hit  57.8 %
+any-hit invocations per ray (all 64 instances filtered):
+  opacity 1.0 default                      closest: primary   0.815 per ray, 1.001 per ray with any, max 4
+  opacity 1.0 default                      closest: bounce    0.583 per ray, 1.008 per ray with any, max 5
+  opacity 1.0 default                      occlusion: shadow  0.356 per ray, 1.000 per ray with any, max 1
+  opacity 1.0 default                      occlusion: bounce  0.578 per ray, 1.000 per ray with any, max 1
+  opacity 1.0 REQUIRE_SINGLE_ANYHIT_CALL   closest: primary   0.815 per ray, 1.001 per ray with any, max 4
+  opacity 1.0 REQUIRE_SINGLE_ANYHIT_CALL   closest: bounce    0.583 per ray, 1.009 per ray with any, max 5
+  opacity 1.0 REQUIRE_SINGLE_ANYHIT_CALL   occlusion: shadow  0.356 per ray, 1.000 per ray with any, max 1
+  opacity 1.0 REQUIRE_SINGLE_ANYHIT_CALL   occlusion: bounce  0.578 per ray, 1.000 per ray with any, max 1
+  opacity 0.5 default                      closest: primary   1.153 per ray, 1.416 per ray with any, max 13
+  opacity 0.5 default                      closest: bounce    0.838 per ray, 1.449 per ray with any, max 15
+  opacity 0.5 default                      occlusion: shadow  0.535 per ray, 1.503 per ray with any, max 12
+  opacity 0.5 default                      occlusion: bounce  0.835 per ray, 1.443 per ray with any, max 15
+  opacity 0.5 REQUIRE_SINGLE_ANYHIT_CALL   closest: primary   1.146 per ray, 1.407 per ray with any, max 13
+  opacity 0.5 REQUIRE_SINGLE_ANYHIT_CALL   closest: bounce    0.832 per ray, 1.438 per ray with any, max 14
+  opacity 0.5 REQUIRE_SINGLE_ANYHIT_CALL   occlusion: shadow  0.529 per ray, 1.487 per ray with any, max 12
+  opacity 0.5 REQUIRE_SINGLE_ANYHIT_CALL   occlusion: bounce  0.828 per ray, 1.432 per ray with any, max 14
+shadow linking (32 of 65 instances cast shadows), occlusion queries:
+  no linking (mask 0xFF): shadow                 9357.4 Mrays/s    0.222 ms  hit  35.6 %
+  visibility mask 0x01: shadow                  14838.6 Mrays/s    0.140 ms  hit  17.8 %
+  no linking (mask 0xFF): bounce                 8423.2 Mrays/s    0.246 ms  hit  57.8 %
+  visibility mask 0x01: bounce                  12978.2 Mrays/s    0.160 ms  hit  22.0 %
+  any-hit filter on instance id: shadow          5270.0 Mrays/s    0.393 ms  hit  17.8 %
+  any-hit filter on instance id: bounce          4072.9 Mrays/s    0.509 ms  hit  22.0 %
+(anyhit: 0.4 s)
+
+== launch: overhead of small launches (64-instance world; per-launch averages)
+     rays |  empty us   +params submit us |   cuda us |  trace us   Mrays/s | lat. empty lat. trace |  capacity
+        1 |     13.56     18.73     13.56 |      5.48 |     13.76       0.1 |       13.2       40.0 |      22.4
+       32 |     13.07     18.22     13.07 |      5.40 |     16.88       1.9 |       13.2       25.6 |      22.2
+      256 |     13.28     18.22     13.28 |      5.33 |     16.11      15.9 |       13.3       23.6 |      20.6
+     1024 |     12.72     19.76     12.72 |      5.23 |     15.43      66.3 |       13.6       25.4 |      22.1
+     4096 |     14.62     18.81     14.54 |      5.29 |     16.57     247.2 |       13.1       24.9 |      21.5
+    16384 |     13.37     18.48     13.37 |      5.38 |     16.45     996.1 |       13.2       24.7 |      23.8
+    65536 |     12.65     18.56     12.65 |      5.61 |     24.74    2649.5 |       13.1       34.3 |      31.7
+   262144 |     14.05     19.21     13.63 |      5.02 |     54.36    4822.5 |       15.3       57.4 |      55.4
+  1048576 |     17.74     22.11     12.18 |      6.17 |    164.29    6382.6 |       21.4      168.0 |     164.0
+  2073600 |     21.53     21.56     10.70 |      7.72 |    307.77    6737.4 |       32.3      315.4 |     308.2
+(launch: 0.4 s)
+
+== curves: 100000 curves x 8 segments (800000 primitives) on a 10 x 10 patch, length 1, radius 0.005 -> 0.002
+ROUND_LINEAR: 900000 control points (16.8 MB input)
+  FAST_TRACE build    1.93 ms  out   57.4 MB  compacted   37.6 MB (49 B/segment)  temp   27.7 MB
+  FAST_BUILD build    1.57 ms  out   46.3 MB  compacted   41.2 MB (54 B/segment)
+  FAST_TRACE closest: primary 1080p              5366.5 Mrays/s    0.386 ms  hit  46.1 %
+  FAST_TRACE closest: bounce (sphere dirs)       2070.3 Mrays/s    1.002 ms  hit  83.8 %
+  FAST_TRACE occlusion: bounce                   2713.1 Mrays/s    0.764 ms  hit  83.8 %
+  FAST_BUILD closest: primary 1080p              4546.7 Mrays/s    0.456 ms  hit  46.1 %
+  FAST_BUILD closest: bounce (sphere dirs)       2076.0 Mrays/s    0.999 ms  hit  83.8 %
+  FAST_BUILD occlusion: bounce                   2671.6 Mrays/s    0.776 ms  hit  83.8 %
+ROUND_QUADRATIC_BSPLINE: 1000000 control points (18.3 MB input)
+  FAST_TRACE build    6.08 ms  out  150.0 MB  compacted  116.2 MB (152 B/segment)  temp  370.5 MB
+  FAST_BUILD build    0.98 ms  out   37.5 MB  compacted   32.7 MB (43 B/segment)
+  FAST_TRACE closest: primary 1080p              2106.6 Mrays/s    0.984 ms  hit  46.0 %
+  FAST_TRACE closest: bounce (sphere dirs)        773.8 Mrays/s    2.680 ms  hit  83.2 %
+  FAST_TRACE occlusion: bounce                    946.8 Mrays/s    2.190 ms  hit  83.2 %
+  FAST_BUILD closest: primary 1080p               647.6 Mrays/s    3.202 ms  hit  46.0 %
+  FAST_BUILD closest: bounce (sphere dirs)        255.5 Mrays/s    8.115 ms  hit  83.2 %
+  FAST_BUILD occlusion: bounce                    333.9 Mrays/s    6.211 ms  hit  83.1 %
+ROUND_CUBIC_BSPLINE: 1100000 control points (19.8 MB input)
+  FAST_TRACE build    6.19 ms  out  151.5 MB  compacted  118.1 MB (155 B/segment)  temp  370.5 MB
+  FAST_BUILD build    1.02 ms  out   39.0 MB  compacted   34.4 MB (45 B/segment)
+  FAST_TRACE closest: primary 1080p              2003.7 Mrays/s    1.035 ms  hit  45.9 %
+  FAST_TRACE closest: bounce (sphere dirs)        756.2 Mrays/s    2.742 ms  hit  83.0 %
+  FAST_TRACE occlusion: bounce                    919.1 Mrays/s    2.256 ms  hit  83.0 %
+  FAST_BUILD closest: primary 1080p               722.3 Mrays/s    2.871 ms  hit  45.9 %
+  FAST_BUILD closest: bounce (sphere dirs)        264.4 Mrays/s    7.843 ms  hit  83.0 %
+  FAST_BUILD occlusion: bounce                    337.2 Mrays/s    6.150 ms  hit  83.0 %
+ROUND_CUBIC_BSPLINE + ENDCAP_ON: 1100000 control points (19.8 MB input)
+  FAST_TRACE build    6.21 ms  out  151.5 MB  compacted  118.1 MB (155 B/segment)  temp  370.5 MB
+  FAST_BUILD build    1.00 ms  out   39.0 MB  compacted   34.4 MB (45 B/segment)
+  FAST_TRACE closest: primary 1080p              1956.6 Mrays/s    1.060 ms  hit  46.0 %
+  FAST_TRACE closest: bounce (sphere dirs)        746.1 Mrays/s    2.779 ms  hit  83.0 %
+  FAST_TRACE occlusion: bounce                    910.0 Mrays/s    2.279 ms  hit  83.0 %
+  FAST_BUILD closest: primary 1080p               720.8 Mrays/s    2.877 ms  hit  46.0 %
+  FAST_BUILD closest: bounce (sphere dirs)        259.1 Mrays/s    8.003 ms  hit  83.0 %
+  FAST_BUILD occlusion: bounce                    330.1 Mrays/s    6.283 ms  hit  83.0 %
+ROUND_CATMULLROM: 1100000 control points (19.8 MB input)
+  FAST_TRACE build    6.15 ms  out  151.5 MB  compacted  115.5 MB (151 B/segment)  temp  370.5 MB
+  FAST_BUILD build    1.02 ms  out   39.0 MB  compacted   34.2 MB (45 B/segment)
+  FAST_TRACE closest: primary 1080p              1503.4 Mrays/s    1.379 ms  hit  46.0 %
+  FAST_TRACE closest: bounce (sphere dirs)        579.3 Mrays/s    3.579 ms  hit  83.9 %
+  FAST_TRACE occlusion: bounce                    714.7 Mrays/s    2.901 ms  hit  83.9 %
+  FAST_BUILD closest: primary 1080p               413.1 Mrays/s    5.019 ms  hit  46.0 %
+  FAST_BUILD closest: bounce (sphere dirs)        148.4 Mrays/s   13.971 ms  hit  83.9 %
+  FAST_BUILD occlusion: bounce                    204.1 Mrays/s   10.162 ms  hit  83.9 %
+ROUND_CUBIC_BEZIER: 2500000 control points (41.2 MB input)
+  FAST_TRACE build    6.27 ms  out  172.9 MB  compacted  136.5 MB (179 B/segment)  temp  370.5 MB
+  FAST_BUILD build    1.10 ms  out   60.3 MB  compacted   55.5 MB (73 B/segment)
+  FAST_TRACE closest: primary 1080p              1693.9 Mrays/s    1.224 ms  hit  46.0 %
+  FAST_TRACE closest: bounce (sphere dirs)        631.0 Mrays/s    3.286 ms  hit  83.9 %
+  FAST_TRACE occlusion: bounce                    762.1 Mrays/s    2.721 ms  hit  83.9 %
+  FAST_BUILD closest: primary 1080p               518.5 Mrays/s    3.999 ms  hit  46.0 %
+  FAST_BUILD closest: bounce (sphere dirs)        193.7 Mrays/s   10.703 ms  hit  83.9 %
+  FAST_BUILD occlusion: bounce                    253.1 Mrays/s    8.194 ms  hit  83.9 %
+ROUND_QUADRATIC_BSPLINE_ROCAPS: 1000000 control points (18.3 MB input)
+  FAST_TRACE build    6.30 ms  out  150.0 MB  compacted  116.1 MB (152 B/segment)  temp  370.5 MB
+  FAST_BUILD build    1.02 ms  out   37.5 MB  compacted   32.7 MB (43 B/segment)
+  FAST_TRACE closest: primary 1080p              2398.8 Mrays/s    0.864 ms  hit  46.0 %
+  FAST_TRACE closest: bounce (sphere dirs)        899.9 Mrays/s    2.304 ms  hit  82.8 %
+  FAST_TRACE occlusion: bounce                   1081.6 Mrays/s    1.917 ms  hit  82.8 %
+  FAST_BUILD closest: primary 1080p              1033.6 Mrays/s    2.006 ms  hit  46.0 %
+  FAST_BUILD closest: bounce (sphere dirs)        444.9 Mrays/s    4.660 ms  hit  82.7 %
+  FAST_BUILD occlusion: bounce                    521.6 Mrays/s    3.975 ms  hit  82.7 %
+ROUND_CUBIC_BSPLINE_ROCAPS: 1100000 control points (19.8 MB input)
+  FAST_TRACE build    6.47 ms  out  151.5 MB  compacted  118.0 MB (155 B/segment)  temp  370.5 MB
+  FAST_BUILD build    1.02 ms  out   39.0 MB  compacted   34.4 MB (45 B/segment)
+  FAST_TRACE closest: primary 1080p              2215.5 Mrays/s    0.936 ms  hit  45.9 %
+  FAST_TRACE closest: bounce (sphere dirs)        859.4 Mrays/s    2.413 ms  hit  83.0 %
+  FAST_TRACE occlusion: bounce                   1027.2 Mrays/s    2.019 ms  hit  83.0 %
+  FAST_BUILD closest: primary 1080p               916.6 Mrays/s    2.262 ms  hit  45.9 %
+  FAST_BUILD closest: bounce (sphere dirs)        406.6 Mrays/s    5.100 ms  hit  83.0 %
+  FAST_BUILD occlusion: bounce                    471.1 Mrays/s    4.401 ms  hit  83.0 %
+ROUND_CATMULLROM_ROCAPS: 1100000 control points (19.8 MB input)
+  FAST_TRACE build    6.47 ms  out  151.5 MB  compacted  115.5 MB (151 B/segment)  temp  370.5 MB
+  FAST_BUILD build    1.05 ms  out   39.0 MB  compacted   34.2 MB (45 B/segment)
+  FAST_TRACE closest: primary 1080p              1853.3 Mrays/s    1.119 ms  hit  46.0 %
+  FAST_TRACE closest: bounce (sphere dirs)        733.4 Mrays/s    2.827 ms  hit  83.9 %
+  FAST_TRACE occlusion: bounce                    881.3 Mrays/s    2.353 ms  hit  83.8 %
+  FAST_BUILD closest: primary 1080p               696.9 Mrays/s    2.976 ms  hit  46.0 %
+  FAST_BUILD closest: bounce (sphere dirs)        297.7 Mrays/s    6.966 ms  hit  83.9 %
+  FAST_BUILD occlusion: bounce                    351.4 Mrays/s    5.901 ms  hit  83.8 %
+ROUND_CUBIC_BEZIER_ROCAPS: 2500000 control points (41.2 MB input)
+  FAST_TRACE build    6.48 ms  out  172.9 MB  compacted  136.4 MB (179 B/segment)  temp  370.5 MB
+  FAST_BUILD build    1.12 ms  out   60.3 MB  compacted   55.6 MB (73 B/segment)
+  FAST_TRACE closest: primary 1080p              1842.6 Mrays/s    1.125 ms  hit  46.0 %
+  FAST_TRACE closest: bounce (sphere dirs)        698.9 Mrays/s    2.967 ms  hit  83.9 %
+  FAST_TRACE occlusion: bounce                    838.0 Mrays/s    2.475 ms  hit  83.9 %
+  FAST_BUILD closest: primary 1080p               705.8 Mrays/s    2.938 ms  hit  46.0 %
+  FAST_BUILD closest: bounce (sphere dirs)        300.2 Mrays/s    6.908 ms  hit  83.9 %
+  FAST_BUILD occlusion: bounce                    354.8 Mrays/s    5.844 ms  hit  83.9 %
+FLAT_QUADRATIC_BSPLINE (ribbon): 1000000 control points (18.3 MB input)
+  FAST_TRACE build    7.42 ms  out  165.2 MB  compacted  135.1 MB (177 B/segment)  temp  397.9 MB
+  FAST_BUILD build    2.04 ms  out   61.9 MB  compacted   57.3 MB (75 B/segment)
+  FAST_TRACE closest: primary 1080p              1570.1 Mrays/s    1.321 ms  hit  45.0 %
+  FAST_TRACE closest: bounce (sphere dirs)        658.5 Mrays/s    3.149 ms  hit  80.5 %
+  FAST_TRACE occlusion: bounce                    714.6 Mrays/s    2.902 ms  hit  80.5 %
+  FAST_BUILD closest: primary 1080p               610.1 Mrays/s    3.399 ms  hit  45.0 %
+  FAST_BUILD closest: bounce (sphere dirs)        288.7 Mrays/s    7.183 ms  hit  80.5 %
+  FAST_BUILD occlusion: bounce                    319.3 Mrays/s    6.493 ms  hit  80.5 %
+(curves: 3.9 s)
+
+== points: 1000000 points in [0,10]^3, radius 0.01-0.03
+built-in SPHERE: build 2.34 ms, out 71.7 MB, compacted 41.2 MB (43 B/point)
+  closest, hit object: primary 1080p             6738.1 Mrays/s    0.308 ms  hit  92.2 %
+  closest, hit object: bounce (sphere dirs)      5087.9 Mrays/s    0.408 ms  hit  84.1 %
+  occlusion, hit object: bounce                  5860.5 Mrays/s    0.354 ms  hit  84.1 %
+custom sphere (AABB + IS): build 1.63 ms, out 35.7 MB, compacted 31.7 MB (33 B/point)
+  closest, hit object: primary 1080p             4012.6 Mrays/s    0.517 ms  hit  92.2 %
+  closest, hit object: bounce (sphere dirs)      2940.1 Mrays/s    0.705 ms  hit  84.2 %
+  occlusion, hit object: bounce                  3436.9 Mrays/s    0.603 ms  hit  84.2 %
+custom ray-facing disc: build 1.63 ms, out 35.7 MB, compacted 31.7 MB (33 B/point)
+  closest, hit object: primary 1080p             4002.2 Mrays/s    0.518 ms  hit  92.2 %
+  closest, hit object: bounce (sphere dirs)      2908.6 Mrays/s    0.713 ms  hit  84.1 %
+  occlusion, hit object: bounce                  3431.7 Mrays/s    0.604 ms  hit  84.1 %
+custom oriented disc: build 1.65 ms, out 35.7 MB, compacted 31.7 MB (33 B/point)
+  closest, hit object: primary 1080p             2126.6 Mrays/s    0.975 ms  hit  85.4 %
+  closest, hit object: bounce (sphere dirs)      1405.5 Mrays/s    1.475 ms  hit  72.2 %
+  occlusion, hit object: bounce                  1533.7 Mrays/s    1.352 ms  hit  72.2 %
+(points: 0.2 s)
+
+== attrs: hit attributes and semantics (single rays, hit objects)
+  triangle (expect u = 0.2 (weight of p1), v = 0.3; Embree's convention)
+    triangle p0=0 p1=x p2=y, at (0.2,0.3) from +z  t 1.000000 prim 0 u 0.200000 v 0.300000 front 1 kind 0xfe
+    same point from -z (back face)                 t 1.000000 prim 0 u 0.200000 v 0.300000 front 0 kind 0xff
+  ROUND_LINEAR, points x = 0, 1, 2, radius 0.1
+    side hit at x=0.3 (expect t 0.9, u 0.3)        t 0.900000 prim 0 u 0.300000 v 0.000000 front 1 kind 0xcc
+    side hit at the joint x=1                      t 0.900000 prim 0 u 1.000000 v 0.000000 front 1 kind 0xcc
+    along the axis onto the end (x=2.1?)           t 0.900000 prim 1 u 1.000000 v 0.000000 front 1 kind 0xcc
+    onto the end cap at x=2.05                     t 0.913397 prim 1 u 1.000000 v 0.000000 front 1 kind 0xcc
+    onto the start cap, 0.05 off axis              t 1.913398 prim 0 u 1.000000 v 0.000000 front 1 kind 0xcc
+    onto the start cap at x=-0.05, from the side   t 0.913397 prim 0 u 0.000000 v 0.000000 front 1 kind 0xcc
+    obliquely onto the start cap                   t 0.969708 prim 0 u 0.000000 v 0.000000 front 1 kind 0xcc
+    obliquely onto the end cap                     t 0.969708 prim 1 u 1.000000 v 0.000000 front 1 kind 0xcc
+    from inside (axis x=0.5) outwards              miss
+    from inside along the axis                     t 0.413397 prim 0 u 1.000000 v 0.000000 front 1 kind 0xcc
+    from just inside the surface, outwards         miss
+  ROUND_QUADRATIC_BSPLINE, control x = -1 0.5 3 (segment x -0.2500 .. 1.7500), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.100000 v 0.000000 front 1 kind 0x80
+      expected u 0.1000; x(u reported) - x(ray) = +7.45e-09
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.250000 v 0.000000 front 1 kind 0x80
+      expected u 0.2500; x(u reported) - x(ray) = +0.00e+00
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x80
+      expected u 0.5000; x(u reported) - x(ray) = +0.00e+00
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.800000 v 0.000000 front 1 kind 0x80
+      expected u 0.8000; x(u reported) - x(ray) = +0.00e+00
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    miss
+    obliquely onto the start face                  miss
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  ROUND_CUBIC_BSPLINE, control x = -1 0 2 3 (segment x 0.1667 .. 1.8333), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.100000 v 0.000000 front 1 kind 0x82
+      expected u 0.1000; x(u reported) - x(ray) = +2.98e-08
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.250000 v 0.000000 front 1 kind 0x82
+      expected u 0.2500; x(u reported) - x(ray) = +0.00e+00
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x82
+      expected u 0.5000; x(u reported) - x(ray) = +1.19e-07
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.800000 v 0.000000 front 1 kind 0x82
+      expected u 0.8000; x(u reported) - x(ray) = +0.00e+00
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    miss
+    obliquely onto the start face                  miss
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  ROUND_CUBIC_BSPLINE + ENDCAP_ON, control x = -1 0 2 3 (segment x 0.1667 .. 1.8333), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.100000 v 0.000000 front 1 kind 0x82
+      expected u 0.1000; x(u reported) - x(ray) = +2.98e-08
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.250000 v 0.000000 front 1 kind 0x82
+      expected u 0.2500; x(u reported) - x(ray) = +0.00e+00
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x82
+      expected u 0.5000; x(u reported) - x(ray) = +1.19e-07
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.800000 v 0.000000 front 1 kind 0x82
+      expected u 0.8000; x(u reported) - x(ray) = +0.00e+00
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    t 1.024695 prim 0 u 1.000000 v 0.000000 front 1 kind 0x82
+    obliquely onto the start face                  t 1.024695 prim 0 u 0.000000 v 0.000000 front 1 kind 0x82
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  ROUND_CATMULLROM, control x = -1 0 2 3 (segment x 0.0000 .. 2.0000), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.100000 v 0.000000 front 1 kind 0x86
+      expected u 0.1000; x(u reported) - x(ray) = +1.79e-07
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.250000 v 0.000000 front 1 kind 0x86
+      expected u 0.2500; x(u reported) - x(ray) = +0.00e+00
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x86
+      expected u 0.5000; x(u reported) - x(ray) = +1.19e-07
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.800000 v 0.000000 front 1 kind 0x86
+      expected u 0.8000; x(u reported) - x(ray) = +3.58e-07
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    miss
+    obliquely onto the start face                  miss
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  ROUND_CUBIC_BEZIER, control x = 0 0.2 1.5 2 (segment x 0.0000 .. 2.0000), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.100000 v 0.000000 front 1 kind 0x8c
+      expected u 0.1000; x(u reported) - x(ray) = +0.00e+00
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.250000 v 0.000000 front 1 kind 0x8c
+      expected u 0.2500; x(u reported) - x(ray) = -5.96e-08
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x8c
+      expected u 0.5000; x(u reported) - x(ray) = +0.00e+00
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.800000 v 0.000000 front 1 kind 0x8c
+      expected u 0.8000; x(u reported) - x(ray) = -1.19e-07
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    miss
+    obliquely onto the start face                  miss
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  ROUND_QUADRATIC_BSPLINE_ROCAPS, control x = -1 0.5 3 (segment x -0.2500 .. 1.7500), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.099878 v 0.000000 front 1 kind 0x8e
+      expected u 0.1000; x(u reported) - x(ray) = -1.95e-04
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.249959 v 0.000000 front 1 kind 0x8e
+      expected u 0.2500; x(u reported) - x(ray) = -7.19e-05
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.499940 v 0.000000 front 1 kind 0x8e
+      expected u 0.5000; x(u reported) - x(ray) = -1.20e-04
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.799890 v 0.000000 front 1 kind 0x8e
+      expected u 0.8000; x(u reported) - x(ray) = -2.53e-04
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    miss
+    obliquely onto the start face                  miss
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  ROUND_CUBIC_BSPLINE_ROCAPS, control x = -1 0 2 3 (segment x 0.1667 .. 1.8333), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.099990 v 0.000000 front 1 kind 0x90
+      expected u 0.1000; x(u reported) - x(ray) = -1.56e-05
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.249986 v 0.000000 front 1 kind 0x90
+      expected u 0.2500; x(u reported) - x(ray) = -2.42e-05
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x90
+      expected u 0.5000; x(u reported) - x(ray) = -2.38e-07
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.800012 v 0.000000 front 1 kind 0x90
+      expected u 0.8000; x(u reported) - x(ray) = +1.99e-05
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    miss
+    obliquely onto the start face                  miss
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  ROUND_CATMULLROM_ROCAPS, control x = -1 0 2 3 (segment x 0.0000 .. 2.0000), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.099955 v 0.000000 front 1 kind 0x92
+      expected u 0.1000; x(u reported) - x(ray) = -7.89e-05
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.249979 v 0.000000 front 1 kind 0x92
+      expected u 0.2500; x(u reported) - x(ray) = -4.23e-05
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x92
+      expected u 0.5000; x(u reported) - x(ray) = +3.58e-07
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.800013 v 0.000000 front 1 kind 0x92
+      expected u 0.8000; x(u reported) - x(ray) = +2.59e-05
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    miss
+    obliquely onto the start face                  miss
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  ROUND_CUBIC_BEZIER_ROCAPS, control x = 0 0.2 1.5 2 (segment x 0.0000 .. 2.0000), radius 0.1
+    side hit at x(u=0.10)                          t 0.900000 prim 0 u 0.099737 v 0.000000 front 1 kind 0x94
+      expected u 0.1000; x(u reported) - x(ray) = -3.17e-04
+    side hit at x(u=0.25)                          t 0.900000 prim 0 u 0.249905 v 0.000000 front 1 kind 0x94
+      expected u 0.2500; x(u reported) - x(ray) = -1.79e-04
+    side hit at x(u=0.50)                          t 0.900000 prim 0 u 0.499991 v 0.000000 front 1 kind 0x94
+      expected u 0.5000; x(u reported) - x(ray) = -2.14e-05
+    side hit at x(u=0.80)                          t 0.900000 prim 0 u 0.800045 v 0.000000 front 1 kind 0x94
+      expected u 0.8000; x(u reported) - x(ray) = +9.97e-05
+    along the axis onto the end                    miss
+    onto the start, 0.05 off axis                  miss
+    0.05 beyond the end, from the side             miss
+    obliquely onto the end face                    miss
+    obliquely onto the start face                  miss
+    from inside outwards                           miss
+    from just inside the surface                   miss
+  FLAT_QUADRATIC_BSPLINE: straight ribbon along x, width (radius) 0.1, rays at the segment middle (1.00 0.00 0.00)
+    from +y                                        miss
+    from +z                                        t 2.000000 prim 0 u 0.500000 v -0.000001 front 1 kind 0x88 ribbonN (0.000 0.000 -1.000)
+    from -y                                        miss
+    from +y+z                                      t 2.000000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x88 ribbonN (0.000 0.000 -1.000)
+    oblique                                        t 2.000000 prim 0 u 0.500000 v 0.000000 front 1 kind 0x88 ribbonN (0.000 0.000 -1.000)
+  FLAT_QUADRATIC_BSPLINE: ribbon bent in the xy plane, width (radius) 0.1, rays at the segment middle (1.00 0.75 0.00)
+    from +y                                        t 2.000000 prim 0 u 0.500000 v -0.000001 front 1 kind 0x88 ribbonN (0.000 -1.000 0.000)
+    from +z                                        miss
+    from -y                                        t 2.000000 prim 0 u 0.500000 v -0.000001 front 1 kind 0x88 ribbonN (0.000 -1.000 0.000)
+    from +y+z                                      t 2.000000 prim 0 u 0.500000 v -0.000002 front 1 kind 0x88 ribbonN (0.000 -1.000 0.000)
+    oblique                                        t 2.000000 prim 0 u 0.500000 v -0.000004 front 1 kind 0x88 ribbonN (0.000 -1.000 0.000)
+  FLAT_QUADRATIC_BSPLINE: ribbon bent in the xz plane, width (radius) 0.1, rays at the segment middle (1.00 0.00 0.75)
+    from +y                                        miss
+    from +z                                        t 2.000000 prim 0 u 0.500000 v -0.000001 front 1 kind 0x88 ribbonN (0.000 0.000 -1.000)
+    from -y                                        miss
+    from +y+z                                      t 2.000000 prim 0 u 0.500000 v 0.000002 front 1 kind 0x88 ribbonN (0.000 0.000 -1.000)
+    oblique                                        t 2.000000 prim 0 u 0.500000 v -0.000001 front 1 kind 0x88 ribbonN (-0.000 -0.000 -1.000)
+  built-in SPHERE, centre 0, radius 1
+    from outside (expect t 4)                      t 4.000000 prim 0 u 0.000000 v 0.000000 front 1 kind 0xce
+    from the centre (inside)                       miss
+    from just inside the surface                   miss
+    from the surface point, outwards               miss
+  instance motion, rotation about z between two keys (degrees at time t; scan step 0.01)
+    type     t        measured      slerp      nlerp matrix lerp
+    SRT      0.25        21.60      22.50      21.60      18.43   (keys 0 and 90 degrees)
+    SRT      0.50        45.00      45.00      45.00      45.00   (keys 0 and 90 degrees)
+    SRT      0.75        68.40      67.50      68.40      71.57   (keys 0 and 90 degrees)
+    matrix   0.25        18.43      22.50      21.60      18.43   (keys 0 and 90 degrees)
+    matrix   0.50        45.00      45.00      45.00      45.00   (keys 0 and 90 degrees)
+    matrix   0.75        71.57      67.50      68.40      71.57   (keys 0 and 90 degrees)
+    SRT      0.25        35.77      42.50      35.77       4.92   (keys 0 and 170 degrees)
+    SRT      0.50        85.00      85.00      85.00      85.00   (keys 0 and 170 degrees)
+    SRT      0.75       134.23     127.50     134.23     165.08   (keys 0 and 170 degrees)
+    matrix   0.25         4.92      42.50      35.77       4.92   (keys 0 and 170 degrees)
+    matrix   0.50        85.00      85.00      85.00      85.00   (keys 0 and 170 degrees)
+    matrix   0.75       165.08     127.50     134.23     165.08   (keys 0 and 170 degrees)
+    largest slerp - nlerp difference over t for a key interval of theta degrees:
+      theta    2.0: 0.00001 degrees (1.71e-07 of the radius at the arc)
+      theta    5.0: 0.00015 degrees (2.66e-06 of the radius at the arc)
+      theta   10.0: 0.00122 degrees (2.13e-05 of the radius at the arc)
+      theta   30.0: 0.03309 degrees (5.78e-04 of the radius at the arc)
+      theta   60.0: 0.26748 degrees (4.67e-03 of the radius at the arc)
+      theta   90.0: 0.91881 degrees (1.60e-02 of the radius at the arc)
+      theta  170.0: 6.75757 degrees (1.18e-01 of the radius at the arc)
+(attrs: 0.1 s)
+
+== motion
+deformation (vertex) motion of the 1M blob; IAS of one instance; rays with random times
+   1 keys: build    1.56 ms, out   59.1 MB, compacted   19.8 MB, temp   13.7 MB
+  IAS keys 1: primary                           12776.0 Mrays/s    0.162 ms  hit  30.1 %
+  IAS keys 1: bounce                             7362.0 Mrays/s    0.282 ms  hit  29.1 %
+   2 keys: build    1.89 ms, out  146.5 MB, compacted   57.8 MB, temp   51.4 MB
+  IAS keys 1: primary                            8379.7 Mrays/s    0.247 ms  hit  30.3 %
+  IAS keys 1: bounce                             4003.5 Mrays/s    0.518 ms  hit  37.2 %
+  IAS keys 2: primary                            8398.1 Mrays/s    0.247 ms  hit  30.3 %
+  IAS keys 2: bounce                             4011.1 Mrays/s    0.517 ms  hit  37.2 %
+   4 keys: build    3.06 ms, out  439.5 MB, compacted  156.2 MB, temp   51.7 MB
+  IAS keys 1: primary                            7968.5 Mrays/s    0.260 ms  hit  30.4 %
+  IAS keys 1: bounce                             3807.1 Mrays/s    0.545 ms  hit  37.3 %
+  IAS keys 2: primary                            7997.0 Mrays/s    0.259 ms  hit  30.4 %
+  IAS keys 2: bounce                             3746.1 Mrays/s    0.554 ms  hit  37.3 %
+   8 keys: build    4.62 ms, out 1025.5 MB, compacted  348.8 MB, temp   52.1 MB
+  IAS keys 1: primary                            7329.5 Mrays/s    0.283 ms  hit  30.4 %
+  IAS keys 1: bounce                             3306.1 Mrays/s    0.627 ms  hit  37.4 %
+  IAS keys 2: primary                            7278.4 Mrays/s    0.285 ms  hit  30.4 %
+  IAS keys 2: bounce                             3296.7 Mrays/s    0.629 ms  hit  37.4 %
+  16 keys: build    8.23 ms, out 2197.6 MB, compacted  732.5 MB, temp   53.1 MB
+  IAS keys 1: primary                            6374.8 Mrays/s    0.325 ms  hit  30.4 %
+  IAS keys 1: bounce                             2846.1 Mrays/s    0.729 ms  hit  37.4 %
+  IAS keys 2: primary                            6381.1 Mrays/s    0.325 ms  hit  30.4 %
+  IAS keys 2: bounce                             2841.0 Mrays/s    0.730 ms  hit  37.4 %
+instance motion in the 64-instance world (rotation 20 degrees + translation 0.6 over the shutter)
+  static instances, baseline pipeline (SINGLE_LEVEL, no motion)
+  primary                                        9845.0 Mrays/s    0.211 ms  hit  81.4 %
+  bounce                                         7565.7 Mrays/s    0.274 ms  hit  57.8 %
+  static instances, motion pipeline (ALLOW_ANY, depth 3)
+  primary                                        8863.4 Mrays/s    0.234 ms  hit  81.4 %
+  bounce                                         6211.1 Mrays/s    0.334 ms  hit  57.8 %
+  SRT motion, 2 keys, static IAS: transform 160 B per instance, IAS build 5.660 ms, 0.021 MB
+  primary                                        5872.2 Mrays/s    0.353 ms  hit  81.4 %
+  bounce                                         3507.1 Mrays/s    0.591 ms  hit  59.4 %
+  SRT motion, 2 keys, IAS 2 keys: transform 160 B per instance, IAS build 5.713 ms, 0.022 MB
+  primary                                        5737.1 Mrays/s    0.361 ms  hit  81.4 %
+  bounce                                         3512.6 Mrays/s    0.590 ms  hit  59.4 %
+  SRT motion, 16 keys, static IAS: transform 1056 B per instance, IAS build 0.789 ms, 0.021 MB
+  primary                                        5627.9 Mrays/s    0.368 ms  hit  81.4 %
+  bounce                                         3433.1 Mrays/s    0.604 ms  hit  59.4 %
+  SRT motion, 16 keys, IAS 16 keys: transform 1056 B per instance, IAS build 0.756 ms, 0.188 MB
+  primary                                        5734.5 Mrays/s    0.362 ms  hit  81.4 %
+  bounce                                         3490.1 Mrays/s    0.594 ms  hit  59.4 %
+  SRT motion, 2 keys, static IAS, spin 1 deg: transform 160 B per instance, IAS build 0.111 ms, 0.021 MB
+  primary                                        6016.7 Mrays/s    0.345 ms  hit  81.4 %
+  bounce                                         3589.2 Mrays/s    0.578 ms  hit  59.4 %
+  SRT motion, 2 keys, static IAS, spin 0: transform 160 B per instance, IAS build 0.077 ms, 0.021 MB
+  primary                                        6058.9 Mrays/s    0.342 ms  hit  81.4 %
+  bounce                                         3593.4 Mrays/s    0.577 ms  hit  59.4 %
+  matrix motion, 2 keys, static IAS: transform 128 B per instance, IAS build 0.076 ms, 0.021 MB
+  primary                                        5797.1 Mrays/s    0.358 ms  hit  81.4 %
+  bounce                                         3512.8 Mrays/s    0.590 ms  hit  59.0 %
+  matrix motion, 2 keys, IAS 2 keys: transform 128 B per instance, IAS build 0.093 ms, 0.022 MB
+  primary                                        5782.6 Mrays/s    0.359 ms  hit  81.4 %
+  bounce                                         3499.9 Mrays/s    0.592 ms  hit  59.0 %
+motion key limits (a 2-triangle GAS; SRT transform)
+  GAS with   16 vertex keys: OPTIX_SUCCESS (output 62.5 KB)
+  GAS with   64 vertex keys: OPTIX_SUCCESS (output 260.5 KB)
+  GAS with  128 vertex keys: OPTIX_SUCCESS (output 524.5 KB)
+  GAS with  129 vertex keys: OPTIX_SUCCESS (output 528.6 KB)
+  GAS with  130 vertex keys: OPTIX_SUCCESS (output 532.8 KB)
+  GAS with  192 vertex keys: OPTIX_SUCCESS (output 788.5 KB)
+  GAS with  255 vertex keys: OPTIX_SUCCESS (output 1048.4 KB)
+  GAS with  256 vertex keys: OPTIX_ERROR_INVALID_VALUE (output 0.0 KB)
+(motion: 1.1 s)
+
+== ias: instance acceleration structures (GAS: a 20k-triangle blob)
+         1 instances: upload    0.01 ms (0.0 MB); build FAST_TRACE    0.04 ms (0.0 MB, temp 0.0 MB), FAST_BUILD    0.04 ms, ALLOW_UPDATE    0.03 ms, update   0.04 ms
+        16 instances: upload    0.01 ms (0.0 MB); build FAST_TRACE    0.05 ms (0.0 MB, temp 0.0 MB), FAST_BUILD    0.05 ms, ALLOW_UPDATE    0.05 ms, update   0.02 ms
+        65 instances: upload    0.01 ms (0.0 MB); build FAST_TRACE    0.07 ms (0.0 MB, temp 0.0 MB), FAST_BUILD    0.06 ms, ALLOW_UPDATE    0.07 ms, update   0.02 ms
+       256 instances: upload    0.01 ms (0.0 MB); build FAST_TRACE    0.08 ms (0.1 MB, temp 0.0 MB), FAST_BUILD    0.08 ms, ALLOW_UPDATE    0.08 ms, update   0.03 ms
+      1000 instances: upload    0.03 ms (0.1 MB); build FAST_TRACE    0.11 ms (0.3 MB, temp 0.1 MB), FAST_BUILD    0.11 ms, ALLOW_UPDATE    0.11 ms, update   0.03 ms
+     10000 instances: upload    0.06 ms (0.8 MB); build FAST_TRACE    0.15 ms (2.9 MB, temp 1.0 MB), FAST_BUILD    0.15 ms, ALLOW_UPDATE    0.14 ms, update   0.03 ms
+    100000 instances: upload    0.61 ms (7.6 MB); build FAST_TRACE    0.31 ms (28.7 MB, temp 10.4 MB), FAST_BUILD    0.30 ms, ALLOW_UPDATE    0.31 ms, update   0.12 ms
+   1000000 instances: upload    5.01 ms (76.3 MB); build FAST_TRACE    2.23 ms (195.9 MB, temp 81.5 MB), FAST_BUILD    2.08 ms, ALLOW_UPDATE    2.21 ms, update   0.95 ms
+  1M instances, FAST_TRACE IAS: primary          5254.6 Mrays/s    0.395 ms  hit 100.0 %
+  1M instances, FAST_TRACE IAS: bounce           5043.6 Mrays/s    0.411 ms  hit  70.3 %
+  1M instances, FAST_BUILD IAS: primary          5427.6 Mrays/s    0.382 ms  hit 100.0 %
+  1M instances, FAST_BUILD IAS: bounce           5112.0 Mrays/s    0.406 ms  hit  70.3 %
+  1M instances, updated IAS: bounce              5929.2 Mrays/s    0.350 ms  hit  76.6 %
+   4000000 instances: upload   18.93 ms (305.2 MB); build FAST_TRACE   10.38 ms (692.2 MB, temp 303.2 MB), FAST_BUILD    9.89 ms, ALLOW_UPDATE   10.42 ms, update   5.43 ms
+  64 instances, IAS build (median of 5), by instanced GAS and rotation:
+    GAS of   10000 triangles, unrotated: 0.060 ms
+    GAS of   10000 triangles, rotated  : 0.063 ms
+    GAS of 1000000 triangles, unrotated: 0.062 ms
+    GAS of 1000000 triangles, rotated  : 0.062 ms
+(ias: 0.6 s)
+
+== local: subsurface-walk queries on one instance (Nova's intersectLocal)
+  world rays through a 1-instance IAS            4052.4 Mrays/s    0.518 ms  hit  60.2 %
+  object-space rays on the GAS handle            4046.7 Mrays/s    0.518 ms  hit  60.2 %
+  both hit 1262170, same prim 1261967 (max |dt| 2.11e-04), other prim: max |dt| 2.34e-02; hit by only one 3
+(local: 0.2 s)
+
+== precision: secondary rays leaving surfaces (self-hit = the ray hits its own primitive)
+  translation 0e+00: 560601 rays from the centre at vertices and edge midpoints: 0 missed
+  translation 0e+00: 576573 surface points
+    reflection    P, tmin 0                          self-hits  239671 (41.5682 %), hits closer than 1e-3: 240487
+    reflection    offsetRayOrigin(P, +-Ng), tmin 0   self-hits       0 (0.0000 %), hits closer than 1e-3: 1022
+    reflection    P, tmin 1e-4                       self-hits      69 (0.0120 %), hits closer than 1e-3: 1370
+    transmission  P, tmin 0                          self-hits  336872 (58.4266 %), hits closer than 1e-3: 337663
+    transmission  offsetRayOrigin(P, +-Ng), tmin 0   self-hits       0 (0.0000 %), hits closer than 1e-3: 1420
+    transmission  P, tmin 1e-4                       self-hits     127 (0.0220 %), hits closer than 1e-3: 1820
+  translation 1e+03: 560601 rays from the centre at vertices and edge midpoints: 0 missed
+  translation 1e+03: 576616 surface points
+    reflection    P, tmin 0                          self-hits  370172 (64.1973 %), hits closer than 1e-3: 367007
+    reflection    offsetRayOrigin(P, +-Ng), tmin 0   self-hits       0 (0.0000 %), hits closer than 1e-3: 6
+    reflection    P, tmin 1e-4                       self-hits  149904 (25.9972 %), hits closer than 1e-3: 144718
+    transmission  P, tmin 0                          self-hits  188006 (32.6051 %), hits closer than 1e-3: 187952
+    transmission  offsetRayOrigin(P, +-Ng), tmin 0   self-hits       0 (0.0000 %), hits closer than 1e-3: 41
+    transmission  P, tmin 1e-4                       self-hits   53578 (9.2918 %), hits closer than 1e-3: 52316
+  translation 1e+05: 560601 rays from the centre at vertices and edge midpoints: 0 missed
+  translation 1e+05: 577971 surface points
+    reflection    P, tmin 0                          self-hits   98053 (16.9650 %), hits closer than 1e-3: 27623
+    reflection    offsetRayOrigin(P, +-Ng), tmin 0   self-hits       0 (0.0000 %), hits closer than 1e-3: 1
+    reflection    P, tmin 1e-4                       self-hits   96832 (16.7538 %), hits closer than 1e-3: 24870
+    transmission  P, tmin 0                          self-hits   58965 (10.2021 %), hits closer than 1e-3: 24999
+    transmission  offsetRayOrigin(P, +-Ng), tmin 0   self-hits       0 (0.0000 %), hits closer than 1e-3: 481
+    transmission  P, tmin 1e-4                       self-hits   57856 (10.0102 %), hits closer than 1e-3: 22485
+  ROUND_LINEAR, translation 0e+00: 729433 hits, |distance to axis - r| / r mean 1.79e-05 max 2.21e-04
+    away          P                          same segment within 4r:       0 (0.000 %)
+    away          offsetRayOrigin(P, +-N)    same segment within 4r:       0 (0.000 %)
+    away          tubeRayOrigin              same segment within 4r:       0 (0.000 %)
+    into the fibre P                          same segment within 4r:  374783 (51.380 %)
+    into the fibre offsetRayOrigin(P, +-N)    same segment within 4r:       0 (0.000 %)
+    into the fibre tubeRayOrigin              same segment within 4r:      10 (0.001 %)
+  ROUND_LINEAR, translation 1e+03: 729438 hits, |distance to axis - r| / r mean 5.22e-03 max 2.26e-02
+    away          P                          same segment within 4r:       2 (0.000 %)
+    away          offsetRayOrigin(P, +-N)    same segment within 4r:       0 (0.000 %)
+    away          tubeRayOrigin              same segment within 4r:       0 (0.000 %)
+    into the fibre P                          same segment within 4r:  288549 (39.558 %)
+    into the fibre offsetRayOrigin(P, +-N)    same segment within 4r:    2530 (0.347 %)
+    into the fibre tubeRayOrigin              same segment within 4r:     295 (0.040 %)
+  ROUND_CUBIC_BSPLINE, translation 0e+00: 728623 hits, |distance to axis - r| / r mean 3.05e-05 max 4.53e-04
+    away          P                          same segment within 4r:     402 (0.055 %)
+    away          offsetRayOrigin(P, +-N)    same segment within 4r:     363 (0.050 %)
+    away          tubeRayOrigin              same segment within 4r:     352 (0.048 %)
+    into the fibre P                          same segment within 4r:  468818 (64.343 %)
+    into the fibre offsetRayOrigin(P, +-N)    same segment within 4r:       1 (0.000 %)
+    into the fibre tubeRayOrigin              same segment within 4r:      70 (0.010 %)
+  ROUND_CUBIC_BSPLINE, translation 1e+03: 728618 hits, |distance to axis - r| / r mean 5.40e-03 max 2.34e-02
+    away          P                          same segment within 4r:     288 (0.040 %)
+    away          offsetRayOrigin(P, +-N)    same segment within 4r:       0 (0.000 %)
+    away          tubeRayOrigin              same segment within 4r:       0 (0.000 %)
+    into the fibre P                          same segment within 4r:  287608 (39.473 %)
+    into the fibre offsetRayOrigin(P, +-N)    same segment within 4r:       0 (0.000 %)
+    into the fibre tubeRayOrigin              same segment within 4r:      17 (0.002 %)
+(precision: 1.6 s)
+

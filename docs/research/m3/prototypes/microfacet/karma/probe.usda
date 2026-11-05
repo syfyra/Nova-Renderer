@@ -1,0 +1,317 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "q_ss_spec" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0.0, 0, 0), (1.0, 0, 0), (1.0, 1, 0), (0.0, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/ss_spec>
+    }
+    def Mesh "q_ss_spec_tf" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(1.25, 0, 0), (2.25, 0, 0), (2.25, 1, 0), (1.25, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/ss_spec_tf>
+    }
+    def Mesh "q_ss_sheen" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(2.5, 0, 0), (3.5, 0, 0), (3.5, 1, 0), (2.5, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/ss_sheen>
+    }
+    def Mesh "q_ss_metal_rough" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(3.75, 0, 0), (4.75, 0, 0), (4.75, 1, 0), (3.75, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/ss_metal_rough>
+    }
+    def Mesh "q_ss_diffuse_on1" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(5.0, 0, 0), (6.0, 0, 0), (6.0, 1, 0), (5.0, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/ss_diffuse_on1>
+    }
+    def Mesh "q_op_diffuse_eon1" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(6.25, 0, 0), (7.25, 0, 0), (7.25, 1, 0), (6.25, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/op_diffuse_eon1>
+    }
+    def Mesh "q_op_fuzz" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(7.5, 0, 0), (8.5, 0, 0), (8.5, 1, 0), (7.5, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/op_fuzz>
+    }
+    def Mesh "q_ss_sheen_r08" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(8.75, 0, 0), (9.75, 0, 0), (9.75, 1, 0), (8.75, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/ss_sheen_r08>
+    }
+    def Mesh "q_op_metal_rough" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(10.0, 0, 0), (11.0, 0, 0), (11.0, 1, 0), (10.0, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/op_metal_rough>
+    }
+    def Mesh "q_op_spec" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(11.25, 0, 0), (12.25, 0, 0), (12.25, 1, 0), (11.25, 1, 0)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/op_spec>
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+        uniform token[] xformOpOrder = []
+    }
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 125.0
+        float verticalAperture = 12.5
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (6.125, 0.5, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Looks"
+{
+    def Material "ss_spec"
+    {
+        token outputs:mtlx:surface.connect = </Looks/ss_spec/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 1
+            float inputs:specular_roughness = 0.3
+            float inputs:specular_IOR = 1.5
+            token outputs:out
+        }
+    }
+    def Material "ss_spec_tf"
+    {
+        token outputs:mtlx:surface.connect = </Looks/ss_spec_tf/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 1
+            float inputs:specular_roughness = 0.3
+            float inputs:specular_IOR = 1.5
+            float inputs:thin_film_thickness = 3000
+            float inputs:thin_film_IOR = 1.33
+            token outputs:out
+        }
+    }
+    def Material "ss_sheen"
+    {
+        token outputs:mtlx:surface.connect = </Looks/ss_sheen/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:sheen = 1
+            color3f inputs:sheen_color = (1, 1, 1)
+            float inputs:sheen_roughness = 0.3
+            token outputs:out
+        }
+    }
+    def Material "ss_metal_rough"
+    {
+        token outputs:mtlx:surface.connect = </Looks/ss_metal_rough/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:metalness = 1
+            color3f inputs:specular_color = (1, 1, 1)
+            float inputs:specular_roughness = 0.8
+            token outputs:out
+        }
+    }
+    def Material "ss_diffuse_on1"
+    {
+        token outputs:mtlx:surface.connect = </Looks/ss_diffuse_on1/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular = 0
+            float inputs:diffuse_roughness = 1
+            token outputs:out
+        }
+    }
+    def Material "op_diffuse_eon1"
+    {
+        token outputs:mtlx:surface.connect = </Looks/op_diffuse_eon1/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+            float inputs:base_weight = 1
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular_weight = 0
+            float inputs:base_diffuse_roughness = 1
+            token outputs:out
+        }
+    }
+    def Material "op_fuzz"
+    {
+        token outputs:mtlx:surface.connect = </Looks/op_fuzz/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+            float inputs:base_weight = 0
+            float inputs:specular_weight = 0
+            float inputs:fuzz_weight = 1
+            color3f inputs:fuzz_color = (1, 1, 1)
+            float inputs:fuzz_roughness = 0.5
+            token outputs:out
+        }
+    }
+    def Material "ss_sheen_r08"
+    {
+        token outputs:mtlx:surface.connect = </Looks/ss_sheen_r08/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:sheen = 1
+            color3f inputs:sheen_color = (1, 1, 1)
+            float inputs:sheen_roughness = 0.8
+            token outputs:out
+        }
+    }
+    def Material "op_metal_rough"
+    {
+        token outputs:mtlx:surface.connect = </Looks/op_metal_rough/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+            float inputs:base_weight = 1
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:base_metalness = 1
+            float inputs:specular_roughness = 0.8
+            token outputs:out
+        }
+    }
+    def Material "op_spec"
+    {
+        token outputs:mtlx:surface.connect = </Looks/op_spec/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+            float inputs:base_weight = 0
+            float inputs:specular_roughness = 0.3
+            token outputs:out
+        }
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 40)
+        rel products = [</Render/Products/beauty>]
+        token karma:global:convergence_mode = "Path Traced"
+        string karma:global:pixeloracle = '["uniform",{}]'
+        int karma:global:pathtracedsamples = 256
+        float karma:global:colorlimit = 1e9
+        float karma:global:colorlimitindirect = 1e9
+        bool karma:global:constrainmaxrough = 0
+    }
+    def Scope "Products"
+    {
+        def RenderProduct "beauty"
+        {
+            token productName = "probe.exr"
+            rel orderedVars = [</Render/Vars/C>]
+        }
+    }
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+    }
+}

@@ -1,0 +1,25 @@
+{
+  "scene": "implicit_spheres",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/implicit_spheres.usda": "4172096abbf8f1a0cf13000a9596ff29f944b581",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3",
+    "scenes/implicit_spheres_karma.usda": "12ba0cdc2b77d029ca700eb2dbf8fee8a7ddeda2"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/implicit_spheres.exr",
+  "sigma": "images/implicit_spheres.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.008063,
+    "flip_test_pair": 0.013243,
+    "relmse": 0.000139,
+    "global_z": [
+      0.695,
+      0.09,
+      0.146,
+      -1.712
+    ]
+  }
+}

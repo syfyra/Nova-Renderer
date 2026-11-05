@@ -1,0 +1,65 @@
+device: NVIDIA GeForce RTX 5080, 84 SMs, sm_120, 17.1 GB
+build: nvcc 12.9
+program: 60 instructions, 112 component ops, 72 rows, 46 uniforms
+
+A. 1M lanes (2^20), 128 threads per block
+ coherent lanes:
+  vm, fallback tex, rows local, U+code global     0.612 ms    102.7 G instr/s    191.8 G comp-ops/s   0.584 ns/lane
+  vm, fallback tex, rows local, U const           0.496 ms    126.9 G instr/s    236.8 G comp-ops/s   0.473 ns/lane
+  vm, fallback tex, rows local, U+code const      0.704 ms     89.4 G instr/s    166.8 G comp-ops/s   0.671 ns/lane
+  vm, fallback tex, rows shared, U+code global    1.138 ms     55.3 G instr/s    103.2 G comp-ops/s   1.085 ns/lane
+  vm, fallback tex, rows shared, U+code const     1.035 ms     60.8 G instr/s    113.4 G comp-ops/s   0.988 ns/lane
+  vm + hw tex, rows local, U+code global          0.689 ms     91.3 G instr/s    170.4 G comp-ops/s   0.657 ns/lane
+  vm + hw tex, rows local, U+code const           0.599 ms    105.0 G instr/s    196.1 G comp-ops/s   0.571 ns/lane
+  vm + hw tex, rows shared, U+code const          1.050 ms     59.9 G instr/s    111.8 G comp-ops/s   1.001 ns/lane
+  hand-written, fallback tex                      0.144 ms    438.4 G instr/s    818.3 G comp-ops/s   0.137 ns/lane
+  hand-written + hw tex                           0.163 ms    386.4 G instr/s    721.3 G comp-ops/s   0.155 ns/lane
+ shuffled lanes:
+  vm, fallback tex, rows local, U+code global     0.619 ms    101.6 G instr/s    189.6 G comp-ops/s   0.591 ns/lane
+  vm, fallback tex, rows local, U const           0.502 ms    125.3 G instr/s    233.8 G comp-ops/s   0.479 ns/lane
+  vm, fallback tex, rows local, U+code const      0.706 ms     89.1 G instr/s    166.3 G comp-ops/s   0.673 ns/lane
+  vm, fallback tex, rows shared, U+code global    1.152 ms     54.6 G instr/s    101.9 G comp-ops/s   1.099 ns/lane
+  vm, fallback tex, rows shared, U+code const     1.046 ms     60.1 G instr/s    112.2 G comp-ops/s   0.998 ns/lane
+  vm + hw tex, rows local, U+code global          0.712 ms     88.4 G instr/s    165.0 G comp-ops/s   0.679 ns/lane
+  vm + hw tex, rows local, U+code const           0.622 ms    101.2 G instr/s    188.9 G comp-ops/s   0.593 ns/lane
+  vm + hw tex, rows shared, U+code const          1.068 ms     58.9 G instr/s    110.0 G comp-ops/s   1.019 ns/lane
+  hand-written, fallback tex                      0.144 ms    435.7 G instr/s    813.4 G comp-ops/s   0.138 ns/lane
+  hand-written + hw tex                           0.162 ms    388.6 G instr/s    725.3 G comp-ops/s   0.154 ns/lane
+
+C. CPU, same program, fallback textures (vm.h execute<N>, MSVC /O2 /arch:AVX2)
+  execute<32>, 1 thread                          147.06 ms     0.43 G instr/s   2.337 ns/(instr*lane)
+  execute<1>, 1 thread                           418.68 ms     0.15 G instr/s   6.655 ns/(instr*lane)
+  execute<32>, 8 threads                          54.81 ms     1.15 G instr/s   0.871 ns/(instr*lane)
+
+A2/C2. Arithmetic-only variant (pow/sin/exp/atan2 -> mul/abs, noise/hsv -> copy)
+  GPU vm, fallback tex, rows local, U const       0.460 ms    136.9 G instr/s    255.5 G comp-ops/s   0.438 ns/lane
+  CPU execute<32>, 1 thread                       70.13 ms     0.90 G instr/s   1.115 ns/(instr*lane)
+  CPU execute<32>, 8 threads                      30.51 ms     2.06 G instr/s   0.485 ns/(instr*lane)
+
+D. Agreement (15 outputs x 1M lanes)
+  GPU vm+tex vs GPU hand-written+tex           max |diff| 0, 0 floats not bit-identical, 0 non-finite
+  GPU vm fallback vs GPU hand-written fallback max |diff| 0, 0 floats not bit-identical, 0 non-finite
+  GPU vm fallback vs CPU execute<32>           max |diff| 1.49e-08, 353550 floats not bit-identical, 0 non-finite
+  CPU execute<1> vs CPU execute<32>            max |diff| 0, 0 floats not bit-identical, 0 non-finite
+  GPU vs CPU per output (differing lanes): 0 0 0 0 0 0 0 37 37 34 117814 117814 117814 0 0
+
+B. Divergence: 1M lanes, 60-instruction random programs, rows local, U global unless noted
+  (programs average 120.8 component ops)
+  K= 1 programs, lanes sorted by program                  0.818 ms
+  K= 1 programs, lanes random                             0.819 ms
+  K= 2 programs, lanes sorted by program                  0.830 ms
+  K= 2 programs, lanes random                             1.410 ms
+  K= 4 programs, lanes sorted by program                  0.828 ms
+  K= 4 programs, lanes random                             2.603 ms
+  K= 8 programs, lanes sorted by program                  0.849 ms
+  K= 8 programs, lanes random                             4.725 ms
+  K=32 programs, lanes sorted by program                  0.859 ms
+  K=32 programs, lanes random                            10.425 ms
+  1 program, K= 1 uniform blocks random, U global         0.831 ms
+  1 program, K= 1 uniform blocks random, U const          0.804 ms
+  1 program, K= 8 uniform blocks random, U global         0.858 ms
+  1 program, K= 8 uniform blocks random, U const          0.875 ms
+  1 program, K=32 uniform blocks random, U global         0.942 ms
+  1 program, K=32 uniform blocks random, U const          2.501 ms
+
+done

@@ -1,0 +1,26 @@
+{
+  "scene": "light_rect_textured",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/light_rect_textured.usda": "96ade8d9c0b65a54d070beb6eb268ea0e2d2b5e4",
+    "scenes/assets/rect_pattern.exr": "a6ade8d03528147e6ef086de904aa65dc1a47813",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/light_rect_textured.exr",
+  "sigma": "images/light_rect_textured.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.076264,
+    "flip_test_pair": 0.112424,
+    "relmse": 9.2e-05,
+    "global_z": [
+      0.079,
+      -0.01,
+      -0.621,
+      2.823
+    ]
+  }
+}

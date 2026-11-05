@@ -1,0 +1,1044 @@
+===== merge_all errors [] warnings []
+-- /vdbfile Volume layers ['anon:00000000531D3780:LOP']
+   rels {'field:density': ['/vdbfile/density'], 'field:flame': ['/vdbfile/flame'], 'field:temperature': ['/vdbfile/temperature']}
+-- /vdbfile/density OpenVDBAsset layers ['anon:00000000531D3780:LOP']
+   fieldClass                   token      null (fallback)
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        0
+   fieldName                    token      density
+   filePath                     asset      {"asset": "<scratch>/scene/pyro.vdb", "resolved": "<scratch>\\scene\\pyro.vdb"}
+   vectorDataRoleHint           token      None (fallback)
+-- /vdbfile/flame OpenVDBAsset layers ['anon:00000000531D3780:LOP']
+   fieldClass                   token      null (fallback)
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        0
+   fieldName                    token      flame
+   filePath                     asset      {"asset": "<scratch>/scene/pyro.vdb", "resolved": "<scratch>\\scene\\pyro.vdb"}
+   vectorDataRoleHint           token      None (fallback)
+-- /vdbfile/temperature OpenVDBAsset layers ['anon:00000000531D3780:LOP']
+   fieldClass                   token      null (fallback)
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        0
+   fieldName                    token      temperature
+   filePath                     asset      {"asset": "<scratch>/scene/pyro.vdb", "resolved": "<scratch>\\scene\\pyro.vdb"}
+   vectorDataRoleHint           token      None (fallback)
+-- /bgeofile Volume layers ['anon:00000000531D3780:LOP']
+   rels {'field:density': ['/bgeofile/density'], 'field:temperature': ['/bgeofile/temperature']}
+-- /bgeofile/density HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        0
+   fieldName                    token      density
+   filePath                     asset      {"asset": "<scratch>/scene/native.bgeo.sc", "resolved": "<scratch>\\scene\\native.bgeo.sc"}
+   vectorDataRoleHint           token      None (fallback)
+-- /bgeofile/temperature HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        1
+   fieldName                    token      temperature
+   filePath                     asset      {"asset": "<scratch>/scene/native.bgeo.sc", "resolved": "<scratch>\\scene\\native.bgeo.sc"}
+   vectorDataRoleHint           token      None (fallback)
+-- /sop_pyro/volume_0 Volume layers ['anon:00000000531D3780:LOP']
+   rels {'field:density': ['/sop_pyro/volume_0/density'], 'field:flame': ['/sop_pyro/volume_0/flame'], 'field:temperature': ['/sop_pyro/volume_0/temperature'], 'field:vel_x': ['/sop_pyro/volume_0/vel_x'], 'field:vel_y': ['/sop_pyro/volume_0/vel_y'], 'field:vel_z': ['/sop_pyro/volume_0/vel_z']}
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+-- /sop_pyro/volume_0/vel_z HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        5 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      vel.z ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch>/scene/usd/sop_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT.sop.volumes:SDF_F... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [9.622602] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [-9.825739] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_pyro/volume_0/vel_y HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        4 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      vel.y ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch>/scene/usd/sop_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT.sop.volumes:SDF_F... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [25.653297] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [-4.0773973] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_pyro/volume_0/vel_x HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        3 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      vel.x ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch>/scene/usd/sop_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT.sop.volumes:SDF_F... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [9.487416] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [-9.816492] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_pyro/volume_0/flame HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        2 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      flame ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch>/scene/usd/sop_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT.sop.volumes:SDF_F... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [1] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_pyro/volume_0/temperature HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        1 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      temperature ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch>/scene/usd/sop_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT.sop.volumes:SDF_F... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [0.9942478] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_pyro/volume_0/density HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        0 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      density ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch>/scene/usd/sop_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT.sop.volumes:SDF_F... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [4.062973] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_pyro_vdb/volume_0 Volume layers ['anon:00000000531D3780:LOP']
+   rels {'field:density': ['/sop_pyro_vdb/volume_0/density'], 'field:flame': ['/sop_pyro_vdb/volume_0/flame'], 'field:temperature': ['/sop_pyro_vdb/volume_0/temperature']}
+   extent                       float3[]   [(-1.15, -0.20000005, -1.15), (1.1, 4.2, 1.15)] ts=1
+-- /sop_pyro_vdb/volume_0/flame OpenVDBAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-1.1, -0.20000005, -1.1), (1.1, 4.2, 1.1)] ts=1
+   fieldClass                   token      fogVolume ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldDataType                token      float ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldIndex                   int        0 ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldName                    token      flame ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch>/scene/usd/sop_pyro_vdb.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT_VDB.s... ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 10238}
+   primvars:P                   point3f[]  [(-1.975, -1.1750001, -1.975)] ts=1
+       customData {"HoudiniDataId": 10228}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 10237}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 10237}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 10244}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 10244}
+   primvars:maximum             float[]    [1] ts=1
+       customData {"HoudiniDataId": 10234}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 10235}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 10245}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 10242}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 10236}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 10236}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 10243}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_pyro_vdb/volume_0/temperature OpenVDBAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-1.15, -0.20000005, -1.15), (1.1, 4.2, 1.15)] ts=1
+   fieldClass                   token      fogVolume ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldDataType                token      float ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldIndex                   int        0 ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldName                    token      temperature ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch>/scene/usd/sop_pyro_vdb.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT_VDB.s... ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 10238}
+   primvars:P                   point3f[]  [(-1.975, -1.1750001, -1.975)] ts=1
+       customData {"HoudiniDataId": 10228}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 10237}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 10237}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 10244}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 10244}
+   primvars:maximum             float[]    [0.9942478] ts=1
+       customData {"HoudiniDataId": 10234}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 10235}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 10245}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 10242}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 10236}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 10236}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 10243}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_pyro_vdb/volume_0/density OpenVDBAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-1.1, -0.20000005, -1.15), (1.1, 4.2, 1.1)] ts=1
+   fieldClass                   token      fogVolume ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldDataType                token      float ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldIndex                   int        0 ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   fieldName                    token      density ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch>/scene/usd/sop_pyro_vdb.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/OUT_VDB.s... ts=1
+       customData {"HoudiniDataId": 2552775429782072240}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 10238}
+   primvars:P                   point3f[]  [(-1.975, -1.1750001, -1.975)] ts=1
+       customData {"HoudiniDataId": 10228}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0] ts=1
+       customData {"HoudiniDataId": 10237}
+   primvars:dopobject:indices   int[]      [0] ts=1
+       customData {"HoudiniDataId": 10237}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 10244}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 10244}
+   primvars:maximum             float[]    [4.062973] ts=1
+       customData {"HoudiniDataId": 10234}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 10235}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 10245}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 10242}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader] ts=1
+       customData {"HoudiniDataId": 10236}
+   primvars:shop_materialpath:indices int[]      [0] ts=1
+       customData {"HoudiniDataId": 10236}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 10243}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_cached/volume_0 Volume layers ['anon:00000000531D3780:LOP']
+   rels {'field:density': ['/sop_cached/volume_0/density'], 'field:flame': ['/sop_cached/volume_0/flame'], 'field:temperature': ['/sop_cached/volume_0/temperature'], 'field:vel_x': ['/sop_cached/volume_0/vel_x'], 'field:vel_y': ['/sop_cached/volume_0/vel_y'], 'field:vel_z': ['/sop_cached/volume_0/vel_z']}
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)]
+-- /sop_cached/volume_0/vel_z HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)]
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        5
+       customData {"HoudiniDataId": 2613913184738659387}
+   fieldName                    token      vel.z
+       customData {"HoudiniDataId": 2613913184738659387}
+   filePath                     asset      {"asset": "op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch>/scene/usd/sop_cached.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/CACHED.sop.vol...
+       customData {"HoudiniDataId": 2613913184738659387}
+   primvars:Cd                  color3f[]  [(1, 1, 1)]
+       customData {"HoudiniDataId": 10363}
+   primvars:P                   point3f[]  [(0, 2, 0)]
+       customData {"HoudiniDataId": 10353}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 10362}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 10362}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER]
+       customData {"HoudiniDataId": 10369}
+   primvars:doppath:indices     int[]      [0]
+       customData {"HoudiniDataId": 10369}
+   primvars:maximum             float[]    [9.622602]
+       customData {"HoudiniDataId": 10359}
+   primvars:minimum             float[]    [-9.825739]
+       customData {"HoudiniDataId": 10360}
+   primvars:rest2_ratio         float[]    [0]
+       customData {"HoudiniDataId": 10370}
+   primvars:rest_ratio          float[]    [1]
+       customData {"HoudiniDataId": 10367}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 10361}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 10361}
+   primvars:timescale           float[]    [1]
+       customData {"HoudiniDataId": 10368}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_cached/volume_0/vel_y HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)]
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        4
+       customData {"HoudiniDataId": 2613913184738659387}
+   fieldName                    token      vel.y
+       customData {"HoudiniDataId": 2613913184738659387}
+   filePath                     asset      {"asset": "op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch>/scene/usd/sop_cached.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/CACHED.sop.vol...
+       customData {"HoudiniDataId": 2613913184738659387}
+   primvars:Cd                  color3f[]  [(1, 1, 1)]
+       customData {"HoudiniDataId": 10363}
+   primvars:P                   point3f[]  [(0, 2, 0)]
+       customData {"HoudiniDataId": 10353}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 10362}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 10362}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER]
+       customData {"HoudiniDataId": 10369}
+   primvars:doppath:indices     int[]      [0]
+       customData {"HoudiniDataId": 10369}
+   primvars:maximum             float[]    [25.653297]
+       customData {"HoudiniDataId": 10359}
+   primvars:minimum             float[]    [-4.0773973]
+       customData {"HoudiniDataId": 10360}
+   primvars:rest2_ratio         float[]    [0]
+       customData {"HoudiniDataId": 10370}
+   primvars:rest_ratio          float[]    [1]
+       customData {"HoudiniDataId": 10367}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 10361}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 10361}
+   primvars:timescale           float[]    [1]
+       customData {"HoudiniDataId": 10368}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_cached/volume_0/vel_x HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)]
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        3
+       customData {"HoudiniDataId": 2613913184738659387}
+   fieldName                    token      vel.x
+       customData {"HoudiniDataId": 2613913184738659387}
+   filePath                     asset      {"asset": "op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch>/scene/usd/sop_cached.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/CACHED.sop.vol...
+       customData {"HoudiniDataId": 2613913184738659387}
+   primvars:Cd                  color3f[]  [(1, 1, 1)]
+       customData {"HoudiniDataId": 10363}
+   primvars:P                   point3f[]  [(0, 2, 0)]
+       customData {"HoudiniDataId": 10353}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 10362}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 10362}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER]
+       customData {"HoudiniDataId": 10369}
+   primvars:doppath:indices     int[]      [0]
+       customData {"HoudiniDataId": 10369}
+   primvars:maximum             float[]    [9.487416]
+       customData {"HoudiniDataId": 10359}
+   primvars:minimum             float[]    [-9.816492]
+       customData {"HoudiniDataId": 10360}
+   primvars:rest2_ratio         float[]    [0]
+       customData {"HoudiniDataId": 10370}
+   primvars:rest_ratio          float[]    [1]
+       customData {"HoudiniDataId": 10367}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 10361}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 10361}
+   primvars:timescale           float[]    [1]
+       customData {"HoudiniDataId": 10368}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_cached/volume_0/flame HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)]
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        2
+       customData {"HoudiniDataId": 2613913184738659387}
+   fieldName                    token      flame
+       customData {"HoudiniDataId": 2613913184738659387}
+   filePath                     asset      {"asset": "op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch>/scene/usd/sop_cached.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/CACHED.sop.vol...
+       customData {"HoudiniDataId": 2613913184738659387}
+   primvars:Cd                  color3f[]  [(1, 1, 1)]
+       customData {"HoudiniDataId": 10363}
+   primvars:P                   point3f[]  [(0, 2, 0)]
+       customData {"HoudiniDataId": 10353}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 10362}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 10362}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER]
+       customData {"HoudiniDataId": 10369}
+   primvars:doppath:indices     int[]      [0]
+       customData {"HoudiniDataId": 10369}
+   primvars:maximum             float[]    [1]
+       customData {"HoudiniDataId": 10359}
+   primvars:minimum             float[]    [0]
+       customData {"HoudiniDataId": 10360}
+   primvars:rest2_ratio         float[]    [0]
+       customData {"HoudiniDataId": 10370}
+   primvars:rest_ratio          float[]    [1]
+       customData {"HoudiniDataId": 10367}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 10361}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 10361}
+   primvars:timescale           float[]    [1]
+       customData {"HoudiniDataId": 10368}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_cached/volume_0/temperature HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)]
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        1
+       customData {"HoudiniDataId": 2613913184738659387}
+   fieldName                    token      temperature
+       customData {"HoudiniDataId": 2613913184738659387}
+   filePath                     asset      {"asset": "op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch>/scene/usd/sop_cached.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/CACHED.sop.vol...
+       customData {"HoudiniDataId": 2613913184738659387}
+   primvars:Cd                  color3f[]  [(1, 1, 1)]
+       customData {"HoudiniDataId": 10363}
+   primvars:P                   point3f[]  [(0, 2, 0)]
+       customData {"HoudiniDataId": 10353}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 10362}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 10362}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER]
+       customData {"HoudiniDataId": 10369}
+   primvars:doppath:indices     int[]      [0]
+       customData {"HoudiniDataId": 10369}
+   primvars:maximum             float[]    [0.9942478]
+       customData {"HoudiniDataId": 10359}
+   primvars:minimum             float[]    [0]
+       customData {"HoudiniDataId": 10360}
+   primvars:rest2_ratio         float[]    [0]
+       customData {"HoudiniDataId": 10370}
+   primvars:rest_ratio          float[]    [1]
+       customData {"HoudiniDataId": 10367}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 10361}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 10361}
+   primvars:timescale           float[]    [1]
+       customData {"HoudiniDataId": 10368}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_cached/volume_0/density HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)]
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        0
+       customData {"HoudiniDataId": 2613913184738659387}
+   fieldName                    token      density
+       customData {"HoudiniDataId": 2613913184738659387}
+   filePath                     asset      {"asset": "op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch>/scene/usd/sop_cached.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/pyro/CACHED.sop.vol...
+       customData {"HoudiniDataId": 2613913184738659387}
+   primvars:Cd                  color3f[]  [(1, 1, 1)]
+       customData {"HoudiniDataId": 10363}
+   primvars:P                   point3f[]  [(0, 2, 0)]
+       customData {"HoudiniDataId": 10353}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 10362}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 10362}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER]
+       customData {"HoudiniDataId": 10369}
+   primvars:doppath:indices     int[]      [0]
+       customData {"HoudiniDataId": 10369}
+   primvars:maximum             float[]    [4.062973]
+       customData {"HoudiniDataId": 10359}
+   primvars:minimum             float[]    [0]
+       customData {"HoudiniDataId": 10360}
+   primvars:rest2_ratio         float[]    [0]
+       customData {"HoudiniDataId": 10370}
+   primvars:rest_ratio          float[]    [1]
+       customData {"HoudiniDataId": 10367}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 10361}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 10361}
+   primvars:timescale           float[]    [1]
+       customData {"HoudiniDataId": 10368}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_native/volume_0 Volume layers ['anon:00000000531D3780:LOP']
+   rels {'field:density': ['/sop_native/volume_0/density'], 'field:temperature': ['/sop_native/volume_0/temperature']}
+   extent                       float3[]   [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+-- /sop_native/volume_0/temperature HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        1
+       customData {"HoudiniDataId": 2632046003879315591}
+   fieldName                    token      temperature
+       customData {"HoudiniDataId": 2632046003879315591}
+   filePath                     asset      {"asset": "op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_native&savepath=<scratch>/scene/usd/sop_native.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/native/OUT.sop.volum...
+       customData {"HoudiniDataId": 2632046003879315591}
+   primvars:P                   point3f[]  [(0, 0, 0)]
+       customData {"HoudiniDataId": 10682}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_native/volume_0/density HoudiniFieldAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        0
+       customData {"HoudiniDataId": 2632046003879315591}
+   fieldName                    token      density
+       customData {"HoudiniDataId": 2632046003879315591}
+   filePath                     asset      {"asset": "op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_native&savepath=<scratch>/scene/usd/sop_native.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/native/OUT.sop.volum...
+       customData {"HoudiniDataId": 2632046003879315591}
+   primvars:P                   point3f[]  [(0, 0, 0)]
+       customData {"HoudiniDataId": 10682}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sop_vdbsops/volume_0 Volume layers ['anon:00000000531D3780:LOP']
+   rels {'field:density': ['/sop_vdbsops/volume_0/density']}
+   extent                       float3[]   [(-1.025, -0.975, -1.025), (1.025, 0.975, 1.025)]
+-- /sop_vdbsops/volume_0/density OpenVDBAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-1.025, -0.975, -1.025), (1.025, 0.975, 1.025)]
+   fieldClass                   token      fogVolume
+       customData {"HoudiniDataId": -9136909766698774620}
+   fieldDataType                token      float
+       customData {"HoudiniDataId": -9136909766698774620}
+   fieldIndex                   int        0
+       customData {"HoudiniDataId": -9136909766698774620}
+   fieldName                    token      density
+       customData {"HoudiniDataId": -9136909766698774620}
+   filePath                     asset      {"asset": "op:/obj/vdbsops/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&pathprefix=/sop_vdbsops&savepath=<scratch>/scene/usd/sop_vdbsops.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625", "resolved": "op:/obj/vdbsops/OUT.sop.v...
+       customData {"HoudiniDataId": -9136909766698774620}
+   primvars:P                   point3f[]  [(0, 0, 0)]
+       customData {"HoudiniDataId": 10786}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /sopcreate/volume_0 Volume layers ['anon:00000000531D3780:LOP']
+   rels {'field:density': ['/sopcreate/volume_0/density']}
+   extent                       float3[]   [(-1.025, -0.975, -1.025), (1.025, 0.975, 1.025)]
+-- /sopcreate/volume_0/density OpenVDBAsset layers ['anon:00000000531D3780:LOP']
+   extent                       float3[]   [(-1.025, -0.975, -1.025), (1.025, 0.975, 1.025)]
+   fieldClass                   token      fogVolume
+       customData {"HoudiniDataId": -2800977075777321038}
+   fieldDataType                token      float
+       customData {"HoudiniDataId": -2800977075777321038}
+   fieldIndex                   int        0
+       customData {"HoudiniDataId": -2800977075777321038}
+   fieldName                    token      density
+       customData {"HoudiniDataId": -2800977075777321038}
+   filePath                     asset      {"asset": "op:/stage/sopcreate_vdb/sopnet/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&partitionattribs=shop_materialpath&pathprefix=/sopcreate&savepath=<scratch>/scene/usd/sopcreate_vdb.usd&savepathtimedep=0&setmissingwidths=0.01000...
+       customData {"HoudiniDataId": -2800977075777321038}
+   primvars:P                   point3f[]  [(0, 0, 0)]
+       customData {"HoudiniDataId": 10864}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:rotateXYZ            float3     (0, 0, 0)
+   xformOp:scale                float3     (1, 1, 1)
+   xformOp:translate            double3    (0, 0, 0)
+   xformOp:translate:pivot      float3     (0, 0, 0)
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:rotateXYZ, xformOp:scale, !invert!xformOp:translate:pivot]
+usedLayers:
+    anon:00000000531D1480:LOP:rootlayer
+    anon:00000000531D1700:LOP:rootlayer-session.usda
+    anon:00000000531D1E80:LOP:Solo Geometry
+    anon:00000000531D2100:LOP:Solo Lights
+    anon:00000000531D2380:LOP:Purpose
+    anon:00000000531D2600:LOP:Custom
+    anon:00000000531D2880:LOP:Viewport State
+    anon:00000000531D2B00:LOP:Scene Graph Expansion
+    anon:00000000531D2D80:LOP:Selectability
+    anon:00000000531D3280:LOP
+    anon:00000000531D3500:LOP:Visibility and Activation
+    anon:00000000531D3780:LOP
+    anon:00000000531D3F00:LOP
+    anon:00000000531D4180:LOP
+HoudiniLayerInfo:
+    anon:00000000531D3780:LOP {"HoudiniCreatorNode": 1225, "HoudiniEditorNodes": "[1225, 1226, 1222, 1227, 1624]", "HoudiniSaveControl": "Explicit", "HoudiniSavePath": "<scratch>/scene/usd/sopcreate_vdb.usd", "HoudiniSavePathIsTimeDependent": false, "HoudiniTreatAsSopLayer": true, "HoudiniVolumeFilePaths": "[@op:/stage/sopcreate_vdb/sopnet/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&partitionattribs=shop_materialpath&pathprefix=/sopcreate&savepath=C:/Users/S...
+    anon:00000000531D3F00:LOP {"HoudiniSaveControl": "Placeholder"}
+    anon:00000000531D3280:LOP {"HoudiniSaveControl": "Placeholder"}
+    anon:00000000531D4180:LOP {"HoudiniSaveControl": "Placeholder"}
+===== pyro_stage errors [] warnings []
+-- /pyro/OUT/volume_0 Volume layers ['anon:00000000531D6C00:LOP']
+   rels {'field:density': ['/pyro/OUT/volume_0/density'], 'field:flame': ['/pyro/OUT/volume_0/flame'], 'field:temperature': ['/pyro/OUT/volume_0/temperature'], 'field:vel_x': ['/pyro/OUT/volume_0/vel_x'], 'field:vel_y': ['/pyro/OUT/volume_0/vel_y'], 'field:vel_z': ['/pyro/OUT/volume_0/vel_z']}
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+-- /pyro/OUT/volume_0/vel_z HoudiniFieldAsset layers ['anon:00000000531D6C00:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        5 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      vel.z ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/pyro/OUT&savepath=<scratch>/scene/usd/import_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&staticattribs=dopobject name shop_materialpath&t=0.625... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [9.622602] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [-9.825739] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /pyro/OUT/volume_0/vel_y HoudiniFieldAsset layers ['anon:00000000531D6C00:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        4 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      vel.y ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/pyro/OUT&savepath=<scratch>/scene/usd/import_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&staticattribs=dopobject name shop_materialpath&t=0.625... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [25.653297] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [-4.0773973] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /pyro/OUT/volume_0/vel_x HoudiniFieldAsset layers ['anon:00000000531D6C00:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        3 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      vel.x ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/pyro/OUT&savepath=<scratch>/scene/usd/import_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&staticattribs=dopobject name shop_materialpath&t=0.625... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [9.487416] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [-9.816492] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /pyro/OUT/volume_0/flame HoudiniFieldAsset layers ['anon:00000000531D6C00:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        2 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      flame ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/pyro/OUT&savepath=<scratch>/scene/usd/import_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&staticattribs=dopobject name shop_materialpath&t=0.625... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [1] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /pyro/OUT/volume_0/temperature HoudiniFieldAsset layers ['anon:00000000531D6C00:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        1 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      temperature ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/pyro/OUT&savepath=<scratch>/scene/usd/import_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&staticattribs=dopobject name shop_materialpath&t=0.625... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [0.9942478] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+-- /pyro/OUT/volume_0/density HoudiniFieldAsset layers ['anon:00000000531D6C00:LOP']
+   extent                       float3[]   [(-2, -1.2, -2), (2, 5.2, 2)] ts=1
+   fieldDataType                token      null (fallback)
+   fieldIndex                   int        0 ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   fieldName                    token      density ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   filePath                     asset      {"asset": "op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/pyro/OUT&savepath=<scratch>/scene/usd/import_pyro.usd&savepathtimedep=0&setmissingwidths=0.010000&staticattribs=dopobject name shop_materialpath&t=0.625... ts=1
+       customData {"HoudiniDataId": 6253923705569708918}
+   primvars:Cd                  color3f[]  [(1, 1, 1)] ts=1
+       customData {"HoudiniDataId": 9854}
+   primvars:P                   point3f[]  [(0, 2, 0)] ts=1
+       customData {"HoudiniDataId": 9845}
+   primvars:dopobject           string[]   [/obj/pyro/pyrosolver1/dopnet1:0]
+       customData {"HoudiniDataId": 9853}
+   primvars:dopobject:indices   int[]      [0]
+       customData {"HoudiniDataId": 9853}
+   primvars:doppath             string[]   [/obj/pyro/pyrosolver1/dopnet1/pyro/CONTAINER] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:doppath:indices     int[]      [0] ts=1
+       customData {"HoudiniDataId": 9860}
+   primvars:maximum             float[]    [4.062973] ts=1
+       customData {"HoudiniDataId": 9851}
+   primvars:minimum             float[]    [0] ts=1
+       customData {"HoudiniDataId": 9852}
+   primvars:rest2_ratio         float[]    [0] ts=1
+       customData {"HoudiniDataId": 9861}
+   primvars:rest_ratio          float[]    [1] ts=1
+       customData {"HoudiniDataId": 9858}
+   primvars:shop_materialpath   string[]   [/obj/pyro/pyrosolver1/pyrobakevolume1/matnet/Pyro_Shader]
+       customData {"HoudiniDataId": 9867}
+   primvars:shop_materialpath:indices int[]      [0]
+       customData {"HoudiniDataId": 9867}
+   primvars:timescale           float[]    [1] ts=1
+       customData {"HoudiniDataId": 9859}
+   vectorDataRoleHint           token      None (fallback)
+   xformOp:orient               quatf      (1, 0, 0, 0) ts=1
+   xformOp:scale                float3     (1, 1, 1) ts=1
+   xformOp:translate            double3    (0, 0, 0) ts=1
+   xformOp:translate:pivot      float3     (0, 0, 0) ts=1
+   xformOpOrder                 token[]    [xformOp:translate, xformOp:translate:pivot, xformOp:orient, xformOp:scale, !invert!xformOp:translate:pivot]
+usedLayers:
+    anon:00000000531D3000:LOP:Scene Graph Expansion
+    anon:00000000531D3A00:LOP:rootlayer
+    anon:00000000531D4400:LOP:Viewport State
+    anon:00000000531D4900:LOP:Purpose
+    anon:00000000531D5080:LOP:rootlayer-session.usda
+    anon:00000000531D5580:LOP:Custom
+    anon:00000000531D5A80:LOP:Solo Lights
+    anon:00000000531D5D00:LOP:Solo Geometry
+    anon:00000000531D5F80:LOP:Selectability
+    anon:00000000531D6200:LOP
+    anon:00000000531D6700:LOP:Visibility and Activation
+    anon:00000000531D6980:LOP
+    anon:00000000531D6C00:LOP
+    anon:00000000531D7100:LOP
+HoudiniLayerInfo:
+    anon:00000000531D7100:LOP {"HoudiniSaveControl": "Placeholder"}
+    anon:00000000531D6C00:LOP {"HoudiniCreatorNode": 1598, "HoudiniEditorNodes": "[1598, 1625, 1626, 1232]", "HoudiniSaveControl": "Explicit", "HoudiniSavePath": "<scratch>/scene/usd/import_pyro.usd", "HoudiniSavePathIsTimeDependent": false, "HoudiniTreatAsSopLayer": true, "HoudiniVolumeFilePaths": "[@op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=1&pathprefix=/pyro/OUT&savepath=<scratch-path>
+    anon:00000000531D6980:LOP {"HoudiniSaveControl": "Placeholder"}
+    anon:00000000531D6200:LOP {"HoudiniSaveControl": "Placeholder"}

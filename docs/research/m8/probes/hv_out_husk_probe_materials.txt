@@ -1,0 +1,101 @@
+> C:\Program Files\Side Effects Software\Houdini 22.0.466\bin\husk.exe --renderer HdVolumeProbeRendererPlugin --headlight none -s /Render/settings -o <scratch>\probe_pyro_mtlx.exr <scratch>\karma\pyro_mtlx.usda
+[volprobe] CreateRenderDelegate with 23 settings; volume-related:
+[volprobe] field openvdbAsset /World/pyro/flame dirty 0x3
+    Get filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    Get fieldName = flame (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    volumeField.fieldName = flame
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+[volprobe] field openvdbAsset /World/pyro/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+[volprobe] field openvdbAsset /World/pyro/temperature dirty 0x3
+    Get filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    Get fieldName = temperature (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    volumeField.fieldName = temperature
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+[volprobe] material /materials/mtlxvol
+    terminal 'volume': 5 nodes, 4 connections; ids: ND_anisotropic_vdfx1 ND_convert_float_vector3x1 ND_geompropvalue_floatx1 ND_uniform_edfx1 ND_volumex1
+    last node volume (ND_volume) params:
+    terminal path volume
+[volprobe] volume /World/pyro dirty 0xfff3fffc material '/materials/mtlxvol' visible 1
+    field binding 'density' -> /World/pyro/density (openvdbAsset)
+    field binding 'flame' -> /World/pyro/flame (openvdbAsset)
+    field binding 'temperature' -> /World/pyro/temperature (openvdbAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(3.4028234663852886e38, 3.4028234663852886e38, 3.4028234663852886e38)...(-3.4028234663852886e38, -3.4028234663852886e38, -3.4028234663852886e38)]
+[volprobe] render pass executed
+
+> C:\Program Files\Side Effects Software\Houdini 22.0.466\bin\husk.exe --renderer HdVolumeProbeRendererPlugin --headlight none -s /Render/settings -o <scratch>\probe_pyro_fire_vl4.exr <scratch>\karma\pyro_fire_vl4.usda
+[volprobe] CreateRenderDelegate with 24 settings; volume-related:
+[volprobe]     setting karma:object:volumelimit = 4 (float)
+[volprobe] field openvdbAsset /World/pyro/flame dirty 0x3
+    Get filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    Get fieldName = flame (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    volumeField.fieldName = flame
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+[volprobe] field openvdbAsset /World/pyro/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+[volprobe] field openvdbAsset /World/pyro/temperature dirty 0x3
+    Get filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    Get fieldName = temperature (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<repo>/docs/research/m8/probes/hv_pyro.vdb', resolved='<repo>\docs\research\m8\probes\hv_pyro.vdb')
+    volumeField.fieldName = temperature
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+[volprobe] material /materials/karmapyromaterial1
+    terminal 'volume': 148 nodes, 195 connections; ids: ND_add_color3x4 ND_add_floatx6 ND_blackbodyx2 ND_clamp_color3x2 ND_clamp_floatx2 ND_colorcorrect_color3x1 ND_combine3_vector3x2 ND_convert_boolean_floatx1 ND_dot_color3x5 ND_dot_floatx2 ND_geompropvalue_color3x2 ND_geompropvalue_floatx13 ND_hmtlxcomplementcolor_vector3x2 ND_ifequal_color3x1 ND_luminance_color3x1 ND_max_color3x2 ND_max_floatx4 ND_mix_color3x3 ND_multiply_color3x6 ND_multiply_color3FAx8 ND_multiply_floatx11 ND_power_floatx2 ND_range_floatx12 ND_separate2_vector2x8 ND_separate3_vector3x1 ND_subtract_color3x1 ND_subtract_floatx2 ND_switch_color3Ix19 ND_switch_floatIx12 kma_ramp_colorx7 kma_ramp_floatx3 kma_volumex1
+    last node kma_pyroshader1/kma_volume1 (kma_volume) params: contributionmodifier=1 (float) extinctionmodifier=0 (float) modifierstartlevel=0 (int) secondaryanisotropy=0 (float) typeName:contributionmodifier=float (TfToken) typeName:extinctionmodifier=float (TfToken) typeName:modifierstartlevel=int (TfToken) typeName:secondaryanisotropy=float (TfToken)
+    terminal path kma_pyroshader1/kma_volume1
+[volprobe] volume /World/pyro dirty 0xfff3fffc material '/materials/karmapyromaterial1' visible 1
+    field binding 'density' -> /World/pyro/density (openvdbAsset)
+    field binding 'flame' -> /World/pyro/flame (openvdbAsset)
+    field binding 'temperature' -> /World/pyro/temperature (openvdbAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(3.4028234663852886e38, 3.4028234663852886e38, 3.4028234663852886e38)...(-3.4028234663852886e38, -3.4028234663852886e38, -3.4028234663852886e38)]
+[volprobe] render pass executed
+

@@ -1,0 +1,80 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Aspect ratio conform policies with a film back offset (tests/husk/
+# check_render_pass.py). Camera 36 x 24, focal length 50, offset (6, -3); a
+# small marker at (1.2, -0.9, -10) images to the film point (6, -4.5). Karma
+# scales the offset with the conformed aperture, so the marker's pixel
+# centroid (x right, y down) is:
+#   control 600x400 (no conform)    (300, 225)
+#   expand  400x400 (height 24->36) (200, 200)
+#   crop    400x400 (width 36->24)  (233.33, 225)
+#   wide    600x200 (width 36->72)  (250, 112.5)
+def Xform "World"
+{
+    def Mesh "marker"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(1.1, -1.0, -10), (1.3, -1.0, -10), (1.3, -0.8, -10), (1.1, -0.8, -10)]
+        color3f[] primvars:displayColor = [(1, 1, 1)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Camera "cam"
+    {
+        float focalLength = 50
+        float horizontalAperture = 36
+        float verticalAperture = 24
+        float horizontalApertureOffset = 6
+        float verticalApertureOffset = -3
+        float2 clippingRange = (0.1, 100)
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "control"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (600, 400)
+        uniform token aspectRatioConformPolicy = "expandAperture"
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+
+    def RenderSettings "expand"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 400)
+        uniform token aspectRatioConformPolicy = "expandAperture"
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+
+    def RenderSettings "crop"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 400)
+        uniform token aspectRatioConformPolicy = "cropAperture"
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+
+    def RenderSettings "wide"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (600, 200)
+        uniform token aspectRatioConformPolicy = "expandAperture"
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+}

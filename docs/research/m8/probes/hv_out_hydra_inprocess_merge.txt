@@ -1,0 +1,661 @@
+renderer plugins: ['HdStormRendererPlugin', 'HdVolumeProbeRendererPlugin', 'HD_HoudiniRendererPlugin', 'BRAY_HdKarma', 'BRAY_HdKarmaXPU', 'HdHDebug']
+powershell : [volprobe] CreateRenderDelegate with 1 settings; volume-related:
+ 
+engine created, gpu disabled: True
+SetRendererPlugin HdVolumeProbeRendererPlugin True
+[volprobe] field openvdbAsset /vdbfile/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+\pyro.vdb')
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField 
+usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+ni\scene\pyro.vdb')
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+    helper: kind 1 gt 29 type float class 'fog volume' name 'density' active 40641 bbox (18 20 17)-(61 107 61) voxel 
+0.0500 range [1.15598e-05, 4.06297] origin (-1.975 -1.175 -1.975) nano 740320 bytes lookup 1.66 ms convert 3.42 ms 
+[volprobe] field openvdbAsset /vdbfile/flame dirty 0x3
+    Get filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+\pyro.vdb')
+    Get fieldName = flame (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField 
+usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+ni\scene\pyro.vdb')
+    volumeField.fieldName = flame
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+    helper: kind 1 gt 29 type float class 'fog volume' name 'flame' active 35716 bbox (18 20 18)-(61 107 61) voxel 
+0.0500 range [3.04002e-05, 1] origin (-1.975 -1.175 -1.975) nano 746752 bytes lookup 1.17 ms convert 2.92 ms 
+[volprobe] field openvdbAsset /sop_pyro_vdb/volume_0/flame dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauth
+ortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = flame (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType = float (TfToken)
+    Get fieldClass = fogVolume (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&gl
+obalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+medep=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpa
+th=0&globalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = flame
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = float
+    helper: kind 1 gt 29 type float class 'fog volume' name 'flame' active 35716 bbox (18 20 18)-(61 107 61) voxel 
+0.0500 range [3.04002e-05, 1] origin (-1.975 -1.175 -1.975) nano 746752 bytes lookup 0.03 ms convert 2.74 ms 
+[volprobe] field openvdbAsset /vdbfile/temperature dirty 0x3
+    Get filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+\pyro.vdb')
+    Get fieldName = temperature (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField 
+usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+ni\scene\pyro.vdb')
+    volumeField.fieldName = temperature
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+    helper: kind 1 gt 29 type float class 'fog volume' name 'temperature' active 53038 bbox (17 20 17)-(61 107 62) 
+voxel 0.0500 range [1.00118e-05, 0.994248] origin (-1.975 -1.175 -1.975) nano 789632 bytes lookup 1.18 ms convert 2.92 
+ms 
+[volprobe] field openvdbAsset /sop_pyro_vdb/volume_0/temperature dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauth
+ortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = temperature (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType = float (TfToken)
+    Get fieldClass = fogVolume (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&gl
+obalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+medep=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpa
+th=0&globalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = temperature
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = float
+    helper: kind 1 gt 29 type float class 'fog volume' name 'temperature' active 53038 bbox (17 20 17)-(61 107 62) 
+voxel 0.0500 range [1.00118e-05, 0.994248] origin (-1.975 -1.175 -1.975) nano 789632 bytes lookup 0.03 ms convert 2.99 
+ms 
+[volprobe] field openvdbAsset /sop_vdbsops/volume_0/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/vdbsops/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_vdbsops&savepath=<scratch-path>
+<scratch-path>
+missingwidths=0.010000&t=0.625', resolved='op:/obj/vdbsops/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globala
+uthortimesamples=0&pathprefix=/sop_vdbsops&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType = float (TfToken)
+    Get fieldClass = fogVolume (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/vdbsops/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_vdbsops&savepath=<scratch-path>
+<scratch-path>
+ep=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/vdbsops/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0
+&globalauthortimesamples=0&pathprefix=/sop_vdbsops&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = float
+    helper: kind 1 gt 29 type float class 'fog volume' name 'density' active 33189 bbox (-20 -19 -20)-(20 19 20) voxel 
+0.0500 range [6.70552e-07, 1] origin (0.000 0.000 0.000) nano 2715968 bytes lookup 0.03 ms convert 4.19 ms 
+[volprobe] field openvdbAsset /sop_pyro_vdb/volume_0/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauth
+ortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType = float (TfToken)
+    Get fieldClass = fogVolume (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&gl
+obalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+medep=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT_VDB.sop.volumes:SDF_FORMAT_ARGS:authormaterialpa
+th=0&globalauthortimesamples=1&pathprefix=/sop_pyro_vdb&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = float
+    helper: kind 1 gt 29 type float class 'fog volume' name 'density' active 40641 bbox (18 20 17)-(61 107 61) voxel 
+0.0500 range [1.15598e-05, 4.06297] origin (-1.975 -1.175 -1.975) nano 740320 bytes lookup 0.03 ms convert 2.88 ms 
+[volprobe] field openvdbAsset /sopcreate/volume_0/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/stage/sopcreate_vdb/sopnet/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpat
+h=0&globalauthortimesamples=0&partitionattribs=shop_materialpath&pathprefix=/sopcreate&savepath=<scratch-path>
+<scratch-path>
+/scene/usd/sopcreate_vdb.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625', resolved='op:/stage/sopcreate_vdb/so
+pnet/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&partitionattribs=shop_materialpath&
+pathprefix=/sopcreate&sa...
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType = float (TfToken)
+    Get fieldClass = fogVolume (TfToken)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'openvdbAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/stage/sopcreate_vdb/sopnet/OUT.sop.volumes:SDF_FORMAT_ARGS:authormat
+erialpath=0&globalauthortimesamples=0&partitionattribs=shop_materialpath&pathprefix=/sopcreate&savepath=<scratch-path>
+<scratch-path>
+_houdini/scene/usd/sopcreate_vdb.usd&savepathtimedep=0&setmissingwidths=0.010000&t=0.625', resolved='op:/stage/sopcreat
+e_vdb/sopnet/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesamples=0&partitionattribs=shop_mater
+ialpath&pathprefix=/sopcreate&sa...
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = float
+    helper: kind 1 gt 29 type float class 'fog volume' name 'density' active 29251 bbox (-20 -19 -20)-(20 19 20) voxel 
+0.0500 range [6.70552e-07, 1] origin (0.000 0.000 0.000) nano 2692384 bytes lookup 0.02 ms convert 4.15 ms 
+[volprobe] field houdiniFieldAsset /sop_pyro/volume_0/vel_y dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthorti
+mesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+dths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesam
+ples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = vel.y (TfToken)
+    Get fieldIndex = 4 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&global
+authortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+issingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = vel.y
+    volumeField.fieldIndex = 4
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [-4.0774, 25.6533] origin (-1.975 -1.175 -1.975) nano 2277568 bytes lookup 0.03 ms convert 6.29 ms 
+[volprobe] field houdiniFieldAsset /bgeofile/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+\scene\native.bgeo.sc')
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField 
+usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+_houdini\scene\native.bgeo.sc')
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 64000 bbox (0 0 0)-(39 39 39) voxel 0.0250 
+range [0, 0.956699] origin (-0.488 -0.488 -0.488) nano 555936 bytes lookup 0.37 ms convert 2.78 ms 
+[volprobe] field houdiniFieldAsset /sop_pyro/volume_0/vel_x dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthorti
+mesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+dths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesam
+ples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = vel.x (TfToken)
+    Get fieldIndex = 3 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&global
+authortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+issingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = vel.x
+    volumeField.fieldIndex = 3
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [-9.81649, 9.48742] origin (-1.975 -1.175 -1.975) nano 2277568 bytes lookup 0.03 ms convert 6.41 ms 
+[volprobe] field houdiniFieldAsset /bgeofile/temperature dirty 0x3
+    Get filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+\scene\native.bgeo.sc')
+    Get fieldName = temperature (TfToken)
+    Get fieldIndex = 1 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin visibility xform volumeField 
+usdMaterialBindings geomModel model skelBinding coordSysBinding primvars purpose materialBindings displayStyle
+    volumeField.filePath = SdfAssetPath(asset='<scratch-path>
+<scratch-path>', resolved='<scratch-path>
+<scratch-path>
+_houdini\scene\native.bgeo.sc')
+    volumeField.fieldName = temperature
+    volumeField.fieldIndex = 1
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 8000 bbox (0 0 0)-(19 19 19) voxel 0.0500 
+range [0, 1.3701] origin (-0.475 -0.475 -0.475) nano 360832 bytes lookup 0.34 ms convert 2.66 ms 
+[volprobe] field houdiniFieldAsset /sop_cached/volume_0/vel_y dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+ssingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalaut
+hortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = vel.y (TfToken)
+    Get fieldIndex = 4 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&g
+lobalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = vel.y
+    volumeField.fieldIndex = 4
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [-4.0774, 25.6533] origin (-1.975 -1.175 -1.975) nano 2277568 bytes lookup 0.03 ms convert 6.68 ms 
+[volprobe] field houdiniFieldAsset /sop_pyro/volume_0/vel_z dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthorti
+mesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+dths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesam
+ples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = vel.z (TfToken)
+    Get fieldIndex = 5 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&global
+authortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+issingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = vel.z
+    volumeField.fieldIndex = 5
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [-9.82574, 9.6226] origin (-1.975 -1.175 -1.975) nano 2277568 bytes lookup 0.03 ms convert 6.25 ms 
+[volprobe] field houdiniFieldAsset /sop_pyro/volume_0/flame dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthorti
+mesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+dths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesam
+ples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = flame (TfToken)
+    Get fieldIndex = 2 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&global
+authortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+issingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = flame
+    volumeField.fieldIndex = 2
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [0, 1] origin (-1.975 -1.175 -1.975) nano 746752 bytes lookup 0.03 ms convert 4.07 ms 
+[volprobe] field houdiniFieldAsset /sop_pyro/volume_0/temperature dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthorti
+mesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+dths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesam
+ples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = temperature (TfToken)
+    Get fieldIndex = 1 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&global
+authortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+issingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = temperature
+    volumeField.fieldIndex = 1
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [0, 0.994248] origin (-1.975 -1.175 -1.975) nano 806784 bytes lookup 0.02 ms convert 4.12 ms 
+[volprobe] field houdiniFieldAsset /sop_pyro/volume_0/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthorti
+mesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+dths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthortimesam
+ples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&global
+authortimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+issingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=1&pathprefix=/sop_pyro&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [0, 4.06297] origin (-1.975 -1.175 -1.975) nano 740320 bytes lookup 0.02 ms convert 3.89 ms 
+[volprobe] field houdiniFieldAsset /sop_cached/volume_0/vel_z dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+ssingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalaut
+hortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = vel.z (TfToken)
+    Get fieldIndex = 5 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&g
+lobalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = vel.z
+    volumeField.fieldIndex = 5
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [-9.82574, 9.6226] origin (-1.975 -1.175 -1.975) nano 2277568 bytes lookup 0.03 ms convert 6.79 ms 
+[volprobe] field houdiniFieldAsset /sop_cached/volume_0/vel_x dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+ssingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalaut
+hortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = vel.x (TfToken)
+    Get fieldIndex = 3 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&g
+lobalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = vel.x
+    volumeField.fieldIndex = 3
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [-9.81649, 9.48742] origin (-1.975 -1.175 -1.975) nano 2277568 bytes lookup 0.03 ms convert 6.91 ms 
+[volprobe] field houdiniFieldAsset /sop_cached/volume_0/flame dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+ssingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalaut
+hortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = flame (TfToken)
+    Get fieldIndex = 2 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&g
+lobalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = flame
+    volumeField.fieldIndex = 2
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [0, 1] origin (-1.975 -1.175 -1.975) nano 746752 bytes lookup 0.03 ms convert 4.39 ms 
+[volprobe] field houdiniFieldAsset /sop_cached/volume_0/temperature dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+ssingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalaut
+hortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = temperature (TfToken)
+    Get fieldIndex = 1 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&g
+lobalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = temperature
+    volumeField.fieldIndex = 1
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [0, 0.994248] origin (-1.975 -1.175 -1.975) nano 806784 bytes lookup 0.03 ms convert 3.99 ms 
+[volprobe] field houdiniFieldAsset /sop_cached/volume_0/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+ssingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalaut
+hortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+=0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/pyro/CACHED.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&g
+lobalauthortimesamples=0&pathprefix=/sop_cached&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 819200 bbox (0 0 0)-(79 127 79) voxel 0.0500 
+range [0, 4.06297] origin (-1.975 -1.175 -1.975) nano 740320 bytes lookup 0.03 ms convert 4.04 ms 
+[volprobe] field houdiniFieldAsset /sop_native/volume_0/temperature dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthor
+timesamples=0&pathprefix=/sop_native&savepath=<scratch-path>
+<scratch-path>
+singwidths=0.010000&t=0.625', resolved='op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_native&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = temperature (TfToken)
+    Get fieldIndex = 1 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glob
+alauthortimesamples=0&pathprefix=/sop_native&savepath=<scratch-path>
+<scratch-path>
+0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_native&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = temperature
+    volumeField.fieldIndex = 1
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 8000 bbox (0 0 0)-(19 19 19) voxel 0.0500 
+range [0, 1.3701] origin (-0.475 -0.475 -0.475) nano 360832 bytes lookup 0.02 ms convert 3.22 ms 
+[volprobe] field houdiniFieldAsset /sop_native/volume_0/density dirty 0x3
+    Get filePath = SdfAssetPath(asset='op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalauthor
+timesamples=0&pathprefix=/sop_native&savepath=<scratch-path>
+<scratch-path>
+singwidths=0.010000&t=0.625', resolved='op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&globalautho
+rtimesamples=0&pathprefix=/sop_native&savepath=<scratch-path>
+<scratch-path>
+    Get fieldName = density (TfToken)
+    Get fieldIndex = 0 (int)
+    Get fieldDataType =  (TfToken)
+    Get fieldClass =  (void)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    scene index prim type 'houdiniFieldAsset' data sources: __usdPrimInfo primOrigin primvars visibility xform 
+geomXformVectors volumeField usdMaterialBindings geomModel model skelBinding coordSysBinding purpose materialBindings 
+displayStyle
+    volumeField.filePath = SdfAssetPath(asset='op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glob
+alauthortimesamples=0&pathprefix=/sop_native&savepath=<scratch-path>
+<scratch-path>
+0&setmissingwidths=0.010000&t=0.625', resolved='op:/obj/native/OUT.sop.volumes:SDF_FORMAT_ARGS:authormaterialpath=0&glo
+balauthortimesamples=0&pathprefix=/sop_native&savepath=<scratch-path>
+<scratch-path>
+    volumeField.fieldName = density
+    volumeField.fieldIndex = 0
+    volumeField.fieldDataType = 
+    helper: kind 2 gt 28 type float class 'houdini volume' name '' active 64000 bbox (0 0 0)-(39 39 39) voxel 0.0250 
+range [0, 0.956699] origin (-0.488 -0.488 -0.488) nano 555936 bytes lookup 0.02 ms convert 2.99 ms 
+[volprobe] volume /vdbfile dirty 0xfff3fffc material '' visible 1
+    field binding 'density' -> /vdbfile/density (openvdbAsset)
+    field binding 'flame' -> /vdbfile/flame (openvdbAsset)
+    field binding 'temperature' -> /vdbfile/temperature (openvdbAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(3.4028234663852886e38, 3.4028234663852886e38, 3.4028234663852886e38)...(-3.4028234663852886e38, 
+-3.4028234663852886e38, -3.4028234663852886e38)]
+[volprobe] volume /bgeofile dirty 0xfff3fffc material '' visible 1
+    field binding 'density' -> /bgeofile/density (houdiniFieldAsset)
+    field binding 'temperature' -> /bgeofile/temperature (houdiniFieldAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(3.4028234663852886e38, 3.4028234663852886e38, 3.4028234663852886e38)...(-3.4028234663852886e38, 
+-3.4028234663852886e38, -3.4028234663852886e38)]
+[volprobe] volume /sop_native/volume_0 dirty 0xfff3fffc material '' visible 1
+    field binding 'density' -> /sop_native/volume_0/density (houdiniFieldAsset)
+    field binding 'temperature' -> /sop_native/volume_0/temperature (houdiniFieldAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(-0.5, -0.5, -0.5)...(0.5, 0.5, 0.5)]
+[volprobe] volume /sop_vdbsops/volume_0 dirty 0xfff3fffc material '' visible 1
+    field binding 'density' -> /sop_vdbsops/volume_0/density (openvdbAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(-1.024999976158142, -0.9750000238418579, -1.024999976158142)...(1.024999976158142, 0.9750000238418579, 
+1.024999976158142)]
+[volprobe] volume /sop_pyro_vdb/volume_0 dirty 0xfff3fffc material '' visible 1
+    field binding 'density' -> /sop_pyro_vdb/volume_0/density (openvdbAsset)
+    field binding 'flame' -> /sop_pyro_vdb/volume_0/flame (openvdbAsset)
+    field binding 'temperature' -> /sop_pyro_vdb/volume_0/temperature (openvdbAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(-1.149999976158142, -0.20000004768371582, -1.149999976158142)...(1.100000023841858, 4.199999809265137, 
+1.149999976158142)]
+[volprobe] volume /sop_cached/volume_0 dirty 0xfff3fffc material '' visible 1
+    field binding 'density' -> /sop_cached/volume_0/density (houdiniFieldAsset)
+    field binding 'flame' -> /sop_cached/volume_0/flame (houdiniFieldAsset)
+    field binding 'temperature' -> /sop_cached/volume_0/temperature (houdiniFieldAsset)
+    field binding 'vel_x' -> /sop_cached/volume_0/vel_x (houdiniFieldAsset)
+    field binding 'vel_y' -> /sop_cached/volume_0/vel_y (houdiniFieldAsset)
+    field binding 'vel_z' -> /sop_cached/volume_0/vel_z (houdiniFieldAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(-2, -1.2000000476837158, -2)...(2, 5.199999809265137, 2)]
+[volprobe] volume /sopcreate/volume_0 dirty 0xfff3fffc material '' visible 1
+    field binding 'density' -> /sopcreate/volume_0/density (openvdbAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(-1.024999976158142, -0.9750000238418579, -1.024999976158142)...(1.024999976158142, 0.9750000238418579, 
+1.024999976158142)]
+[volprobe] volume /sop_pyro/volume_0 dirty 0xfff3fffc material '' visible 1
+    field binding 'density' -> /sop_pyro/volume_0/density (houdiniFieldAsset)
+    field binding 'flame' -> /sop_pyro/volume_0/flame (houdiniFieldAsset)
+    field binding 'temperature' -> /sop_pyro/volume_0/temperature (houdiniFieldAsset)
+    field binding 'vel_x' -> /sop_pyro/volume_0/vel_x (houdiniFieldAsset)
+    field binding 'vel_y' -> /sop_pyro/volume_0/vel_y (houdiniFieldAsset)
+    field binding 'vel_z' -> /sop_pyro/volume_0/vel_z (houdiniFieldAsset)
+    transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+    extent = [(-2, -1.2000000476837158, -2)...(2, 5.199999809265137, 2)]
+[volprobe] render pass executed
+render calls done; converged True

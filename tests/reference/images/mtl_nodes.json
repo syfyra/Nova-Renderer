@@ -1,0 +1,24 @@
+{
+  "scene": "mtl_nodes",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/mtl_nodes.usda": "366885d3c0457ae667ee1502c8eb16e2441d2d13",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "box",
+  "spp": 2,
+  "image": "images/mtl_nodes.exr",
+  "sigma": "images/mtl_nodes.sigma.exr",
+  "karma_floor": {
+    "pixels_failed": 0,
+    "worst_pixel": {
+      "x": 0,
+      "y": 0,
+      "channel": 0,
+      "ref": 0.438068,
+      "test": 0.438068,
+      "diff_over_allowed": 0
+    }
+  }
+}

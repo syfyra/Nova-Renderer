@@ -1,0 +1,17 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./pyro_bare.usda@]
+)
+
+# pyro_bare with four volume bounces (multiple scattering).
+over "Render"
+{
+    over "ref"
+    {
+        float nova:object:volumeLimit = 4
+        float karma:object:volumelimit = 4
+    }
+}

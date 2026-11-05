@@ -1,0 +1,28 @@
+== treat_as_lightsource 0, diffusescale 1, specularscale 1, volume limit 0 (R means)
+  ground beauty 0.05555 | CO 0.00000, CL 0.00000, CDO 0.05555, CDL 0.00000, CVO 0.00000, CVL 0.00000, C.*O 0.05555, C.*L 0.00000
+  smoke  beauty 0.00150 | CO 0.00000, CL 0.00000, CDO 0.00150, CDL 0.00000, CVO 0.00000, CVL 0.00000, C.*O 0.00150, C.*L 0.00000
+  fire   beauty 1.59421 | CO 1.38753, CL 0.00000, CDO 0.20668, CDL 0.00000, CVO 0.00000, CVL 0.00000, C.*O 1.59421, C.*L 0.00000
+== treat_as_lightsource 1, diffusescale 1, specularscale 1, volume limit 0 (R means)
+  ground beauty 0.05595 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.05541, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 0.05595
+  smoke  beauty 0.01120 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.00189, CVO 0.00000, CVL 0.00807, C.*O 0.00000, C.*L 0.01120
+  fire   beauty 1.59774 | CO 0.00000, CL 1.38782, CDO 0.00000, CDL 0.20991, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 1.59774
+== treat_as_lightsource 0, diffusescale 1, specularscale 1, volume limit 4 (R means)
+  ground beauty 0.05608 | CO 0.00000, CL 0.00000, CDO 0.05556, CDL 0.00000, CVO 0.00000, CVL 0.00000, C.*O 0.05608, C.*L 0.00000
+  smoke  beauty 0.02221 | CO 0.00000, CL 0.00000, CDO 0.00164, CDL 0.00000, CVO 0.00919, CVL 0.00000, C.*O 0.02221, C.*L 0.00000
+  fire   beauty 1.59477 | CO 1.38784, CL 0.00000, CDO 0.20693, CDL 0.00000, CVO 0.00000, CVL 0.00000, C.*O 1.59477, C.*L 0.00000
+== treat_as_lightsource 1, diffusescale 1, specularscale 1, volume limit 4 (R means)
+  ground beauty 0.05683 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.05597, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 0.05683
+  smoke  beauty 0.02042 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.00191, CVO 0.00000, CVL 0.00808, C.*O 0.00000, C.*L 0.02042
+  fire   beauty 1.59659 | CO 0.00000, CL 1.38736, CDO 0.00000, CDL 0.20920, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 1.59659
+== treat_as_lightsource 1, diffusescale 0, specularscale 1, volume limit 4 (R means)
+  ground beauty 0.00000 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.00000, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 0.00000
+  smoke  beauty 0.00000 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.00000, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 0.00000
+  fire   beauty 1.38806 | CO 0.00000, CL 1.38806, CDO 0.00000, CDL 0.00000, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 1.38806
+== treat_as_lightsource 1, diffusescale 1, specularscale 0, volume limit 4 (R means)
+  ground beauty 0.05683 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.05597, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 0.05683
+  smoke  beauty 0.02042 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.00191, CVO 0.00000, CVL 0.00808, C.*O 0.00000, C.*L 0.02042
+  fire   beauty 1.59659 | CO 0.00000, CL 1.38736, CDO 0.00000, CDL 0.20920, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 1.59659
+== treat_as_lightsource 1, diffusescale 2, specularscale 1, volume limit 4 (R means)
+  ground beauty 0.11350 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.11135, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 0.11350
+  smoke  beauty 0.04145 | CO 0.00000, CL 0.00000, CDO 0.00000, CDL 0.00386, CVO 0.00000, CVL 0.01612, C.*O 0.00000, C.*L 0.04145
+  fire   beauty 1.80770 | CO 0.00000, CL 1.38784, CDO 0.00000, CDL 0.41982, CVO 0.00000, CVL 0.00000, C.*O 0.00000, C.*L 1.80770

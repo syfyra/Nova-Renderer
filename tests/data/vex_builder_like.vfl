@@ -1,0 +1,35 @@
+// A surface shader shaped like the code a VEX Material Builder writes
+// (written for Nova's CVEX bridge test, tests/test_cvex.cpp): the VOP
+// defines, Houdini's VOP and layer includes, init_layer, the tangent helper,
+// the two-argument frontface and shading-only calls.
+#ifndef VOP_SHADING
+#define VOP_SHADING
+#endif
+#ifndef VOP_SURFACE
+#define VOP_SURFACE
+#endif
+
+#include <shaderlayer.h>
+#include <voptype.h>
+#include <voplib.h>
+#include "bsdf.h"
+
+surface
+nova_test_builder(vector tint = {0.8, 0.3, 0.2}; float rough = 0.3)
+{
+    ShaderLayer layer;
+    init_layer(layer);
+    vector utan = 0, vtan = 0;
+    vop_computeTangents("uv", normalize(N), set(s, t, 0), {0, 0, 0}, {0, 0, 0}, utan, vtan);
+    vector nn = frontface(normalize(N), I);
+    vector ng = frontface(normalize(Ng), I);
+    bsdf diff = 2.0 * diffuse(nn, "label", "diffuse") * tint;
+    float energy = 0;
+    bsdf spec = get_bsdf("ggx", ng, nn, normalize(I), utan, vtan, {1, 1, 1}, {1, 1, 1}, 1.0 / 1.5, rough, 0, 0,
+                         1, 0, 1, 1, 0, 0, energy, "reflect", "refract");
+    layer.F = diff + spec;
+    if (getraylevel() == 0 && !isshadowray())
+        layer.Of = {1, 1, 1};
+    F = layer.F;
+    Of = layer.Of;
+}

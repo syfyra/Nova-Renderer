@@ -1,0 +1,613 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Mesh "lambert_red" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/lambert_red>
+        double3 xformOp:translate = (-3.125, 1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "oren_nayar" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/oren_nayar>
+        double3 xformOp:translate = (-1.875, 1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "plastic_r02" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/plastic_r02>
+        double3 xformOp:translate = (-0.625, 1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "plastic_r05" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/plastic_r05>
+        double3 xformOp:translate = (0.625, 1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "sheen" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/sheen>
+        double3 xformOp:translate = (1.875, 1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "coat" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/coat>
+        double3 xformOp:translate = (3.125, 1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "metal_r00" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/metal_r00>
+        double3 xformOp:translate = (-3.125, 0.0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "metal_r02" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/metal_r02>
+        double3 xformOp:translate = (-1.875, 0.0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "metal_r05" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/metal_r05>
+        double3 xformOp:translate = (-0.625, 0.0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "metal_aniso" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/metal_aniso>
+        double3 xformOp:translate = (0.625, 0.0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "thinfilm" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/thinfilm>
+        double3 xformOp:translate = (1.875, 0.0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "emission" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/emission>
+        double3 xformOp:translate = (3.125, 0.0, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "glass_r00" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/glass_r00>
+        double3 xformOp:translate = (-3.125, -1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "glass_r03" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/glass_r03>
+        double3 xformOp:translate = (-1.875, -1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "glass_tint" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/glass_tint>
+        double3 xformOp:translate = (-0.625, -1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "glass_thin" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/glass_thin>
+        double3 xformOp:translate = (0.625, -1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "opacity" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/opacity>
+        double3 xformOp:translate = (1.875, -1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "glass_ior1" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./sphere.usda@
+    )
+    {
+        rel material:binding = </Looks/glass_ior1>
+        double3 xformOp:translate = (3.125, -1.25, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 0.35
+        color3f inputs:color = (0.85, 0.9, 1)
+    }
+    def RectLight "rim"
+    {
+        float inputs:intensity = 4
+        color3f inputs:color = (1, 0.75, 0.5)
+        float inputs:width = 3
+        float inputs:height = 0.8
+        bool inputs:normalize = 0
+        double3 xformOp:translate = (4, 1.5, -3)
+        float3 xformOp:rotateXYZ = (-15, 125, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def RectLight "key"
+    {
+        float inputs:intensity = 6
+        float inputs:width = 2
+        float inputs:height = 1.2
+        bool inputs:normalize = 0
+        double3 xformOp:translate = (-3, 3, 4)
+        float3 xformOp:rotateXYZ = (-32, -36, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def Camera "cam"
+    {
+        float focalLength = 50
+        float horizontalAperture = 36
+        float verticalAperture = 18
+        float fStop = 0
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (0, 0, 12)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Looks"
+{
+    def Material "lambert_red"
+    {
+        token outputs:mtlx:surface.connect = </Looks/lambert_red/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.8, 0.2, 0.15)
+            float inputs:specular = 0
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            token outputs:out
+        }
+    }
+    def Material "oren_nayar"
+    {
+        token outputs:mtlx:surface.connect = </Looks/oren_nayar/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.8, 0.8, 0.8)
+            float inputs:specular = 0
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 1
+            token outputs:out
+        }
+    }
+    def Material "plastic_r02"
+    {
+        token outputs:mtlx:surface.connect = </Looks/plastic_r02/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.1, 0.3, 0.8)
+            float inputs:specular = 1
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_roughness = 0.2
+            token outputs:out
+        }
+    }
+    def Material "plastic_r05"
+    {
+        token outputs:mtlx:surface.connect = </Looks/plastic_r05/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.1, 0.3, 0.8)
+            float inputs:specular = 1
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_roughness = 0.5
+            token outputs:out
+        }
+    }
+    def Material "sheen"
+    {
+        token outputs:mtlx:surface.connect = </Looks/sheen/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.2, 0.05, 0.3)
+            float inputs:specular = 0
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 1
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            color3f inputs:sheen_color = (1, 0.9, 0.8)
+            float inputs:sheen_roughness = 0.4
+            token outputs:out
+        }
+    }
+    def Material "coat"
+    {
+        token outputs:mtlx:surface.connect = </Looks/coat/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.7, 0.1, 0.1)
+            float inputs:specular = 1
+            float inputs:metalness = 0
+            float inputs:coat = 1
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:coat_roughness = 0.05
+            float inputs:specular_roughness = 0.5
+            token outputs:out
+        }
+    }
+    def Material "metal_r00"
+    {
+        token outputs:mtlx:surface.connect = </Looks/metal_r00/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.95, 0.93, 0.88)
+            float inputs:specular = 1
+            float inputs:metalness = 1
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_roughness = 0
+            token outputs:out
+        }
+    }
+    def Material "metal_r02"
+    {
+        token outputs:mtlx:surface.connect = </Looks/metal_r02/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.95, 0.64, 0.54)
+            float inputs:specular = 1
+            float inputs:metalness = 1
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_roughness = 0.2
+            token outputs:out
+        }
+    }
+    def Material "metal_r05"
+    {
+        token outputs:mtlx:surface.connect = </Looks/metal_r05/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.944, 0.776, 0.373)
+            float inputs:specular = 1
+            float inputs:metalness = 1
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_roughness = 0.5
+            token outputs:out
+        }
+    }
+    def Material "metal_aniso"
+    {
+        token outputs:mtlx:surface.connect = </Looks/metal_aniso/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.9, 0.9, 0.9)
+            float inputs:specular = 1
+            float inputs:metalness = 1
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_roughness = 0.4
+            float inputs:specular_anisotropy = 0.8
+            token outputs:out
+        }
+    }
+    def Material "thinfilm"
+    {
+        token outputs:mtlx:surface.connect = </Looks/thinfilm/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.6, 0.6, 0.6)
+            float inputs:specular = 1
+            float inputs:metalness = 1
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_roughness = 0.1
+            float inputs:thin_film_thickness = 400
+            float inputs:thin_film_IOR = 1.5
+            token outputs:out
+        }
+    }
+    def Material "emission"
+    {
+        token outputs:mtlx:surface.connect = </Looks/emission/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0.2
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular = 0
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 1
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            color3f inputs:emission_color = (1, 0.5, 0.1)
+            token outputs:out
+        }
+    }
+    def Material "glass_r00"
+    {
+        token outputs:mtlx:surface.connect = </Looks/glass_r00/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular = 1
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 1
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_IOR = 1.5
+            float inputs:specular_roughness = 0
+            token outputs:out
+        }
+    }
+    def Material "glass_r03"
+    {
+        token outputs:mtlx:surface.connect = </Looks/glass_r03/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular = 1
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 1
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_IOR = 1.5
+            float inputs:specular_roughness = 0.3
+            token outputs:out
+        }
+    }
+    def Material "glass_tint"
+    {
+        token outputs:mtlx:surface.connect = </Looks/glass_tint/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular = 1
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 1
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            color3f inputs:transmission_color = (0.4, 0.8, 0.5)
+            float inputs:specular_IOR = 1.5
+            float inputs:specular_roughness = 0
+            token outputs:out
+        }
+    }
+    def Material "glass_thin"
+    {
+        token outputs:mtlx:surface.connect = </Looks/glass_thin/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular = 1
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 1
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_IOR = 1.5
+            float inputs:specular_roughness = 0
+            bool inputs:thin_walled = 1
+            token outputs:out
+        }
+    }
+    def Material "opacity"
+    {
+        token outputs:mtlx:surface.connect = </Looks/opacity/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.9, 0.7, 0.2)
+            float inputs:specular = 0
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 0
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            color3f inputs:opacity = (0.4, 0.4, 0.4)
+            token outputs:out
+        }
+    }
+    def Material "glass_ior1"
+    {
+        token outputs:mtlx:surface.connect = </Looks/glass_ior1/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular = 1
+            float inputs:metalness = 0
+            float inputs:coat = 0
+            float inputs:sheen = 0
+            float inputs:transmission = 1
+            float inputs:emission = 0
+            float inputs:subsurface = 0
+            float inputs:diffuse_roughness = 0
+            float inputs:specular_IOR = 1
+            float inputs:specular_roughness = 0
+            token outputs:out
+        }
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_MtlRefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (320, 160)
+    }
+}

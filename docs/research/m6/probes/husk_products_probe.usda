@@ -1,0 +1,257 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@../../../../tests/scenes/basic.usda@]
+)
+
+# M6 probe: how husk turns RenderProducts/RenderVars into Hydra AOV bindings,
+# render buffers and files (run with husk -V 9, which prints every render
+# var's HdAovDescriptor and aovSettings). Rendered with Nova and Karma.
+#   two products sharing the var "C": a multi-part EXR with the type
+#   variants, and a second EXR (multipart off) with C, N and an LPE.
+def Scope "Render"
+{
+    def RenderSettings "probe" (
+        prepend apiSchemas = ["HuskRenderSettingsAPI"]
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 107)
+        rel products = [</Render/Products/main>, </Render/Products/second>]
+        int nova:samples = 4
+        int karma:global:samplesperpixel = 4
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "main" (
+            prepend apiSchemas = ["HuskRenderProductAPI"]
+        )
+        {
+            token productName = "probe_main.exr"
+            token productType = "raster"
+            rel orderedVars = [
+                </Render/Vars/C>,
+                </Render/Vars/c3h>,
+                </Render/Vars/c3f_fmt_c3h>,
+                </Render/Vars/half1>,
+                </Render/Vars/half3>,
+                </Render/Vars/float2>,
+                </Render/Vars/int1>,
+                </Render/Vars/int1_fmt_float>,
+                </Render/Vars/uint1>,
+                </Render/Vars/normal3h>,
+                </Render/Vars/point3f>,
+                </Render/Vars/vector3f_noformat>,
+                </Render/Vars/noschema>,
+                </Render/Vars/clear_one>,
+                </Render/Vars/ms_off>,
+                </Render/Vars/primvar_st>,
+                </Render/Vars/unknown_raw>,
+                </Render/Vars/prefix>,
+            ]
+        }
+
+        def RenderProduct "second" (
+            prepend apiSchemas = ["HuskRenderProductAPI"]
+        )
+        {
+            token productName = "probe_second.exr"
+            token productType = "raster"
+            bool driver:parameters:husk:OpenEXR:multipart = 0
+            rel orderedVars = [
+                </Render/Vars/C>,
+                </Render/Vars/normal3h>,
+                </Render/Vars/lpe_diffuse>,
+            ]
+        }
+    }
+
+    def Scope "Vars"
+    {
+        # The beauty as the Karma Render Settings LOP authors it (LPE).
+        def RenderVar "C" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color4f"
+            token driver:parameters:aov:husk:format = "color4h"
+            string driver:parameters:aov:husk:name = "C"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+        }
+        # dataType variants (raw "color" so that Nova fills them).
+        def RenderVar "c3h" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3h"
+            string driver:parameters:aov:husk:name = "c3h"
+            uniform string sourceName = "color"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "c3f_fmt_c3h" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            token driver:parameters:aov:husk:format = "color3h"
+            string driver:parameters:aov:husk:name = "c3f_fmt_c3h"
+            uniform string sourceName = "color"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "half1" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "half"
+            string driver:parameters:aov:husk:name = "half1"
+            uniform string sourceName = "depth"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "half3" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "half3"
+            string driver:parameters:aov:husk:name = "half3"
+            uniform string sourceName = "normal"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "float2" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float2"
+            string driver:parameters:aov:husk:name = "float2"
+            uniform string sourceName = "normal"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "int1" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "int"
+            string driver:parameters:aov:husk:name = "int1"
+            uniform string sourceName = "primId"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "int1_fmt_float" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "int"
+            token driver:parameters:aov:husk:format = "float"
+            string driver:parameters:aov:husk:name = "int1_fmt_float"
+            uniform string sourceName = "primId"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "uint1" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "uint"
+            string driver:parameters:aov:husk:name = "uint1"
+            uniform string sourceName = "instanceId"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "normal3h" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "normal3h"
+            string driver:parameters:aov:husk:name = "N"
+            uniform string sourceName = "normal"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "point3f" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "point3f"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "P"
+            uniform string sourceName = "Peye"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "vector3f_noformat" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "vector3f"
+            string driver:parameters:aov:husk:name = "vec_noformat"
+            uniform string sourceName = "normal"
+            uniform token sourceType = "raw"
+        }
+        # No HuskRenderVarAPI (as the kma_aov render vars), only husk:name.
+        # Without husk:name husk stops: "Missing driver:parameters:aov:husk:name
+        # token in RenderVar".
+        def RenderVar "noschema"
+        {
+            uniform token dataType = "color3f"
+            custom string driver:parameters:aov:husk:name = "noschema"
+            uniform string sourceName = "albedo"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "clear_one" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float"
+            float driver:parameters:aov:husk:clearValue = 1
+            string driver:parameters:aov:husk:name = "clear_one"
+            uniform string sourceName = "depth"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "ms_off" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            bool driver:parameters:aov:husk:multiSampled = 0
+            string driver:parameters:aov:husk:name = "ms_off"
+            uniform string sourceName = "albedo"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "primvar_st" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float2"
+            string driver:parameters:aov:husk:name = "st"
+            uniform string sourceName = "st"
+            uniform token sourceType = "primvar"
+        }
+        def RenderVar "unknown_raw" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            string driver:parameters:aov:husk:name = "unknown"
+            uniform string sourceName = "ray:hitP"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "prefix" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            string driver:parameters:aov:husk:channel_prefix = "pfx"
+            bool driver:parameters:aov:husk:channel_lower_rgb = 1
+            string driver:parameters:aov:husk:name = "prefixed"
+            uniform string sourceName = "albedo"
+            uniform token sourceType = "raw"
+        }
+        def RenderVar "lpe_diffuse" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            string driver:parameters:aov:husk:name = "directdiffuse"
+            uniform string sourceName = "C<RD>L"
+            uniform token sourceType = "lpe"
+        }
+    }
+}

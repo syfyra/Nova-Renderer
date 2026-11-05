@@ -1,0 +1,16 @@
+denoise parm: denoiser
+
+=== denoiser=off  (denoiser)
+
+=== denoiser=optix  (denoiser)
+  /Render/krs_14.karma:global:imagefilter: '[]' -> '[["denoise", {"engine": "optix", "use_albedo_input": true, "use_n_input": true, "forcecpu": false, "aovs": ["C"]}]]'
+
+=== denoiser=oidn  (denoiser)
+  /Render/krs_13.karma:global:imagefilter: '[]' -> '[["denoise", {"engine": "oidn", "use_albedo_input": true, "use_n_input": true, "forcecpu": false, "aovs": ["C"]}]]'
+
+=== optix+all toggles  (denoiser, denoise_separate_aovs, denoise_cpu_only, denoise_aovs)
+  /Render/krs_17.karma:global:imagefilter: '[]' -> '[["denoise", {"engine": "optix", "use_albedo_input": true, "use_n_input": true, "forcecpu": true, "aovs": ["C_denoise", "diffuse_denoise"]}]]'
+  /Render/krs_17/Products/renderproduct.rel orderedVars: ['/Render/krs_17/Vars/beauty'] -> ['/Render/krs_17/Vars/beauty', '/Render/krs_17/Vars/beauty_denoise']
++ prim /Render/krs_17/Vars/beauty_denoise {"@type": "RenderVar", "@api": ["KarmaRenderVarAPI", "HuskRenderVarAPI"], "dataType": "'color4f'", "driver:parameters:aov:husk:clearValue": "0.0", "driver:parameters:aov:husk:format": "'color4h'", "driver:parameters:aov:husk:multiSampled": "True", "driver:parameters:aov:husk:name": "'C_denoise'", "driver:parameters:aov:karma:filter": "'[\"ubox\",{}]'", "sourceName": "'C.*[LO]'", "sourceType": "'lpe'"}
+
+=== cop_createaovs=1  (cop_createaovs)

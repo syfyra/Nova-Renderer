@@ -1,0 +1,56 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    subLayers = [@./materials.usda@]
+)
+
+over "World"
+{
+    def Mesh "two_faces" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 2, 3, 1, 4, 5, 2]
+        point3f[] points = [(-1, 5, -1), (0, 5, -1), (0, 5, 1), (-1, 5, 1), (1, 5, -1), (1, 5, 1)]
+        uniform token subdivisionScheme = "none"
+        uniform token subsetFamily:materialBind:familyType = "partition"
+        rel material:binding = </materials/previewmat>
+
+        def GeomSubset "faceA" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            rel material:binding = </materials/mtlxmaterial>
+        }
+
+        def GeomSubset "faceB" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [1]
+            rel material:binding = </materials/vexmat>
+        }
+    }
+}
+
+over "materials"
+{
+    def Material "vexmat"
+    {
+        token outputs:vex:surface.connect = </materials/vexmat/principledshader1.outputs:surface>
+
+        def Shader "principledshader1"
+        {
+            uniform token info:implementationSource = "sourceAsset"
+            uniform asset info:vex:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+            color3f inputs:basecolor = (0.9, 0.1, 0.1)
+            token outputs:surface
+        }
+    }
+}

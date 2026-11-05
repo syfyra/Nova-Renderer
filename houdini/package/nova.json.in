@@ -1,0 +1,8 @@
+{
+    "enable": "houdini_version >= '22.0' and houdini_version < '22.1'",
+    "load_package_once": true,
+    "env": [
+        { "NOVA": "@NOVA_PACKAGE_ROOT@" }
+    ],
+    "hpath": "$NOVA"
+}

@@ -1,0 +1,1282 @@
+#include "core/gpu/gpu_renderer.h"
+
+#include "core/bsdf/thin_film.h"
+#include "core/integrator/volume_media.h"
+#include "core/gpu/embedded.h"
+#include "core/scene/scene.h"
+#include "core/texture/ray_cone.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <type_traits>
+#include <unordered_map>
+
+namespace nova::gpu {
+
+namespace {
+
+constexpr uint32_t kBlock = 256;
+// Paths per wave (docs/design/M10.md D16): about 0.3 KB each in G1.
+constexpr uint32_t kMaxWavePaths = 1u << 21;
+
+// BsdfTables' members in the order of kBsdfTableFloats.
+constexpr const float *BsdfTables::*kTableMembers[9] = {
+    &BsdfTables::ggxE,       &BsdfTables::ggxEavg, &BsdfTables::ggxABC,   &BsdfTables::dielRT, &BsdfTables::dielRTinv,
+    &BsdfTables::dielR,      &BsdfTables::fresnelAvg, &BsdfTables::charlieE, &BsdfTables::thinRT};
+
+// IEEE half of f, rounded to nearest even.
+uint16_t toHalf(float f) {
+    uint32_t x;
+    std::memcpy(&x, &f, 4);
+    const uint32_t sign = (x >> 16) & 0x8000u, biased = (x >> 23) & 0xFFu;
+    uint32_t mant = x & 0x7FFFFFu;
+    if (biased == 0xFFu)
+        return uint16_t(sign | 0x7C00u | (mant ? 0x200u : 0u));
+    const int32_t exp = int32_t(biased) - 127 + 15;
+    if (exp >= 31)
+        return uint16_t(sign | 0x7C00u);
+    if (exp <= 0) { // subnormal or zero
+        if (exp < -10)
+            return uint16_t(sign);
+        mant |= 0x800000u;
+        const uint32_t shift = uint32_t(14 - exp), half = 1u << (shift - 1);
+        uint32_t h = mant >> shift;
+        const uint32_t rest = mant & ((1u << shift) - 1u);
+        if (rest > half || (rest == half && (h & 1u)))
+            ++h;
+        return uint16_t(sign | h);
+    }
+    uint32_t h = (uint32_t(exp) << 10) | (mant >> 13);
+    const uint32_t rest = mant & 0x1FFFu;
+    if (rest > 0x1000u || (rest == 0x1000u && (h & 1u)))
+        ++h; // a carry into the exponent rounds up correctly
+    return uint16_t(sign | h);
+}
+
+// Whether a material's closures can hold a subsurface walk: a native model
+// with a subsurface weight (uniform, or one its program writes), or a graph
+// with a subsurface leaf or a native segment (conservatively).
+bool mayWalk(const SurfaceInputs &in, const shading::Program *p) {
+    const auto native = [](SurfaceModel m) { return m == SurfaceModel::StandardSurface || m == SurfaceModel::OpenPBR; };
+    if (in.model == SurfaceModel::Graph) {
+        if (!in.graph)
+            return false;
+        const ClosureGraph &g = *in.graph;
+        for (int i = 0; i < g.nodeCount; ++i)
+            if (g.node[i].op == GraphOp::Leaf && g.node[i].kind == LeafKind::Subsurface)
+                return true;
+        for (int s = 0; s < g.segmentCount; ++s)
+            if (native(g.segment[s].model))
+                return true;
+        return false;
+    }
+    if (!native(in.model))
+        return false;
+    const uint16_t weight = surface_field::subsurfaceWeight;
+    if (in.f(weight) > 0.0f)
+        return true;
+    if (p)
+        for (const shading::OutputBinding &o : p->outputs)
+            if (o.field <= weight && weight < o.field + o.width)
+                return true;
+    return false;
+}
+
+} // namespace
+
+GpuRenderer::~GpuRenderer() {
+    releaseTextures();
+    if (m_module) {
+        Device::Scope scope(m_device);
+        m_device.cu().p_cuModuleUnload(m_module);
+    }
+}
+
+void GpuRenderer::releaseTextures() {
+    if (m_texObjects.empty() && m_textures.empty())
+        return;
+    Device::Scope scope(m_device);
+    const CudaApi &cu = m_device.cu();
+    m_device.sync();
+    for (CUtexObject o : m_texObjects)
+        cu.p_cuTexObjectDestroy(o);
+    for (auto &[id, tex] : m_textures)
+        for (auto &[udim, chain] : tex.tiles)
+            cu.p_cuMipmappedArrayDestroy(chain);
+    m_texObjects.clear();
+    m_textures.clear();
+    m_texSlots.clear();
+    m_tileTables.clear();
+    m_textureBytes = 0;
+}
+
+bool GpuRenderer::texturesChanged(const ITextureSampler *sampler) const {
+    if (!sampler || sampler != m_sampler)
+        return false;
+    for (const auto &[id, tex] : m_textures)
+        if (sampler->textureGeneration(id) != tex.generation)
+            return true;
+    return false;
+}
+
+GpuRenderer::Texture &GpuRenderer::texture(const ITextureSampler *sampler, TextureId id) {
+    auto [it, fresh] = m_textures.try_emplace(id);
+    Texture &tex = it->second;
+    if (!fresh)
+        return tex;
+    // Also for a missing file: one that appears later is a new generation.
+    tex.generation = sampler->textureGeneration(id);
+    TexData data;
+    if (!sampler->textureData(id, data) || data.tiles.empty())
+        return tex;
+    const CudaApi &cu = m_device.cu();
+    if (m_textureBudget == 0) { // nova:gpuTextureBudget's default: half the memory free at the first upload
+        size_t free = 0, total = 0;
+        cu.p_cuMemGetInfo(&free, &total);
+        m_textureBudget = std::max<size_t>(free / 2, 1);
+    }
+    const size_t texel = data.half ? 8 : 16; // RGBA
+    tex.tiles.reserve(data.tiles.size()); // the emplace_back below cannot throw
+    tex.levels.reserve(data.tiles.size());
+    for (TexTile &tile : data.tiles) {
+        if (tile.levels.empty())
+            continue;
+        // The levels a CUDA chain holds: each half the size of the one before
+        // (rounded down, at least 1).
+        const int w0 = tile.levels[0].width, h0 = tile.levels[0].height;
+        uint32_t levels = 1;
+        while (levels < tile.levels.size() && tile.levels[levels].width == std::max(1, w0 >> levels) &&
+               tile.levels[levels].height == std::max(1, h0 >> levels))
+            ++levels;
+        const auto bytes = [&](uint32_t from) {
+            size_t b = 0;
+            for (uint32_t l = from; l < levels; ++l)
+                b += size_t(tile.levels[l].width) * size_t(tile.levels[l].height) * texel;
+            return b;
+        };
+        // Over the budget the finest levels are dropped (D10).
+        uint32_t first = 0;
+        while (first + 1 < levels && m_textureBytes + bytes(first) > m_textureBudget)
+            ++first;
+        if (first > 0 && !m_budgetWarned) {
+            m_budgetWarned = true;
+            std::fprintf(stderr, "[Nova] XPU: textures exceed the GPU texture budget (%.0f MB); finer MIP levels are dropped\n",
+                         double(m_textureBudget) / 1048576.0);
+        }
+        CUDA_ARRAY3D_DESCRIPTOR desc{};
+        desc.Width = size_t(tile.levels[first].width);
+        desc.Height = size_t(tile.levels[first].height);
+        desc.Format = data.half ? CU_AD_FORMAT_HALF : CU_AD_FORMAT_FLOAT;
+        desc.NumChannels = 4;
+        // Host memory first: nothing may throw (std::bad_alloc, which
+        // Renderer::gpuPass survives) while the chain has no owner.
+        std::vector<uint16_t> halves;
+        if (data.half)
+            halves.reserve(tile.levels[first].texels.size()); // the largest level copied
+        CUmipmappedArray chain = nullptr;
+        if (!m_device.check(cu.p_cuMipmappedArrayCreate(&chain, &desc, levels - first), "cuMipmappedArrayCreate"))
+            continue;
+        bool ok = true;
+        for (uint32_t l = first; l < levels && ok; ++l) {
+            const TexLevel &level = tile.levels[l];
+            CUarray array = nullptr;
+            ok = m_device.check(cu.p_cuMipmappedArrayGetLevel(&array, chain, l - first), "cuMipmappedArrayGetLevel");
+            const void *src = level.texels.data();
+            if (data.half) {
+                halves.resize(level.texels.size());
+                for (size_t i = 0; i < halves.size(); ++i)
+                    halves[i] = toHalf(level.texels[i]);
+                src = halves.data();
+            }
+            CUDA_MEMCPY2D copy{};
+            copy.srcMemoryType = CU_MEMORYTYPE_HOST;
+            copy.srcHost = src;
+            copy.srcPitch = size_t(level.width) * texel;
+            copy.dstMemoryType = CU_MEMORYTYPE_ARRAY;
+            copy.dstArray = array;
+            copy.WidthInBytes = size_t(level.width) * texel;
+            copy.Height = size_t(level.height);
+            ok = ok && m_device.check(cu.p_cuMemcpy2DAsync(&copy, m_device.stream()), "cuMemcpy2DAsync") &&
+                 m_device.sync(); // the staging buffer is reused
+        }
+        if (!ok) {
+            cu.p_cuMipmappedArrayDestroy(chain);
+            continue;
+        }
+        m_textureBytes += bytes(first);
+        tex.tiles.emplace_back(tile.udim, chain);
+        tex.levels.push_back(levels - first);
+    }
+    tex.udim = data.udim;
+    tex.ok = !tex.tiles.empty();
+    return tex;
+}
+
+CUtexObject GpuRenderer::textureObject(CUmipmappedArray chain, uint32_t levels, const TexSlot &slot, bool udim) {
+    const auto mode = [udim](TexWrap w) {
+        if (udim) // tiles never wrap into each other
+            return CU_TR_ADDRESS_MODE_CLAMP;
+        switch (w) {
+        case TexWrap::Periodic:
+            return CU_TR_ADDRESS_MODE_WRAP;
+        case TexWrap::Mirror:
+            return CU_TR_ADDRESS_MODE_MIRROR;
+        case TexWrap::Black:
+            return CU_TR_ADDRESS_MODE_BORDER; // border color 0
+        default: // Clamp; Constant's outside is the fallback before the lookup
+            return CU_TR_ADDRESS_MODE_CLAMP;
+        }
+    };
+    CUDA_RESOURCE_DESC res{};
+    res.resType = CU_RESOURCE_TYPE_MIPMAPPED_ARRAY;
+    res.res.mipmap.hMipmappedArray = chain;
+    CUDA_TEXTURE_DESC desc{};
+    desc.addressMode[0] = mode(slot.wrapS);
+    desc.addressMode[1] = mode(slot.wrapT);
+    desc.addressMode[2] = CU_TR_ADDRESS_MODE_CLAMP;
+    const bool closest = slot.filter == TexFilter::Closest; // cubic filters linearly
+    desc.filterMode = closest ? CU_TR_FILTER_MODE_POINT : CU_TR_FILTER_MODE_LINEAR;
+    desc.mipmapFilterMode = desc.filterMode;
+    desc.maxAnisotropy = closest ? 1 : 8;
+    desc.maxMipmapLevelClamp = float(levels - 1);
+    desc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+    CUtexObject object = 0;
+    if (m_texObjects.size() == m_texObjects.capacity()) // the push_back below cannot throw
+        m_texObjects.reserve(std::max<size_t>(16, m_texObjects.capacity() * 2));
+    if (!m_device.check(m_device.cu().p_cuTexObjectCreate(&object, &res, &desc, nullptr), "cuTexObjectCreate"))
+        return 0;
+    m_texObjects.push_back(object);
+    return object;
+}
+
+DeviceTexSlot GpuRenderer::textureSlot(const ITextureSampler *sampler, const TexSampler &s) {
+    DeviceTexSlot d;
+    d.slot = s.slot;
+    if (!sampler || s.texture == kNoTexture)
+        return d;
+    const uint64_t key = uint64_t(s.texture) << 16 | uint64_t(s.slot.wrapS) << 8 | uint64_t(s.slot.wrapT) << 4 |
+                         uint64_t(s.slot.filter);
+    auto it = m_texSlots.find(key);
+    if (it == m_texSlots.end()) {
+        DeviceTexSlot made;
+        const Texture &tex = texture(sampler, s.texture);
+        if (tex.ok && !tex.udim) {
+            made.object = textureObject(tex.tiles[0].second, tex.levels[0], s.slot, false);
+        } else if (tex.ok) {
+            std::vector<unsigned long long> objects(kUdimTiles, 0);
+            for (size_t i = 0; i < tex.tiles.size(); ++i) {
+                const uint32_t udim = tex.tiles[i].first;
+                if (udim >= 1001 && udim < 1001 + uint32_t(kUdimTiles))
+                    objects[udim - 1001] = textureObject(tex.tiles[i].second, tex.levels[i], s.slot, true);
+            }
+            m_tileTables.emplace_back();
+            if (m_device.upload(m_tileTables.back(), objects))
+                made.tiles = m_tileTables.back().as<unsigned long long>();
+        }
+        it = m_texSlots.emplace(key, made).first;
+    }
+    d.object = it->second.object;
+    d.tiles = it->second.tiles;
+    return d;
+}
+
+bool GpuRenderer::init(std::string &error) {
+    if (!m_device.init(error) || !m_accel.init(error))
+        return false;
+    Device::Scope scope(m_device);
+    const CudaApi &cu = m_device.cu();
+    const auto function = [&](CUfunction &fn, const char *name) {
+        return m_device.check(cu.p_cuModuleGetFunction(&fn, m_module, name), name);
+    };
+    if (!m_device.check(cu.p_cuModuleLoadData(&m_module, kNovaKernels_words), "cuModuleLoadData") ||
+        !function(m_generate, "novaGenerate") || !function(m_shade, "novaShade") ||
+        !function(m_shadow, "novaShadow") || !function(m_ao, "novaAo") || !function(m_flush, "novaFlush") ||
+        !function(m_media, "novaMedia") || !function(m_volumes, "novaVolumes") ||
+        !function(m_fakeStart, "novaFakeStart") || !function(m_fakeStep, "novaFakeStep") ||
+        !function(m_walkExit, "novaWalkExit") ||
+        !m_counts.reserve(m_device, 8 * sizeof(uint32_t)) ||
+        !m_device.check(cu.p_cuMemsetD8Async(m_counts.ptr(), 0, m_counts.size(), m_device.stream()), "cuMemsetD8Async")) {
+        error = m_device.lastError();
+        return false;
+    }
+    // The BSDF tables and the XYZ matrix (constant): one buffer.
+    const BsdfTables &host = bsdfTables();
+    std::vector<float> blob;
+    size_t offsets[10] = {};
+    for (int i = 0; i < 9; ++i) {
+        offsets[i] = blob.size();
+        blob.insert(blob.end(), host.*kTableMembers[i], host.*kTableMembers[i] + kBsdfTableFloats[i]);
+    }
+    offsets[9] = blob.size();
+    blob.insert(blob.end(), kXyzToRec709Grey, kXyzToRec709Grey + 9);
+    if (!m_device.upload(m_tables, blob)) {
+        error = m_device.lastError();
+        return false;
+    }
+    for (int i = 0; i < 9; ++i)
+        m_view.tables.*kTableMembers[i] = m_tables.as<float>() + offsets[i];
+    m_view.xyzToRgb = m_tables.as<float>() + offsets[9];
+    if (!m_device.sync()) {
+        error = m_device.lastError();
+        return false;
+    }
+    return true;
+}
+
+template <class T>
+Span<T> GpuRenderer::upload(std::vector<DeviceBuffer> &into, const T *data, size_t count) {
+    if (count == 0 || !data)
+        return {};
+    into.emplace_back();
+    if (!m_device.upload(into.back(), data, count)) {
+        m_failed = true;
+        return {};
+    }
+    return {into.back().template as<T>(), count};
+}
+
+void GpuRenderer::setTextureBudget(uint32_t megabytes) {
+    if (megabytes > 0) {
+        m_textureBudget = size_t(megabytes) << 20;
+        m_budgetSet = true;
+    } else if (m_budgetSet) {
+        m_textureBudget = 0; // the default again at the next upload
+        m_budgetSet = false;
+    }
+}
+
+bool GpuRenderer::setScene(const Scene &scene) {
+    // A texture the host prepared again under its id (changed on disk) leaves
+    // the scene's version as it was: its stale device copy goes, and the
+    // materials are uploaded again with the new texture objects.
+    const bool texturesStale = texturesChanged(scene.textureSampler());
+    if (&scene == m_scene && scene.version() == m_sceneVersion && !texturesStale)
+        return true;
+    Device::Scope scope(m_device);
+    m_scene = nullptr;
+    m_failed = false;
+    m_sceneBuffers.clear();
+    uint32_t skipped = 0;
+    if (!m_accel.build(scene, skipped))
+        return false;
+    if (skipped > 0)
+        std::fprintf(stderr, "[Nova] XPU: %u objects without primitives the GPU can build are left out\n", skipped);
+
+    // Meshes: geometry (kept while it stays), instances, the material of each
+    // triangle, ray limits and the attributes their materials read (each
+    // array uploaded once).
+    std::vector<GpuMesh> meshes(scene.meshCount());
+    m_geometry.resize(scene.meshCount());
+    std::vector<uint32_t> slots;
+    std::vector<GpuBinding> bindings;
+    std::vector<AttributeRef> refs;
+    std::unordered_map<const float *, const float *> attributes;
+    for (MeshId id = 0; id < scene.meshCount(); ++id) {
+        const MeshRecord &rec = scene.meshRecord(id);
+        MeshGeometry &geo = m_geometry[id];
+        if (!OptixScene::supports(rec)) {
+            geo = MeshGeometry{};
+            continue;
+        }
+        GpuMesh &g = meshes[id];
+        const MeshDesc &d = rec.desc;
+        if (!geo.version || geo.version != rec.geometryVersion) {
+            geo = MeshGeometry{};
+            geo.version = rec.geometryVersion;
+            const auto keep = [&](const auto &a) { return upload(geo.buffers, a.data(), a.size()); };
+            MeshDescView &v = geo.view;
+            v.points = keep(d.points);
+            v.pointSteps = d.pointSteps;
+            v.shape = d.shape;
+            v.sphereRadius = keep(d.sphereRadius);
+            v.indices = keep(d.indices);
+            v.normals = keep(d.normals);
+            v.curveSegments = keep(d.curveSegments);
+            v.segmentCurve = keep(d.segmentCurve);
+            v.curveRadius = keep(d.curveRadius);
+            v.curveBasis = d.curveBasis;
+            v.curveStyle = d.curveStyle;
+            v.pointRadius = keep(d.pointRadius);
+            v.pointStyle = d.pointStyle;
+        }
+        g.view.desc = geo.view;
+        g.view.instances = put(rec.instances);
+        g.view.motionSteps = rec.motionSteps;
+        if (rec.motionSteps > 1) { // OptiX's keys and interpolation (D6)
+            g.view.motionKeys = put(OptixScene::continuousKeys(rec));
+            g.view.nlerp = 1;
+        }
+        slots.clear();
+        for (MaterialId m : rec.materialSlots)
+            slots.push_back(scene.hasMaterial(m) ? m : kDefaultMaterialId);
+        g.triangleSlots = put(rec.triangleSlots);
+        g.slotMaterial = put(slots);
+        g.rayLimits = rec.rayLimits;
+        bindings.clear();
+        for (const MeshRecord::MaterialBinding &b : rec.bindings) {
+            refs = b.refs;
+            for (AttributeRef &r : refs) {
+                if (!r.data)
+                    continue;
+                // The description's arrays with the geometry, instance-rate
+                // ones with every upload.
+                const bool own = r.source != AttributeSource::Instance;
+                const float *&device = (own ? geo.attributes : attributes)[r.data];
+                if (!device) {
+                    // The counts Scene::bindName validated: Uniform is per hit
+                    // prim (triangle, sphere, curve segment or point), curve
+                    // Corner three values per segment.
+                    const size_t corners =
+                        rec.desc.isCurves() ? 3 * rec.desc.primitiveCount() : rec.desc.indices.size();
+                    const size_t count = r.source == AttributeSource::Constant  ? 1
+                                         : r.source == AttributeSource::Uniform  ? rec.desc.primitiveCount()
+                                         : r.source == AttributeSource::Vertex   ? rec.desc.pointCount()
+                                         : r.source == AttributeSource::Corner   ? corners
+                                         : r.source == AttributeSource::Instance ? rec.instanceCount()
+                                                                                 : 0;
+                    device = own ? upload(geo.buffers, r.data, count * r.width).ptr : put(r.data, count * r.width).ptr;
+                }
+                r.data = device;
+                if (!r.data)
+                    r.source = AttributeSource::None;
+            }
+            bindings.push_back({b.material, put(refs).ptr});
+        }
+        g.bindings = put(bindings);
+        g.shadowMasks = put(rec.shadowMasks);
+        g.fakeCaustics = uint8_t(rec.fakeCaustics);
+        g.emitterOf = put(rec.emitterOf);
+        g.emitterBase = rec.emitterBase;
+        g.emitterStride = rec.emitterStride;
+        g.receiverSets = put(rec.receiverSets);
+    }
+    m_view.meshes = put(meshes).ptr;
+
+    // Materials: the inputs with the uniform outputs applied (graphs
+    // uploaded), and the programs of those that vary per hit with their
+    // textures. External (VEX) materials are grey stand-ins (D12).
+    if (scene.textureSampler() != m_sampler || texturesStale) {
+        releaseTextures();
+        m_sampler = scene.textureSampler();
+    }
+    std::vector<DeviceTexSlot> texSlots;
+    std::vector<SurfaceInputs> inputs(scene.materialCount(), lambertDefaults());
+    std::vector<GpuMaterial> materials(scene.materialCount());
+    uint32_t standIns = 0, large = 0;
+    m_mayWalk = false;
+    for (MaterialId id = 0; id < scene.materialCount(); ++id) {
+        if (!scene.hasMaterial(id))
+            continue;
+        const MaterialRecord &rec = scene.material(id);
+        SurfaceInputs &in = inputs[id];
+        if (rec.resolved.model == SurfaceModel::External || (rec.desc.external && rec.desc.external->shader)) {
+            in = lambertDefaults(spectrum(0.5f));
+            ++standIns;
+            continue;
+        }
+        in = rec.resolved;
+        const shading::Program *p = rec.desc.program.get();
+        m_mayWalk = m_mayWalk || mayWalk(in, p);
+        if (in.model == SurfaceModel::Graph)
+            in.graph = in.graph ? put(in.graph, 1).ptr : nullptr;
+        GpuMaterial &g = materials[id];
+        // Opacity (M3 K10): uniform, or the per-hit opacity program.
+        g.hasOpacity = uint8_t(rec.hasOpacity);
+        g.uniformOpacity = rec.uniformOpacity;
+        const shading::Program *op = p ? p->opacity.get() : nullptr;
+        const bool opacityVaries = op && !rec.opacityUniforms.empty() && op->rowCount <= kGpuMaxRows;
+        if (opacityVaries) {
+            g.opacityCode = put(op->code).ptr;
+            g.opacityCodeSize = uint32_t(op->code.size());
+            g.opacityUniforms = put(rec.opacityUniforms).ptr;
+            g.opacityGlobals = put(op->globals);
+            g.opacityPrimvars = put(op->primvarBindings);
+            g.opacityOutputs = put(op->outputs);
+        }
+        if (p && (rec.varying || opacityVaries)) { // the primvar order and textures programs share
+            g.primvarNames = uint32_t(p->primvars.size());
+            g.tangentUv = p->tangentUv;
+            texSlots.clear();
+            for (const TexSampler &s : rec.samplers)
+                texSlots.push_back(textureSlot(m_sampler, s));
+            g.textures = put(texSlots).ptr;
+            g.textureCount = uint32_t(texSlots.size());
+        }
+        if (!rec.varying || !p)
+            continue;
+        if (p->rowCount > kGpuMaxRows) {
+            ++large;
+            continue;
+        }
+        g.code = put(p->code).ptr;
+        g.codeSize = uint32_t(p->code.size());
+        g.uniforms = put(rec.uniforms).ptr;
+        g.globals = put(p->globals);
+        g.primvars = put(p->primvarBindings);
+        g.outputs = put(p->outputs);
+        g.varying = 1;
+        g.footprints = !rec.samplers.empty() || p->needsFootprints;
+    }
+    if (standIns > 0)
+        std::fprintf(stderr, "[Nova] XPU: %u VEX materials render as grey on the GPU\n", standIns);
+    if (large > 0)
+        std::fprintf(stderr, "[Nova] XPU: %u materials need more than %u rows; the GPU uses their uniform inputs\n",
+                     large, kGpuMaxRows);
+    const Span<SurfaceInputs> resolved = put(inputs);
+    for (MaterialId id = 0; id < scene.materialCount(); ++id)
+        materials[id].resolved = resolved.ptr + id;
+    m_view.materials = put(materials).ptr;
+
+    // Lights, their textures and dome distributions, the power table.
+    std::vector<LightData> lights = scene.lights();
+    for (LightData &l : lights) {
+        if (l.texels)
+            l.texels = put(l.texels, size_t(l.texWidth) * l.texHeight).ptr;
+        Distribution2DView &d = l.distribution;
+        if (d.func) {
+            const size_t nu = d.nu, nv = d.nv;
+            d.func = put(d.func, nu * nv).ptr;
+            d.conditionalCdf = put(d.conditionalCdf, nv * (nu + 1)).ptr;
+            d.rowIntegral = put(d.rowIntegral, nv).ptr;
+            d.marginalCdf = put(d.marginalCdf, nv + 1).ptr;
+        }
+    }
+    m_view.lights = put(lights).ptr;
+    m_view.lightCount = scene.analyticLightCount();
+    const LightSamplerView sampler = scene.lightSampler();
+    m_view.lightSampler.pmf = put(sampler.pmf, lights.size()).ptr;
+    m_view.lightSampler.threshold = put(sampler.threshold, sampler.count).ptr;
+    m_view.lightSampler.alias = put(sampler.alias, sampler.count).ptr;
+    m_view.lightSampler.count = sampler.count;
+    // The light tree (M9 D11) with its lights at infinity, the light-linking
+    // masks (D15).
+    const LightTreeView tree = scene.lightTree();
+    const size_t lightTotal = lights.size(), treeLights = tree.lightCount;
+    LightTreeView &t = m_view.tree;
+    t = tree;
+    t.nodes = put(tree.nodes, tree.nodeCount).ptr;
+    t.trail = put(tree.trail, treeLights).ptr;
+    t.infinite = put(tree.infinite, tree.infiniteCount).ptr;
+    t.infiniteE = put(tree.infiniteE, tree.infiniteCount).ptr;
+    t.infiniteDir = put(tree.infiniteDir, tree.infiniteCount).ptr;
+    t.infiniteTable.pmf = put(tree.infiniteTable.pmf, tree.infiniteCount).ptr;
+    t.infiniteTable.threshold = put(tree.infiniteTable.threshold, tree.infiniteTable.count).ptr;
+    t.infiniteTable.alias = put(tree.infiniteTable.alias, tree.infiniteTable.count).ptr;
+    t.infiniteSlot = put(tree.infiniteSlot, treeLights).ptr;
+    t.cut = put(tree.cut, tree.cutCount).ptr;
+    t.lightMask = put(tree.lightMask, treeLights).ptr;
+    m_view.linkMask = put(scene.lightLinkMasks(), lightTotal).ptr;
+    m_view.anyEmitters = uint8_t(scene.anyEmitters());
+    uint32_t categories = 0;
+    for (const LightData &l : lights)
+        categories += l.shadowLinked() && l.shadowCategory >= 7;
+    if (categories > 0)
+        std::fprintf(stderr, "[Nova] XPU: shadow-link categories beyond the 7th are not separated on the GPU yet "
+                             "(%u lights): every object shadows them\n", categories);
+    m_view.hasAreaLights = m_view.hasVisibleAreaLights = 0;
+    for (uint32_t i = 0; i < m_view.lightCount; ++i) {
+        const bool area = isAreaLight(lights[i].type) && !lights[i].delta;
+        m_view.hasAreaLights |= uint8_t(area);
+        m_view.hasVisibleAreaLights |= uint8_t(area && lights[i].cameraVisible);
+    }
+    // Volumes (G5): the trackers' data, the fields' NanoVDB grids (each
+    // buffer once), the volume shaders with their uniforms and textures.
+    std::vector<GpuVolume> volumes(scene.volumeCount());
+    std::unordered_map<const void *, const void *> gridCopies;
+    std::vector<const void *> grids;
+    std::vector<int32_t> fieldBindings;
+    uint32_t largeShaders = 0;
+    for (VolumeId id = 0; id < scene.volumeCount(); ++id) {
+        const VolumeRecord &rec = scene.volumeRecord(id);
+        GpuVolume &g = volumes[id];
+        MediumVolume m = mediumVolume(rec);
+        m.layout = put(&rec.layout, 1).ptr;
+        m.majorant = put(rec.majorant).ptr;
+        m.extinctionMajorant = put(rec.extinctionMajorant).ptr;
+        const Distribution1DView cells = rec.lightCells.view();
+        m.lightCells.func = put(cells.func, cells.count).ptr;
+        m.lightCells.cdf = put(cells.cdf, cells.count ? size_t(cells.count) + 1 : 0).ptr;
+        g.medium = m;
+        g.indexToObject = rec.indexToObject;
+        g.objectToWorld = rec.objectToWorld;
+        g.motionKeys = put(rec.motionKeys);
+        g.motionSteps = rec.motionSteps;
+        grids.clear();
+        for (const VolumeField &f : rec.desc.fields) {
+            const void *copy = nullptr;
+            if (f.grid && f.grid->grid()) {
+                const void *&known = gridCopies[f.grid->data()];
+                if (!known)
+                    known = put(static_cast<const uint8_t *>(f.grid->data()), f.grid->size()).ptr;
+                copy = known;
+            }
+            grids.push_back(copy);
+        }
+        g.grids = put(grids);
+        g.fieldObjectToIndex = put(rec.fieldObjectToIndex);
+        g.reference = rec.reference;
+        for (int c = 0; c < 3; ++c)
+            g.velocity[c] = rec.velocity[size_t(c)];
+        g.velocityTime[0] = rec.desc.velocityTime[0];
+        g.velocityTime[1] = rec.desc.velocityTime[1];
+        g.volumeLimit = rec.desc.volumeLimit;
+        if (const shading::Program *p = rec.program) {
+            if (p->rowCount > kGpuMaxRows) {
+                ++largeShaders; // the default volume stands in
+                continue;
+            }
+            const MaterialRecord &mat = scene.material(rec.material);
+            g.code = put(p->code).ptr;
+            g.codeSize = uint32_t(p->code.size());
+            g.uniforms = put(mat.volumeUniforms).ptr;
+            g.globals = put(p->globals);
+            g.primvars = put(p->primvarBindings);
+            g.outputs = put(p->outputs);
+            fieldBindings.clear();
+            for (const std::array<int32_t, 4> &b : rec.bindings)
+                fieldBindings.insert(fieldBindings.end(), b.begin(), b.end());
+            g.bindings = put(fieldBindings).ptr;
+            g.defaults = put(&mat.volume, 1).ptr;
+            texSlots.clear();
+            for (const TexSampler &s : mat.samplers)
+                texSlots.push_back(textureSlot(m_sampler, s));
+            g.textures = put(texSlots).ptr;
+            g.textureCount = uint32_t(texSlots.size());
+            g.program = 1;
+        }
+    }
+    if (largeShaders > 0)
+        std::fprintf(stderr, "[Nova] XPU: %u volume shaders need more than %u rows; the GPU renders them as density\n",
+                     largeShaders, kGpuMaxRows);
+    m_view.volumes = put(volumes).ptr;
+    m_view.activeVolumes = put(scene.activeVolumes()).ptr;
+    m_view.activeVolumeCount = uint32_t(scene.activeVolumes().size());
+    m_view.levelDependent = uint8_t(scene.anyLevelDependentVolume());
+    // Equiangular sampling (M9 D17): the lights that opted in.
+    const Scene::EquiangularLights eq = scene.equiangularLights();
+    m_view.eqLights = put(eq.lights, eq.table.count).ptr;
+    m_view.eqTable.pmf = put(eq.table.pmf, eq.table.count).ptr;
+    m_view.eqTable.threshold = put(eq.table.threshold, eq.table.count).ptr;
+    m_view.eqTable.alias = put(eq.table.alias, eq.table.count).ptr;
+    m_view.eqTable.count = eq.table.count;
+    m_view.eqPmf = put(eq.pmf, scene.analyticLightCount()).ptr;
+    m_view.tolerance = scene.intersectionTolerance();
+    m_view.anyFiltered = uint8_t(scene.anyFiltered());
+    if (m_failed || !m_device.sync())
+        return false;
+    m_scene = &scene;
+    m_sceneVersion = scene.version();
+    return true;
+}
+
+bool GpuRenderer::setFilm(const Film &film) {
+    Device::Scope scope(m_device);
+    m_width = film.width;
+    m_height = film.height;
+    const size_t n = size_t(film.width) * size_t(film.height);
+    const UtilityPlane *ao = const_cast<Film &>(film).findUtility(UtilityKind::Ao);
+    return m_device.upload(m_colorSum, film.colorSum.data(), n) && m_device.upload(m_alphaSum, film.alphaSum.data(), n) &&
+           m_device.upload(m_count, film.count.data(), n) && (!ao || m_device.upload(m_aoPlane, ao->data)) &&
+           m_device.upload(m_lpeSum, film.lpeSum) && m_device.upload(m_lpeLit, film.lpeLit) && m_device.sync();
+}
+
+bool GpuRenderer::reserveWave(uint32_t paths) {
+    const uint32_t slots = m_mayWalk ? 3u : 2u;
+    if (paths <= m_capacity && slots <= m_shadowSlots)
+        return true;
+    m_waveBuffers.clear();
+    bool ok = true;
+    const auto field = [&](auto *&ptr, size_t count) {
+        using T = std::remove_reference_t<decltype(*ptr)>;
+        m_waveBuffers.emplace_back();
+        ok = ok && m_waveBuffers.back().reserve(m_device, count * sizeof(T));
+        ptr = m_waveBuffers.back().as<T>();
+    };
+    const auto rays = [&](GpuRays &r, uint32_t countSlot, size_t n) {
+        field(r.org, n);
+        field(r.dir, n);
+        field(r.tMax, n);
+        field(r.time, n);
+        field(r.path, n);
+        field(r.filterSeed, n);
+        field(r.rayType, n);
+        r.count = m_counts.as<uint32_t>() + countSlot;
+    };
+    GpuWave &w = m_wave;
+    field(w.pixel, paths);
+    field(w.beta, paths);
+    field(w.radiance, paths);
+    field(w.alpha, paths);
+    field(w.pixelSeed, paths);
+    field(w.sampleIndex, paths);
+    field(w.bsdfPdf, paths);
+    field(w.diffuseShare, paths);
+    field(w.etaScale, paths);
+    field(w.sigmaA, paths);
+    field(w.inMedium, paths);
+    field(w.eventCounts, paths);
+    field(w.limitDither, paths);
+    field(w.lightOnly, paths);
+    field(w.afterDiffuse, paths);
+    field(w.coneWidth, paths);
+    field(w.coneSpread, paths);
+    field(w.prevP, paths);
+    field(w.prevN, paths);
+    field(w.prevReceiver, paths);
+    field(w.prevSet, paths);
+    field(w.hitMesh, paths);
+    field(w.hitPrim, paths);
+    field(w.hitUv, paths);
+    field(w.hitInstance, paths);
+    // Up to two light samples per path and depth: at the hit or volume
+    // event, and an equiangular one along the ray's medium segment; with
+    // subsurface walks a third at a walk's exit.
+    const size_t shadows = size_t(paths) * slots;
+    rays(w.shadow, 2, shadows);
+    field(w.shadowContribution, shadows);
+    field(w.occluded, shadows);
+    field(w.shadowCategory, shadows);
+    field(w.shadowEmitter, shadows);
+    field(w.shadowBary, shadows);
+    field(w.shadowClamp, shadows);
+    field(w.shadowSlot, shadows);
+    field(w.ao, paths);
+    rays(w.aoRays, 3, paths);
+    field(w.aoOccluded, paths);
+    field(w.aoBelow, paths);
+    field(w.cryptoMesh, paths);
+    field(w.cryptoPrim, paths);
+    rays(m_rays[0], 0, paths);
+    rays(m_rays[1], 1, paths);
+    m_capacity = ok ? paths : 0;
+    m_shadowSlots = ok ? slots : 0;
+    return ok;
+}
+
+bool GpuRenderer::uploadLpe(const LpeTables &tables, uint64_t generation) {
+    const lpe::Program &prog = tables.program;
+    // Generation 0: tables of unknown origin, uploaded every time.
+    const uint64_t key[5] = {generation, prog.stateCount, tables.meshTag.size(), tables.lightTag.size(),
+                             m_sceneVersion};
+    if (generation != 0 && std::equal(key, key + 5, m_lpeKey) && m_lpe.program.next)
+        return true;
+    m_lpeBuffers.clear();
+    bool ok = true;
+    const auto copy = [&](const auto *data, size_t count) {
+        using T = std::remove_const_t<std::remove_reference_t<decltype(*data)>>;
+        if (!count || !data)
+            return Span<T>{};
+        m_lpeBuffers.emplace_back();
+        ok = ok && m_device.upload(m_lpeBuffers.back(), data, count);
+        return Span<T>{m_lpeBuffers.back().as<T>(), count};
+    };
+    LpeView v = tables.view();
+    const size_t symbols = size_t(lpe::kTypeCount) * lpe::kScatterCount * prog.tagCount * prog.labelCount;
+    v.program.next = copy(prog.next, size_t(prog.stateCount) * prog.classCount).ptr;
+    v.program.symbolClass = copy(prog.symbolClass, symbols).ptr;
+    v.program.outBegin = copy(prog.outBegin, size_t(prog.stateCount) + 1).ptr;
+    v.program.outs = copy(prog.outs, prog.outBegin[prog.stateCount]).ptr;
+    v.program.outputFlags = nullptr; // not read on the device
+    v.meshTag = copy(v.meshTag.data(), v.meshTag.size());
+    v.materialTag = copy(v.materialTag.data(), v.materialTag.size());
+    v.volumeTag = copy(v.volumeTag.data(), v.volumeTag.size());
+    v.lightTag = copy(v.lightTag.data(), v.lightTag.size());
+    v.albedoAfter = copy(v.albedoAfter.data(), v.albedoAfter.size());
+    v.plainBegin = copy(v.plainBegin.data(), v.plainBegin.size());
+    v.unitBegin = copy(v.unitBegin.data(), v.unitBegin.size());
+    v.litBegin = copy(v.litBegin.data(), v.litBegin.size());
+    v.plainOuts = copy(v.plainOuts.data(), v.plainOuts.size());
+    v.unitOuts = copy(v.unitOuts.data(), v.unitOuts.size());
+    v.litSlots = copy(v.litSlots.data(), v.litSlots.size());
+    if (!ok)
+        return false;
+    m_lpe = v;
+    std::copy(key, key + 5, m_lpeKey);
+    return true;
+}
+
+bool GpuRenderer::reserveLpe(uint32_t paths) {
+    // Per shadow ray its parts' range, as many rays as the shadow queue holds
+    // (reserveWave ran first: m_shadowSlots per path, 3 with walks); up to 4
+    // parts per shadow ray on average, more are dropped (lpe_path.h).
+    const size_t rays = size_t(paths) * m_shadowSlots;
+    if (paths > m_lpeCapacity || rays > m_lpeRayCapacity) {
+        m_lpeWave.clear();
+        m_lpeWave.resize(6);
+        const size_t parts = rays * 4;
+        if (!m_lpeWave[0].reserve(m_device, paths * sizeof(lpe::State)) ||
+            !m_lpeWave[1].reserve(m_device, rays * sizeof(uint32_t)) || !m_lpeWave[2].reserve(m_device, rays) ||
+            !m_lpeWave[3].reserve(m_device, parts * sizeof(lpe::State)) ||
+            !m_lpeWave[4].reserve(m_device, parts * sizeof(Spectrum)) ||
+            !m_lpeWave[5].reserve(m_device, parts * sizeof(Spectrum))) {
+            m_lpeCapacity = 0;
+            m_lpeRayCapacity = 0;
+            return false;
+        }
+        m_lpeCapacity = paths;
+        m_lpeRayCapacity = rays;
+    }
+    GpuWave &w = m_wave;
+    w.lpeState = m_lpeWave[0].as<lpe::State>();
+    w.partBegin = m_lpeWave[1].as<uint32_t>();
+    w.partCount = m_lpeWave[2].as<uint8_t>();
+    w.partState = m_lpeWave[3].as<lpe::State>();
+    w.partValue = m_lpeWave[4].as<Spectrum>();
+    w.partUnit = m_lpeWave[5].as<Spectrum>();
+    w.partUsed = m_counts.as<uint32_t>() + 4;
+    w.partCapacity = uint32_t(m_lpeRayCapacity * 4);
+    return true;
+}
+
+bool GpuRenderer::reserveMedia(uint32_t paths) {
+    if (paths > m_mediaCapacity) {
+        m_mediaWave.clear();
+        m_mediaWave.resize(15);
+        const size_t n = paths, c = size_t(paths) * kGpuCrossings;
+        const size_t sizes[15] = {n * sizeof(Spectrum), n * sizeof(Spectrum), n * sizeof(Spectrum), n,
+                                  n * sizeof(float),    n * sizeof(uint32_t), n * sizeof(PhaseFunction), n,
+                                  c * sizeof(uint32_t), c * sizeof(float),    c * sizeof(Spectrum),
+                                  n * sizeof(uint32_t), sizeof(uint32_t),     n * sizeof(float),
+                                  n * sizeof(float)};
+        for (int i = 0; i < 15; ++i)
+            if (!m_mediaWave[size_t(i)].reserve(m_device, sizes[i])) {
+                m_mediaCapacity = 0;
+                return false;
+            }
+        m_mediaCapacity = paths;
+    }
+    GpuWave &w = m_wave;
+    w.mediumT = m_mediaWave[0].as<Spectrum>();
+    w.mediumAlpha = m_mediaWave[1].as<Spectrum>();
+    w.lightT = m_mediaWave[2].as<Spectrum>();
+    w.volumeHit = m_mediaWave[3].as<uint8_t>();
+    w.volumeT = m_mediaWave[4].as<float>();
+    w.volumeId = m_mediaWave[5].as<uint32_t>();
+    w.volumePhase = m_mediaWave[6].as<PhaseFunction>();
+    w.crossCount = m_mediaWave[7].as<uint8_t>();
+    w.crossLight = m_mediaWave[8].as<uint32_t>();
+    w.crossT = m_mediaWave[9].as<float>();
+    w.crossAtten = m_mediaWave[10].as<Spectrum>();
+    w.volumeShade = m_mediaWave[11].as<uint32_t>();
+    w.volumeShadeCount = m_mediaWave[12].as<uint32_t>();
+    w.eqA = m_mediaWave[13].as<float>();
+    w.eqB = m_mediaWave[14].as<float>();
+    return true;
+}
+
+bool GpuRenderer::reserveWalks(uint32_t paths) {
+    GpuWalks &k = m_wave.walks;
+    k = GpuWalks{};
+    k.count = m_counts.as<uint32_t>() + 7;
+    if (!m_mayWalk)
+        return true;
+    constexpr int kFields = 16;
+    if (paths > m_walkCapacity) {
+        m_walkWave.clear();
+        m_walkWave.resize(kFields);
+        const size_t n = paths;
+        const size_t sizes[kFields] = {4, 4, 4, 4, 4, 4, sizeof(Vec3f), sizeof(Vec3f), sizeof(SubsurfaceLobe), 1,
+                                       sizeof(Spectrum), sizeof(Vec3f), sizeof(Vec3f), 4, 4, sizeof(Vec2f)};
+        for (int i = 0; i < kFields; ++i)
+            if (!m_walkWave[size_t(i)].reserve(m_device, n * sizes[i])) {
+                m_walkCapacity = 0;
+                return false;
+            }
+        m_walkCapacity = paths;
+    }
+    k.ray = m_walkWave[0].as<uint32_t>();
+    k.path = m_walkWave[1].as<uint32_t>();
+    k.time = m_walkWave[2].as<float>();
+    k.mesh = m_walkWave[3].as<uint32_t>();
+    k.instance = m_walkWave[4].as<uint32_t>();
+    k.hitT = m_walkWave[5].as<float>();
+    k.P = m_walkWave[6].as<Vec3f>();
+    k.ng = m_walkWave[7].as<Vec3f>();
+    k.medium = m_walkWave[8].as<SubsurfaceLobe>();
+    k.exited = m_walkWave[9].as<uint8_t>();
+    k.weight = m_walkWave[10].as<Spectrum>();
+    k.org = m_walkWave[11].as<Vec3f>();
+    k.dir = m_walkWave[12].as<Vec3f>();
+    k.t = m_walkWave[13].as<float>();
+    k.prim = m_walkWave[14].as<uint32_t>();
+    k.uv = m_walkWave[15].as<Vec2f>();
+    k.capacity = m_walkCapacity;
+    k.pixelSeed = m_wave.pixelSeed;
+    k.sampleIndex = m_wave.sampleIndex;
+    k.meshes = m_view.meshes;
+    return true;
+}
+
+bool GpuRenderer::reserveFake(uint32_t paths) {
+    // Per shadow ray its transmittance, length left and a crossing's hit;
+    // two queues of them.
+    const size_t n = size_t(paths) * m_shadowSlots;
+    constexpr int kFields = 6 + 2 * 7;
+    if (n > m_fakeCapacity) {
+        m_fakeWave.clear();
+        m_fakeWave.resize(kFields);
+        const size_t queue[7] = {sizeof(Vec3f), sizeof(Vec3f), sizeof(float), sizeof(float),
+                                 sizeof(uint32_t), sizeof(float), sizeof(uint8_t)};
+        const size_t sizes[6] = {sizeof(Spectrum), sizeof(float), sizeof(uint32_t),
+                                 sizeof(uint32_t), sizeof(Vec2f), sizeof(uint32_t)};
+        for (int i = 0; i < kFields; ++i)
+            if (!m_fakeWave[size_t(i)].reserve(m_device, n * (i < 6 ? sizes[i] : queue[(i - 6) % 7]))) {
+                m_fakeCapacity = 0;
+                return false;
+            }
+        m_fakeCapacity = uint32_t(n);
+    }
+    GpuWave &w = m_wave;
+    w.fakeT = m_fakeWave[0].as<Spectrum>();
+    w.fakeLeft = m_fakeWave[1].as<float>();
+    w.fakeMesh = m_fakeWave[2].as<uint32_t>();
+    w.fakePrim = m_fakeWave[3].as<uint32_t>();
+    w.fakeUv = m_fakeWave[4].as<Vec2f>();
+    w.fakeInstance = m_fakeWave[5].as<uint32_t>();
+    for (int q = 0; q < 2; ++q) {
+        const DeviceBuffer *b = &m_fakeWave[size_t(6 + 7 * q)];
+        GpuRays &r = m_fakeRays[q];
+        r.org = b[0].as<Vec3f>();
+        r.dir = b[1].as<Vec3f>();
+        r.tMax = b[2].as<float>();
+        r.time = b[3].as<float>();
+        r.path = b[4].as<uint32_t>();
+        r.filterSeed = b[5].as<float>();
+        r.rayType = b[6].as<uint8_t>();
+        r.count = m_counts.as<uint32_t>() + 5 + q;
+    }
+    return true;
+}
+
+bool GpuRenderer::launch(CUfunction fn, uint32_t threads, void *args) {
+    if (threads == 0)
+        return true;
+    void *params[] = {args};
+    return m_device.check(m_device.cu().p_cuLaunchKernel(fn, (threads + kBlock - 1) / kBlock, 1, 1, kBlock, 1, 1, 0,
+                                                         m_device.stream(), params, nullptr),
+                          "cuLaunchKernel");
+}
+
+bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &settings, const PixelFilter &filter,
+                             const TileRect &region, uint32_t spp, Film &film, uint64_t &rays,
+                             const LpeTables *lpe, const std::vector<uint32_t> *list, uint64_t lpeGeneration) {
+    if (!m_scene || film.width != m_width || film.height != m_height)
+        return false;
+    Device::Scope scope(m_device);
+    const CudaApi &cu = m_device.cu();
+    const CUstream stream = m_device.stream();
+    if (!m_device.upload(m_camera, &camera, 1) || !m_device.upload(m_filter, &filter, 1))
+        return false;
+    GpuSettings gs;
+    gs.maxDepth = settings.maxDepth;
+    gs.rrStartDepth = settings.rrStartDepth;
+    gs.clampIndirect = settings.clampIndirect;
+    gs.lightStrategy = settings.lightStrategy;
+    gs.limits = settings.limits;
+    gs.globals = ShadeGlobals{settings.frame, settings.fps};
+    gs.textureFilterWidth = settings.textureFilterWidth;
+    UtilityPlane *aoPlane = film.findUtility(UtilityKind::Ao);
+    gs.ao = aoPlane != nullptr;
+    gs.crypto = !film.crypto.empty();
+    // The camera cone of each 32 x 32 tile of the region at its center, as
+    // the CPU's tiles (Renderer::buildTiles, generateCameraRays).
+    const int tilesX = (region.width() + 31) / 32, tilesY = (region.height() + 31) / 32;
+    std::vector<Vec2f> cones(size_t(std::max(tilesX * tilesY, 1)));
+    for (int ty = 0; ty < tilesY; ++ty)
+        for (int tx = 0; tx < tilesX; ++tx) {
+            const int x0 = region.x0 + tx * 32, y0 = region.y0 + ty * 32;
+            const int x1 = std::min(x0 + 32, region.x1), y1 = std::min(y0 + 32, region.y1);
+            Vec2f &c = cones[size_t(ty) * size_t(tilesX) + size_t(tx)];
+            cameraCone(camera,
+                       {float(x0 + (x1 - x0) / 2 + camera.imageOriginX) + 0.5f,
+                        float(y0 + (y1 - y0) / 2 + camera.imageOriginY) + 0.5f},
+                       c.x, c.y);
+        }
+    if (!m_device.upload(m_tileCones, cones))
+        return false;
+    GpuFilm gf;
+    gf.colorSum = m_colorSum.as<Spectrum>();
+    gf.alphaSum = m_alphaSum.as<float>();
+    gf.count = m_count.as<uint32_t>();
+    gf.ao = aoPlane ? m_aoPlane.as<float>() : nullptr;
+    gf.width = film.width;
+    // Light path expressions: the tables, the device film's sums.
+    const bool lpeOn = lpe && film.lpeOutputs > 0;
+    GpuScene view = m_view;
+    if (lpeOn) {
+        if (!uploadLpe(*lpe, lpeGeneration))
+            return false;
+        view.lpe = m_lpe;
+        gf.lpeSum = m_lpeSum.as<Spectrum>();
+        gf.lpeLit = m_lpeLit.as<Spectrum>();
+        gf.pixels = size_t(film.width) * size_t(film.height);
+    }
+    view.useTree = uint8_t(settings.lightTree);
+    // The any-hit filter's view of the scene (filtered meshes only).
+    const GpuFilter hitFilter{view, gs.globals};
+    if (!m_device.upload(m_hitFilter, &hitFilter, 1))
+        return false;
+    const void *anyHit = view.anyFiltered ? m_hitFilter.as<GpuFilter>() : nullptr;
+    const auto setCount = [&](const GpuRays &r, uint32_t n) {
+        return m_device.check(cu.p_cuMemsetD32Async(CUdeviceptr(r.count), n, 1, stream), "cuMemsetD32Async");
+    };
+
+    if (list && !list->empty() && !m_device.upload(m_pixelList, *list))
+        return false;
+    const uint32_t regionPixels = list ? uint32_t(list->size()) : uint32_t(region.pixelCount());
+    const uint32_t wavePixels = std::max(1u, kMaxWavePaths / std::max(1u, spp));
+    for (uint32_t first = 0; first < regionPixels; first += wavePixels) {
+        const uint32_t pixels = std::min(wavePixels, regionPixels - first), paths = pixels * spp;
+        const bool media = m_view.activeVolumeCount > 0;
+        const bool fake = m_scene->anyFakeCaustics();
+        if (!reserveWave(paths) || !reserveWalks(paths) || !setCount(m_rays[0], paths) || (lpeOn && !reserveLpe(paths)) ||
+            (media && !reserveMedia(paths)) || (fake && !reserveFake(paths)))
+            return false;
+        if (!lpeOn)
+            m_wave.lpeState = nullptr, m_wave.partBegin = nullptr;
+        if (!fake)
+            m_wave.fakeT = nullptr;
+        GenerateArgs g;
+        g.wave = m_wave;
+        g.rays = m_rays[0];
+        g.film = gf;
+        g.camera = m_camera.as<Camera>();
+        g.filter = m_filter.as<PixelFilter>();
+        g.x0 = region.x0;
+        g.y0 = region.y0;
+        g.width = region.width();
+        g.firstPixel = first;
+        g.pixels = list ? m_pixelList.as<uint32_t>() : nullptr;
+        g.tileCones = m_tileCones.as<Vec2f>();
+        g.tilesX = tilesX;
+        g.pixelCount = pixels;
+        g.spp = spp;
+        g.seed = settings.seed;
+        g.lpeStart = lpeOn ? lpe->program.start : lpe::State(0);
+        g.filterSeeds = view.anyFiltered;
+        if (!launch(m_generate, paths, &g))
+            return false;
+        // Per depth the queue lengths come back after shading (12 bytes): the
+        // launches cover the rays there are, and the wave ends when none are
+        // left (deviation from D8: launches over the capacity cost 0.3 ms per
+        // empty depth, most of a pass at the reference scenes' path lengths).
+        int cur = 0;
+        uint32_t count = paths;
+        for (uint32_t depth = 0; depth <= settings.maxDepth && count > 0; ++depth) {
+            const GpuRays &r = m_rays[cur], &next = m_rays[cur ^ 1];
+            TraceParams closest;
+            closest.org = r.org;
+            closest.dir = r.dir;
+            closest.tMax = r.tMax;
+            closest.time = r.time;
+            closest.count = r.count;
+            closest.tMin = m_view.tolerance;
+            closest.mesh = m_wave.hitMesh;
+            closest.prim = m_wave.hitPrim;
+            closest.uv = m_wave.hitUv;
+            closest.instance = m_wave.hitInstance;
+            closest.filter = anyHit;
+            closest.seed = r.filterSeed;
+            closest.rayType = r.rayType;
+            closest.depth = depth;
+            if (!m_accel.launch(Raygen::Closest, closest, count) || !setCount(next, 0) ||
+                !setCount(m_wave.shadow, 0) || !setCount(m_wave.aoRays, 0) ||
+                !m_device.check(cu.p_cuMemsetD32Async(CUdeviceptr(m_wave.walks.count), 0, 1, stream),
+                                "cuMemsetD32Async") ||
+                (lpeOn && !m_device.check(cu.p_cuMemsetD32Async(CUdeviceptr(m_wave.partUsed), 0, 1, stream),
+                                          "cuMemsetD32Async")))
+                return false;
+            ShadeArgs s;
+            s.scene = view;
+            s.film = gf;
+            s.settings = gs;
+            s.wave = m_wave;
+            s.rays = r;
+            s.next = next;
+            s.depth = depth;
+            // Volumes: the medium along each ray first, the scattering events
+            // after the surfaces (both append shadow rays and continuations).
+            if (media && (!m_device.check(cu.p_cuMemsetD32Async(CUdeviceptr(m_wave.volumeShadeCount), 0, 1, stream),
+                                          "cuMemsetD32Async") ||
+                          !launch(m_media, count, &s)))
+                return false;
+            uint32_t counts[8] = {};
+            if (!launch(m_shade, count, &s) || (media && !launch(m_volumes, count, &s)) ||
+                !m_device.download(counts, m_counts.ptr(), sizeof(counts)))
+                return false;
+            // Subsurface walks (pass C''): run through their meshes, then
+            // their exits shaded (light samples and continuations: the
+            // counts again). Walks where none were expected end their paths
+            // in this pass; the next makes room.
+            const uint32_t walks = counts[7];
+            const bool walked = walks > 0 && m_wave.walks.capacity > 0;
+            if (walks > 0 && !walked) {
+                std::fprintf(stderr, "[Nova] XPU: subsurface walks from a material not scanned for them\n");
+                m_mayWalk = true;
+            }
+            if (walked) {
+                GpuWalks wk = m_wave.walks;
+                wk.depth = depth;
+                TraceParams walk;
+                walk.count = m_wave.walks.count;
+                if (!m_device.upload(m_walkParams, &wk, 1))
+                    return false;
+                walk.walks = m_walkParams.as<GpuWalks>();
+                if (!m_accel.launch(Raygen::Walk, walk, walks) || !launch(m_walkExit, walks, &s) ||
+                    !m_device.download(counts, m_counts.ptr(), sizeof(counts)))
+                    return false;
+                rays += walks;
+            }
+            const uint32_t shadows = counts[2];
+            rays += uint64_t(count) + shadows;
+            TraceParams occluded;
+            occluded.org = m_wave.shadow.org;
+            occluded.dir = m_wave.shadow.dir;
+            occluded.tMax = m_wave.shadow.tMax;
+            occluded.time = m_wave.shadow.time;
+            occluded.count = m_wave.shadow.count;
+            occluded.tMin = m_view.tolerance;
+            occluded.occluded = m_wave.occluded;
+            occluded.category = m_wave.shadowCategory;
+            occluded.filter = anyHit;
+            occluded.seed = m_wave.shadow.filterSeed;
+            occluded.depth = depth;
+            occluded.occlusion = 1;
+            ShadowArgs sh;
+            sh.scene = view;
+            sh.film = gf;
+            sh.settings = gs;
+            sh.wave = m_wave;
+            sh.depth = depth;
+            if (!m_accel.launch(Raygen::Occluded, occluded, shadows))
+                return false;
+            if (fake && shadows > 0) {
+                // Fake caustics (fakeCausticTransmittance): the unoccluded
+                // rays cross the fake-caustic surfaces in front of the light,
+                // the closest one per crossing (at most 8), as long as rays
+                // are left (their count comes back).
+                ShadeArgs fs = s;
+                fs.next = m_fakeRays[0];
+                if (!setCount(fs.next, 0) || !launch(m_fakeStart, shadows, &fs))
+                    return false;
+                uint32_t left = shadows;
+                for (int crossing = 0, c = 0; crossing < 8 && left > 0; ++crossing, c ^= 1) {
+                    const GpuRays &q = m_fakeRays[c];
+                    TraceParams cross;
+                    cross.org = q.org;
+                    cross.dir = q.dir;
+                    cross.tMax = q.tMax;
+                    cross.time = q.time;
+                    cross.count = q.count;
+                    cross.tMin = m_view.tolerance;
+                    cross.mesh = m_wave.fakeMesh;
+                    cross.prim = m_wave.fakePrim;
+                    cross.uv = m_wave.fakeUv;
+                    cross.instance = m_wave.fakeInstance;
+                    cross.filter = anyHit;
+                    cross.seed = q.filterSeed;
+                    cross.rayType = q.rayType;
+                    cross.depth = depth;
+                    fs.rays = q;
+                    fs.next = m_fakeRays[c ^ 1];
+                    if (!m_accel.launch(Raygen::Closest, cross, left) || !setCount(fs.next, 0) ||
+                        !launch(m_fakeStep, left, &fs) || !m_device.download(&left, CUdeviceptr(fs.next.count), 4))
+                        return false;
+                    rays += left;
+                }
+            }
+            if (!launch(m_shadow, shadows, &sh))
+                return false;
+            if (view.eqTable.count > 0) { // the equiangular samples' shadow rays: a second run
+                sh.slot = 1;
+                if (!launch(m_shadow, shadows, &sh))
+                    return false;
+            }
+            if (walked) { // the walk exits' shadow rays: a third run
+                sh.slot = 2;
+                if (!launch(m_shadow, shadows, &sh))
+                    return false;
+            }
+            if (counts[3] > 0) { // the ambient occlusion AOV's rays (depth 0)
+                TraceParams aoQuery;
+                aoQuery.org = m_wave.aoRays.org;
+                aoQuery.dir = m_wave.aoRays.dir;
+                aoQuery.tMax = m_wave.aoRays.tMax;
+                aoQuery.time = m_wave.aoRays.time;
+                aoQuery.count = m_wave.aoRays.count;
+                aoQuery.tMin = m_view.tolerance;
+                aoQuery.occluded = m_wave.aoOccluded;
+                aoQuery.filter = anyHit;
+                aoQuery.seed = m_wave.aoRays.filterSeed;
+                aoQuery.depth = depth;
+                aoQuery.occlusion = 1;
+                aoQuery.skipFakeCaustics = 0; // AO: fake-caustic objects block it too (launch.h)
+                AoArgs ao;
+                ao.wave = m_wave;
+                if (!m_accel.launch(Raygen::Occluded, aoQuery, counts[3]) || !launch(m_ao, counts[3], &ao))
+                    return false;
+                rays += counts[3];
+            }
+            cur ^= 1;
+            count = counts[cur];
+        }
+        FlushArgs f;
+        f.wave = m_wave;
+        f.film = gf;
+        f.pixelCount = pixels;
+        f.spp = spp;
+        if (!launch(m_flush, pixels, &f))
+            return false;
+        if (gs.crypto) { // the camera hits' ids, accumulated on the host (D9)
+            m_cryptoMesh.resize(paths);
+            m_cryptoPrim.resize(paths);
+            if (!m_device.download(m_cryptoMesh.data(), CUdeviceptr(m_wave.cryptoMesh), paths * sizeof(uint32_t)) ||
+                !m_device.download(m_cryptoPrim.data(), CUdeviceptr(m_wave.cryptoPrim), paths * sizeof(uint32_t)))
+                return false;
+            for (uint32_t slot = 0; slot < paths; ++slot) {
+                if (m_cryptoMesh[slot] == kInvalidId)
+                    continue;
+                const uint32_t pixel = first + slot / spp;
+                const int x = region.x0 + int(pixel % uint32_t(region.width())), y = region.y0 + int(pixel / uint32_t(region.width()));
+                accumulateCrypto(*m_scene, film,
+                                 list ? (*list)[pixel] : uint32_t(y) * uint32_t(film.width) + uint32_t(x),
+                                 m_cryptoMesh[slot], m_cryptoPrim[slot]);
+            }
+        }
+    }
+
+    // The host's counts as the flush made them (each rendered pixel spp
+    // more); the sums stay on the device until downloadFilm().
+    if (list) {
+        for (uint32_t p : *list)
+            film.count[p] += spp;
+    } else {
+        for (int y = region.y0; y < region.y1; ++y) {
+            uint32_t *row = film.count.data() + size_t(y) * size_t(film.width);
+            for (int x = region.x0; x < region.x1; ++x)
+                row[x] += spp;
+        }
+    }
+    return m_device.sync();
+}
+
+bool GpuRenderer::downloadFilm(Film &film) {
+    if (film.width != m_width || film.height != m_height)
+        return false;
+    Device::Scope scope(m_device);
+    const size_t n = size_t(film.width) * size_t(film.height);
+    UtilityPlane *ao = film.findUtility(UtilityKind::Ao);
+    // The device buffers keep a larger allocation from an earlier film (the
+    // current sums are their prefix, setFilm), so their capacity is tested.
+    const bool lpe = !film.lpeSum.empty() && m_lpeSum.size() >= film.lpeSum.size() * sizeof(Spectrum) &&
+                     m_lpeLit.size() >= film.lpeLit.size() * sizeof(Spectrum);
+    return m_device.download(film.colorSum.data(), m_colorSum.ptr(), n * sizeof(Spectrum)) &&
+           m_device.download(film.alphaSum.data(), m_alphaSum.ptr(), n * sizeof(float)) &&
+           (!ao || m_aoPlane.size() < n * sizeof(float) ||
+            m_device.download(ao->data.data(), m_aoPlane.ptr(), n * sizeof(float))) &&
+           (!lpe || (m_device.download(film.lpeSum.data(), m_lpeSum.ptr(), film.lpeSum.size() * sizeof(Spectrum)) &&
+                     m_device.download(film.lpeLit.data(), m_lpeLit.ptr(), film.lpeLit.size() * sizeof(Spectrum))));
+}
+
+} // namespace nova::gpu

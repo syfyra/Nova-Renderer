@@ -1,0 +1,24 @@
+{
+  "scene": "cornell_rect",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/cornell_rect.usda": "d72d4674e0bdaa5c35efc4a183e520f0b9346849",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/cornell_rect.exr",
+  "sigma": "images/cornell_rect.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.060683,
+    "flip_test_pair": 0.095373,
+    "relmse": 0.001571,
+    "global_z": [
+      0.612,
+      -0.616,
+      -0.137,
+      0.0
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./basic.usda@]
+)
+
+# basic.usda rendered through a RenderSettings prim with a data window: only
+# the pixels inside dataWindowNDC are rendered, and they must match the same
+# pixels of the full-frame render exactly.
+def Scope "Render"
+{
+    def RenderSettings "crop"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (640, 427)
+        float4 dataWindowNDC = (0.25, 0.3, 0.7, 0.8)
+        int nova:samples = 16
+    }
+
+    def RenderSettings "full"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (640, 427)
+        int nova:samples = 16
+    }
+}

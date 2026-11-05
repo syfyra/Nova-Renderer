@@ -1,0 +1,235 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Cryptomattes (docs/design/M6.md D10, M6.5) with Karma's render vars. The
+# names follow Karma's rules (docs/research/m6/cryptomatte.md 5):
+#   objects:   /World/plain, /World/faces, /World/unbound; point-instancer
+#              instances -> /World/inst/protos/pebble and .../rock; native
+#              instances of </_proto> -> /World/refA/ball for both refA and refB;
+#   materials: /World/mtl/red, /World/mtl/blue (per face on /World/faces),
+#              defaultshader (unbound);
+#   asset_name (constant string): alpha, beta; piece (uniform int): 42, -3.
+# tests/husk/check_aovs.py checks the manifests, ids and coverage.
+
+class "_proto"
+{
+    def Mesh "ball"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-0.4, -0.4, 0), (0.4, -0.4, 0), (0.4, 0.4, 0), (-0.4, 0.4, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+}
+
+def Xform "World"
+{
+    def Scope "mtl"
+    {
+        def Material "red"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/red/s.outputs:out>
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.8, 0.1, 0.1)
+                token outputs:out
+            }
+        }
+        def Material "blue"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/blue/s.outputs:out>
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.1, 0.1, 0.8)
+                token outputs:out
+            }
+        }
+    }
+
+    def Mesh "plain" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-3.8, 0.4, 0), (-2.4, 0.4, 0), (-2.4, 1.8, 0), (-3.8, 1.8, 0)]
+        uniform token subdivisionScheme = "none"
+        string primvars:asset_name = "alpha" (interpolation = "constant")
+        rel material:binding = </World/mtl/red>
+    }
+
+    def Mesh "faces" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 4, 3, 1, 2, 5, 4]
+        point3f[] points = [(-2.0, 0.4, 0), (-1.2, 0.4, 0), (-0.4, 0.4, 0), (-2.0, 1.8, 0), (-1.2, 1.8, 0), (-0.4, 1.8, 0)]
+        uniform token subdivisionScheme = "none"
+        string primvars:asset_name = "beta" (interpolation = "constant")
+        int[] primvars:piece = [42, -3] (interpolation = "uniform")
+        rel material:binding = </World/mtl/red>
+        uniform token subsetFamily:materialBind:familyType = "nonOverlapping"
+        def GeomSubset "right" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [1]
+            rel material:binding = </World/mtl/blue>
+        }
+    }
+
+    def Mesh "unbound"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0.0, 0.4, 0), (1.4, 0.4, 0), (1.4, 1.8, 0), (0.0, 1.8, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def PointInstancer "inst"
+    {
+        rel prototypes = [</World/inst/protos/pebble>, </World/inst/protos/rock>]
+        int[] protoIndices = [0, 1, 0]
+        point3f[] positions = [(-3.0, -1.2, 0), (-1.6, -1.2, 0), (-0.2, -1.2, 0)]
+        def Scope "protos"
+        {
+            def Mesh "pebble"
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(-0.5, -0.5, 0), (0.5, -0.5, 0), (0.5, 0.5, 0), (-0.5, 0.5, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+            def Mesh "rock"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(-0.5, -0.5, 0), (0.5, -0.5, 0), (0, 0.5, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def Xform "refA" (
+        instanceable = true
+        prepend references = </_proto>
+    )
+    {
+        double3 xformOp:translate = (1.6, -1.2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "refB" (
+        instanceable = true
+        prepend references = </_proto>
+    )
+    {
+        double3 xformOp:translate = (3.0, -1.2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 20.25
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "s"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 90)
+        rel products = </Render/p>
+        int nova:samples = 16
+    }
+    def RenderProduct "p"
+    {
+        token productName = "crypto.exr"
+        rel orderedVars = [</Render/Vars/C>, </Render/Vars/CryptoPrimitives>, </Render/Vars/CryptoMaterials>,
+                           </Render/Vars/CryptoAsset>, </Render/Vars/CryptoPiece>]
+    }
+    def Scope "Vars"
+    {
+        def RenderVar "C" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:husk:format = "color4f"
+            string driver:parameters:aov:husk:name = "C"
+        }
+        def RenderVar "CryptoPrimitives" (
+            prepend apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float3"
+            token driver:parameters:aov:husk:format = "float3"
+            bool driver:parameters:aov:husk:multiSampled = 0
+            string driver:parameters:aov:husk:name = "CryptoPrimitives"
+            bool driver:parameters:aov:karma:cryptomatte = 1
+            int driver:parameters:aov:karma:cryptomatterank = 6
+            string driver:parameters:aov:karma:cryptomattesidecar = ""
+            uniform string sourceName = "__name"
+            uniform token sourceType = "primvar"
+        }
+        def RenderVar "CryptoMaterials" (
+            prepend apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float3"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "CryptoMaterials"
+            bool driver:parameters:aov:karma:cryptomatte = 1
+            int driver:parameters:aov:karma:cryptomatterank = 6
+            string driver:parameters:aov:karma:cryptomattesidecar = "crypto_materials.json"
+            uniform string sourceName = "__materialname"
+            uniform token sourceType = "primvar"
+        }
+        def RenderVar "CryptoAsset" (
+            prepend apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float3"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "CryptoAsset"
+            bool driver:parameters:aov:karma:cryptomatte = 1
+            int driver:parameters:aov:karma:cryptomatterank = 3
+            uniform string sourceName = "asset_name"
+            uniform token sourceType = "primvar"
+        }
+        def RenderVar "CryptoPiece" (
+            prepend apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "float3"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "CryptoPiece"
+            bool driver:parameters:aov:cryptomatte = 1
+            int driver:parameters:aov:cryptomatterank = 2
+            uniform string sourceName = "piece"
+            uniform token sourceType = "primvar"
+        }
+    }
+}

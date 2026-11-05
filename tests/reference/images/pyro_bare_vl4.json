@@ -1,0 +1,26 @@
+{
+  "scene": "pyro_bare_vl4",
+  "created": "2026-11-03",
+  "inputs": {
+    "scenes/pyro_bare_vl4.usda": "9b41c97582b03820deb0e3d2e3b4bd54a9c20d83",
+    "scenes/pyro_bare.usda": "a24559119c64e9157fcb2a11f6006e6ded154145",
+    "../data/volumes/pyro.vdb": "18512f6610db597dc08a2c7017fdc05e9d012267",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/pyro_bare_vl4.exr",
+  "sigma": "images/pyro_bare_vl4.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.059058,
+    "flip_test_pair": 0.032744,
+    "relmse": 0.000143,
+    "global_z": [
+      1.005,
+      1.005,
+      1.005,
+      -0.894
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "scene": "disp_textured",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/disp_textured.usda": "a600a867674ec653b9e6edc62f6927554de0b025",
+    "scenes/assets/sphere_st.usda": "e1a1a3ae636cea8cbb70e11bcd9779b67a1c3a89",
+    "scenes/assets/height_bumps.exr": "07973045b77e053dca8d5a0bc3d232e4343c511a",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/disp_textured.exr",
+  "sigma": "images/disp_textured.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.055707,
+    "flip_test_pair": 0.026821,
+    "relmse": 0.000236,
+    "global_z": [
+      0.197,
+      -0.202,
+      -0.239,
+      -0.6
+    ]
+  }
+}

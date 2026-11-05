@@ -1,0 +1,10 @@
+{
+    "HdVolumeProbeRendererPlugin" : {
+        "valid" : true,
+        "menulabel" : "VolumeProbe",
+        "menupriority" : 1,
+        "aovsupport" : true,
+        "viewportrenderer" : true,
+        "husk.default_output" : "volumeprobe.exr"
+    }
+}

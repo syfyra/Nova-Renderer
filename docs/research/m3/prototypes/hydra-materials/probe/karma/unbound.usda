@@ -1,0 +1,316 @@
+#usda 1.0
+(
+    upAxis = "Y"
+    metersPerUnit = 1
+)
+
+def Mesh "unbound"
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 3, 2, 1]
+    point3f[] points = [(-10, 0, -10), (10, 0, -10), (10, 0, 10), (-10, 0, 10)]
+    uniform token subdivisionScheme = "none"
+    uniform bool doubleSided = 1
+    color3f[] primvars:displayColor = [(0.5, 0.25, 0.125)] (interpolation = "constant")
+}
+
+def Mesh "bound_defaults" (
+    prepend apiSchemas = ["MaterialBindingAPI"]
+)
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 3, 2, 1]
+    point3f[] points = [(-10, 0.01, 20), (10, 0.01, 20), (10, 0.01, 40), (-10, 0.01, 40)]
+    uniform token subdivisionScheme = "none"
+    uniform bool doubleSided = 1
+    color3f[] primvars:displayColor = [(0.5, 0.25, 0.125)] (interpolation = "constant")
+    rel material:binding = </mat/both>
+}
+
+def Scope "mat"
+{
+    def Material "both"
+    {
+        token outputs:kma:surface.connect = </mat/both/red.outputs:out>
+        token outputs:mtlx:surface.connect = </mat/both/green.outputs:out>
+        token outputs:surface.connect = </mat/both/blue.outputs:surface>
+        def Shader "red"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color = (1, 0, 0)
+            token outputs:out
+        }
+        def Shader "green"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color = (0, 1, 0)
+            token outputs:out
+        }
+        def Shader "blue"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:emissiveColor = (0, 0, 1)
+            color3f inputs:diffuseColor = (0, 0, 0)
+            token outputs:surface
+        }
+    }
+}
+
+def Mesh "lambert" (
+    prepend apiSchemas = ["MaterialBindingAPI"]
+)
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 3, 2, 1]
+    point3f[] points = [(40, 0, -10), (60, 0, -10), (60, 0, 10), (40, 0, 10)]
+    uniform token subdivisionScheme = "none"
+    uniform bool doubleSided = 1
+    color3f[] primvars:displayColor = [(0.5, 0.25, 0.125)] (interpolation = "constant")
+    rel material:binding = </mat2/lambert>
+}
+
+def Mesh "nocolor"
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 3, 2, 1]
+    point3f[] points = [(-60, 0, -10), (-40, 0, -10), (-40, 0, 10), (-60, 0, 10)]
+    uniform token subdivisionScheme = "none"
+    uniform bool doubleSided = 1
+}
+
+def Scope "mat2"
+{
+    def Material "preview"
+    {
+        token outputs:surface.connect = </mat2/preview/s.outputs:surface>
+        def Shader "s"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.5, 0.25, 0.125)
+            token outputs:surface
+        }
+    }
+    def Material "previewdef"
+    {
+        token outputs:surface.connect = </mat2/previewdef/s.outputs:surface>
+        def Shader "s"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            token outputs:surface
+        }
+    }
+    def Material "lambert"
+    {
+        token outputs:mtlx:surface.connect = </mat2/lambert/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color.connect = </mat2/lambert/primvar.outputs:out>
+            float inputs:specular = 0
+            token outputs:out
+        }
+        def Shader "primvar"
+        {
+            uniform token info:id = "ND_geompropvalue_color3"
+            string inputs:geomprop = "displayColor"
+            color3f inputs:default = (1, 0, 1)
+            color3f outputs:out
+        }
+    }
+    def Material "ssdefault"
+    {
+        token outputs:mtlx:surface.connect = </mat2/ssdefault/surface.outputs:out>
+        def Shader "surface"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            token outputs:out
+        }
+    }
+}
+
+def Mesh "ssdefault" (
+    prepend apiSchemas = ["MaterialBindingAPI"]
+)
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 3, 2, 1]
+    point3f[] points = [(-10, 0, 40), (10, 0, 40), (10, 0, 60), (-10, 0, 60)]
+    uniform token subdivisionScheme = "none"
+    uniform bool doubleSided = 1
+    rel material:binding = </mat2/ssdefault>
+}
+
+def Mesh "preview" (
+    prepend apiSchemas = ["MaterialBindingAPI"]
+)
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 3, 2, 1]
+    point3f[] points = [(40, 0, 40), (60, 0, 40), (60, 0, 60), (40, 0, 60)]
+    uniform token subdivisionScheme = "none"
+    uniform bool doubleSided = 1
+    rel material:binding = </mat2/preview>
+}
+def Mesh "previewdef" (
+    prepend apiSchemas = ["MaterialBindingAPI"]
+)
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 3, 2, 1]
+    point3f[] points = [(-60, 0, 40), (-40, 0, 40), (-40, 0, 60), (-60, 0, 60)]
+    uniform token subdivisionScheme = "none"
+    uniform bool doubleSided = 1
+    color3f[] primvars:displayColor = [(0.5, 0.25, 0.125)] (interpolation = "constant")
+    rel material:binding = </mat2/previewdef>
+}
+
+def DomeLight "dome"
+{
+    float inputs:intensity = 1
+}
+
+def Camera "cam_down"
+{
+    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 5, 0, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform"]
+    float focalLength = 50
+    float horizontalAperture = 20
+    float verticalAperture = 20
+    float fStop = 0
+}
+
+def Camera "cam_lambert"
+{
+    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (50, 5, 0, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform"]
+    float focalLength = 50
+    float horizontalAperture = 20
+    float verticalAperture = 20
+    float fStop = 0
+}
+
+def Camera "cam_nocolor"
+{
+    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (-50, 5, 0, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform"]
+    float focalLength = 50
+    float horizontalAperture = 20
+    float verticalAperture = 20
+    float fStop = 0
+}
+
+def Camera "cam_ssdefault"
+{
+    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 5, 50, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform"]
+    float focalLength = 50
+    float horizontalAperture = 20
+    float verticalAperture = 20
+    float fStop = 0
+}
+
+def Camera "cam_preview"
+{
+    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (50, 5, 50, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform"]
+    float focalLength = 50
+    float horizontalAperture = 20
+    float verticalAperture = 20
+    float fStop = 0
+}
+
+def Camera "cam_previewdef"
+{
+    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (-50, 5, 50, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform"]
+    float focalLength = 50
+    float horizontalAperture = 20
+    float verticalAperture = 20
+    float fStop = 0
+}
+
+def Camera "cam_bound"
+{
+    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 5, 30, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform"]
+    float focalLength = 50
+    float horizontalAperture = 20
+    float verticalAperture = 20
+    float fStop = 0
+}
+
+def Scope "Render"
+{
+    def RenderSettings "unbound"
+    {
+        rel camera = </cam_down>
+        int2 resolution = (16, 16)
+        rel products = </Render/prod>
+        int karma:global:pathtracedsamples = 256
+        int karma:object:diffuselimit = 0
+    }
+    def RenderSettings "lambert"
+    {
+        rel camera = </cam_lambert>
+        int2 resolution = (16, 16)
+        rel products = </Render/prod>
+        int karma:global:pathtracedsamples = 256
+        int karma:object:diffuselimit = 0
+    }
+    def RenderSettings "nocolor"
+    {
+        rel camera = </cam_nocolor>
+        int2 resolution = (16, 16)
+        rel products = </Render/prod>
+        int karma:global:pathtracedsamples = 256
+        int karma:object:diffuselimit = 0
+    }
+    def RenderSettings "ssdefault"
+    {
+        rel camera = </cam_ssdefault>
+        int2 resolution = (16, 16)
+        rel products = </Render/prod>
+        int karma:global:pathtracedsamples = 256
+        int karma:object:diffuselimit = 0
+    }
+    def RenderSettings "preview"
+    {
+        rel camera = </cam_preview>
+        int2 resolution = (16, 16)
+        rel products = </Render/prod>
+        int karma:global:pathtracedsamples = 256
+        int karma:object:diffuselimit = 0
+    }
+    def RenderSettings "previewdef"
+    {
+        rel camera = </cam_previewdef>
+        int2 resolution = (16, 16)
+        rel products = </Render/prod>
+        int karma:global:pathtracedsamples = 256
+        int karma:object:diffuselimit = 0
+    }
+    def RenderSettings "bound"
+    {
+        rel camera = </cam_bound>
+        int2 resolution = (16, 16)
+        rel products = </Render/prod>
+        int karma:global:pathtracedsamples = 64
+    }
+    def RenderProduct "prod"
+    {
+        token productName = "karma.exr"
+        rel orderedVars = </Render/Vars/C>
+    }
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+    }
+}

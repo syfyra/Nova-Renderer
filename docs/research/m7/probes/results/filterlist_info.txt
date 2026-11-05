@@ -1,0 +1,40 @@
+filter list node: /stage/denoise_optix/filterlist1 copnet_filterlist Lop
+filter list parms: [('primaryscope', 'C color'), ('depthscope', 'depth'), ('albedoscope', 'albedo'), ('normalscope', 'N'), ('tabmenufilter', 'Filters/Post/*')]
+filter list node types (COP, containing denoise): ['denoiseai', 'denoisetvd']
+denoiseai type: denoiseai inputs: ('source', 'normal', 'albedo', 'motionvec', 'prevframe')
+  parm denoiser                 = 'oidn'       
+  parm auxareclean              = 0            
+  parm prefilteraux             = 0            
+  parm onlycpu                  = 0            
+outputs in list: []
+/Render Scope []
+/Render/ImageFilter Scope []
+/Render/ImageFilter/denoise_optix HoudiniImageFilterList []
+    string albedoscope = 'albedo'
+    string[] AOVlist = Vt.StringArray(2, ('C', 'color'))
+    token AOVs = 'color'
+    string depthscope = 'depth'
+    string normalscope = 'N'
+    rel orderedFilters = ['/Render/ImageFilter/denoise_optix/denoiseai1']
+/Render/ImageFilter/denoise_optix/denoiseai1 HoudiniImageFilter []
+    bool bypass = False
+    bool filterparm:auxareclean = False
+    string filterparm:denoiser = 'optix'
+    bool filterparm:onlycpu = False
+    bool filterparm:prefilteraux = False
+    string type = 'denoiseai'
+krs cop_createaovs = 1
+krs attr husk:default_delegate = 'BRAY_HdKarma'
+krs attr husk:scene_lights = True
+krs attr husk:scene_materials = True
+krs attr karma:global:imagefilter = '[]'
+krs attr karma:global:pixelfilter = 'gauss'
+krs attr karma:global:pixelfilterscale = 1.0
+krs rel camera = ['/cameras/camera1']
+krs rel husk:orderedImageFilters = ['/Render/ImageFilter/denoise_optix']
+krs rel products = ['/Render/krs/Products/renderproduct']
+var /Render/krs/Vars/beauty C.*[LO] C
+var /Render/krs/Vars/_internal_cop_filterlist_depth ray:hitPz depth
+var /Render/krs/Vars/_internal_cop_filterlist_albedo CDA albedo
+var /Render/krs/Vars/_internal_cop_filterlist_N ray:hitN N
+product /Render/krs/Products/renderproduct ['/Render/krs/Vars/beauty', '/Render/krs/Vars/_internal_cop_filterlist_depth', '/Render/krs/Vars/_internal_cop_filterlist_albedo', '/Render/krs/Vars/_internal_cop_filterlist_N']

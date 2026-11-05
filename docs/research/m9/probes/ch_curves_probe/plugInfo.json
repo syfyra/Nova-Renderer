@@ -1,0 +1,20 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "HdCurvesProbeRendererPlugin": {
+                        "bases": ["HdRendererPlugin"],
+                        "displayName": "CurvesProbe",
+                        "priority": 0
+                    }
+                }
+            },
+            "LibraryPath": "../hdCurvesProbe.dll",
+            "Name": "hdCurvesProbe",
+            "ResourcePath": "resources",
+            "Root": "..",
+            "Type": "library"
+        }
+    ]
+}

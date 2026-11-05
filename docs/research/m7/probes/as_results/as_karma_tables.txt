@@ -1,0 +1,44 @@
+
+karma_cornell_rect.json (uniform fit: relMSE ~ rays^-1.09)
+| run | rays/px | render s | relMSE | equal-error uniform rays/px | saving rays | saving time |
+|---|---|---|---|---|---|---|
+| uniform 32 | 32 | 0.47 | 6.74e-03 | | | |
+| uniform 64 | 64 | 0.80 | 3.37e-03 | | | |
+| uniform 128 | 128 | 1.39 | 1.47e-03 | | | |
+| uniform 256 | 256 | 2.74 | 6.90e-04 | | | |
+| uniform 512 | 512 | 5.28 | 3.28e-04 | | | |
+| uniform 1024 | 1024 | 10.32 | 1.58e-04 | | | |
+| variance 0.01 (max 1024) | 496 | 5.71 | 3.72e-04 | 459 | 0.92x | 0.84x |
+| variance 0.005 (max 1024) | 887 | 9.14 | 1.78e-04 | 901 | 1.02x | 0.96x |
+| variance 0.0025 (max 1024) | 1012 | 10.44 | 1.59e-04 | 1002 | 0.99x | 0.93x |
+| variance 0.001 (max 1024) | 1022 | 10.35 | 1.58e-04 | 1008 | 0.99x | 0.94x |
+
+karma_mtl_glass.json (uniform fit: relMSE ~ rays^-1.01)
+| run | rays/px | render s | relMSE | equal-error uniform rays/px | saving rays | saving time |
+|---|---|---|---|---|---|---|
+| uniform 64 | 64 | 1.01 | 9.32e-03 | | | |
+| uniform 256 | 256 | 1.87 | 2.33e-03 | | | |
+| uniform 1024 | 1024 | 5.26 | 5.67e-04 | | | |
+| variance 0.02 (max 1024) | 78 | 2.33 | 7.29e-04 | 801 | 10.21x | 1.84x |
+| variance 0.01 (max 1024) | 145 | 3.16 | 6.35e-04 | 919 | 6.32x | 1.48x |
+| variance 0.005 (max 1024) | 240 | 4.18 | 5.91e-04 | 987 | 4.11x | 1.17x |
+
+karma_limits_caustics.json (uniform fit: relMSE ~ rays^-1.17)
+| run | rays/px | render s | relMSE | equal-error uniform rays/px | saving rays | saving time |
+|---|---|---|---|---|---|---|
+| uniform 64 | 64 | 0.95 | 1.04e-03 | | | |
+| uniform 256 | 256 | 2.74 | 1.99e-04 | | | |
+| uniform 1024 | 1024 | 9.76 | 3.99e-05 | | | |
+| variance 0.02 (max 1024) | 74 | 1.55 | 8.25e-04 | 77 | 1.04x | 0.69x |
+| variance 0.01 (max 1024) | 224 | 4.17 | 2.66e-04 | 203 | 0.90x | 0.58x |
+| variance 0.005 (max 1024) | 487 | 6.63 | 7.95e-05 | 566 | 1.16x | 0.86x |
+
+karma_dome_sky.json (uniform fit: relMSE ~ rays^-1.46)
+| run | rays/px | render s | relMSE | equal-error uniform rays/px | saving rays | saving time |
+|---|---|---|---|---|---|---|
+| uniform 64 | 64 | 0.46 | 1.36e-01 | | | |
+| uniform 256 | 256 | 1.22 | 1.53e-02 | | | |
+| uniform 1024 | 1024 | 4.42 | 2.37e-03 | | | |
+| variance 0.02 (max 1024) | 735 | 4.18 | 2.42e-03 | 973 | 1.32x | 0.97x |
+| variance 0.01 (max 1024) | 746 | 4.20 | 2.38e-03 | 986 | 1.32x | 0.98x |
+| variance 0.005 (max 1024) | 758 | 4.18 | 2.37e-03 | 988 | 1.30x | 0.99x |

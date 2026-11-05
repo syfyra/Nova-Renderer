@@ -1,0 +1,56 @@
+#usda 1.0
+(
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+class "_class_MtlRefSettings"
+{
+    # Nova (M3)
+    float nova:clampIndirect = 0
+    int nova:maxDepth = 64
+    token nova:pixelFilter = "gauss"
+    float nova:pixelFilterScale = 1
+
+    # Karma CPU: same estimator expectation as an unbiased path tracer
+    token karma:global:convergence_mode = "Path Traced"
+    string karma:global:pixeloracle = '["uniform",{}]'
+    string karma:global:pixelfilter = "gauss"
+    float karma:global:pixelfilterscale = 1
+    float karma:global:colorlimit = 1e9
+    float karma:global:colorlimitindirect = 1e9
+    bool karma:global:colorlimitindlinked = 1
+    bool karma:global:constrainmaxrough = 0
+    float karma:object:diffuselimit = 16
+    float karma:object:reflectlimit = 16
+    float karma:object:refractlimit = 16
+    float karma:object:ssslimit = 16
+    bool karma:object:causticsenable = 1
+    float karma:object:causticsroughnessclamp = 0
+    bool karma:object:internalreflectenable = 1
+    bool karma:object:thinwallatrefractlimit = 0
+    rel products = [</Render/Products/beauty>]
+}
+
+def Scope "Render"
+{
+    def Scope "Products"
+    {
+        def RenderProduct "beauty"
+        {
+            token productName = "beauty.exr"
+            rel orderedVars = [</Render/Vars/C>]
+        }
+    }
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+    }
+}

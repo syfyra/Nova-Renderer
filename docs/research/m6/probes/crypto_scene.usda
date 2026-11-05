@@ -1,0 +1,117 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 1
+    endTimeCode = 1
+)
+
+# Small cryptomatte probe scene: two spheres and a cube with two materials,
+# a component-kind asset, a point instancer with two prototypes and a string
+# primvar for primvar cryptomattes.
+def Xform "World"
+{
+    def Camera "cam"
+    {
+        float focalLength = 50
+        float horizontalAperture = 41.4214
+        float verticalAperture = 23.2995
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (0, 0.5, 12)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def DomeLight "dome"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Scope "mtl"
+    {
+        def Material "red"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/red/surf.outputs:out>
+            def Shader "surf"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.8, 0.1, 0.1)
+                token outputs:out
+            }
+        }
+        def Material "blue"
+        {
+            token outputs:mtlx:surface.connect = </World/mtl/blue/surf.outputs:out>
+            def Shader "surf"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.1, 0.1, 0.8)
+                token outputs:out
+            }
+        }
+    }
+
+    def Xform "geo"
+    {
+        def Sphere "ballA" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            rel material:binding = </World/mtl/red>
+            string primvars:asset_name = "alpha" (interpolation = "constant")
+            double3 xformOp:translate = (-2.5, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        def Sphere "ballB" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            double radius = 1
+            rel material:binding = </World/mtl/blue>
+            string primvars:asset_name = "beta" (interpolation = "constant")
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        def Xform "assetC" (
+            kind = "component"
+        )
+        {
+            double3 xformOp:translate = (2.5, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            def Cube "boxC" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                double size = 1.6
+                rel material:binding = </World/mtl/red>
+                string primvars:asset_name = "alpha" (interpolation = "constant")
+            }
+        }
+    }
+
+    def PointInstancer "inst"
+    {
+        point3f[] positions = [(-3, -2.5, 0), (-1, -2.5, 0), (1, -2.5, 0), (3, -2.5, 0)]
+        int[] protoIndices = [0, 1, 0, 1]
+        rel prototypes = [</World/inst/protos/pebble>, </World/inst/protos/rock>]
+
+        def Scope "protos"
+        {
+            def Sphere "pebble" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                double radius = 0.6
+                rel material:binding = </World/mtl/blue>
+            }
+            def Cube "rock" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                double size = 1
+                rel material:binding = </World/mtl/red>
+            }
+        }
+    }
+}

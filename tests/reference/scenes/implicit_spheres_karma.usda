@@ -1,0 +1,109 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-6, 0, 6), (6, 0, 6), (6, 0, -6), (-6, 0, -6)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+        rel material:binding = </Looks/displayColorLambert>
+    }
+    def Points "big" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        point3f[] points = [(0, 0, 0)]
+        float[] widths = [1.2]
+        color3f[] primvars:displayColor = [(0.8, 0.3, 0.2)]
+        rel material:binding = </Looks/displayColorLambert>
+        double3 xformOp:translate = (-1.3, 0.6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Points "small" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        point3f[] points = [(0, 0, 0)]
+        float[] widths = [0.5]
+        color3f[] primvars:displayColor = [(0.2, 0.6, 0.3)]
+        rel material:binding = </Looks/displayColorLambert>
+        double3 xformOp:translate = (0, 0.25, 0.6)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Points "ellipsoid" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        point3f[] points = [(0, 0, 0)]
+        float[] widths = [1]
+        color3f[] primvars:displayColor = [(0.25, 0.35, 0.8)]
+        rel material:binding = </Looks/displayColorLambert>
+        double3 xformOp:translate = (1.3, 0.35, -0.2)
+        float3 xformOp:scale = (1.4, 0.7, 0.9)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def PointInstancer "dots"
+    {
+        point3f[] positions = [(-0.9, 0.12, 1.2), (-0.3, 0.12, 1.4), (0.3, 0.12, 1.5), (0.9, 0.12, 1.3)]
+        int[] protoIndices = [0, 0, 0, 0]
+        rel prototypes = [</World/dots/proto>]
+        def Points "proto" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            point3f[] points = [(0, 0, 0)]
+            float[] widths = [0.24]
+            color3f[] primvars:displayColor = [(0.9, 0.8, 0.3)]
+            rel material:binding = </Looks/displayColorLambert>
+        }
+    }
+    def RectLight "key"
+    {
+        float inputs:intensity = 6
+        float inputs:width = 2
+        float inputs:height = 2
+        double3 xformOp:translate = (1.5, 3.5, 2)
+        float3 xformOp:rotateXYZ = (-60, 30, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def DomeLight "fill"
+    {
+        float inputs:intensity = 0.25
+        uniform token[] xformOpOrder = []
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 24
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 1.6, 4.2)
+        float3 xformOp:rotateXYZ = (-18, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (144, 96)
+        float nova:object:diffuseLimit = 2
+        float karma:object:diffuselimit = 2
+    }
+}

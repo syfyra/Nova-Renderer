@@ -1,0 +1,19 @@
+﻿uniform     8: relmse 1.988e-02  p99 2.337e-01  rmse 0.0498
+uniform    12: relmse 1.286e-02  p99 1.314e-01  rmse 0.0464
+uniform    16: relmse 1.006e-02  p99 9.214e-02  rmse 0.0318
+uniform    24: relmse 7.327e-03  p99 5.810e-02  rmse 0.0221
+uniform    32: relmse 5.108e-03  p99 4.002e-02  rmse 0.0161
+uniform    48: relmse 3.204e-03  p99 2.470e-02  rmse 0.0142
+uniform    64: relmse 2.236e-03  p99 1.659e-02  rmse 0.0096
+uniform    96: relmse 1.464e-03  p99 1.095e-02  rmse 0.0075
+uniform   128: relmse 1.034e-03  p99 8.020e-03  rmse 0.0063
+uniform   192: relmse 6.506e-04  p99 5.296e-03  rmse 0.0050
+uniform   256: relmse 4.692e-04  p99 3.939e-03  rmse 0.0040
+uniform   384: relmse 3.081e-04  p99 2.563e-03  rmse 0.0033
+uniform   512: relmse 2.101e-04  p99 1.952e-03  rmse 0.0025
+uniform   768: relmse 1.393e-04  p99 1.315e-03  rmse 0.0022
+uniform  1024: relmse 9.734e-05  p99 1.025e-03  rmse 0.0017
+uniform fit slopes: relmse -1.137  p99 -1.052
+cycles_nodilate  t  0.020: spp    20.6  relmse 6.431e-03 (=uniform    25.8, x1.26)  p99 5.814e-02 (=uniform    20.4, x0.99)
+cycles_nodilate  t  0.010: spp    35.9  relmse 4.523e-03 (=uniform    35.2, x0.98)  p99 4.097e-02 (=uniform    28.5, x0.79)
+cycles_nodilate  t  0.005: spp    89.6  relmse 2.625e-03 (=uniform    56.8, x0.63)  p99 2.514e-02 (=uniform    45.3, x0.51)

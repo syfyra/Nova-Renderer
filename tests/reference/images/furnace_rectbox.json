@@ -1,0 +1,26 @@
+{
+  "scene": "furnace_rectbox",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/furnace_rectbox.usda": "7493256937b5acc9f575841d4ef7340e016316fb",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "value": [
+    1,
+    1,
+    1,
+    1
+  ],
+  "karma_floor": {
+    "flip_mean": 0.001555,
+    "flip_test_pair": 0.002666,
+    "relmse": 0.000224,
+    "global_z": [
+      -0.628,
+      -0.628,
+      -0.628,
+      0.0
+    ]
+  }
+}

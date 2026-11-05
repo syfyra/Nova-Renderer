@@ -1,0 +1,270 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@../../../../tests/reference/scenes/cornell_rect.usda@]
+)
+# M7 denoise probe scene: the Cornell reference box at 512x512 with the
+# beauty, a first-hit albedo and a normal AOV, in Karma's vocabulary (the
+# names and sources the Karma Render Settings LOP auto-creates for COP image
+# filters: albedo = lpe CDA, N = raw ray:hitN; product full2 adds Nova's
+# Hydra albedo, raw "albedo", as albedo_hd), plus the Image Filter LOP's
+# HoudiniImageFilterList with one Denoise AI filter (OptiX), as authored by
+# Houdini 22.0.466 (probe_imagefilter.py).
+#
+# Settings prims (husk -s):
+#   /Render/noisy        no filter
+#   /Render/optix        husk:orderedImageFilters -> Denoise AI (OptiX), C only
+#   /Render/optix_noaux  same filter, guides not rendered
+#   /Render/optix_lop    guides as the Karma Render Settings LOP auto-creates
+#                        them (bypassSave: rendered, not written)
+#   /Render/optix_color  filter list with AOVs = "color" (all color AOVs)
+#   /Render/oidn         Denoise AI (OIDN) for comparison
+#   /Render/builtin      Karma's built-in filter karma:global:imagefilter only
+#   /Render/truth        many samples, no filter (ground truth)
+# Nova reads nova:samples, Karma the -p option / pathtracedsamples.
+
+def Scope "Render"
+{
+    def Scope "ImageFilter"
+    {
+        def HoudiniImageFilterList "denoise_optix"
+        {
+            uniform string albedoscope = "albedo"
+            uniform string[] AOVlist = ["C"]
+            uniform token AOVs = "list"
+            uniform string depthscope = "depth"
+            uniform string normalscope = "N"
+            rel orderedFilters = </Render/ImageFilter/denoise_optix/denoiseai1>
+
+            def HoudiniImageFilter "denoiseai1"
+            {
+                uniform bool bypass = 0
+                custom bool filterparm:auxareclean = 0
+                custom string filterparm:denoiser = "optix"
+                custom bool filterparm:onlycpu = 0
+                custom bool filterparm:prefilteraux = 0
+                uniform string type = "denoiseai"
+            }
+        }
+
+        def HoudiniImageFilterList "denoise_optix_color"
+        {
+            uniform string albedoscope = "albedo"
+            uniform string[] AOVlist = ["C", "color"]
+            uniform token AOVs = "color"
+            uniform string depthscope = "depth"
+            uniform string normalscope = "N"
+            rel orderedFilters = </Render/ImageFilter/denoise_optix_color/denoiseai1>
+
+            def HoudiniImageFilter "denoiseai1"
+            {
+                uniform bool bypass = 0
+                custom bool filterparm:auxareclean = 0
+                custom string filterparm:denoiser = "optix"
+                custom bool filterparm:onlycpu = 0
+                custom bool filterparm:prefilteraux = 0
+                uniform string type = "denoiseai"
+            }
+        }
+
+        def HoudiniImageFilterList "denoise_oidn"
+        {
+            uniform string albedoscope = "albedo"
+            uniform string[] AOVlist = ["C"]
+            uniform token AOVs = "list"
+            uniform string depthscope = "depth"
+            uniform string normalscope = "N"
+            rel orderedFilters = </Render/ImageFilter/denoise_oidn/denoiseai1>
+
+            def HoudiniImageFilter "denoiseai1"
+            {
+                uniform bool bypass = 0
+                custom bool filterparm:auxareclean = 0
+                custom string filterparm:denoiser = "oidn"
+                custom bool filterparm:onlycpu = 0
+                custom bool filterparm:prefilteraux = 0
+                uniform string type = "denoiseai"
+            }
+        }
+    }
+
+    def Scope "DnVars"
+    {
+        def RenderVar "C" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:husk:format = "color4f"
+            string driver:parameters:aov:husk:name = "C"
+            bool driver:parameters:aov:husk:multiSampled = 1
+        }
+
+        def RenderVar "albedo" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "CDA"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:husk:format = "color3f"
+            string driver:parameters:aov:husk:name = "albedo"
+            string driver:parameters:aov:husk:channel_prefix = "albedo"
+            float driver:parameters:aov:husk:clearValue = 0
+            bool driver:parameters:aov:husk:multiSampled = 0
+        }
+
+        def RenderVar "N" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "normal3f"
+            uniform string sourceName = "ray:hitN"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "float3"
+            string driver:parameters:aov:husk:name = "N"
+            string driver:parameters:aov:husk:channel_prefix = "N"
+            float driver:parameters:aov:husk:clearValue = 0
+            bool driver:parameters:aov:husk:multiSampled = 0
+        }
+
+        def RenderVar "albedo_hd" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "albedo"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:husk:format = "color3f"
+            string driver:parameters:aov:husk:name = "albedo_hd"
+            float driver:parameters:aov:husk:clearValue = 0
+            bool driver:parameters:aov:husk:multiSampled = 0
+        }
+
+        # As the Karma Render Settings LOP auto-creates them for COP image
+        # filters (cop_createaovs): rendered, handed to the filters, not saved.
+        def RenderVar "lop_albedo" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "color3f"
+            bool driver:parameters:aov:husk:bypassSave = 1
+            string driver:parameters:aov:husk:channel_prefix = "albedo"
+            float driver:parameters:aov:husk:clearValue = 0
+            token driver:parameters:aov:husk:format = "color3f"
+            bool driver:parameters:aov:husk:multiSampled = 0
+            string driver:parameters:aov:husk:name = "albedo"
+            uniform string sourceName = "CDA"
+            uniform token sourceType = "lpe"
+        }
+
+        def RenderVar "lop_N" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            uniform token dataType = "normal3f"
+            bool driver:parameters:aov:husk:bypassSave = 1
+            string driver:parameters:aov:husk:channel_prefix = "N"
+            float driver:parameters:aov:husk:clearValue = 0
+            token driver:parameters:aov:husk:format = "half3"
+            bool driver:parameters:aov:husk:multiSampled = 0
+            string driver:parameters:aov:husk:name = "N"
+            uniform string sourceName = "ray:hitN"
+            uniform token sourceType = "raw"
+        }
+    }
+
+    def Scope "DnProducts"
+    {
+        def RenderProduct "full"
+        {
+            token productName = "dn_full.exr"
+            rel orderedVars = [</Render/DnVars/C>, </Render/DnVars/albedo>, </Render/DnVars/N>]
+        }
+
+        def RenderProduct "full2"
+        {
+            token productName = "dn_full2.exr"
+            rel orderedVars = [</Render/DnVars/C>, </Render/DnVars/albedo>, </Render/DnVars/N>, </Render/DnVars/albedo_hd>]
+        }
+
+        def RenderProduct "lopstyle"
+        {
+            token productName = "dn_lopstyle.exr"
+            rel orderedVars = [</Render/DnVars/C>, </Render/DnVars/lop_albedo>, </Render/DnVars/lop_N>]
+        }
+
+        def RenderProduct "beautyonly"
+        {
+            token productName = "dn_beauty.exr"
+            rel orderedVars = [</Render/DnVars/C>]
+        }
+    }
+
+    def RenderSettings "noisy" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (512, 512)
+        float nova:object:diffuseLimit = 7
+        float karma:object:diffuselimit = 7
+        int nova:samples = 16
+        rel products = [</Render/DnProducts/full>]
+    }
+
+    def RenderSettings "optix" (
+        inherits = </Render/noisy>
+    )
+    {
+        rel husk:orderedImageFilters = [</Render/ImageFilter/denoise_optix>]
+    }
+
+    def RenderSettings "optix_noaux" (
+        inherits = </Render/noisy>
+    )
+    {
+        rel products = [</Render/DnProducts/beautyonly>]
+        rel husk:orderedImageFilters = [</Render/ImageFilter/denoise_optix>]
+    }
+
+    def RenderSettings "optix_lop" (
+        inherits = </Render/noisy>
+    )
+    {
+        rel products = [</Render/DnProducts/lopstyle>]
+        rel husk:orderedImageFilters = [</Render/ImageFilter/denoise_optix>]
+    }
+
+    def RenderSettings "optix_color" (
+        inherits = </Render/noisy>
+    )
+    {
+        rel husk:orderedImageFilters = [</Render/ImageFilter/denoise_optix_color>]
+    }
+
+    def RenderSettings "oidn" (
+        inherits = </Render/noisy>
+    )
+    {
+        rel husk:orderedImageFilters = [</Render/ImageFilter/denoise_oidn>]
+    }
+
+    def RenderSettings "builtin" (
+        inherits = </Render/noisy>
+    )
+    {
+        string karma:global:imagefilter = '[["denoise", {"engine": "optix", "use_albedo_input": true, "use_n_input": true, "forcecpu": false, "aovs": ["C"]}]]'
+    }
+
+    def RenderSettings "truth" (
+        inherits = </Render/noisy>
+    )
+    {
+        int nova:samples = 4096
+    }
+}

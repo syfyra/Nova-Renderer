@@ -1,0 +1,27 @@
+#usda 1.0
+(
+    subLayers = [@./crypto_render.usda@]
+    startTimeCode = 1
+    endTimeCode = 1
+)
+
+# Which RenderProduct driver:parameters reach the EXR header?  (copy next to
+# the crypto_render.usda that crypto_export.py writes, then render with husk)
+over "Render"
+{
+    over "karmarendersettings1"
+    {
+        over "Products"
+        {
+            over "renderproduct"
+            {
+                string driver:parameters:husk:comment = "probe comment"
+                string driver:parameters:husk:artist = "probe artist"
+                string driver:parameters:OpenEXR:probe_custom = "probe OpenEXR custom"
+                string driver:parameters:husk:OpenEXR:probe_custom2 = "probe husk OpenEXR custom"
+                string driver:parameters:probe_plain = "probe plain"
+                int driver:parameters:OpenEXR:probe_int = 42
+            }
+        }
+    }
+}

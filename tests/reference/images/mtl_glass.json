@@ -1,0 +1,26 @@
+{
+  "scene": "mtl_glass",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/mtl_glass.usda": "2c547ea9644589bdadbcf950a128eb4f4aed0d17",
+    "scenes/assets/sky_soft.exr": "a5f902ce2ce339472feca019aa6fee226e8ed97c",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/mtl_glass.exr",
+  "sigma": "images/mtl_glass.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.010328,
+    "flip_test_pair": 0.013303,
+    "relmse": 0.005021,
+    "global_z": [
+      0.449,
+      -0.31,
+      -0.438,
+      0.0
+    ]
+  }
+}

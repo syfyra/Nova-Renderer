@@ -1,0 +1,105 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-20, 0, 20), (20, 0, 20), (20, 0, -20), (-20, 0, -20)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.6, 0.6, 0.6)]
+        rel material:binding = </Looks/displayColorLambert>
+    }
+    def Mesh "wall" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-6, 0, -2.5), (6, 0, -2.5), (6, 4, -2.5), (-6, 4, -2.5)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        color3f[] primvars:displayColor = [(0.7, 0.7, 0.7)]
+        rel material:binding = </Looks/displayColorLambert>
+    }
+    def Mesh "ballL" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        color3f[] primvars:displayColor = [(0.8, 0.35, 0.25)]
+        rel material:binding = </Looks/displayColorLambert>
+        double3 xformOp:translate = (-1.3, 0.5, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ballM" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        color3f[] primvars:displayColor = [(0.75, 0.75, 0.75)]
+        rel material:binding = </Looks/displayColorLambert>
+        double3 xformOp:translate = (0, 0.5, -0.6)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ballR" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        color3f[] primvars:displayColor = [(0.25, 0.4, 0.8)]
+        rel material:binding = </Looks/displayColorLambert>
+        double3 xformOp:translate = (1.3, 0.5, 0)
+        double3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 21.6
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 1.4, 5.2)
+        float3 xformOp:rotateXYZ = (-10, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def SphereLight "spot" (
+        prepend apiSchemas = ["ShapingAPI"]
+    )
+    {
+        float inputs:intensity = 30
+        bool treatAsPoint = 1
+        float inputs:shaping:cone:angle = 30
+        float inputs:shaping:cone:softness = 0.4
+        float inputs:shaping:focus = 2
+        color3f inputs:shaping:focusTint = (1, 0.5, 0.2)
+        double3 xformOp:translate = (0.5, 3, 2)
+        float3 xformOp:rotateXYZ = (-55, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 96)
+        float nova:object:diffuseLimit = 3
+        float karma:object:diffuselimit = 3
+    }
+}

@@ -1,0 +1,32 @@
+// Generates tests/vex/noise_golden.txt: vcc noise_golden.vfl -o g.vex && vexexec g.vex > noise_golden.txt
+// (Houdini 22.0.466). Columns: i, perlin2, perlinV3(p2) xyz, perlin3, perlinV3(p3) xyz, cell2, cell3,
+// cellV3(p3) xyz, worley2 F1 (jitter 1), worley3 F1-F3 (jitter 0.75), worley3 Manhattan F1-F3, fBm3, 0.
+// Golden values of Houdini's MaterialX noise built-ins (the ones Karma's
+// MaterialX templates call), on exactly representable sample points.
+cvex main()
+{
+    for (int i = 0; i < 2000; ++i)
+    {
+        float x = float(((i * 7919) % 20011) - 10005) / 128.0 + 0.001953125;
+        float y = float(((i * 6151) % 20011) - 10005) / 128.0 + 0.001953125;
+        float z = float(((i * 3571) % 20011) - 10005) / 128.0 + 0.001953125;
+        vector2 p2 = set(x, y);
+        vector p3 = set(x, y, z);
+        float pf2 = mx_perlin(p2);
+        vector pv2 = mx_perlin(p2);
+        float pf3 = mx_perlin(p3);
+        vector pv3 = mx_perlin(p3);
+        float c2 = mx_cellnoise(p2);
+        float c3 = mx_cellnoise(p3);
+        vector cv3 = mx_cellnoise(p3);
+        float w2 = mx_worley(p2, 1.0, 0);
+        vector w3 = mx_worley(p3, 0.75, 0);
+        vector w3m = mx_worley(p3, 1.0, 2);
+        // fractal3d as in mxstd.h (octaves 3, lacunarity 2, diminish 0.5)
+        float fr = 0; float amp = 1; vector pp = p3 * 0.1;
+        for (int o = 0; o < 3; ++o) { fr += amp * mx_perlin(pp); amp *= 0.5; pp *= 2.0; }
+        printf("%d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n",
+            i, pf2, pv2.x, pv2.y, pv2.z, pf3, pv3.x, pv3.y, pv3.z, c2, c3, cv3.x, cv3.y, cv3.z,
+            w2, w3.x, w3.y, w3.z, w3m.x, w3m.y, w3m.z, fr, 0.0);
+    }
+}

@@ -1,0 +1,27 @@
+{
+  "scene": "mtl_normals",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/mtl_normals.usda": "e9cd63732db1f743aaa62e368662ae9476307186",
+    "scenes/assets/sky_soft.exr": "a5f902ce2ce339472feca019aa6fee226e8ed97c",
+    "scenes/assets/sphere_st.usda": "e1a1a3ae636cea8cbb70e11bcd9779b67a1c3a89",
+    "scenes/assets/normal_checks.png": "18f37824c9de76bc34326b9aa3b068e0e9cff58e",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/mtl_normals.exr",
+  "sigma": "images/mtl_normals.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.078731,
+    "flip_test_pair": 0.077226,
+    "relmse": 0.071186,
+    "global_z": [
+      0.333,
+      0.341,
+      0.353,
+      0.0
+    ]
+  }
+}

@@ -1,0 +1,267 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "p_plastic"
+        {
+            token outputs:vex:surface.connect = </World/Looks/p_plastic/surface.outputs:surface>
+            def Shader "surface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+                vector3f inputs:basecolor = (0.7, 0.1, 0.08)
+                float inputs:rough = 0.25
+                token outputs:surface
+            }
+        }
+        def Material "p_metal"
+        {
+            token outputs:vex:surface.connect = </World/Looks/p_metal/surface.outputs:surface>
+            def Shader "surface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+                vector3f inputs:basecolor = (0.94, 0.78, 0.37)
+                float inputs:metallic = 1
+                float inputs:rough = 0.3
+                token outputs:surface
+            }
+        }
+        def Material "p_coat"
+        {
+            token outputs:vex:surface.connect = </World/Looks/p_coat/surface.outputs:surface>
+            def Shader "surface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+                vector3f inputs:basecolor = (0.1, 0.2, 0.6)
+                float inputs:rough = 0.5
+                float inputs:coat = 1
+                float inputs:coatrough = 0.05
+                token outputs:surface
+            }
+        }
+        def Material "p_sheen"
+        {
+            token outputs:vex:surface.connect = </World/Looks/p_sheen/surface.outputs:surface>
+            def Shader "surface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+                vector3f inputs:basecolor = (0.2, 0.05, 0.1)
+                float inputs:rough = 0.6
+                float inputs:reflect = 0
+                float inputs:sheen = 1
+                float inputs:sheentint = 0.5
+                token outputs:surface
+            }
+        }
+        def Material "p_tint"
+        {
+            token outputs:vex:surface.connect = </World/Looks/p_tint/surface.outputs:surface>
+            def Shader "surface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+                vector3f inputs:basecolor = (0.6, 0.3, 0.1)
+                float inputs:rough = 0.2
+                float inputs:reflect = 0.5
+                float inputs:reflecttint = 1
+                token outputs:surface
+            }
+        }
+        def Material "p_aniso"
+        {
+            token outputs:vex:surface.connect = </World/Looks/p_aniso/surface.outputs:surface>
+            def Shader "surface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+                vector3f inputs:basecolor = (0.9, 0.9, 0.9)
+                float inputs:metallic = 1
+                float inputs:rough = 0.4
+                float inputs:aniso = 0.8
+                float inputs:anisodir = 0.25
+                token outputs:surface
+            }
+        }
+        def Material "p_tex"
+        {
+            token outputs:vex:surface.connect = </World/Looks/p_tex/surface.outputs:surface>
+            def Shader "surface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+                vector3f inputs:basecolor = (1, 1, 1)
+                int inputs:basecolor_useTexture = 1
+                asset inputs:basecolor_texture = @./assets/normal_checks.png@
+                int inputs:rough_useTexture = 1
+                asset inputs:rough_texture = @./assets/rough.png@
+                float inputs:rough = 1
+                token outputs:surface
+            }
+        }
+        def Material "p_disp"
+        {
+            token outputs:vex:surface.connect = </World/Looks/p_disp/surface.outputs:surface>
+            token outputs:vex:displacement.connect = </World/Looks/p_disp/displace.outputs:displacement>
+            def Shader "surface"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?SurfaceVexCode@
+                vector3f inputs:basecolor = (0.5, 0.6, 0.4)
+                float inputs:rough = 0.4
+                token outputs:surface
+            }
+            def Shader "displace"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:sourceAsset = @opdef:/Vop/principledshader::2.0?DisplacementVexCode@
+                int inputs:dispTex_enable = 1
+                asset inputs:dispTex_texture = @./assets/height_bumps.exr@
+                float inputs:dispTex_scale = 0.08
+                token outputs:displacement
+            }
+        }
+    }
+    def Mesh "ball_p_plastic" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/p_plastic>
+        double3 xformOp:translate = (-1.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_p_metal" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/p_metal>
+        double3 xformOp:translate = (-0.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_p_coat" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/p_coat>
+        double3 xformOp:translate = (0.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_p_sheen" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/p_sheen>
+        double3 xformOp:translate = (1.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_p_tint" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/p_tint>
+        double3 xformOp:translate = (-1.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_p_aniso" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere_uv.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/p_aniso>
+        double3 xformOp:translate = (-0.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_p_tex" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere_st.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/p_tex>
+        double3 xformOp:translate = (0.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_p_disp" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere_st.usda@
+    )
+    {
+        float primvars:karma:object:dicingquality = 1 (interpolation = "constant")
+        float primvars:nova:dicingQuality = 1 (interpolation = "constant")
+        rel material:binding = </World/Looks/p_disp>
+        double3 xformOp:translate = (1.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+        asset inputs:texture:file = @./assets/sky_soft.exr@
+        token inputs:texture:format = "latlong"
+        float inputs:karma:light:misbias = -1
+        bool inputs:karma:light:renderlightgeo = 1
+        uniform token[] xformOpOrder = []
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 18
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 0, 5.2)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 80)
+        float nova:object:diffuseLimit = 0
+        float nova:object:reflectLimit = 0
+        float nova:object:refractLimit = 0
+        float karma:object:diffuselimit = 0
+        float karma:object:reflectlimit = 0
+        float karma:object:refractlimit = 0
+    }
+}

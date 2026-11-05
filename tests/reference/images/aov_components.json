@@ -1,0 +1,349 @@
+{
+  "scene": "aov_components",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/aov_components.usda": "59f289049984af2e885ab7fe6dc575c11e07c2b5",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/aov_components.exr",
+  "sigma": "images/aov_components.sigma.exr",
+  "aovs": {
+    "C_key": {
+      "image": "images/aov_components/C_key.exr",
+      "sigma": "images/aov_components/C_key.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.030826,
+        "flip_test_pair": 0.041012,
+        "relmse": 0.001941,
+        "global_z": [
+          -0.086,
+          -0.077,
+          -0.14
+        ]
+      }
+    },
+    "C_fill": {
+      "image": "images/aov_components/C_fill.exr",
+      "sigma": "images/aov_components/C_fill.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.04459,
+        "flip_test_pair": 0.044748,
+        "relmse": 2e-06,
+        "global_z": [
+          0.638,
+          0.629,
+          0.581
+        ]
+      }
+    },
+    "C_emission": {
+      "image": "images/aov_components/C_emission.exr",
+      "sigma": "images/aov_components/C_emission.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.476834,
+        "flip_test_pair": 0.18309,
+        "relmse": 0.002858,
+        "global_z": [
+          -1.134,
+          -0.995,
+          -0.699
+        ]
+      }
+    },
+    "beautyunshadowed": {
+      "image": "images/aov_components/beautyunshadowed.exr",
+      "sigma": "images/aov_components/beautyunshadowed.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.01653,
+        "flip_test_pair": 0.026139,
+        "relmse": 0.000913,
+        "global_z": [
+          -0.203,
+          -0.113,
+          -0.082
+        ]
+      }
+    },
+    "shadow": {
+      "image": "images/aov_components/shadow.exr",
+      "sigma": "images/aov_components/shadow.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.077019,
+        "flip_test_pair": 0.093941,
+        "relmse": 0.002461,
+        "global_z": [
+          1.855,
+          1.078,
+          0.102
+        ]
+      }
+    },
+    "combineddiffuse": {
+      "image": "images/aov_components/combineddiffuse.exr",
+      "sigma": "images/aov_components/combineddiffuse.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.014117,
+        "flip_test_pair": 0.021646,
+        "relmse": 0.000717,
+        "global_z": [
+          -0.953,
+          -0.996,
+          -1.227
+        ]
+      }
+    },
+    "directdiffuse": {
+      "image": "images/aov_components/directdiffuse.exr",
+      "sigma": "images/aov_components/directdiffuse.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.007271,
+        "flip_test_pair": 0.012508,
+        "relmse": 6.3e-05,
+        "global_z": [
+          -1.536,
+          -1.751,
+          -1.887
+        ]
+      }
+    },
+    "indirectdiffuse": {
+      "image": "images/aov_components/indirectdiffuse.exr",
+      "sigma": "images/aov_components/indirectdiffuse.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.216339,
+        "flip_test_pair": 0.182555,
+        "relmse": 0.002868,
+        "global_z": [
+          -0.307,
+          -0.672,
+          -0.812
+        ]
+      }
+    },
+    "directdiffuseunshadowed": {
+      "image": "images/aov_components/directdiffuseunshadowed.exr",
+      "sigma": "images/aov_components/directdiffuseunshadowed.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.004486,
+        "flip_test_pair": 0.007104,
+        "relmse": 2.1e-05,
+        "global_z": [
+          -0.097,
+          -0.124,
+          -0.269
+        ]
+      }
+    },
+    "directdiffuseshadow": {
+      "image": "images/aov_components/directdiffuseshadow.exr",
+      "sigma": "images/aov_components/directdiffuseshadow.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.103605,
+        "flip_test_pair": 0.091906,
+        "relmse": 0.00553,
+        "global_z": [
+          -10.691,
+          -10.505,
+          -10.232
+        ]
+      }
+    },
+    "combinedglossyreflection": {
+      "image": "images/aov_components/combinedglossyreflection.exr",
+      "sigma": "images/aov_components/combinedglossyreflection.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.053794,
+        "flip_test_pair": 0.035891,
+        "relmse": 0.000601,
+        "global_z": [
+          0.171,
+          0.238,
+          0.314
+        ]
+      }
+    },
+    "directglossyreflection": {
+      "image": "images/aov_components/directglossyreflection.exr",
+      "sigma": "images/aov_components/directglossyreflection.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.054448,
+        "flip_test_pair": 0.036699,
+        "relmse": 6.4e-05,
+        "global_z": [
+          -0.118,
+          -0.107,
+          -0.07
+        ]
+      }
+    },
+    "indirectglossyreflection": {
+      "image": "images/aov_components/indirectglossyreflection.exr",
+      "sigma": "images/aov_components/indirectglossyreflection.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.120684,
+        "flip_test_pair": 0.059258,
+        "relmse": 0.00057,
+        "global_z": [
+          0.729,
+          0.897,
+          0.924
+        ]
+      }
+    },
+    "glossytransmission": {
+      "image": "images/aov_components/glossytransmission.exr",
+      "sigma": "images/aov_components/glossytransmission.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.018675,
+        "flip_test_pair": 0.011944,
+        "relmse": 0.000356,
+        "global_z": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "directemission": {
+      "image": "images/aov_components/directemission.exr",
+      "sigma": "images/aov_components/directemission.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.013593,
+        "flip_test_pair": 0.004379,
+        "relmse": 8.2e-05,
+        "global_z": [
+          -0.907,
+          -0.907,
+          -0.621
+        ]
+      }
+    },
+    "indirectemission": {
+      "image": "images/aov_components/indirectemission.exr",
+      "sigma": "images/aov_components/indirectemission.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.484594,
+        "flip_test_pair": 0.187701,
+        "relmse": 0.002862,
+        "global_z": [
+          -0.85,
+          -0.684,
+          -0.465
+        ]
+      }
+    },
+    "coat": {
+      "image": "images/aov_components/coat.exr",
+      "sigma": "images/aov_components/coat.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.02226,
+        "flip_test_pair": 0.016777,
+        "relmse": 7.9e-05,
+        "global_z": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "metal_glossy": {
+      "image": "images/aov_components/metal_glossy.exr",
+      "sigma": "images/aov_components/metal_glossy.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.017141,
+        "flip_test_pair": 0.0101,
+        "relmse": 0.000127,
+        "global_z": [
+          0.171,
+          0.238,
+          0.314
+        ]
+      }
+    },
+    "albedo": {
+      "image": "images/aov_components/albedo.exr",
+      "sigma": "images/aov_components/albedo.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.003217,
+        "flip_test_pair": 0.005037,
+        "relmse": 3.9e-05,
+        "global_z": [
+          -0.182,
+          -0.182,
+          -0.182
+        ]
+      }
+    },
+    "albedoglossyreflection": {
+      "image": "images/aov_components/albedoglossyreflection.exr",
+      "sigma": "images/aov_components/albedoglossyreflection.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.044457,
+        "flip_test_pair": 0.01943,
+        "relmse": 9.9e-05,
+        "global_z": [
+          -1.659,
+          -1.659,
+          -1.659
+        ]
+      }
+    },
+    "albedoglossytransmission": {
+      "image": "images/aov_components/albedoglossytransmission.exr",
+      "sigma": "images/aov_components/albedoglossytransmission.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.018004,
+        "flip_test_pair": 0.006002,
+        "relmse": 1.1e-05,
+        "global_z": [
+          -1.649,
+          -1.649,
+          -1.649
+        ]
+      }
+    },
+    "albedotransmitteddiffuse": {
+      "image": "images/aov_components/albedotransmitteddiffuse.exr",
+      "sigma": "images/aov_components/albedotransmitteddiffuse.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.002828,
+        "flip_test_pair": 0.00474,
+        "relmse": 8.6e-05,
+        "global_z": [
+          0.344,
+          0.344,
+          0.344
+        ]
+      }
+    },
+    "alphatransmission": {
+      "image": "images/aov_components/alphatransmission.exr",
+      "sigma": "images/aov_components/alphatransmission.sigma.exr",
+      "karma_floor": {
+        "flip_mean": 0.001449,
+        "flip_test_pair": 0.002602,
+        "relmse": 0.000168,
+        "global_z": [
+          0.55,
+          0.55,
+          0.55
+        ]
+      }
+    }
+  },
+  "karma_floor": {
+    "flip_mean": 0.020674,
+    "flip_test_pair": 0.031338,
+    "relmse": 0.001576,
+    "global_z": [
+      -1.605,
+      -1.398,
+      -1.359,
+      0.514
+    ]
+  }
+}

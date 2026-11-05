@@ -1,0 +1,116 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 0
+    endTimeCode = 2
+)
+
+# The depth AOV is measured from the camera its first-hit ray starts from
+# (tests/husk/check_render_pass.py). The camera moves 1 unit per frame along
+# its view axis towards a wall at z = -2 (10 units away at frame 1). With the
+# shutter [0.25, 0.75] the frame lies outside the shutter and the first-hit
+# rays use the shutter open (camera at z = 7.75): depth 9.75. With the centred
+# shutter the frame camera is used: depth 10.
+def Xform "World"
+{
+    def Mesh "wall"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-50, -50, -2), (50, -50, -2), (50, 50, -2), (-50, 50, -2)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Camera "late"
+    {
+        float focalLength = 50
+        float horizontalAperture = 36
+        float verticalAperture = 36
+        float2 clippingRange = (0.1, 100)
+        double shutter:open = 0.25
+        double shutter:close = 0.75
+        double3 xformOp:translate.timeSamples = {
+            0: (0, 0, 9),
+            1: (0, 0, 8),
+            2: (0, 0, 7),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "centred"
+    {
+        float focalLength = 50
+        float horizontalAperture = 36
+        float verticalAperture = 36
+        float2 clippingRange = (0.1, 100)
+        double shutter:open = -0.25
+        double shutter:close = 0.25
+        double3 xformOp:translate.timeSamples = {
+            0: (0, 0, 9),
+            1: (0, 0, 8),
+            2: (0, 0, 7),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "late"
+    {
+        rel camera = </World/late>
+        int2 resolution = (33, 33)
+        rel products = </Render/Products/late>
+        int nova:samples = 2
+        int nova:maxDepth = 1
+    }
+
+    def RenderSettings "centred"
+    {
+        rel camera = </World/centred>
+        int2 resolution = (33, 33)
+        rel products = </Render/Products/centred>
+        int nova:samples = 2
+        int nova:maxDepth = 1
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "late"
+        {
+            token productName = "depth_late.exr"
+            token productType = "raster"
+            rel orderedVars = [</Render/Vars/color>, </Render/Vars/depth>]
+        }
+        def RenderProduct "centred"
+        {
+            token productName = "depth_centred.exr"
+            token productType = "raster"
+            rel orderedVars = [</Render/Vars/color>, </Render/Vars/depth>]
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "color" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            string driver:parameters:aov:husk:name = "C"
+            uniform string sourceName = "color"
+            uniform token sourceType = "raw"
+            uniform token dataType = "color4f"
+        }
+        def RenderVar "depth" (
+            prepend apiSchemas = ["HuskRenderVarAPI"]
+        )
+        {
+            string driver:parameters:aov:husk:name = "depth"
+            uniform string sourceName = "depth"
+            uniform token sourceType = "raw"
+            uniform token dataType = "float"
+        }
+    }
+}

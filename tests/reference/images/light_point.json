@@ -1,0 +1,25 @@
+{
+  "scene": "light_point",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/light_point.usda": "12f4ce5aa432cc3f9e5236a5fcf850ba9d70a212",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/light_point.exr",
+  "sigma": "images/light_point.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.011312,
+    "flip_test_pair": 0.018874,
+    "relmse": 2.9e-05,
+    "global_z": [
+      -0.834,
+      -1.297,
+      -2.181,
+      2.823
+    ]
+  }
+}

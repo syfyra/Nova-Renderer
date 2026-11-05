@@ -1,0 +1,20 @@
+﻿cost model: bg 0.5 geo 1.47, mean coverage 0.331, mean cost 0.821
+uniform     8: relmse 3.558e-02  p99 2.138e-01  rmse 0.0800
+uniform    12: relmse 1.880e-02  p99 1.351e-01  rmse 0.0642
+uniform    16: relmse 1.273e-02  p99 1.201e-01  rmse 0.0611
+uniform    24: relmse 1.078e-02  p99 8.062e-02  rmse 0.0540
+uniform    32: relmse 7.873e-03  p99 6.287e-02  rmse 0.0436
+uniform    48: relmse 1.005e-02  p99 5.022e-02  rmse 0.0444
+uniform    64: relmse 6.840e-03  p99 4.542e-02  rmse 0.0357
+uniform    96: relmse 4.199e-03  p99 3.360e-02  rmse 0.0296
+uniform   128: relmse 2.834e-03  p99 3.341e-02  rmse 0.0254
+uniform   192: relmse 1.661e-03  p99 2.401e-02  rmse 0.0187
+uniform   256: relmse 1.341e-03  p99 2.148e-02  rmse 0.0162
+uniform   384: relmse 7.884e-04  p99 1.411e-02  rmse 0.0125
+uniform   512: relmse 6.162e-04  p99 1.183e-02  rmse 0.0116
+uniform   768: relmse 4.866e-04  p99 8.482e-03  rmse 0.0098
+uniform  1024: relmse 3.512e-04  p99 6.415e-03  rmse 0.0083
+uniform fit slopes: relmse -1.021  p99 -0.649
+cycles_nodilate  t  0.020: spp    21.2 cost    25.2  relmse 4.519e-03 (=uniform    79.7, x3.16)  p99 7.197e-02 (=uniform    31.0, x1.23)
+cycles_nodilate  t  0.010: spp    29.4 cost    39.9  relmse 3.562e-03 (=uniform   100.7, x2.52)  p99 5.796e-02 (=uniform    43.3, x1.09)
+cycles_nodilate  t  0.005: spp    47.3 cost    72.0  relmse 2.694e-03 (=uniform   132.4, x1.84)  p99 4.093e-02 (=uniform    74.1, x1.03)

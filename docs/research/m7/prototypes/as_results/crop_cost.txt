@@ -1,0 +1,16 @@
+as_nova_crop_cost.py output (nova_cli of the M6 build copied to scratch, --threads 1, best of 2, 2026-10-13;
+the machine was shared with other measurements):
+
+mtl_glass sky: ~2560 px, 128 spp, 1 thread: 0.164 s = 0.50 us per pixel-sample
+mtl_glass ground: ~1920 px, 128 spp, 1 thread: 0.133 s = 0.54 us per pixel-sample
+mtl_glass glass: ~416 px, 128 spp, 1 thread: 0.230 s = 4.32 us per pixel-sample
+mtl_glass full: ~12800 px, 128 spp, 1 thread: 1.340 s = 0.82 us per pixel-sample
+dome_sky full: ~13824 px, 128 spp, 1 thread: 1.939 s = 1.10 us per pixel-sample
+dome_sky sky: ~2016 px, 128 spp, 1 thread: 0.164 s = 0.64 us per pixel-sample
+
+Two-class cost models used by the emulator (cost per sample = bg + (geo - bg) * coverage, coverage from
+Karma's primarysamples of a uniform 1024-spp render; geo chosen so that the model's image mean equals the
+measured full-frame cost):
+  mtl_glass: bg 0.50, geo 1.47 (mean coverage 0.331)
+  dome_sky:  bg 0.64, geo 1.28 (mean coverage 0.718)
+  cornell_rect: every pixel sees geometry (uniform cost).

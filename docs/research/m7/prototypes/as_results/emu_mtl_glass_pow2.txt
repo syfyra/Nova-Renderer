@@ -1,0 +1,33 @@
+﻿cost model: bg 0.5 geo 1.47, mean coverage 0.331, mean cost 0.821
+uniform     8: relmse 3.558e-02  p99 2.138e-01  rmse 0.0800
+uniform    12: relmse 1.880e-02  p99 1.351e-01  rmse 0.0642
+uniform    16: relmse 1.273e-02  p99 1.201e-01  rmse 0.0611
+uniform    24: relmse 1.078e-02  p99 8.062e-02  rmse 0.0540
+uniform    32: relmse 7.873e-03  p99 6.287e-02  rmse 0.0436
+uniform    48: relmse 1.005e-02  p99 5.022e-02  rmse 0.0444
+uniform    64: relmse 6.840e-03  p99 4.542e-02  rmse 0.0357
+uniform    96: relmse 4.199e-03  p99 3.360e-02  rmse 0.0296
+uniform   128: relmse 2.834e-03  p99 3.341e-02  rmse 0.0254
+uniform   192: relmse 1.661e-03  p99 2.401e-02  rmse 0.0187
+uniform   256: relmse 1.341e-03  p99 2.148e-02  rmse 0.0162
+uniform   384: relmse 7.884e-04  p99 1.411e-02  rmse 0.0125
+uniform   512: relmse 6.162e-04  p99 1.183e-02  rmse 0.0116
+uniform   768: relmse 4.866e-04  p99 8.482e-03  rmse 0.0098
+uniform  1024: relmse 3.512e-04  p99 6.415e-03  rmse 0.0083
+uniform fit slopes: relmse -1.021  p99 -0.649
+cycles           t  0.040: spp    30.6 cost    42.0  relmse 2.411e-03 (=uniform   147.5, x3.51)  p99 4.756e-02 (=uniform    58.8, x1.40)
+cycles           t  0.020: spp    62.0 cost    97.6  relmse 9.160e-04 (=uniform   380.6, x3.90)  p99 1.591e-02 (=uniform   317.4, x3.25)
+cycles           t  0.010: spp   116.1 cost   193.2  relmse 4.762e-04 (=uniform   722.2, x3.74)  p99 8.190e-03 (=uniform   882.8, x4.57)
+cycles           t  0.005: spp   209.1 cost   356.4  relmse 3.735e-04 (=uniform   916.2, x2.57)  p99 6.415e-03 (=uniform  1286.1, x3.61)
+pool3nd          t  0.040: spp    28.8 cost    38.6  relmse 3.360e-03 (=uniform   106.6, x2.76)  p99 5.953e-02 (=uniform    41.6, x1.08)
+pool3nd          t  0.020: spp    60.8 cost    94.0  relmse 1.243e-03 (=uniform   282.3, x3.00)  p99 2.374e-02 (=uniform   171.4, x1.82)
+pool3nd          t  0.010: spp   103.2 cost   165.4  relmse 5.872e-04 (=uniform   588.2, x3.56)  p99 1.077e-02 (=uniform   578.8, x3.50)
+pool3nd          t  0.005: spp   193.6 cost   317.7  relmse 3.877e-04 (=uniform   883.2, x2.78)  p99 6.470e-03 (=uniform  1269.4, x4.00)
+tile8            t  0.040: spp    62.6 cost    89.8  relmse 2.373e-03 (=uniform   149.9, x1.67)  p99 4.632e-02 (=uniform    61.2, x0.68)
+tile8            t  0.020: spp   128.5 cost   190.9  relmse 7.862e-04 (=uniform   442.0, x2.32)  p99 1.470e-02 (=uniform   358.6, x1.88)
+tile8            t  0.010: spp   199.0 cost   295.9  relmse 4.396e-04 (=uniform   781.1, x2.64)  p99 8.105e-03 (=uniform   897.1, x3.03)
+tile8            t  0.005: spp   322.2 cost   476.1  relmse 3.696e-04 (=uniform   925.7, x1.94)  p99 6.466e-03 (=uniform  1270.5, x2.67)
+tile32           t  0.040: spp   460.2 cost   595.4  relmse 7.500e-04 (=uniform   462.9, x0.78)  p99 1.927e-02 (=uniform   236.3, x0.40)
+tile32           t  0.020: spp   520.3 cost   646.0  relmse 4.425e-04 (=uniform   776.0, x1.20)  p99 9.936e-03 (=uniform   655.5, x1.01)
+tile32           t  0.010: spp   638.1 cost   760.6  relmse 3.629e-04 (=uniform   942.3, x1.24)  p99 6.444e-03 (=uniform  1277.3, x1.68)
+tile32           t  0.005: spp   822.4 cost   901.3  relmse 3.512e-04 (=uniform   973.1, x1.08)  p99 6.415e-03 (=uniform  1286.1, x1.43)

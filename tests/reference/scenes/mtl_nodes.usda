@@ -1,0 +1,1328 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "n_noise2d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_noise2d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_noise2d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_noise2d/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_noise2d_color3"
+                float2 inputs:texcoord.connect = </World/Looks/n_noise2d/tc.outputs:out>
+                float3 inputs:amplitude = (0.5, 0.5, 0.5)
+                float inputs:pivot = 0.5
+                color3f outputs:out
+            }
+        }
+        def Material "n_noise3d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_noise3d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_noise3d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "pos"
+            {
+                uniform token info:id = "ND_position_vector3"
+                string inputs:space = "object"
+                float3 outputs:out
+            }
+            def Shader "ps"
+            {
+                uniform token info:id = "ND_multiply_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_noise3d/pos.outputs:out>
+                float inputs:in2 = 3
+                float3 outputs:out
+            }
+            def Shader "p"
+            {
+                uniform token info:id = "ND_add_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_noise3d/ps.outputs:out>
+                float inputs:in2 = 0.5
+                float3 outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_noise3d_color3"
+                float3 inputs:position.connect = </World/Looks/n_noise3d/p.outputs:out>
+                float3 inputs:amplitude = (0.5, 0.5, 0.5)
+                float inputs:pivot = 0.5
+                color3f outputs:out
+            }
+        }
+        def Material "n_noise3d_f"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_noise3d_f/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_noise3d_f/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "pos"
+            {
+                uniform token info:id = "ND_position_vector3"
+                string inputs:space = "object"
+                float3 outputs:out
+            }
+            def Shader "ps"
+            {
+                uniform token info:id = "ND_multiply_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_noise3d_f/pos.outputs:out>
+                float inputs:in2 = 5
+                float3 outputs:out
+            }
+            def Shader "p"
+            {
+                uniform token info:id = "ND_add_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_noise3d_f/ps.outputs:out>
+                float inputs:in2 = 0.5
+                float3 outputs:out
+            }
+            def Shader "n"
+            {
+                uniform token info:id = "ND_noise3d_float"
+                float3 inputs:position.connect = </World/Looks/n_noise3d_f/p.outputs:out>
+                float inputs:pivot = 0.5
+                float outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_float_color3"
+                float inputs:in.connect = </World/Looks/n_noise3d_f/n.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_fractal3d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_fractal3d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_fractal3d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "pos"
+            {
+                uniform token info:id = "ND_position_vector3"
+                string inputs:space = "object"
+                float3 outputs:out
+            }
+            def Shader "ps"
+            {
+                uniform token info:id = "ND_multiply_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_fractal3d/pos.outputs:out>
+                float inputs:in2 = 2
+                float3 outputs:out
+            }
+            def Shader "p"
+            {
+                uniform token info:id = "ND_add_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_fractal3d/ps.outputs:out>
+                float inputs:in2 = 0.5
+                float3 outputs:out
+            }
+            def Shader "f"
+            {
+                uniform token info:id = "ND_fractal3d_color3"
+                float3 inputs:position.connect = </World/Looks/n_fractal3d/p.outputs:out>
+                int inputs:octaves = 4
+                float3 inputs:amplitude = (0.5, 0.5, 0.5)
+                color3f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_add_color3FA"
+                color3f inputs:in1.connect = </World/Looks/n_fractal3d/f.outputs:out>
+                float inputs:in2 = 0.5
+                color3f outputs:out
+            }
+        }
+        def Material "n_fractal2d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_fractal2d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_fractal2d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_fractal2d/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "f"
+            {
+                uniform token info:id = "ND_fractal2d_color3"
+                float2 inputs:texcoord.connect = </World/Looks/n_fractal2d/tc.outputs:out>
+                int inputs:octaves = 3
+                float inputs:lacunarity = 2.2
+                float inputs:diminish = 0.6
+                color3f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_add_color3FA"
+                color3f inputs:in1.connect = </World/Looks/n_fractal2d/f.outputs:out>
+                float inputs:in2 = 0.5
+                color3f outputs:out
+            }
+        }
+        def Material "n_cell2d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_cell2d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_cell2d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_cell2d/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "c"
+            {
+                uniform token info:id = "ND_cellnoise2d_float"
+                float2 inputs:texcoord.connect = </World/Looks/n_cell2d/tc.outputs:out>
+                float outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_float_color3"
+                float inputs:in.connect = </World/Looks/n_cell2d/c.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_cell3d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_cell3d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_cell3d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "pos"
+            {
+                uniform token info:id = "ND_position_vector3"
+                string inputs:space = "object"
+                float3 outputs:out
+            }
+            def Shader "ps"
+            {
+                uniform token info:id = "ND_multiply_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_cell3d/pos.outputs:out>
+                float inputs:in2 = 4
+                float3 outputs:out
+            }
+            def Shader "p"
+            {
+                uniform token info:id = "ND_add_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_cell3d/ps.outputs:out>
+                float inputs:in2 = 0.5
+                float3 outputs:out
+            }
+            def Shader "c"
+            {
+                uniform token info:id = "ND_cellnoise3d_float"
+                float3 inputs:position.connect = </World/Looks/n_cell3d/p.outputs:out>
+                float outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_float_color3"
+                float inputs:in.connect = </World/Looks/n_cell3d/c.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_worley2d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_worley2d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_worley2d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_worley2d/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "w"
+            {
+                uniform token info:id = "ND_worleynoise2d_float"
+                float2 inputs:texcoord.connect = </World/Looks/n_worley2d/tc.outputs:out>
+                float inputs:jitter = 1
+                float outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_float_color3"
+                float inputs:in.connect = </World/Looks/n_worley2d/w.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_worley2d_v3"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_worley2d_v3/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_worley2d_v3/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_worley2d_v3/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "w"
+            {
+                uniform token info:id = "ND_worleynoise2d_vector3"
+                float2 inputs:texcoord.connect = </World/Looks/n_worley2d_v3/tc.outputs:out>
+                float inputs:jitter = 0.8
+                float3 outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_vector3_color3"
+                float3 inputs:in.connect = </World/Looks/n_worley2d_v3/w.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_worley3d_v3"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_worley3d_v3/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_worley3d_v3/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "pos"
+            {
+                uniform token info:id = "ND_position_vector3"
+                string inputs:space = "object"
+                float3 outputs:out
+            }
+            def Shader "ps"
+            {
+                uniform token info:id = "ND_multiply_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_worley3d_v3/pos.outputs:out>
+                float inputs:in2 = 3
+                float3 outputs:out
+            }
+            def Shader "p"
+            {
+                uniform token info:id = "ND_add_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_worley3d_v3/ps.outputs:out>
+                float inputs:in2 = 0.5
+                float3 outputs:out
+            }
+            def Shader "w"
+            {
+                uniform token info:id = "ND_worleynoise3d_vector3"
+                float3 inputs:position.connect = </World/Looks/n_worley3d_v3/p.outputs:out>
+                float inputs:jitter = 0.75
+                float3 outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_vector3_color3"
+                float3 inputs:in.connect = </World/Looks/n_worley3d_v3/w.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_unified2d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_unified2d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_unified2d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "u"
+            {
+                uniform token info:id = "ND_unifiednoise2d_float"
+                float2 inputs:texcoord.connect = </World/Looks/n_unified2d/st.outputs:out>
+                int inputs:type = 3
+                float2 inputs:freq = (6, 6)
+                int inputs:octaves = 3
+                float outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_float_color3"
+                float inputs:in.connect = </World/Looks/n_unified2d/u.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_unified3d"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_unified3d/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_unified3d/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "pos"
+            {
+                uniform token info:id = "ND_position_vector3"
+                string inputs:space = "object"
+                float3 outputs:out
+            }
+            def Shader "u"
+            {
+                uniform token info:id = "ND_unifiednoise3d_float"
+                float3 inputs:position.connect = </World/Looks/n_unified3d/pos.outputs:out>
+                int inputs:type = 2
+                float3 inputs:freq = (5, 5, 5)
+                float3 inputs:offset = (0.1, 0.1, 0.5)
+                float outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_float_color3"
+                float inputs:in.connect = </World/Looks/n_unified3d/u.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_hsvtorgb"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_hsvtorgb/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_hsvtorgb/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "sep"
+            {
+                uniform token info:id = "ND_separate2_vector2"
+                float2 inputs:in.connect = </World/Looks/n_hsvtorgb/st.outputs:out>
+                float outputs:outx
+                float outputs:outy
+            }
+            def Shader "hsv"
+            {
+                uniform token info:id = "ND_combine3_color3"
+                float inputs:in1.connect = </World/Looks/n_hsvtorgb/sep.outputs:outx>
+                float inputs:in2 = 0.8
+                float inputs:in3.connect = </World/Looks/n_hsvtorgb/sep.outputs:outy>
+                color3f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_hsvtorgb_color3"
+                color3f inputs:in.connect = </World/Looks/n_hsvtorgb/hsv.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_rgbtohsv"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_rgbtohsv/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_rgbtohsv/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_rgbtohsv/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "nz"
+            {
+                uniform token info:id = "ND_noise2d_color3"
+                float2 inputs:texcoord.connect = </World/Looks/n_rgbtohsv/tc.outputs:out>
+                float3 inputs:amplitude = (0.5, 0.5, 0.5)
+                float inputs:pivot = 0.5
+                color3f outputs:out
+            }
+            def Shader "ramp"
+            {
+                uniform token info:id = "ND_ramp4_color3"
+                color3f inputs:valuetl = (0.9, 0.1, 0.1)
+                color3f inputs:valuetr = (0.1, 0.8, 0.2)
+                color3f inputs:valuebl = (0.1, 0.2, 0.9)
+                color3f inputs:valuebr = (0.9, 0.9, 0.2)
+                color3f outputs:out
+            }
+            def Shader "mx"
+            {
+                uniform token info:id = "ND_mix_color3"
+                color3f inputs:fg.connect = </World/Looks/n_rgbtohsv/nz.outputs:out>
+                color3f inputs:bg.connect = </World/Looks/n_rgbtohsv/ramp.outputs:out>
+                float inputs:mix = 0.3
+                color3f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_rgbtohsv_color3"
+                color3f inputs:in.connect = </World/Looks/n_rgbtohsv/mx.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_hsvadjust"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_hsvadjust/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_hsvadjust/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "ramp"
+            {
+                uniform token info:id = "ND_ramp4_color3"
+                color3f inputs:valuetl = (0.9, 0.1, 0.1)
+                color3f inputs:valuetr = (0.1, 0.8, 0.2)
+                color3f inputs:valuebl = (0.1, 0.2, 0.9)
+                color3f inputs:valuebr = (0.9, 0.9, 0.2)
+                color3f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_hsvadjust_color3"
+                color3f inputs:in.connect = </World/Looks/n_hsvadjust/ramp.outputs:out>
+                float3 inputs:amount = (0.3, 1.2, 0.9)
+                color3f outputs:out
+            }
+        }
+        def Material "n_colorcorrect"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_colorcorrect/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_colorcorrect/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "ramp"
+            {
+                uniform token info:id = "ND_ramp4_color3"
+                color3f inputs:valuetl = (0.9, 0.1, 0.1)
+                color3f inputs:valuetr = (0.1, 0.8, 0.2)
+                color3f inputs:valuebl = (0.1, 0.2, 0.9)
+                color3f inputs:valuebr = (0.9, 0.9, 0.2)
+                color3f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_colorcorrect_color3"
+                color3f inputs:in.connect = </World/Looks/n_colorcorrect/ramp.outputs:out>
+                float inputs:hue = 0.1
+                float inputs:saturation = 1.5
+                float inputs:gamma = 1.2
+                float inputs:lift = 0.05
+                float inputs:gain = 1.1
+                float inputs:contrast = 1.2
+                float inputs:contrastpivot = 0.5
+                float inputs:exposure = 0.5
+                color3f outputs:out
+            }
+        }
+        def Material "n_checker"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_checker/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_checker/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_checkerboard_color3"
+                color3f inputs:color1 = (0.9, 0.8, 0.1)
+                color3f inputs:color2 = (0.1, 0.2, 0.6)
+                float2 inputs:uvtiling = (4, 4)
+                color3f outputs:out
+            }
+        }
+        def Material "n_hexagons"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_hexagons/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_hexagons/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_tiledhexagons_color3"
+                float2 inputs:uvtiling = (3, 3)
+                float inputs:size = 0.8
+                color3f outputs:out
+            }
+        }
+        def Material "n_grid"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_grid/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_grid/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_grid_color3"
+                float2 inputs:uvtiling = (2, 2)
+                float inputs:thickness = 0.1
+                color3f outputs:out
+            }
+        }
+        def Material "n_place_rotate"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_place_rotate/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_place_rotate/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "pl"
+            {
+                uniform token info:id = "ND_place2d_vector2"
+                float2 inputs:texcoord.connect = </World/Looks/n_place_rotate/st.outputs:out>
+                float2 inputs:pivot = (0.5, 0.5)
+                float2 inputs:scale = (0.7, 0.5)
+                float inputs:rotate = 30
+                float2 inputs:offset = (0.1, 0)
+                float2 outputs:out
+            }
+            def Shader "ro"
+            {
+                uniform token info:id = "ND_rotate2d_vector2"
+                float2 inputs:in.connect = </World/Looks/n_place_rotate/pl.outputs:out>
+                float inputs:amount = 15
+                float2 outputs:out
+            }
+            def Shader "v3"
+            {
+                uniform token info:id = "ND_convert_vector2_vector3"
+                float2 inputs:in.connect = </World/Looks/n_place_rotate/ro.outputs:out>
+                float3 outputs:out
+            }
+            def Shader "fr"
+            {
+                uniform token info:id = "ND_modulo_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_place_rotate/v3.outputs:out>
+                float inputs:in2 = 0.5
+                float3 outputs:out
+            }
+            def Shader "sc"
+            {
+                uniform token info:id = "ND_multiply_vector3FA"
+                float3 inputs:in1.connect = </World/Looks/n_place_rotate/fr.outputs:out>
+                float inputs:in2 = 2
+                float3 outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_vector3_color3"
+                float3 inputs:in.connect = </World/Looks/n_place_rotate/sc.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_blend"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_blend/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_blend/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_blend/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "nz"
+            {
+                uniform token info:id = "ND_noise2d_color3"
+                float2 inputs:texcoord.connect = </World/Looks/n_blend/tc.outputs:out>
+                float3 inputs:amplitude = (0.5, 0.5, 0.5)
+                float inputs:pivot = 0.5
+                color3f outputs:out
+            }
+            def Shader "ramp"
+            {
+                uniform token info:id = "ND_ramp4_color3"
+                color3f inputs:valuetl = (0.9, 0.1, 0.1)
+                color3f inputs:valuetr = (0.1, 0.8, 0.2)
+                color3f inputs:valuebl = (0.1, 0.2, 0.9)
+                color3f inputs:valuebr = (0.9, 0.9, 0.2)
+                color3f outputs:out
+            }
+            def Shader "sc"
+            {
+                uniform token info:id = "ND_screen_color3"
+                color3f inputs:fg.connect = </World/Looks/n_blend/nz.outputs:out>
+                color3f inputs:bg.connect = </World/Looks/n_blend/ramp.outputs:out>
+                float inputs:mix = 0.8
+                color3f outputs:out
+            }
+            def Shader "bu"
+            {
+                uniform token info:id = "ND_burn_color3"
+                color3f inputs:fg.connect = </World/Looks/n_blend/nz.outputs:out>
+                color3f inputs:bg.connect = </World/Looks/n_blend/sc.outputs:out>
+                float inputs:mix = 0.5
+                color3f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_dodge_color3"
+                color3f inputs:fg.connect = </World/Looks/n_blend/ramp.outputs:out>
+                color3f inputs:bg.connect = </World/Looks/n_blend/bu.outputs:out>
+                float inputs:mix = 0.3
+                color3f outputs:out
+            }
+        }
+        def Material "n_over"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_over/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_over/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_over/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "nf"
+            {
+                uniform token info:id = "ND_noise2d_float"
+                float2 inputs:texcoord.connect = </World/Looks/n_over/tc.outputs:out>
+                float inputs:pivot = 0.5
+                float outputs:out
+            }
+            def Shader "fg"
+            {
+                uniform token info:id = "ND_combine4_color4"
+                float inputs:in1 = 0.9
+                float inputs:in2 = 0.4
+                float inputs:in3 = 0.1
+                float inputs:in4.connect = </World/Looks/n_over/nf.outputs:out>
+                color4f outputs:out
+            }
+            def Shader "ov"
+            {
+                uniform token info:id = "ND_over_color4"
+                color4f inputs:fg.connect = </World/Looks/n_over/fg.outputs:out>
+                color4f inputs:bg = (0.1, 0.3, 0.6, 1)
+                float inputs:mix = 0.9
+                color4f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_convert_color4_color3"
+                color4f inputs:in.connect = </World/Looks/n_over/ov.outputs:out>
+                color3f outputs:out
+            }
+        }
+        def Material "n_adjust"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_adjust/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_adjust/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "st"
+            {
+                uniform token info:id = "ND_texcoord_vector2"
+                float2 outputs:out
+            }
+            def Shader "tc"
+            {
+                uniform token info:id = "ND_multiply_vector2FA"
+                float2 inputs:in1.connect = </World/Looks/n_adjust/st.outputs:out>
+                float inputs:in2 = 4
+                float2 outputs:out
+            }
+            def Shader "nz"
+            {
+                uniform token info:id = "ND_noise2d_color3"
+                float2 inputs:texcoord.connect = </World/Looks/n_adjust/tc.outputs:out>
+                float3 inputs:amplitude = (0.5, 0.5, 0.5)
+                float inputs:pivot = 0.5
+                color3f outputs:out
+            }
+            def Shader "co"
+            {
+                uniform token info:id = "ND_contrast_color3"
+                color3f inputs:in.connect = </World/Looks/n_adjust/nz.outputs:out>
+                color3f inputs:amount = (1.5, 1.5, 1.5)
+                color3f inputs:pivot = (0.5, 0.5, 0.5)
+                color3f outputs:out
+            }
+            def Shader "ra"
+            {
+                uniform token info:id = "ND_range_color3"
+                color3f inputs:in.connect = </World/Looks/n_adjust/co.outputs:out>
+                color3f inputs:inlow = (0.1, 0.1, 0.1)
+                color3f inputs:inhigh = (0.9, 0.9, 0.9)
+                color3f inputs:gamma = (1.4, 1.4, 1.4)
+                color3f inputs:outlow = (0.05, 0.05, 0.05)
+                color3f inputs:outhigh = (0.95, 0.95, 0.95)
+                bool inputs:doclamp = 1
+                color3f outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_safepower_color3"
+                color3f inputs:in1.connect = </World/Looks/n_adjust/ra.outputs:out>
+                color3f inputs:in2 = (0.8, 1.2, 2)
+                color3f outputs:out
+            }
+        }
+        def Material "n_hmtlx"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/n_hmtlx/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface_unlit"
+                color3f inputs:emission_color.connect = </World/Looks/n_hmtlx/out.outputs:out>
+                token outputs:out
+            }
+            def Shader "ch"
+            {
+                uniform token info:id = "ND_hmtlxcheckers2d_float"
+                float2 inputs:freq = (3, 3)
+                float outputs:out
+            }
+            def Shader "ci"
+            {
+                uniform token info:id = "ND_hmtlxcircles2d_float"
+                float2 inputs:freq = (2, 2)
+                float inputs:scale = 0.8
+                float outputs:out
+            }
+            def Shader "out"
+            {
+                uniform token info:id = "ND_combine3_color3"
+                float inputs:in1.connect = </World/Looks/n_hmtlx/ch.outputs:out>
+                float inputs:in2.connect = </World/Looks/n_hmtlx/ci.outputs:out>
+                float inputs:in3 = 0.5
+                color3f outputs:out
+            }
+        }
+    }
+    def Mesh "tile_noise2d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_noise2d>
+        double3 xformOp:translate = (0, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_noise3d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_noise3d>
+        double3 xformOp:translate = (1, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_noise3d_f" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_noise3d_f>
+        double3 xformOp:translate = (2, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_fractal3d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_fractal3d>
+        double3 xformOp:translate = (3, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_fractal2d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_fractal2d>
+        double3 xformOp:translate = (4, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_cell2d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_cell2d>
+        double3 xformOp:translate = (5, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_cell3d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_cell3d>
+        double3 xformOp:translate = (0, 2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_worley2d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_worley2d>
+        double3 xformOp:translate = (1, 2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_worley2d_v3" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_worley2d_v3>
+        double3 xformOp:translate = (2, 2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_worley3d_v3" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_worley3d_v3>
+        double3 xformOp:translate = (3, 2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_unified2d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_unified2d>
+        double3 xformOp:translate = (4, 2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_unified3d" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_unified3d>
+        double3 xformOp:translate = (5, 2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_hsvtorgb" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_hsvtorgb>
+        double3 xformOp:translate = (0, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_rgbtohsv" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_rgbtohsv>
+        double3 xformOp:translate = (1, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_hsvadjust" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_hsvadjust>
+        double3 xformOp:translate = (2, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_colorcorrect" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_colorcorrect>
+        double3 xformOp:translate = (3, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_checker" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_checker>
+        double3 xformOp:translate = (4, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_hexagons" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_hexagons>
+        double3 xformOp:translate = (5, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_grid" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_grid>
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_place_rotate" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_place_rotate>
+        double3 xformOp:translate = (1, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_blend" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_blend>
+        double3 xformOp:translate = (2, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_over" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_over>
+        double3 xformOp:translate = (3, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_adjust" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_adjust>
+        double3 xformOp:translate = (4, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "tile_hmtlx" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </World/Looks/n_hmtlx>
+        double3 xformOp:translate = (5, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 60
+        float verticalAperture = 40
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (3, 2, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (192, 128)
+        float nova:object:diffuseLimit = 0
+        float karma:object:diffuselimit = 0
+        token nova:pixelFilter = "point"
+        string karma:global:pixelfilter = "box"
+        float karma:global:pixelfilterscale = 1e-06
+    }
+}

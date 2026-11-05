@@ -1,0 +1,134 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 0
+    endTimeCode = 2
+)
+
+# Subdivision reference scene (M2). Unit cubes, Catmull-Clark, seen by
+# orthographic cameras (1.2 units across 300 px = 250 px per unit). Alpha
+# coverage of the center rows:
+#   smooth  limit surface: 2 * 34/81 = 0.839506 units = 209.877 px  (Karma CPU: 209.85)
+#   smooth  hull (husk --complexity low|medium): 1.0 unit = 250 px  (Karma CPU: 250.1)
+#   creased (all 12 edges sharpness 10): 250 px at every complexity  (Karma CPU: 250.05)
+#   moving  limit surface whose points move +0.25 units during the shutter
+#           [-0.25, 0.25] of frame 1: still 209.877 px of coverage, but blurred
+#           over 62.5 px at either side
+# Creased front face: flat normal (0,0,1) -> radiance 0.5 / pi = 0.159155 under
+# the normalized distant light (irradiance 1).
+def Xform "World"
+{
+    def Mesh "smooth"
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1, 7, 5, 3, 6, 0, 2, 4]
+        point3f[] points = [(-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5)]
+        uniform token subdivisionScheme = "catmullClark"
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+    }
+
+    def Mesh "creased"
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1, 7, 5, 3, 6, 0, 2, 4]
+        point3f[] points = [(-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5)]
+        uniform token subdivisionScheme = "catmullClark"
+        int[] creaseIndices = [0, 1, 3, 2, 0, 6, 7, 5, 4, 6, 0, 6, 1, 7, 3, 5, 2, 4]
+        int[] creaseLengths = [5, 5, 2, 2, 2, 2]
+        float[] creaseSharpnesses = [10, 10, 10, 10, 10, 10]
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+        double3 xformOp:translate = (10, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    # Deformation blur of a subdivision surface: the points move +0.5 units
+    # per frame in x (centered at x = 20 at frame 1).
+    def Mesh "moving"
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 3, 2, 2, 3, 5, 4, 4, 5, 7, 6, 6, 7, 1, 0, 1, 7, 5, 3, 6, 0, 2, 4]
+        point3f[] points.timeSamples = {
+            0: [(19, -0.5, 0.5), (20, -0.5, 0.5), (19, 0.5, 0.5), (20, 0.5, 0.5), (19, 0.5, -0.5), (20, 0.5, -0.5), (19, -0.5, -0.5), (20, -0.5, -0.5)],
+            2: [(20, -0.5, 0.5), (21, -0.5, 0.5), (20, 0.5, 0.5), (21, 0.5, 0.5), (20, 0.5, -0.5), (21, 0.5, -0.5), (20, -0.5, -0.5), (21, -0.5, -0.5)],
+        }
+        uniform token subdivisionScheme = "catmullClark"
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+    }
+
+    # UsdGeom implicit prims become catmullClark cages (HdsiImplicitSurfaceSceneIndex);
+    # they must stay unsubdivided (outside every camera; checked via TF_DEBUG).
+    def Sphere "implicitBall"
+    {
+        double radius = 1
+        double3 xformOp:translate = (100, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "camSmooth"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 12
+        float verticalAperture = 12
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 0, 5)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "camCreased"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 12
+        float verticalAperture = 12
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (10, 0, 5)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "camMoving"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 12
+        float verticalAperture = 12
+        float2 clippingRange = (0.1, 100)
+        double shutter:open = -0.25
+        double shutter:close = 0.25
+        double3 xformOp:translate = (20, 0, 5)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def DistantLight "sun"
+    {
+        float inputs:intensity = 1
+        bool inputs:normalize = 1
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "smooth"
+    {
+        rel camera = </World/camSmooth>
+        int2 resolution = (300, 300)
+        int nova:samples = 16
+        int nova:maxDepth = 1
+    }
+
+    def RenderSettings "creased"
+    {
+        rel camera = </World/camCreased>
+        int2 resolution = (300, 300)
+        int nova:samples = 16
+        int nova:maxDepth = 1
+    }
+
+    def RenderSettings "moving"
+    {
+        rel camera = </World/camMoving>
+        int2 resolution = (300, 300)
+        int nova:samples = 64
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+}

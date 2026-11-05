@@ -1,0 +1,26 @@
+{
+  "scene": "dome_plane",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/dome_plane.usda": "b7f9fb96f3c7a50b1239ec0a9f66205212af2d52",
+    "scenes/assets/sky_soft.exr": "a5f902ce2ce339472feca019aa6fee226e8ed97c",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "value": [
+    0.4660919108699603,
+    0.5100261163517353,
+    0.6259761522701756,
+    1.0
+  ],
+  "karma_floor": {
+    "flip_mean": 0.023657,
+    "flip_test_pair": 0.03638,
+    "relmse": 0.008776,
+    "global_z": [
+      0.777,
+      0.779,
+      0.785,
+      0.0
+    ]
+  }
+}

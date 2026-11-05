@@ -1,0 +1,32 @@
+﻿uniform     8: relmse 1.988e-02  p99 2.337e-01  rmse 0.0498
+uniform    12: relmse 1.286e-02  p99 1.314e-01  rmse 0.0464
+uniform    16: relmse 1.006e-02  p99 9.214e-02  rmse 0.0318
+uniform    24: relmse 7.327e-03  p99 5.810e-02  rmse 0.0221
+uniform    32: relmse 5.108e-03  p99 4.002e-02  rmse 0.0161
+uniform    48: relmse 3.204e-03  p99 2.470e-02  rmse 0.0142
+uniform    64: relmse 2.236e-03  p99 1.659e-02  rmse 0.0096
+uniform    96: relmse 1.464e-03  p99 1.095e-02  rmse 0.0075
+uniform   128: relmse 1.034e-03  p99 8.020e-03  rmse 0.0063
+uniform   192: relmse 6.506e-04  p99 5.296e-03  rmse 0.0050
+uniform   256: relmse 4.692e-04  p99 3.939e-03  rmse 0.0040
+uniform   384: relmse 3.081e-04  p99 2.563e-03  rmse 0.0033
+uniform   512: relmse 2.101e-04  p99 1.952e-03  rmse 0.0025
+uniform   768: relmse 1.393e-04  p99 1.315e-03  rmse 0.0022
+uniform  1024: relmse 9.734e-05  p99 1.025e-03  rmse 0.0017
+uniform fit slopes: relmse -1.137  p99 -1.052
+cycles           t  0.040: spp    20.7  relmse 6.620e-03 (=uniform    25.2, x1.22)  p99 5.886e-02 (=uniform    20.2, x0.97)
+cycles           t  0.020: spp    53.7  relmse 2.946e-03 (=uniform    51.3, x0.96)  p99 2.553e-02 (=uniform    44.6, x0.83)
+cycles           t  0.010: spp   166.9  relmse 9.281e-04 (=uniform   141.8, x0.85)  p99 8.069e-03 (=uniform   133.4, x0.80)
+cycles           t  0.005: spp   515.6  relmse 2.537e-04 (=uniform   443.7, x0.86)  p99 2.285e-03 (=uniform   442.7, x0.86)
+pool3nd          t  0.040: spp    17.8  relmse 8.207e-03 (=uniform    20.8, x1.17)  p99 8.053e-02 (=uniform    15.0, x0.84)
+pool3nd          t  0.020: spp    31.9  relmse 4.576e-03 (=uniform    34.8, x1.09)  p99 3.834e-02 (=uniform    30.3, x0.95)
+pool3nd          t  0.010: spp    94.9  relmse 1.587e-03 (=uniform    88.4, x0.93)  p99 1.304e-02 (=uniform    84.5, x0.89)
+pool3nd          t  0.005: spp   298.8  relmse 4.155e-04 (=uniform   287.5, x0.96)  p99 3.275e-03 (=uniform   314.5, x1.05)
+tile8            t  0.040: spp    35.4  relmse 6.126e-03 (=uniform    27.0, x0.76)  p99 6.016e-02 (=uniform    19.7, x0.56)
+tile8            t  0.020: spp    70.3  relmse 2.877e-03 (=uniform    52.4, x0.75)  p99 2.590e-02 (=uniform    44.0, x0.63)
+tile8            t  0.010: spp   170.8  relmse 8.943e-04 (=uniform   146.5, x0.86)  p99 7.293e-03 (=uniform   146.9, x0.86)
+tile8            t  0.005: spp   464.0  relmse 2.571e-04 (=uniform   438.6, x0.95)  p99 2.119e-03 (=uniform   475.6, x1.03)
+tile32           t  0.040: spp   111.0  relmse 3.654e-03 (=uniform    42.5, x0.38)  p99 3.821e-02 (=uniform    30.4, x0.27)
+tile32           t  0.020: spp   204.0  relmse 1.179e-03 (=uniform   114.9, x0.56)  p99 1.065e-02 (=uniform   102.5, x0.50)
+tile32           t  0.010: spp   368.0  relmse 3.880e-04 (=uniform   305.4, x0.83)  p99 3.510e-03 (=uniform   294.4, x0.80)
+tile32           t  0.005: spp   800.0  relmse 1.323e-04 (=uniform   786.8, x0.98)  p99 1.265e-03 (=uniform   776.8, x0.97)

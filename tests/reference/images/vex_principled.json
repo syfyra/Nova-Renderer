@@ -1,0 +1,31 @@
+{
+  "scene": "vex_principled",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/vex_principled.usda": "413ca092a1b6c6395e0e1019ee2d3beea88400fc",
+    "scenes/assets/sky_soft.exr": "a5f902ce2ce339472feca019aa6fee226e8ed97c",
+    "scenes/assets/sphere_st.usda": "e1a1a3ae636cea8cbb70e11bcd9779b67a1c3a89",
+    "scenes/assets/sphere_uv.usda": "d5782fd06189499193ae18340ded3af1395f9648",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/assets/height_bumps.exr": "07973045b77e053dca8d5a0bc3d232e4343c511a",
+    "scenes/assets/rough.png": "d9a697cf46433d6c537b3f97feeedd87344ef7b2",
+    "scenes/assets/normal_checks.png": "18f37824c9de76bc34326b9aa3b068e0e9cff58e",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/vex_principled.exr",
+  "sigma": "images/vex_principled.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.053091,
+    "flip_test_pair": 0.063534,
+    "relmse": 0.030348,
+    "global_z": [
+      0.494,
+      0.212,
+      0.71,
+      0.0
+    ]
+  }
+}

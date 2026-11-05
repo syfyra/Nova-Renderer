@@ -1,0 +1,69 @@
+﻿| prim | husk:name | sourceType | sourceName | dataType | husk:format | other aov attributes |
+|---|---|---|---|---|---|---|
+| myaov | myaov | raw | `myaov` | vector3f | float3 | prefix=myaov, filter=["ubox",{}] |
+| myaov | myaov | raw | `myaov` | vector3f | float3 | prefix=myaov, filter=["ubox",{}] |
+| CryptoPrimitives | CryptoPrimitives | primvar | `__name` | float3 | float3 | clear=0.0, ms=False, crypto=True, rank=6, sidecar=, filter=["ubox",{}] |
+| CryptoMaterials | CryptoMaterials | primvar | `__materialname` | float3 | float3 | clear=0.0, ms=False, crypto=True, rank=6, sidecar=, filter=["ubox",{}] |
+| beauty | C | lpe | `C.*[LO]` | color4f | color4h | clear=0.0, ms=True, filter=["ubox",{}] |
+| beauty_emission | C_emission | lpe | `C.*O` | color4f | color4h | prefix=C_emission, clear=0.0, ms=True, crypto=False, filter=["ubox",{}] |
+| beauty_fill | C_fill | lpe | `C.*<L.'fill'>` | color4f | color4h | prefix=C_fill, clear=0.0, ms=True, crypto=False, filter=["ubox",{}] |
+| beauty_key | C_key | lpe | `C.*<L.'key'>` | color4f | color4h | prefix=C_key, clear=0.0, ms=True, crypto=False, filter=["ubox",{}] |
+| beautyunshadowed | beautyunshadowed | lpe | `unoccluded;C.*[LO]` | color3f | color3h | prefix=beautyunshadowed, clear=0.0, ms=True, filter=["ubox",{}] |
+| shadow | shadow | lpe | `shadow;C.*[LO]` | color3f | color3h | prefix=shadow, clear=0.0, ms=True, filter=["ubox",{}] |
+| combineddiffuse | combineddiffuse | lpe | `C<RD>.*L` | color3f | color3h | prefix=combineddiffuse, clear=0.0, ms=True, filter=["ubox",{}] |
+| combineddiffuse_emission | combineddiffuse_emission | lpe | `C<RD>.*O` | color3f | color3h | prefix=combineddiffuse_emission, clear=0.0, ms=True, crypto=False, filter=["ubox",{}] |
+| combineddiffuse_fill | combineddiffuse_fill | lpe | `C<RD>.*<L.'fill'>` | color3f | color3h | prefix=combineddiffuse_fill, clear=0.0, ms=True, crypto=False, filter=["ubox",{}] |
+| combineddiffuse_key | combineddiffuse_key | lpe | `C<RD>.*<L.'key'>` | color3f | color3h | prefix=combineddiffuse_key, clear=0.0, ms=True, crypto=False, filter=["ubox",{}] |
+| directdiffuse | directdiffuse | lpe | `C<RD>L` | color3f | color3h | prefix=directdiffuse, clear=0.0, ms=True, filter=["ubox",{}] |
+| indirectdiffuse | indirectdiffuse | lpe | `C<RD>.+L` | color3f | color3h | prefix=indirectdiffuse, clear=0.0, ms=True, filter=["ubox",{}] |
+| combineddiffuseunshadowed | combineddiffuseunshadowed | lpe | `unoccluded;C<RD>.*L` | color3f | color3h | prefix=combineddiffuseunshadowed, clear=0.0, ms=True, filter=["ubox",{}] |
+| directdiffuseunshadowed | directdiffuseunshadowed | lpe | `unoccluded;C<RD>L` | color3f | color3h | prefix=directdiffuseunshadowed, clear=0.0, ms=True, filter=["ubox",{}] |
+| indirectdiffuseunshadowed | indirectdiffuseunshadowed | lpe | `unoccluded;C<RD>.+L` | color3f | color3h | prefix=indirectdiffuseunshadowed, clear=0.0, ms=True, filter=["ubox",{}] |
+| combineddiffuseshadow | combineddiffuseshadow | lpe | `shadow;C<RD>.*L` | color3f | color3h | prefix=combineddiffuseshadow, clear=0.0, ms=True, filter=["ubox",{}] |
+| directdiffuseshadow | directdiffuseshadow | lpe | `shadow;C<RD>L` | color3f | color3h | prefix=directdiffuseshadow, clear=0.0, ms=True, filter=["ubox",{}] |
+| indirectdiffuseshadow | indirectdiffuseshadow | lpe | `shadow;C<RD>.+L` | color3f | color3h | prefix=indirectdiffuseshadow, clear=0.0, ms=True, filter=["ubox",{}] |
+| combinedglossyreflection | combinedglossyreflection | lpe | `C<RG>.*L` | color3f | color3h | prefix=combinedglossyreflection, clear=0.0, ms=True, filter=["ubox",{}] |
+| directglossyreflection | directglossyreflection | lpe | `C<RG>L` | color3f | color3h | prefix=directglossyreflection, clear=0.0, ms=True, filter=["ubox",{}] |
+| indirectglossyreflection | indirectglossyreflection | lpe | `C<RG>.+L` | color3f | color3h | prefix=indirectglossyreflection, clear=0.0, ms=True, filter=["ubox",{}] |
+| glossytransmission | glossytransmission | lpe | `C<TG>.*L` | color3f | color3h | prefix=glossytransmission, clear=0.0, ms=True, filter=["ubox",{}] |
+| visiblelights | visiblelights | lpe | `CL` | color3f | color3h | prefix=visiblelights, clear=0.0, ms=True, filter=["ubox",{}] |
+| combinedemission | combinedemission | lpe | `C.*O` | color3f | color3h | prefix=combinedemission, clear=0.0, ms=True, filter=["ubox",{}] |
+| directemission | directemission | lpe | `CO` | color3f | color3h | prefix=directemission, clear=0.0, ms=True, filter=["ubox",{}] |
+| indirectemission | indirectemission | lpe | `C.+O` | color3f | color3h | prefix=indirectemission, clear=0.0, ms=True, filter=["ubox",{}] |
+| combinedvolume | combinedvolume | lpe | `CV.*L` | color3f | color3h | prefix=combinedvolume, clear=0.0, ms=True, filter=["ubox",{}] |
+| directvolume | directvolume | lpe | `CVL` | color3f | color3h | prefix=directvolume, clear=0.0, ms=True, filter=["ubox",{}] |
+| indirectvolume | indirectvolume | lpe | `CV.+L` | color3f | color3h | prefix=indirectvolume, clear=0.0, ms=True, filter=["ubox",{}] |
+| coat | coat | lpe | `C<...'coat'>.*L` | color3f | color3h | prefix=coat, clear=0.0, ms=True, filter=["ubox",{}] |
+| sss | sss | lpe | `C<TD>.*L` | color3f | color3h | prefix=sss, clear=0.0, ms=True, filter=["ubox",{}] |
+| hitP | P | raw | `ray:hitP` | point3f | float3 | prefix=P, clear=0.0, ms=False, filter=["ubox",{}] |
+| hitP_camera | P_camera | raw | `ray:hitP_camera` | point3f | float3 | prefix=P_camera, clear=0.0, ms=False, filter=["ubox",{}] |
+| hitPz | depth | raw | `ray:hitPz` | float | float | prefix=z, clear=0.0, ms=False, filter=["minmax",{"mode":"zmin"}] |
+| element | element | raw | `ray:element` | int | float | prefix=id, clear=0.0, ms=False, filter=["minmax",{"mode":"idcover"}] |
+| primid | primid | raw | `ray:primid` | int | float | prefix=id, clear=0.0, ms=False, filter=["minmax",{"mode":"idcover"}] |
+| hituv | UV | primvar | `st` | float3 | float3 | prefix=uv, clear=0.0, ms=False, filter=["ubox",{}] |
+| hitN | N | raw | `ray:hitN` | normal3f | half3 | prefix=N, clear=0.0, ms=False, filter=["ubox",{}] |
+| hitNg | Ng | raw | `ray:hitNg` | normal3f | half3 | prefix=Ng, clear=0.0, ms=False, filter=["ubox",{}] |
+| hitN_facingratio | Facingratio_N | raw | `ray:hitN_facingratio` | float | half | prefix=Facingratio_N, clear=0.0, ms=False, filter=["ubox",{}] |
+| hitNg_facingratio | Facingratio_Ng | raw | `ray:hitNg_facingratio` | float | half | prefix=Facingratio_Ng, clear=0.0, ms=False, filter=["ubox",{}] |
+| motionvectors | motionvectors | raw | `ray:motionvector` | vector3f | half3 | prefix=motionvectors, clear=0.0, ms=False, filter=["ubox",{}] |
+| velocity | velocity | raw | `ray:velocity` | vector3f | half3 | prefix=velocity, clear=0.0, ms=False, filter=["ubox",{}] |
+| albedo | albedo | lpe | `CDA` | color3f | color3h | prefix=albedo, clear=0.0, ms=True, filter=["ubox",{}] |
+| ambientocclusion | AO | raw | `AO` | color3f | color3h | prefix=ao, clear=0.0, ms=False, filter=["ubox",{}] |
+| st | st | primvar | `st` | vector3f | half3 | prefix=st, clear=0.0, ms=False, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| albedodiffuse | albedodiffuse | lpe | `CDA` | color3f | color3h | prefix=albedodiffuse, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| albedoglossyreflection | albedoglossyreflection | lpe | `C<RG>A` | color3f | color3h | prefix=albedoglossyreflection, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| albedoglossytransmission | albedoglossytransmission | lpe | `C<TG>A` | color3f | color3h | prefix=albedoglossytransmission, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| albedotransmitteddiffuse | albedotransmitteddiffuse | lpe | `C<TG>*DA` | color3f | color3h | prefix=albedotransmitteddiffuse, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| basecolor | basecolor | raw | `export_basecolor` | color3f | color3h | prefix=basecolor, clear=0.0, ms=False, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| alphatransmission | alphatransmission | lpe | `!C<TG>*B` | color3f | color3h | prefix=alphatransmission, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| holdout | holdout | lpe | `holdout;C.*[LO]` | color3f | color3h | prefix=holdout, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| hitdist | hitdist | raw | `ray:hitdist` | float | float | prefix=hitdist, clear=0.0, ms=False, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| primarysamples | primarysamples | intrinsic | `ray:pixelsamples` | int | int | prefix=primarysamples, clear=0.0, ms=False, filter=["minmax",{"mode":"max"}], karma:utilitypathexpression=CO |
+| cputime | cputime | intrinsic | `stat:cputime` | float | float | prefix=cputime, clear=0.0, ms=False, filter=["accumulate",{}], karma:utilitypathexpression=CO |
+| N_camera | N_camera | raw | `ray:hitN_camera` | normal3f | normal3h | prefix=N_camera, clear=0.0, ms=False, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| Ng_camera | Ng_camera | raw | `ray:hitNg_camera` | normal3f | normal3h | prefix=Ng_camera, clear=0.0, ms=False, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| CryptoObject | CryptoObject | primvar | `__name` | float3 | float3 | prefix=CryptoObject, clear=0.0, ms=False, crypto=True, rank=6, sidecar=, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| CryptoMaterial | CryptoMaterial | primvar | `__materialname` | float3 | float3 | prefix=CryptoMaterial, clear=0.0, ms=False, crypto=True, rank=6, sidecar=, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| metal_glossy | metal_glossy | lpe | `C<RG'metal'>.*[LO]` | color3f | color3f | prefix=metal_glossy, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| key_diffuse | key_diffuse | lpe | `C<RD>.*<L.'key'>` | color3f | color3f | prefix=key_diffuse, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |
+| fill_all | fill_all | lpe | `C.*<L.'fill'>` | color3f | color3f | prefix=fill_all, clear=0.0, ms=True, filter=["ubox",{}], karma:utilitypathexpression=CO |

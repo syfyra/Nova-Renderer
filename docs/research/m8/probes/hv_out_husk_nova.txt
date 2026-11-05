@@ -1,0 +1,18 @@
+> C:\Program Files\Side Effects Software\Houdini 22.0.466\bin\husk.exe --renderer HdNovaRendererPlugin --res 64 64 --frame 16 --camera /probecam -V2 -o <scratch>\nova_out.exr <scratch>\scene\usd\probe_wrap.usda
+[18:28:28] C:/Program Files/Side Effects Software/Houdini 22.0.466/bin/husk.exe version 22.0.466
+[18:28:28] Loading <scratch>\scene\usd\probe_wrap.usda
+[18:28:29] Running prerender procedurals script: C:/PROGRA~1/SIDEEF~1/HOUDIN~1.466/houdini/python3.13libs/husd/runprocedurals.py --mode prerender --validategeo
+Bprim Added: /_UsdImaging_HdNovaRendererPlugin_00000000445A7E00/aov_color
+[18:28:29] Running preframe procedurals script: C:/PROGRA~1/SIDEEF~1/HOUDIN~1.466/houdini/python3.13libs/husd/runprocedurals.py --mode preframe --validategeo
+[18:28:29] Start Wall Clock Time: 0:00:00.93
+[18:28:29] >>> Render <scratch>\nova_out.exr
+Sprim Added: /materials/karmapyromaterial1
+Sprim Added: /probecam
+Sprim Added: /husk_headlight/__the_headlight
+[18:28:29]   Load Wall Clock Time: 0:00:00.98
+[18:28:29] Saved Image: <scratch>\nova_out.exr
+[18:28:29] Running postframe procedurals script: C:/PROGRA~1/SIDEEF~1/HOUDIN~1.466/houdini/python3.13libs/husd/runprocedurals.py --mode postframe --validategeo
+[18:28:29] Running postrender procedurals script: C:/PROGRA~1/SIDEEF~1/HOUDIN~1.466/houdini/python3.13libs/husd/runprocedurals.py --mode postrender --validategeo
+[Nova] Warning: material /materials/karmapyromaterial1: render context 'kma': no surface terminal
+[Nova] Warning: material /materials/karmapyromaterial1: render context '': no surface terminal
+

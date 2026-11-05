@@ -1,0 +1,28 @@
+{
+  "scene": "mtl_textured",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/mtl_textured.usda": "1fb3716f0c1343dd95644d7beeef5f27560c70f0",
+    "scenes/assets/sky_soft.exr": "a5f902ce2ce339472feca019aa6fee226e8ed97c",
+    "scenes/assets/sphere_st.usda": "e1a1a3ae636cea8cbb70e11bcd9779b67a1c3a89",
+    "scenes/assets/checker_lin.exr": "c4da38df8db628666a074b9346236459c5c427e6",
+    "scenes/assets/rough.png": "d9a697cf46433d6c537b3f97feeedd87344ef7b2",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/mtl_textured.exr",
+  "sigma": "images/mtl_textured.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.094849,
+    "flip_test_pair": 0.112573,
+    "relmse": 0.064062,
+    "global_z": [
+      0.481,
+      0.576,
+      0.189,
+      0.0
+    ]
+  }
+}

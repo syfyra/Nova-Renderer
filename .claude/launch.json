@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "installer-ui",
+      "runtimeExecutable": "C:\\Program Files\\Side Effects Software\\Houdini 22.0.466\\python313\\python.exe",
+      "runtimeArgs": ["-I", "-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "tools/installer/ui"],
+      "port": 8765
+    }
+  ]
+}

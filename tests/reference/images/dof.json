@@ -1,0 +1,24 @@
+{
+  "scene": "dof",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/dof.usda": "00384fb8b7e921b0b7389058a9ee95ebb802f469",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/dof.exr",
+  "sigma": "images/dof.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.020264,
+    "flip_test_pair": 0.033176,
+    "relmse": 0.001742,
+    "global_z": [
+      -1.718,
+      -1.718,
+      -1.718,
+      2.144
+    ]
+  }
+}

@@ -1,0 +1,103 @@
+== pair t0: treat_as_lightsource 0, diffusescale 1, specularscale 1, ground specular 0
+   region               sphere      gnd_sph  gnd_sph_far         quad     gnd_quad gnd_quad_far
+   beauty              2.00000      0.10036      0.02016      2.00000      0.10228      0.01476
+   CO                  2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   CL                  0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<RD>O              0.00000      0.10036      0.02016      0.00000      0.10228      0.01476
+   C<RD>L              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>O           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>L           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   rel.std @16          0.0000       0.4598       3.1279       0.0000       0.4303       2.1448
+== pair t1: treat_as_lightsource 1, diffusescale 1, specularscale 1, ground specular 0
+   region               sphere      gnd_sph  gnd_sph_far         quad     gnd_quad gnd_quad_far
+   beauty              2.00000      0.09981      0.01851      2.00000      0.10207      0.01466
+   CO                  0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   CL                  2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   C<RD>O              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<RD>L              0.00000      0.09981      0.01851      0.00000      0.10207      0.01466
+   C<R[GS]>O           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>L           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   rel.std @16          0.0000       0.2334       0.2560       0.0000       0.1291       0.1192
+== pair t2: treat_as_lightsource 2, diffusescale 1, specularscale 1, ground specular 0
+   region               sphere      gnd_sph  gnd_sph_far         quad     gnd_quad gnd_quad_far
+   beauty              2.00000      0.09981      0.01851      2.00000      0.10207      0.01466
+   CO                  0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   CL                  2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   C<RD>O              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<RD>L              0.00000      0.09981      0.01851      0.00000      0.10207      0.01466
+   C<R[GS]>O           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>L           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   rel.std @16          0.0000       0.2334       0.2560       0.0000       0.1291       0.1192
+== pair t1_d2: treat_as_lightsource 1, diffusescale 2, specularscale 1, ground specular 0
+   region               sphere      gnd_sph  gnd_sph_far         quad     gnd_quad gnd_quad_far
+   beauty              2.00000      0.20086      0.03808      2.00000      0.20486      0.02950
+   CO                  0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   CL                  2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   C<RD>O              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<RD>L              0.00000      0.20086      0.03808      0.00000      0.20486      0.02950
+   C<R[GS]>O           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>L           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   rel.std @16          0.0000       0.2334       0.2560       0.0000       0.1297       0.0868
+== pair t1_d0: treat_as_lightsource 1, diffusescale 0, specularscale 1, ground specular 0
+   region               sphere      gnd_sph  gnd_sph_far         quad     gnd_quad gnd_quad_far
+   beauty              2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   CO                  0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   CL                  2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   C<RD>O              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<RD>L              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>O           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>L           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   rel.std @16          0.0000       0.0000       0.0000       0.0000       0.0000       0.0000
+== pair t0_spec: treat_as_lightsource 0, diffusescale 1, specularscale 1, ground specular 1
+   region               sphere      gnd_sph  gnd_sph_far         quad     gnd_quad gnd_quad_far
+   beauty              2.00000      0.09868      0.01865      2.00000      0.09972      0.01436
+   CO                  2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   CL                  0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<RD>O              0.00000      0.09629      0.01865      0.00000      0.09735      0.01436
+   C<RD>L              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>O           0.00000      0.00239      0.00000      0.00000      0.00237      0.00000
+   C<R[GS]>L           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   rel.std @16          0.0000       0.4171       1.7787       0.0000       0.7237       2.4153
+== pair t1_spec: treat_as_lightsource 1, diffusescale 1, specularscale 1, ground specular 1
+   region               sphere      gnd_sph  gnd_sph_far         quad     gnd_quad gnd_quad_far
+   beauty              2.00000      0.09712      0.01774      2.00000      0.09971      0.01412
+   CO                  0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   CL                  2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   C<RD>O              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<RD>L              0.00000      0.09513      0.01765      0.00000      0.09754      0.01405
+   C<R[GS]>O           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>L           0.00000      0.00200      0.00009      0.00000      0.00217      0.00007
+   rel.std @16          0.0000       0.2267       0.2530       0.0000       0.1350       0.1220
+== pair t1_spec_s0: treat_as_lightsource 1, diffusescale 1, specularscale 0, ground specular 1
+   region               sphere      gnd_sph  gnd_sph_far         quad     gnd_quad gnd_quad_far
+   beauty              2.00000      0.09633      0.01828      2.00000      0.09725      0.01405
+   CO                  0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   CL                  2.00000      0.00000      0.00000      2.00000      0.00000      0.00000
+   C<RD>O              0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<RD>L              0.00000      0.09633      0.01828      0.00000      0.09725      0.01405
+   C<R[GS]>O           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   C<R[GS]>L           0.00000      0.00000      0.00000      0.00000      0.00000      0.00000
+   rel.std @16          0.0000       0.2240       0.2529       0.0000       0.1285       0.1201
+== auto: treat_as_lightsource 2 on nine spheres; camera sees CO (object) or CL (light)
+   r0.05_e0.1   beauty    0.20000  CO    0.00000  CL    0.20000
+   r0.05_e1     beauty    2.00000  CO    0.00000  CL    2.00000
+   r0.05_e20    beauty   40.00000  CO    0.00000  CL   40.00000
+   r0.25_e0.1   beauty    0.20000  CO    0.00000  CL    0.20000
+   r0.25_e1     beauty    2.00000  CO    0.00000  CL    2.00000
+   r0.25_e20    beauty   40.00000  CO    0.00000  CL   40.00000
+   r0.6_e0.1    beauty    0.20000  CO    0.00000  CL    0.20000
+   r0.6_e1      beauty    2.00000  CO    0.00000  CL    2.00000
+   r0.6_e20     beauty   40.00000  CO    0.00000  CL   40.00000
+== auto_sun: treat_as_lightsource 2 on nine spheres plus a distant light of irradiance 3; camera sees CO (object) or CL (light)
+   r0.05_e0.001 beauty    0.00200  CO    0.00000  CL    0.00200
+   r0.05_e0.1   beauty    0.20000  CO    0.00000  CL    0.20000
+   r0.05_e20    beauty   39.99999  CO    0.00000  CL   39.99999
+   r0.25_e0.001 beauty    0.00200  CO    0.00000  CL    0.00200
+   r0.25_e0.1   beauty    0.20000  CO    0.00000  CL    0.20000
+   r0.25_e20    beauty   40.00000  CO    0.00000  CL   40.00000
+   r0.6_e0.001  beauty    0.00200  CO    0.00000  CL    0.00200
+   r0.6_e0.1    beauty    0.20000  CO    0.00000  CL    0.20000
+   r0.6_e20     beauty   40.00000  CO    0.00000  CL   40.00000
+== auto_varied: treat_as_lightsource 2 on a noise-driven emitter (32 x 16) and a dense one (256 x 128, 32,768 faces)
+   noisy        beauty    0.89998  CO    0.00000  CL    0.89998
+   dense        beauty    2.00000  CO    0.00000  CL    2.00000

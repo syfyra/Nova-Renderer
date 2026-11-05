@@ -1,0 +1,72 @@
+###### karmarendersettings
+  volumequality                                                [Volume Quality] default=1.0
+  light_sampling_mode                                          [Light Sampling Mode] default=1
+  light_sampling_quality                                       [Light Sampling Quality] default=1.0
+  screendoorlimit                                              [Screendoor Samples] default=4
+  volumesteprate                                               [Volume Step Rate] default=0.25
+  diffuselimit                                                 [Diffuse Limit] default=1.0
+  reflectionlimit                                              [Reflection Limit] default=4.0
+  refractionlimit                                              [Refraction Limit] default=4.0
+  volumelimit                                                  [Volume Limit] default=0.0
+  ssslimit                                                     [SSS Limit] default=1.0
+  colorlimit                                                   [Color Limit] default=20.0
+  colorlimitindlinked                                          [Shared Color Limit] default=1
+  colorlimitindirect                                           [Indirect Color Limit] default=20.0
+  volumevblurscale                                             [Volume Velocity Blur Scale] default=1.0
+  lpeaovlimit                                                  [LPE Tag AOV Limit] default=100
+  combinedemission                                             [Combined Emission] default=0
+  directemission                                               [Direct Emission] default=0
+  indirectemission                                             [Indirect Emission] default=0
+  combinedvolume                                               [Combined Volume] default=0
+  combinedvolumeperlpe                                         [Split per LPE Tag] default=0
+  directvolume                                                 [Direct Volume] default=0
+  directvolumeperlpe                                           [Split per LPE Tag] default=0
+  indirectvolume                                               [Indirect Volume] default=0
+  indirectvolumeperlpe                                         [Split per LPE Tag] default=0
+  usecacheratio                                                [Cache Limit] default=1 menu=0:Fixed Size,1:Proportion of Physical Memory
+  volumecomponents                                             [Volume Components] default='volume'
+###### rendergeometrysettings
+  primvars:karma:object:lightsource_samplingquality            [object:lightsource_samplingquality] default=1.0
+  primvars:karma:object:lightsource_diffusescale               [object:lightsource_diffusescale] default=1.0
+  primvars:karma:object:lightsource_specularscale              [object:lightsource_specularscale] default=1.0
+  primvars:karma:object:volumevblurmode                        [Volume Velocity Blur Mode] default=0 menu=Lattice Deformation:Lattice Deformation,Lookup Offset:Lookup Offset
+  primvars:karma:object:volumevblurscale                       [Volume Velocity Blur Scale] default=1.0
+  primvars:karma:object:volumevblurlatticequality              [Volume Velocity Lattice Quality] default=0.1
+  primvars:karma:object:volumequality                          [Volume Quality] default=1.0
+  primvars:karma:object:volumesteprate                         [Volume Step Rate] default=0.25
+  primvars:karma:object:volumeshadowsteprate                   [Volume Shadow Step Rate] default=1.0
+  primvars:karma:object:volumesamplingchannel                  [Volume Sampling Field] default='density'
+  primvars:karma:object:volumefilter                           [Volume Filter] default='box' menu=point:Point,box:Box Filter,gaussian:Gaussian,bartlett:Bartlett (triangle),catrom:Catmull-Rom,hanning:Hanning,blackman:Blackman,blackmanharris:Blackman-Harris,sinc:Sinc (sharpening)
+  primvars:karma:object:volumefilterwidth                      [Volume Filter Width] default=1.0
+  Limits                                                       [] default=0
+  primvars:karma:object:diffuselimit                           [Diffuse Limit] default=1.0
+  primvars:karma:object:reflectlimit                           [Reflection Limit] default=4.0
+  primvars:karma:object:refractlimit                           [Refraction Limit] default=4.0
+  primvars:karma:object:volumelimit                            [Volume Limit] default=0.0
+  primvars:karma:object:ssslimit                               [SSS Limit] default=1.0
+  primvars:karma:object:limitcomponents                        [Limit Components] default='reflect refract'
+  primva;rs:karma:object:limitcolor                            [Limit Color] default=0.0
+  primvars:karma:object:limitc:olor                            [Limit Color] default=0.0
+  primvars:karma:object:l:imitcolor                            [Limit Color] default=0.0
+  Uniform Volume                                               [] default=0
+  primvars:karma:object:volumeuniform                          [Uniform Volume] default=0
+  primvars:karma:object:volumeuniformsamples                   [Uniform Volume Samples] default=4
+  primvars:karma:object:thinwallatrefractlimit                 [Thinwall at Refract Limit] default=1
+  primvars:karma:object:treat_as_lightsource                   [Efficient Emission Sampling] default=0 menu=No:No,Yes:Yes,Auto:Auto
+  primvars:karma:object:isportal                               [Is Portal] default=0
+###### authored attributes
+  /Render/krs                    karma:global:colorlimit                                      float      20.0
+  /Render/krs                    karma:global:colorlimitindirect                              float      20.0
+  /Render/krs                    karma:global:colorlimitindlinked                             bool       True
+  /Render/krs                    karma:global:light_sampling_mode                             token      'Light Tree'
+  /Render/krs                    karma:global:light_sampling_quality                          float      1.0
+  /Render/krs                    karma:global:screendoorlimit                                 int        4
+  /Render/krs                    karma:global:volumecomponents                                string     'volume'
+  /Render/krs                    karma:object:diffuselimit                                    float      1.0
+  /Render/krs                    karma:object:reflectlimit                                    float      4.0
+  /Render/krs                    karma:object:refractlimit                                    float      4.0
+  /Render/krs                    karma:object:ssslimit                                        float      1.0
+  /Render/krs                    karma:object:volumelimit                                     float      0.0
+  /Render/krs                    karma:object:volumequality                                   float      1.0
+  /Render/krs                    karma:object:volumesteprate                                  float      0.25
+  /Render/krs                    karma:object:volumevblurscale                                float      1.0

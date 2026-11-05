@@ -1,0 +1,320 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "layer_diffuse"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/layer_diffuse/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface"
+                token inputs:bsdf.connect = </World/Looks/layer_diffuse/layer.outputs:out>
+                token outputs:out
+            }
+            def Shader "coat"
+            {
+                uniform token info:id = "ND_dielectric_bsdf"
+                float inputs:ior = 1.5
+                float2 inputs:roughness = (0.1, 0.1)
+                token outputs:out
+            }
+            def Shader "base"
+            {
+                uniform token info:id = "ND_oren_nayar_diffuse_bsdf"
+                color3f inputs:color = (0.7, 0.3, 0.2)
+                token outputs:out
+            }
+            def Shader "layer"
+            {
+                uniform token info:id = "ND_layer_bsdf"
+                token inputs:top.connect = </World/Looks/layer_diffuse/coat.outputs:out>
+                token inputs:base.connect = </World/Looks/layer_diffuse/base.outputs:out>
+                token outputs:out
+            }
+        }
+        def Material "mix_metal"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/mix_metal/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface"
+                token inputs:bsdf.connect = </World/Looks/mix_metal/mix.outputs:out>
+                token outputs:out
+            }
+            def Shader "metal"
+            {
+                uniform token info:id = "ND_conductor_bsdf"
+                color3f inputs:ior = (0.183, 0.421, 1.373)
+                color3f inputs:extinction = (3.424, 2.346, 1.77)
+                float2 inputs:roughness = (0.2, 0.2)
+                token outputs:out
+            }
+            def Shader "diffuse"
+            {
+                uniform token info:id = "ND_oren_nayar_diffuse_bsdf"
+                color3f inputs:color = (0.5, 0.5, 0.5)
+                token outputs:out
+            }
+            def Shader "mix"
+            {
+                uniform token info:id = "ND_mix_bsdf"
+                token inputs:fg.connect = </World/Looks/mix_metal/metal.outputs:out>
+                token inputs:bg.connect = </World/Looks/mix_metal/diffuse.outputs:out>
+                float inputs:mix = 0.5
+                token outputs:out
+            }
+        }
+        def Material "add_diffuse"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/add_diffuse/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface"
+                token inputs:bsdf.connect = </World/Looks/add_diffuse/add.outputs:out>
+                token outputs:out
+            }
+            def Shader "a"
+            {
+                uniform token info:id = "ND_oren_nayar_diffuse_bsdf"
+                color3f inputs:color = (0.3, 0.3, 0.3)
+                token outputs:out
+            }
+            def Shader "b"
+            {
+                uniform token info:id = "ND_oren_nayar_diffuse_bsdf"
+                color3f inputs:color = (0.25, 0.05, 0.05)
+                token outputs:out
+            }
+            def Shader "add"
+            {
+                uniform token info:id = "ND_add_bsdf"
+                token inputs:in1.connect = </World/Looks/add_diffuse/a.outputs:out>
+                token inputs:in2.connect = </World/Looks/add_diffuse/b.outputs:out>
+                token outputs:out
+            }
+        }
+        def Material "sheen_layer"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/sheen_layer/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface"
+                token inputs:bsdf.connect = </World/Looks/sheen_layer/layer.outputs:out>
+                token outputs:out
+            }
+            def Shader "fuzz"
+            {
+                uniform token info:id = "ND_sheen_bsdf"
+                color3f inputs:color = (0.9, 0.8, 0.7)
+                float inputs:roughness = 0.5
+                string inputs:mode = "zeltner"
+                token outputs:out
+            }
+            def Shader "base"
+            {
+                uniform token info:id = "ND_oren_nayar_diffuse_bsdf"
+                color3f inputs:color = (0.2, 0.3, 0.6)
+                token outputs:out
+            }
+            def Shader "layer"
+            {
+                uniform token info:id = "ND_layer_bsdf"
+                token inputs:top.connect = </World/Looks/sheen_layer/fuzz.outputs:out>
+                token inputs:base.connect = </World/Looks/sheen_layer/base.outputs:out>
+                token outputs:out
+            }
+        }
+        def Material "film_metal"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/film_metal/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_surface"
+                token inputs:bsdf.connect = </World/Looks/film_metal/metal.outputs:out>
+                token outputs:out
+            }
+            def Shader "metal"
+            {
+                uniform token info:id = "ND_conductor_bsdf"
+                color3f inputs:ior = (0.183, 0.421, 1.373)
+                color3f inputs:extinction = (3.424, 2.346, 1.77)
+                float2 inputs:roughness = (0.15, 0.15)
+                float inputs:thinfilm_thickness = 400
+                float inputs:thinfilm_ior = 1.5
+                token outputs:out
+            }
+        }
+        def Material "surface_mix"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/surface_mix/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_mix_surfaceshader"
+                token inputs:fg.connect = </World/Looks/surface_mix/ss.outputs:out>
+                token inputs:bg.connect = </World/Looks/surface_mix/pbr.outputs:out>
+                float inputs:mix = 0.25
+                token outputs:out
+            }
+            def Shader "ss"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.95, 0.64, 0.54)
+                float inputs:metalness = 1
+                float inputs:specular_roughness = 0.3
+                token outputs:out
+            }
+            def Shader "pbr"
+            {
+                uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+                token outputs:out
+            }
+        }
+        def Material "gltf"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/gltf/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_gltf_pbr_surfaceshader"
+                color3f inputs:base_color = (0.8, 0.3, 0.2)
+                float inputs:metallic = 0
+                float inputs:roughness = 0.4
+                token outputs:out
+            }
+        }
+        def Material "disney"
+        {
+            token outputs:mtlx:surface.connect = </World/Looks/disney/surface.outputs:out>
+            def Shader "surface"
+            {
+                uniform token info:id = "ND_disney_principled"
+                color3f inputs:baseColor = (0.3, 0.5, 0.7)
+                float inputs:roughness = 0.5
+                token outputs:out
+            }
+        }
+    }
+    def Mesh "ball_layer_diffuse" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/layer_diffuse>
+        double3 xformOp:translate = (-1.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_mix_metal" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/mix_metal>
+        double3 xformOp:translate = (-0.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_add_diffuse" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/add_diffuse>
+        double3 xformOp:translate = (0.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_sheen_layer" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/sheen_layer>
+        double3 xformOp:translate = (1.5, 0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_film_metal" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/film_metal>
+        double3 xformOp:translate = (-1.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_surface_mix" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/surface_mix>
+        double3 xformOp:translate = (-0.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_gltf" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/gltf>
+        double3 xformOp:translate = (0.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def Mesh "ball_disney" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = @./assets/sphere.usda@
+    )
+    {
+        rel material:binding = </World/Looks/disney>
+        double3 xformOp:translate = (1.5, -0.55, 0)
+        double3 xformOp:scale = (0.42, 0.42, 0.42)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+        asset inputs:texture:file = @./assets/sky_soft.exr@
+        token inputs:texture:format = "latlong"
+        float inputs:karma:light:misbias = -1
+        bool inputs:karma:light:renderlightgeo = 1
+        uniform token[] xformOpOrder = []
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 18
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 0, 5.2)
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 80)
+        float nova:object:diffuseLimit = 0
+        float nova:object:reflectLimit = 0
+        float nova:object:refractLimit = 0
+        float karma:object:diffuselimit = 0
+        float karma:object:reflectlimit = 0
+        float karma:object:refractlimit = 0
+    }
+}

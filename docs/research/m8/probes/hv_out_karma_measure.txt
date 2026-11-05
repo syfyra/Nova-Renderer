@@ -1,0 +1,80 @@
+== calibration (bare = no material | pyro = Karma Pyro Material defaults | mtlx = ND_volume + anisotropic_vdf(scattering = density))
+-- cal_alpha  render 1.57 s
+   bare  RGBA mean (0.0000, 0.0000, 0.0000, 0.6321) std (0.0000, 0.0000, 0.0000, 0.0015)  -> sigma_t = -ln(1 - A) = 0.9999 per unit density
+   pyro  RGBA mean (0.0000, 0.0000, 0.0000, 0.6321) std (0.0000, 0.0000, 0.0000, 0.0015)  -> sigma_t = -ln(1 - A) = 1.0000 per unit density
+   mtlx  RGBA mean (0.0000, 0.0000, 0.0000, 0.6321) std (0.0000, 0.0000, 0.0000, 0.0015)  -> sigma_t = -ln(1 - A) = 0.9999 per unit density
+   background (0.0000, 0.0000, 0.0000, 0.0000)
+-- cal_furnace_vl0  render 1.75 s
+   bare  RGBA mean (0.3879, 0.3879, 0.3879, 0.6321) std (0.0162, 0.0162, 0.0162, 0.0015)
+   pyro  RGBA mean (0.3793, 0.3793, 0.3793, 0.6321) std (0.0152, 0.0152, 0.0152, 0.0015)
+   mtlx  RGBA mean (0.3898, 0.3898, 0.3898, 0.6321) std (0.0177, 0.0177, 0.0177, 0.0015)
+   background (0.0000, 0.0000, 0.0000, 0.0000)
+-- cal_furnace_vl64  render 2.03 s
+   bare  RGBA mean (0.6343, 0.6343, 0.6343, 0.6321) std (0.0362, 0.0362, 0.0362, 0.0015)
+   pyro  RGBA mean (0.6330, 0.6330, 0.6330, 0.6321) std (0.0373, 0.0373, 0.0373, 0.0015)
+   mtlx  RGBA mean (0.6313, 0.6313, 0.6313, 0.6321) std (0.0367, 0.0367, 0.0367, 0.0015)
+   background (0.0000, 0.0000, 0.0000, 0.0000)
+== emission cubes (density 0.001, temperature 0.5 | 1 | 2, one unit deep)
+-- cal_emit_ramp  render 1.48 s
+   T=0.5 ( 1250 K) RGB mean (0.2457, 0.0804, 0.0246) std (0.0000, 0.0000, 0.0000) | mx_blackbody (3.4252, 0.3874, 0.0000) ratio (0.0717, 0.2074, 24573.3820)
+   T=1.0 ( 2500 K) RGB mean (0.9829, 0.3214, 0.0983) std (0.0003, 0.0001, 0.0000) | mx_blackbody (2.0625, 0.7710, 0.1407) ratio (0.4766, 0.4169, 0.6984)
+   T=2.0 ( 5000 K) RGB mean (1.0163, 0.3323, 0.1016) std (0.0006, 0.0002, 0.0001) | mx_blackbody (1.2123, 0.9609, 0.7629) ratio (0.8383, 0.3458, 0.1332)
+-- cal_emit_sr1  render 1.60 s
+   T=0.5 ( 1250 K) RGB mean (0.2457, 0.0803, 0.0246) std (0.0000, 0.0000, 0.0000) | mx_blackbody (3.4252, 0.3874, 0.0000) ratio (0.0717, 0.2074, 24571.5883)
+   T=1.0 ( 2500 K) RGB mean (0.9829, 0.3214, 0.0983) std (0.0000, 0.0000, 0.0000) | mx_blackbody (2.0625, 0.7710, 0.1407) ratio (0.4765, 0.4169, 0.6984)
+   T=2.0 ( 5000 K) RGB mean (1.0162, 0.3323, 0.1016) std (0.0001, 0.0000, 0.0000) | mx_blackbody (1.2123, 0.9609, 0.7629) ratio (0.8382, 0.3458, 0.1332)
+-- cal_emit_sr005  render 1.46 s
+   T=0.5 ( 1250 K) RGB mean (0.2458, 0.0804, 0.0246) std (0.0012, 0.0004, 0.0001) | mx_blackbody (3.4252, 0.3874, 0.0000) ratio (0.0718, 0.2075, 24579.6051)
+   T=1.0 ( 2500 K) RGB mean (0.9833, 0.3215, 0.0983) std (0.0030, 0.0010, 0.0003) | mx_blackbody (2.0625, 0.7710, 0.1407) ratio (0.4768, 0.4171, 0.6987)
+   T=2.0 ( 5000 K) RGB mean (1.0166, 0.3324, 0.1017) std (0.0070, 0.0023, 0.0007) | mx_blackbody (1.2123, 0.9609, 0.7629) ratio (0.8386, 0.3460, 0.1333)
+-- cal_emit_bb  render 1.61 s
+   T=0.5 ( 1250 K) RGB mean (0.0715, 0.0053, 0.0000) std (0.0000, 0.0000, 0.0000) | mx_blackbody (3.4252, 0.3874, 0.0000) ratio (0.0209, 0.0137, 0.0000)
+   T=1.0 ( 2500 K) RGB mean (1.4277, 0.5311, 0.0963) std (0.0008, 0.0004, 0.0001) | mx_blackbody (2.0625, 0.7710, 0.1407) ratio (0.6922, 0.6888, 0.6843)
+   T=2.0 ( 5000 K) RGB mean (13.5351, 10.6831, 8.4445) std (0.0069, 0.0059, 0.0046) | mx_blackbody (1.2123, 0.9609, 0.7629) ratio (11.1647, 11.1179, 11.0697)
+-- cal_emit_smokeoff  render 1.48 s
+   T=0.5 ( 1250 K) RGB mean (0.2458, 0.0804, 0.0246) std (0.0000, 0.0000, 0.0000) | mx_blackbody (3.4252, 0.3874, 0.0000) ratio (0.0718, 0.2075, 24583.2372)
+   T=1.0 ( 2500 K) RGB mean (0.9833, 0.3215, 0.0983) std (0.0003, 0.0001, 0.0000) | mx_blackbody (2.0625, 0.7710, 0.1407) ratio (0.4768, 0.4171, 0.6987)
+   T=2.0 ( 5000 K) RGB mean (1.0167, 0.3325, 0.1017) std (0.0006, 0.0002, 0.0001) | mx_blackbody (1.2123, 0.9609, 0.7629) ratio (0.8386, 0.3460, 0.1333)
+-- cal_emit_bare  render 1.39 s
+   T=0.5 ( 1250 K) RGB mean (0.0000, 0.0000, 0.0000) std (0.0000, 0.0000, 0.0000) | mx_blackbody (3.4252, 0.3874, 0.0000) ratio (0.0000, 0.0000, 0.0000)
+   T=1.0 ( 2500 K) RGB mean (0.0000, 0.0000, 0.0000) std (0.0000, 0.0000, 0.0000) | mx_blackbody (2.0625, 0.7710, 0.1407) ratio (0.0000, 0.0000, 0.0000)
+   T=2.0 ( 5000 K) RGB mean (0.0000, 0.0000, 0.0000) std (0.0000, 0.0000, 0.0000) | mx_blackbody (1.2123, 0.9609, 0.7629) ratio (0.0000, 0.0000, 0.0000)
+-- cal_emit_nodensity  render 1.75 s (fire on, temperature 1)
+   no density field                           RGBA mean (0.9833, 0.3216, 0.0983, 0.0000)
+   no density, sampling field = temperature   RGBA mean (0.9833, 0.3216, 0.0983, 0.0000)
+   density 0.001 (reference)                  RGBA mean (0.9829, 0.3214, 0.0983, 0.0010)
+== single scattering, normalized distant light (irradiance 1) from straight above, volume limit 0
+   cal_distant     bare  g=0.0 mean R 0.03084 (std 0.00648) expected single-scatter 0.03046 ratio 1.0125  render 1.62 s
+   cal_distant     pyro  g=0.0 mean R 0.03084 (std 0.00648) expected single-scatter 0.03046 ratio 1.0127  render 1.62 s
+   cal_distant     mtlx  g=0.0 mean R 0.03084 (std 0.00648) expected single-scatter 0.03046 ratio 1.0128  render 1.62 s
+   cal_distant_g05 bare  g=0.0 mean R 0.03084 (std 0.00648) expected single-scatter 0.03046 ratio 1.0125  render 1.90 s
+   cal_distant_g05 pyro  g=0.5 mean R 0.01655 (std 0.00348) expected single-scatter 0.01634 ratio 1.0127  render 1.90 s
+   cal_distant_g05 mtlx  g=0.5 mean R 0.01655 (std 0.00348) expected single-scatter 0.01634 ratio 1.0128  render 1.90 s
+-- cal_bb_mtlx  render 1.59 s  (Y = Rec.709 luminance; Y_planck = photometric luminance of a Planck radiator, CIE fit)
+      800 K RGB (0.0284, -0.0002, -0.0003) Y 0.00587 | mx (1.4963, 0.9041, 0.4893) Y_mx 1.0000 | Y/Y_mx 0.0059 | (T/2500)^4 x Y(2500) 0.00726 | Y_planck x Y(2500)/Y_planck(2500) 0.00000 | rgb/|rgb| (1.0165, -0.0072, -0.0094) vs mx (0.5178, 0.3129, 0.1693)
+     1000 K RGB (0.0645, 0.0017, -0.0006) Y 0.01488 | mx (2.8675, 0.5490, 0.0000) Y_mx 1.0023 | Y/Y_mx 0.0148 | (T/2500)^4 x Y(2500) 0.01773 | Y_planck x Y(2500)/Y_planck(2500) 0.00000 | rgb/|rgb| (0.9842, 0.0257, -0.0099) vs mx (0.8393, 0.1607, 0.0000)
+     1500 K RGB (0.2696, 0.0351, -0.0034) Y 0.08221 | mx (3.2084, 0.4507, 0.0000) Y_mx 1.0044 | Y/Y_mx 0.0818 | (T/2500)^4 x Y(2500) 0.08976 | Y_planck x Y(2500)/Y_planck(2500) 0.00096 | rgb/|rgb| (0.8947, 0.1166, -0.0113) vs mx (0.8768, 0.1232, 0.0000)
+     2000 K RGB (0.6981, 0.1775, 0.0053) Y 0.27575 | mx (2.5223, 0.6465, 0.0200) Y_mx 1.0001 | Y/Y_mx 0.2757 | (T/2500)^4 x Y(2500) 0.28367 | Y_planck x Y(2500)/Y_planck(2500) 0.05716 | rgb/|rgb| (0.7925, 0.2015, 0.0060) vs mx (0.7910, 0.2027, 0.0063)
+     2500 K RGB (1.4342, 0.5323, 0.0963) Y 0.69257 | mx (2.0625, 0.7710, 0.1407) Y_mx 1.0001 | Y/Y_mx 0.6925 | (T/2500)^4 x Y(2500) 0.69257 | Y_planck x Y(2500)/Y_planck(2500) 0.69257 | rgb/|rgb| (0.6953, 0.2581, 0.0467) vs mx (0.6935, 0.2592, 0.0473)
+     4000 K RGB (6.5322, 4.2438, 2.4370) Y 4.59986 | mx (1.4144, 0.9239, 0.5337) Y_mx 1.0000 | Y/Y_mx 4.5997 | (T/2500)^4 x Y(2500) 4.53880 | Y_planck x Y(2500)/Y_planck(2500) 31.09773 | rgb/|rgb| (0.4944, 0.3212, 0.1844) vs mx (0.4925, 0.3217, 0.1858)
+     6000 K RGB (24.8910, 22.3122, 21.6432) Y 22.81215 | mx (1.0878, 0.9787, 0.9530) Y_mx 1.0000 | Y/Y_mx 22.8112 | (T/2500)^4 x Y(2500) 22.97766 | Y_planck x Y(2500)/Y_planck(2500) 269.39176 | rgb/|rgb| (0.3615, 0.3241, 0.3144) vs mx (0.3602, 0.3241, 0.3156)
+    10000 K RGB (148.2323, 168.6096, 241.8905) Y 169.56825 | mx (0.8725, 0.9945, 1.4304) Y_mx 1.0000 | Y/Y_mx 169.5613 | (T/2500)^4 x Y(2500) 177.29674 | Y_planck x Y(2500)/Y_planck(2500) 1629.47797 | rgb/|rgb| (0.2653, 0.3018, 0.4329) vs mx (0.2646, 0.3016, 0.4338)
+-- cal_bb_pyro  render 1.59 s  (Y = Rec.709 luminance; Y_planck = photometric luminance of a Planck radiator, CIE fit)
+      800 K RGB (0.0284, 0.0000, 0.0000) Y 0.00603 | mx (1.4963, 0.9041, 0.4893) Y_mx 1.0000 | Y/Y_mx 0.0060 | (T/2500)^4 x Y(2500) 0.00726 | Y_planck x Y(2500)/Y_planck(2500) 0.00000 | rgb/|rgb| (1.0000, 0.0000, 0.0000) vs mx (0.5178, 0.3129, 0.1693)
+     1000 K RGB (0.0645, 0.0017, 0.0000) Y 0.01494 | mx (2.8675, 0.5490, 0.0000) Y_mx 1.0023 | Y/Y_mx 0.0149 | (T/2500)^4 x Y(2500) 0.01773 | Y_planck x Y(2500)/Y_planck(2500) 0.00000 | rgb/|rgb| (0.9743, 0.0257, 0.0000) vs mx (0.8393, 0.1607, 0.0000)
+     1500 K RGB (0.2696, 0.0352, 0.0000) Y 0.08246 | mx (3.2084, 0.4507, 0.0000) Y_mx 1.0044 | Y/Y_mx 0.0821 | (T/2500)^4 x Y(2500) 0.08976 | Y_planck x Y(2500)/Y_planck(2500) 0.00096 | rgb/|rgb| (0.8847, 0.1153, 0.0000) vs mx (0.8768, 0.1232, 0.0000)
+     2000 K RGB (0.6981, 0.1775, 0.0054) Y 0.27576 | mx (2.5223, 0.6465, 0.0200) Y_mx 1.0001 | Y/Y_mx 0.2757 | (T/2500)^4 x Y(2500) 0.28368 | Y_planck x Y(2500)/Y_planck(2500) 0.05716 | rgb/|rgb| (0.7924, 0.2015, 0.0062) vs mx (0.7910, 0.2027, 0.0063)
+     2500 K RGB (1.4342, 0.5323, 0.0964) Y 0.69258 | mx (2.0625, 0.7710, 0.1407) Y_mx 1.0001 | Y/Y_mx 0.6925 | (T/2500)^4 x Y(2500) 0.69258 | Y_planck x Y(2500)/Y_planck(2500) 0.69258 | rgb/|rgb| (0.6952, 0.2580, 0.0467) vs mx (0.6935, 0.2592, 0.0473)
+     4000 K RGB (6.5322, 4.2438, 2.4371) Y 4.59987 | mx (1.4144, 0.9239, 0.5337) Y_mx 1.0000 | Y/Y_mx 4.5997 | (T/2500)^4 x Y(2500) 4.53887 | Y_planck x Y(2500)/Y_planck(2500) 31.09824 | rgb/|rgb| (0.4944, 0.3212, 0.1844) vs mx (0.4925, 0.3217, 0.1858)
+     6000 K RGB (24.8910, 22.3122, 21.6432) Y 22.81215 | mx (1.0878, 0.9787, 0.9530) Y_mx 1.0000 | Y/Y_mx 22.8112 | (T/2500)^4 x Y(2500) 22.97803 | Y_planck x Y(2500)/Y_planck(2500) 269.39617 | rgb/|rgb| (0.3615, 0.3241, 0.3144) vs mx (0.3602, 0.3241, 0.3156)
+    10000 K RGB (148.2323, 168.6096, 241.8905) Y 169.56825 | mx (0.8725, 0.9945, 1.4304) Y_mx 1.0000 | Y/Y_mx 169.5613 | (T/2500)^4 x Y(2500) 177.29964 | Y_planck x Y(2500)/Y_planck(2500) 1629.50461 | rgb/|rgb| (0.2653, 0.3018, 0.4329) vs mx (0.2646, 0.3016, 0.4338)
+== pyro sim renders (200x300, Karma defaults unless noted)
+   pyro_bare       render   1.62 s (husk total  -1.00 s)  mean RGB (0.0138, 0.0138, 0.0138) max lum 0.166  mean alpha 0.0792  covered px (A>0.01) 13696
+   pyro_bare_vl4   render   2.20 s (husk total  -1.00 s)  mean RGB (0.0199, 0.0199, 0.0199) max lum 0.275  mean alpha 0.0792  covered px (A>0.01) 13699
+   pyro_mat        render   1.76 s (husk total  -1.00 s)  mean RGB (0.0138, 0.0138, 0.0138) max lum 0.166  mean alpha 0.0792  covered px (A>0.01) 13696
+   pyro_mat_vl4    render   2.20 s (husk total  -1.00 s)  mean RGB (0.0199, 0.0199, 0.0199) max lum 0.275  mean alpha 0.0792  covered px (A>0.01) 13699
+   pyro_fire       render   1.67 s (husk total  -1.00 s)  mean RGB (0.0805, 0.0356, 0.0205) max lum 0.409  mean alpha 0.0793  covered px (A>0.01) 13811
+   pyro_fire_bb    render   1.76 s (husk total  -1.00 s)  mean RGB (0.0783, 0.0335, 0.0162) max lum 0.533  mean alpha 0.0792  covered px (A>0.01) 13784
+   pyro_fire_vl4   render   2.51 s (husk total  -1.00 s)  mean RGB (0.1138, 0.0506, 0.0293) max lum 0.791  mean alpha 0.0793  covered px (A>0.01) 13823
+   pyro_fire_sr1   render   1.82 s (husk total  -1.00 s)  mean RGB (0.0766, 0.0344, 0.0201) max lum 0.388  mean alpha 0.0793  covered px (A>0.01) 13790
+   pyro_mtlx       render   1.51 s (husk total  -1.00 s)  mean RGB (0.0138, 0.0138, 0.0138) max lum 0.166  mean alpha 0.0792  covered px (A>0.01) 13696

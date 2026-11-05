@@ -1,0 +1,82 @@
+===== /stage/merge_all
+/vdbfile/density                     OpenVDBAsset      density      idx 0 file
+    kind 1 gt 29 float/fog volume active 40641 bbox (18, 20, 17)-(61, 107, 61) voxel 0.0500 range [1.156e-05, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 2.24 ms convert 3.44 ms 
+/vdbfile/flame                       OpenVDBAsset      flame        idx 0 file
+    kind 1 gt 29 float/fog volume active 35716 bbox (18, 20, 18)-(61, 107, 61) voxel 0.0500 range [3.04e-05, 1] origin (-1.975 -1.175 -1.975) nano 746752 B lookup 1.33 ms convert 3.29 ms 
+/vdbfile/temperature                 OpenVDBAsset      temperature  idx 0 file
+    kind 1 gt 29 float/fog volume active 53038 bbox (17, 20, 17)-(61, 107, 62) voxel 0.0500 range [1.001e-05, 0.9942] origin (-1.975 -1.175 -1.975) nano 789632 B lookup 1.30 ms convert 3.01 ms 
+/bgeofile/density                    HoudiniFieldAsset density      idx 0 file
+    kind 2 gt 28 float/houdini volume active 64000 bbox (0, 0, 0)-(39, 39, 39) voxel 0.0250 range [0, 0.9567] origin (-0.488 -0.488 -0.488) nano 555936 B lookup 0.38 ms convert 3.02 ms 
+/bgeofile/temperature                HoudiniFieldAsset temperature  idx 1 file
+    kind 2 gt 28 float/houdini volume active 8000 bbox (0, 0, 0)-(19, 19, 19) voxel 0.0500 range [0, 1.37] origin (-0.475 -0.475 -0.475) nano 360832 B lookup 0.33 ms convert 2.53 ms 
+/sop_pyro/volume_0/vel_z             HoudiniFieldAsset vel.z        idx 5 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-9.826, 9.623] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.03 ms convert 6.28 ms 
+/sop_pyro/volume_0/vel_y             HoudiniFieldAsset vel.y        idx 4 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-4.077, 25.65] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.03 ms convert 6.13 ms 
+/sop_pyro/volume_0/vel_x             HoudiniFieldAsset vel.x        idx 3 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-9.816, 9.487] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.03 ms convert 6.28 ms 
+/sop_pyro/volume_0/flame             HoudiniFieldAsset flame        idx 2 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 1] origin (-1.975 -1.175 -1.975) nano 746752 B lookup 0.03 ms convert 3.91 ms 
+/sop_pyro/volume_0/temperature       HoudiniFieldAsset temperature  idx 1 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 0.9942] origin (-1.975 -1.175 -1.975) nano 806784 B lookup 0.03 ms convert 4.00 ms 
+/sop_pyro/volume_0/density           HoudiniFieldAsset density      idx 0 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 0.03 ms convert 3.78 ms 
+/sop_pyro_vdb/volume_0/flame         OpenVDBAsset      flame        idx 0 op:
+    kind 1 gt 29 float/fog volume active 35716 bbox (18, 20, 18)-(61, 107, 61) voxel 0.0500 range [3.04e-05, 1] origin (-1.975 -1.175 -1.975) nano 746752 B lookup 0.03 ms convert 2.85 ms 
+/sop_pyro_vdb/volume_0/temperature   OpenVDBAsset      temperature  idx 0 op:
+    kind 1 gt 29 float/fog volume active 53038 bbox (17, 20, 17)-(61, 107, 62) voxel 0.0500 range [1.001e-05, 0.9942] origin (-1.975 -1.175 -1.975) nano 789632 B lookup 0.02 ms convert 2.91 ms 
+/sop_pyro_vdb/volume_0/density       OpenVDBAsset      density      idx 0 op:
+    kind 1 gt 29 float/fog volume active 40641 bbox (18, 20, 17)-(61, 107, 61) voxel 0.0500 range [1.156e-05, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 0.02 ms convert 2.69 ms 
+/sop_cached/volume_0/vel_z           HoudiniFieldAsset vel.z        idx 5 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-9.826, 9.623] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.03 ms convert 6.32 ms 
+/sop_cached/volume_0/vel_y           HoudiniFieldAsset vel.y        idx 4 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-4.077, 25.65] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.03 ms convert 6.28 ms 
+/sop_cached/volume_0/vel_x           HoudiniFieldAsset vel.x        idx 3 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-9.816, 9.487] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.03 ms convert 6.54 ms 
+/sop_cached/volume_0/flame           HoudiniFieldAsset flame        idx 2 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 1] origin (-1.975 -1.175 -1.975) nano 746752 B lookup 0.03 ms convert 3.95 ms 
+/sop_cached/volume_0/temperature     HoudiniFieldAsset temperature  idx 1 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 0.9942] origin (-1.975 -1.175 -1.975) nano 806784 B lookup 0.05 ms convert 4.41 ms 
+/sop_cached/volume_0/density         HoudiniFieldAsset density      idx 0 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 0.03 ms convert 4.18 ms 
+/sop_native/volume_0/temperature     HoudiniFieldAsset temperature  idx 1 op:
+    kind 2 gt 28 float/houdini volume active 8000 bbox (0, 0, 0)-(19, 19, 19) voxel 0.0500 range [0, 1.37] origin (-0.475 -0.475 -0.475) nano 360832 B lookup 0.02 ms convert 2.72 ms 
+/sop_native/volume_0/density         HoudiniFieldAsset density      idx 0 op:
+    kind 2 gt 28 float/houdini volume active 64000 bbox (0, 0, 0)-(39, 39, 39) voxel 0.0250 range [0, 0.9567] origin (-0.488 -0.488 -0.488) nano 555936 B lookup 0.02 ms convert 2.84 ms 
+/sop_vdbsops/volume_0/density        OpenVDBAsset      density      idx 0 op:
+    kind 1 gt 29 float/fog volume active 33189 bbox (-20, -19, -20)-(20, 19, 20) voxel 0.0500 range [6.706e-07, 1] origin (0.000 0.000 0.000) nano 2715968 B lookup 0.02 ms convert 3.96 ms 
+/sopcreate/volume_0/density          OpenVDBAsset      density      idx 0 op:
+    kind 1 gt 29 float/fog volume active 29251 bbox (-20, -19, -20)-(20, 19, 20) voxel 0.0500 range [6.706e-07, 1] origin (0.000 0.000 0.000) nano 2692384 B lookup 0.02 ms convert 3.82 ms 
+===== /stage/pyro_stage/OUT
+/pyro/OUT/volume_0/vel_z             HoudiniFieldAsset vel.z        idx 5 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-9.826, 9.623] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.05 ms convert 6.86 ms 
+/pyro/OUT/volume_0/vel_y             HoudiniFieldAsset vel.y        idx 4 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-4.077, 25.65] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.05 ms convert 6.42 ms 
+/pyro/OUT/volume_0/vel_x             HoudiniFieldAsset vel.x        idx 3 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [-9.816, 9.487] origin (-1.975 -1.175 -1.975) nano 2277568 B lookup 0.05 ms convert 6.61 ms 
+/pyro/OUT/volume_0/flame             HoudiniFieldAsset flame        idx 2 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 1] origin (-1.975 -1.175 -1.975) nano 746752 B lookup 0.03 ms convert 3.90 ms 
+/pyro/OUT/volume_0/temperature       HoudiniFieldAsset temperature  idx 1 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 0.9942] origin (-1.975 -1.175 -1.975) nano 806784 B lookup 0.05 ms convert 4.48 ms 
+/pyro/OUT/volume_0/density           HoudiniFieldAsset density      idx 0 op:
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 0.02 ms convert 4.01 ms 
+===== files
+<scene>/pyro.vdb density idx 0 houdini 0
+    kind 1 gt 29 float/fog volume active 40641 bbox (18, 20, 17)-(61, 107, 61) voxel 0.0500 range [1.156e-05, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 1.21 ms convert 2.77 ms 
+<scene>/pyro.vdb temperature idx 0 houdini 0
+    kind 1 gt 29 float/fog volume active 53038 bbox (17, 20, 17)-(61, 107, 62) voxel 0.0500 range [1.001e-05, 0.9942] origin (-1.975 -1.175 -1.975) nano 789632 B lookup 1.13 ms convert 2.92 ms 
+<scene>/pyro.vdb density idx -1 houdini 0
+    kind 1 gt 29 float/fog volume active 40641 bbox (18, 20, 17)-(61, 107, 61) voxel 0.0500 range [1.156e-05, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 1.30 ms convert 2.98 ms 
+<scene>/pyro.vdb density idx 0 houdini 1
+    kind 1 gt 29 float/fog volume active 40641 bbox (18, 20, 17)-(61, 107, 61) voxel 0.0500 range [1.156e-05, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 1.31 ms convert 2.86 ms 
+<scene>/native.bgeo.sc density idx 0 houdini 1
+    kind 2 gt 28 float/houdini volume active 64000 bbox (0, 0, 0)-(39, 39, 39) voxel 0.0250 range [0, 0.9567] origin (-0.488 -0.488 -0.488) nano 555936 B lookup 0.47 ms convert 3.23 ms 
+<scene>/native.bgeo.sc temperature idx 1 houdini 1
+    kind 2 gt 28 float/houdini volume active 8000 bbox (0, 0, 0)-(19, 19, 19) voxel 0.0500 range [0, 1.37] origin (-0.475 -0.475 -0.475) nano 360832 B lookup 0.35 ms convert 2.94 ms 
+<scene>/usd/import_pyro.usd.volumes/0.bgeo.sc density idx 5 houdini 1
+    kind 2 gt 28 float/houdini volume active 819200 bbox (0, 0, 0)-(79, 127, 79) voxel 0.0500 range [0, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 3.17 ms convert 3.95 ms 
+<scene>/usd/sopcreate_vdb.usd.volumes/2.vdb flame idx 0 houdini 0
+    kind 1 gt 29 float/fog volume active 35716 bbox (18, 20, 18)-(61, 107, 61) voxel 0.0500 range [3.04e-05, 1] origin (-1.975 -1.175 -1.975) nano 746752 B lookup 1.64 ms convert 2.57 ms 
+<scene>/missing.vdb density idx 0 houdini 0
+    kind 0 gt 0 / active 0 bbox (0, 0, 0)-(0, 0, 0) voxel 0.0000 range [0, 0] origin (0.000 0.000 0.000) nano 0 B lookup 0.14 ms convert 0.00 ms resolver returned null
+second call: kind 1 gt 29 float/fog volume active 40641 bbox (18, 20, 17)-(61, 107, 61) voxel 0.0500 range [1.156e-05, 4.063] origin (-1.975 -1.175 -1.975) nano 740320 B lookup 1.06 ms convert 2.68 ms 

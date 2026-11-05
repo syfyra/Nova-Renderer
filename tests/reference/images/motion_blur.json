@@ -1,0 +1,24 @@
+{
+  "scene": "motion_blur",
+  "created": "2026-10-13",
+  "inputs": {
+    "scenes/motion_blur.usda": "7d56e22b1ab8012652eb7432a65cebce8e9f95e7",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/motion_blur.exr",
+  "sigma": "images/motion_blur.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.004448,
+    "flip_test_pair": 0.006883,
+    "relmse": 0.000151,
+    "global_z": [
+      0.134,
+      0.61,
+      -0.64,
+      -1.081
+    ]
+  }
+}

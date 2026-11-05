@@ -1,0 +1,53 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    subLayers = [@./common.usda@]
+)
+
+# The research's pyro sim (docs/research/m8/houdini-volumes.md 4.5) without a
+# material: Karma's default volume, white, isotropic, extinction = density.
+# One distant key light, black background, volume limit 0 (single
+# scattering plus the light gathered past it).
+def Xform "World"
+{
+    def Volume "pyro"
+    {
+        rel field:density = </World/pyro/density>
+        def OpenVDBAsset "density"
+        {
+            asset filePath = @../../data/volumes/pyro.vdb@
+            token fieldName = "density"
+        }
+    }
+    def DistantLight "key"
+    {
+        float inputs:intensity = 3
+        bool inputs:normalize = 1
+        float3 xformOp:rotateXYZ = (-30, 50, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+    def Camera "cam"
+    {
+        float focalLength = 37.1
+        float horizontalAperture = 13.97
+        float verticalAperture = 20.955
+        float2 clippingRange = (0.01, 10000)
+        double3 xformOp:translate = (0, 2, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "ref" (
+        inherits = </_class_RefSettings>
+    )
+    {
+        rel camera = </World/cam>
+        int2 resolution = (200, 300)
+        float nova:object:volumeLimit = 0
+        float karma:object:volumelimit = 0
+    }
+}

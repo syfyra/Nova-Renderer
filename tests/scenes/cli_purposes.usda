@@ -1,0 +1,94 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Four cards with the purposes default, render, proxy and guide, left to right
+# (tests/cli/check_cli.py). husk renders "render" whenever includedPurposes
+# contains "default" (Nova and Karma alike):
+#   dflt        ["default"]                   -> default, render
+#   proxyguide  ["default", "proxy", "guide"] -> all four
+#   renderonly  ["render"]                    -> render
+#   proxyonly   ["proxy"]                     -> proxy
+def Xform "World"
+{
+    def Mesh "dflt"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-7, -1, 0), (-5, -1, 0), (-5, 1, 0), (-7, 1, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+    def Mesh "rndr"
+    {
+        uniform token purpose = "render"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-3, -1, 0), (-1, -1, 0), (-1, 1, 0), (-3, 1, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+    def Mesh "prxy"
+    {
+        uniform token purpose = "proxy"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(1, -1, 0), (3, -1, 0), (3, 1, 0), (1, 1, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+    def Mesh "guid"
+    {
+        uniform token purpose = "guide"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(5, -1, 0), (7, -1, 0), (7, 1, 0), (5, 1, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 160
+        float verticalAperture = 40
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "dflt"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 40)
+        uniform token[] includedPurposes = ["default"]
+        int nova:samples = 1
+        int nova:maxDepth = 1
+    }
+    def RenderSettings "proxyguide"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 40)
+        uniform token[] includedPurposes = ["default", "proxy", "guide"]
+        int nova:samples = 1
+        int nova:maxDepth = 1
+    }
+    def RenderSettings "renderonly"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 40)
+        uniform token[] includedPurposes = ["render"]
+        int nova:samples = 1
+        int nova:maxDepth = 1
+    }
+    def RenderSettings "proxyonly"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 40)
+        uniform token[] includedPurposes = ["proxy"]
+        int nova:samples = 1
+        int nova:maxDepth = 1
+    }
+}

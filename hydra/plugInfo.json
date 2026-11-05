@@ -1,0 +1,31 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "Types": {
+                    "HdNovaRendererPlugin": {
+                        "bases": ["HdRendererPlugin"],
+                        "displayName": "Nova",
+                        "priority": 0
+                    },
+                    "HdNovaXpuRendererPlugin": {
+                        "bases": ["HdRendererPlugin"],
+                        "displayName": "Nova XPU",
+                        "priority": 0
+                    },
+                    "HdNova_ImplicitSurfaceSceneIndexPlugin": {
+                        "bases": ["HdSceneIndexPlugin"],
+                        "loadWithRenderer": ["Nova", "Nova XPU"],
+                        "priority": 0,
+                        "displayName": "Nova: implicit surfaces to meshes"
+                    }
+                }
+            },
+            "LibraryPath": "../hdNova.dll",
+            "Name": "hdNova",
+            "ResourcePath": "resources",
+            "Root": "..",
+            "Type": "library"
+        }
+    ]
+}

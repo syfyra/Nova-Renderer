@@ -1,0 +1,1116 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+def Xform "World"
+{
+    def Scope "mats"
+    {
+    def Material "m0"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m0/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m0/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc3m"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m0/tc.outputs:out>
+            float inputs:in2 = 3
+            float2 outputs:out
+        }
+        def Shader "tc3"
+        {
+            uniform token info:id = "ND_subtract_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m0/tc3m.outputs:out>
+            float inputs:in2 = 1
+            float2 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_ramplr_color3"
+            color3f inputs:valuel = (0,0,0)
+            color3f inputs:valuer = (1,1,1)
+            float2 inputs:texcoord.connect = </World/mats/m0/tc3.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m1"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m1/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m1/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_ramptb_color3"
+            color3f inputs:valuet = (1,1,1)
+            color3f inputs:valueb = (0,0,0)
+            color3f outputs:out
+        }
+    }
+    def Material "m2"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m2/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m2/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_splittb_color3"
+            color3f inputs:valuet = (1,0,0)
+            color3f inputs:valueb = (0,0,1)
+            float inputs:center = 0.5
+            color3f outputs:out
+        }
+    }
+    def Material "m3"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m3/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m3/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_splitlr_color3"
+            color3f inputs:valuel = (1,0,0)
+            color3f inputs:valuer = (0,0,1)
+            float inputs:center = 0.5
+            color3f outputs:out
+        }
+    }
+    def Material "m4"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m4/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m4/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc4"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m4/tc.outputs:out>
+            float inputs:in2 = 4
+            float2 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_noise2d_color3"
+            color3f inputs:amplitude = (1,1,1)
+            float inputs:pivot = 0.5
+            float2 inputs:texcoord.connect = </World/mats/m4/tc4.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m5"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m5/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m5/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_noise3d_color3"
+            color3f inputs:amplitude = (1,1,1)
+            float inputs:pivot = 0.5
+            color3f outputs:out
+        }
+    }
+    def Material "m6"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m6/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m6/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "pos"
+        {
+            uniform token info:id = "ND_position_vector3"
+            string inputs:space = "world"
+            float3 outputs:out
+        }
+        def Shader "pos2"
+        {
+            uniform token info:id = "ND_multiply_vector3FA"
+            float3 inputs:in1.connect = </World/mats/m6/pos.outputs:out>
+            float inputs:in2 = 2
+            float3 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_noise3d_color3"
+            color3f inputs:amplitude = (1,1,1)
+            float inputs:pivot = 0.5
+            float3 inputs:position.connect = </World/mats/m6/pos2.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m7"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m7/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m7/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "pos"
+        {
+            uniform token info:id = "ND_position_vector3"
+            string inputs:space = "object"
+            float3 outputs:out
+        }
+        def Shader "pos3"
+        {
+            uniform token info:id = "ND_multiply_vector3FA"
+            float3 inputs:in1.connect = </World/mats/m7/pos.outputs:out>
+            float inputs:in2 = 3
+            float3 outputs:out
+        }
+        def Shader "f"
+        {
+            uniform token info:id = "ND_fractal3d_color3"
+            color3f inputs:amplitude = (1,1,1)
+            int inputs:octaves = 3
+            float inputs:lacunarity = 2
+            float inputs:diminish = 0.5
+            float3 inputs:position.connect = </World/mats/m7/pos3.outputs:out>
+            color3f outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_add_color3FA"
+            color3f inputs:in1.connect = </World/mats/m7/f.outputs:out>
+            float inputs:in2 = 1
+            color3f outputs:out
+        }
+    }
+    def Material "m8"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m8/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m8/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc4"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m8/tc.outputs:out>
+            float inputs:in2 = 4
+            float2 outputs:out
+        }
+        def Shader "n"
+        {
+            uniform token info:id = "ND_cellnoise2d_float"
+            float2 inputs:texcoord.connect = </World/mats/m8/tc4.outputs:out>
+            float outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_convert_float_color3"
+            float inputs:in.connect = </World/mats/m8/n.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m9"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m9/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m9/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc4"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m9/tc.outputs:out>
+            float inputs:in2 = 4
+            float2 outputs:out
+        }
+        def Shader "n"
+        {
+            uniform token info:id = "ND_worleynoise2d_vector3"
+            float2 inputs:texcoord.connect = </World/mats/m9/tc4.outputs:out>
+            float inputs:jitter = 1
+            int inputs:style = 0
+            float3 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_convert_vector3_color3"
+            float3 inputs:in.connect = </World/mats/m9/n.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m10"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m10/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m10/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc4"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m10/tc.outputs:out>
+            float inputs:in2 = 4
+            float2 outputs:out
+        }
+        def Shader "n"
+        {
+            uniform token info:id = "ND_worleynoise2d_vector3"
+            float2 inputs:texcoord.connect = </World/mats/m10/tc4.outputs:out>
+            float inputs:jitter = 1
+            int inputs:style = 1
+            float3 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_convert_vector3_color3"
+            float3 inputs:in.connect = </World/mats/m10/n.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m11"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m11/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m11/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc3m"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m11/tc.outputs:out>
+            float inputs:in2 = 3
+            float2 outputs:out
+        }
+        def Shader "tc3"
+        {
+            uniform token info:id = "ND_subtract_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m11/tc3m.outputs:out>
+            float inputs:in2 = 1
+            float2 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file = @C:/Users/Synti/AppData/Local/Temp/claude/C--Users-Synti-Desktop-renderEngine/ac6add8e-dc52-40d3-838a-501e34988043/scratchpad/m3research/mtlx-nodes/probe/tex2x2.png@
+            string inputs:filtertype = "closest"
+            string inputs:uaddressmode = "constant"
+            string inputs:vaddressmode = "periodic"
+            color3f inputs:default = (0,1,0)
+            float2 inputs:texcoord.connect = </World/mats/m11/tc3.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m12"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m12/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m12/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc3m"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m12/tc.outputs:out>
+            float inputs:in2 = 3
+            float2 outputs:out
+        }
+        def Shader "tc3"
+        {
+            uniform token info:id = "ND_subtract_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m12/tc3m.outputs:out>
+            float inputs:in2 = 1
+            float2 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file = @C:/Users/Synti/AppData/Local/Temp/claude/C--Users-Synti-Desktop-renderEngine/ac6add8e-dc52-40d3-838a-501e34988043/scratchpad/m3research/mtlx-nodes/probe/tex2x2.png@
+            string inputs:filtertype = "closest"
+            string inputs:uaddressmode = "mirror"
+            string inputs:vaddressmode = "clamp"
+            color3f inputs:default = (0,1,0)
+            float2 inputs:texcoord.connect = </World/mats/m12/tc3.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m13"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m13/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m13/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file = @C:/Users/Synti/AppData/Local/Temp/claude/C--Users-Synti-Desktop-renderEngine/ac6add8e-dc52-40d3-838a-501e34988043/scratchpad/m3research/mtlx-nodes/probe/gray128.png@
+            color3f outputs:out
+        }
+    }
+    def Material "m14"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m14/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m14/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file = @C:/Users/Synti/AppData/Local/Temp/claude/C--Users-Synti-Desktop-renderEngine/ac6add8e-dc52-40d3-838a-501e34988043/scratchpad/m3research/mtlx-nodes/probe/gray128.png@ (
+                colorSpace = "lin_rec709"
+            )
+            color3f outputs:out
+        }
+    }
+    def Material "m15"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m15/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m15/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "x"
+        {
+            uniform token info:id = "ND_extract_vector2"
+            float2 inputs:in.connect = </World/mats/m15/tc.outputs:out>
+            int inputs:index = 0
+            float outputs:out
+        }
+        def Shader "s"
+        {
+            uniform token info:id = "ND_smoothstep_float"
+            float inputs:in.connect = </World/mats/m15/x.outputs:out>
+            float inputs:low = 1
+            float inputs:high = 0
+            float outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_convert_float_color3"
+            float inputs:in.connect = </World/mats/m15/s.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m16"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m16/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m16/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_luminance_color3"
+            color3f inputs:in = (1,0,0)
+            color3f outputs:out
+        }
+    }
+    def Material "m17"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m17/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m17/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "x"
+        {
+            uniform token info:id = "ND_extract_vector2"
+            float2 inputs:in.connect = </World/mats/m17/tc.outputs:out>
+            int inputs:index = 0
+            float outputs:out
+        }
+        def Shader "x4"
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </World/mats/m17/x.outputs:out>
+            float inputs:in2 = 4
+            float outputs:out
+        }
+        def Shader "x2"
+        {
+            uniform token info:id = "ND_subtract_float"
+            float inputs:in1.connect = </World/mats/m17/x4.outputs:out>
+            float inputs:in2 = 2
+            float outputs:out
+        }
+        def Shader "m"
+        {
+            uniform token info:id = "ND_modulo_float"
+            float inputs:in1.connect = </World/mats/m17/x2.outputs:out>
+            float inputs:in2 = 1
+            float outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_convert_float_color3"
+            float inputs:in.connect = </World/mats/m17/m.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m18"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m18/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m18/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "i"
+        {
+            uniform token info:id = "ND_image_vector3"
+            asset inputs:file = @C:/Users/Synti/AppData/Local/Temp/claude/C--Users-Synti-Desktop-renderEngine/ac6add8e-dc52-40d3-838a-501e34988043/scratchpad/m3research/mtlx-nodes/probe/gray128.png@
+            float3 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_convert_vector3_color3"
+            float3 inputs:in.connect = </World/mats/m18/i.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m19"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m19/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m19/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_checkerboard_color3"
+
+            color3f outputs:out
+        }
+    }
+    def Material "m20"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m20/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m20/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_noise3d_color3"
+            color3f inputs:amplitude = (1,1,1)
+            float inputs:pivot = 0.5
+            color3f outputs:out
+        }
+    }
+    def Material "m21"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m21/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m21/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc3m"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m21/tc.outputs:out>
+            float inputs:in2 = 3
+            float2 outputs:out
+        }
+        def Shader "tc3"
+        {
+            uniform token info:id = "ND_subtract_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m21/tc3m.outputs:out>
+            float inputs:in2 = 1
+            float2 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file = @C:/Users/Synti/AppData/Local/Temp/claude/C--Users-Synti-Desktop-renderEngine/ac6add8e-dc52-40d3-838a-501e34988043/scratchpad/m3research/mtlx-nodes/probe/tex2x2_tiled.exr@
+            string inputs:filtertype = "closest"
+            string inputs:uaddressmode = "constant"
+            string inputs:vaddressmode = "periodic"
+            color3f inputs:default = (0,1,0)
+            float2 inputs:texcoord.connect = </World/mats/m21/tc3.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m22"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m22/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m22/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "tc3m"
+        {
+            uniform token info:id = "ND_multiply_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m22/tc.outputs:out>
+            float inputs:in2 = 3
+            float2 outputs:out
+        }
+        def Shader "tc3"
+        {
+            uniform token info:id = "ND_subtract_vector2FA"
+            float2 inputs:in1.connect = </World/mats/m22/tc3m.outputs:out>
+            float inputs:in2 = 1
+            float2 outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file = @C:/Users/Synti/AppData/Local/Temp/claude/C--Users-Synti-Desktop-renderEngine/ac6add8e-dc52-40d3-838a-501e34988043/scratchpad/m3research/mtlx-nodes/probe/tex2x2.png@
+            string inputs:filtertype = "closest"
+            string inputs:uaddressmode = "constant"
+            string inputs:vaddressmode = "periodic"
+            color3f inputs:default = (0,1,0)
+            float2 inputs:texcoord.connect = </World/mats/m22/tc3.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m23"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m23/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m23/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_dodge_color3"
+            color3f inputs:fg = (0,0,0)
+            color3f inputs:bg = (0.3,0.3,0.3)
+            float inputs:mix = 1
+            color3f outputs:out
+        }
+    }
+    def Material "m24"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m24/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m24/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_burn_color3"
+            color3f inputs:fg = (0.5,0.5,0.5)
+            color3f inputs:bg = (0.8,0.8,0.8)
+            float inputs:mix = 1
+            color3f outputs:out
+        }
+    }
+    def Material "m25"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m25/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m25/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "x"
+        {
+            uniform token info:id = "ND_extract_vector2"
+            float2 inputs:in.connect = </World/mats/m25/tc.outputs:out>
+            int inputs:index = 0
+            float outputs:out
+        }
+        def Shader "s"
+        {
+            uniform token info:id = "ND_smoothstep_float"
+            float inputs:in.connect = </World/mats/m25/x.outputs:out>
+            float inputs:low = 0.5
+            float inputs:high = 0.5
+            float outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_convert_float_color3"
+            float inputs:in.connect = </World/mats/m25/s.outputs:out>
+            color3f outputs:out
+        }
+    }
+    def Material "m26"
+    {
+        token outputs:mtlx:surface.connect = </World/mats/m26/surf.outputs:out>
+        def Shader "surf"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            color3f inputs:emission_color.connect = </World/mats/m26/p.outputs:out>
+            token outputs:out
+        }
+        def Shader "tc"
+        {
+            uniform token info:id = "ND_texcoord_vector2"
+
+            float2 outputs:out
+        }
+        def Shader "x"
+        {
+            uniform token info:id = "ND_extract_vector2"
+            float2 inputs:in.connect = </World/mats/m26/tc.outputs:out>
+            int inputs:index = 0
+            float outputs:out
+        }
+        def Shader "d"
+        {
+            uniform token info:id = "ND_divide_float"
+            float inputs:in1.connect = </World/mats/m26/x.outputs:out>
+            float inputs:in2 = 0
+            float outputs:out
+        }
+        def Shader "p"
+        {
+            uniform token info:id = "ND_convert_float_color3"
+            float inputs:in.connect = </World/mats/m26/d.outputs:out>
+            color3f outputs:out
+        }
+    }
+    }
+    def Mesh "q0" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m0>
+        double3 xformOp:translate = (0.125, 0.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q1" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m1>
+        double3 xformOp:translate = (1.375, 0.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q2" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m2>
+        double3 xformOp:translate = (2.625, 0.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q3" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m3>
+        double3 xformOp:translate = (3.875, 0.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q4" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m4>
+        double3 xformOp:translate = (5.125, 0.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q5" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m5>
+        double3 xformOp:translate = (0.125, 1.375, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q6" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m6>
+        double3 xformOp:translate = (1.375, 1.375, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q7" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m7>
+        double3 xformOp:translate = (2.625, 1.375, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q8" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m8>
+        double3 xformOp:translate = (3.875, 1.375, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q9" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m9>
+        double3 xformOp:translate = (5.125, 1.375, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q10" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m10>
+        double3 xformOp:translate = (0.125, 2.625, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q11" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m11>
+        double3 xformOp:translate = (1.375, 2.625, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q12" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m12>
+        double3 xformOp:translate = (2.625, 2.625, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q13" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m13>
+        double3 xformOp:translate = (3.875, 2.625, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q14" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m14>
+        double3 xformOp:translate = (5.125, 2.625, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q15" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m15>
+        double3 xformOp:translate = (0.125, 3.875, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q16" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m16>
+        double3 xformOp:translate = (1.375, 3.875, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q17" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m17>
+        double3 xformOp:translate = (2.625, 3.875, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q18" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m18>
+        double3 xformOp:translate = (3.875, 3.875, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q19" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m19>
+        double3 xformOp:translate = (5.125, 3.875, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def PointInstancer "pi20"
+    {
+        point3f[] positions = [(0.125, 5.125, -0.37)]
+        int[] protoIndices = [0]
+        rel prototypes = </World/pi20/proto>
+        def Mesh "proto" (prepend apiSchemas = ["MaterialBindingAPI"])
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m20>
+        }
+    }
+    def Mesh "q21" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m21>
+        double3 xformOp:translate = (1.375, 5.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q22" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m22>
+        double3 xformOp:translate = (2.625, 5.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q23" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m23>
+        double3 xformOp:translate = (3.875, 5.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q24" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m24>
+        double3 xformOp:translate = (5.125, 5.125, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q25" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m25>
+        double3 xformOp:translate = (0.125, 6.375, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Mesh "q26" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0.37), (1, 0, 0.37), (1, 1, 0.37), (0, 1, 0.37)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/mats/m26>
+        double3 xformOp:translate = (1.375, 6.375, -0.37)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 62.5
+        float verticalAperture = 75.0
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (3.125, 3.75, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+def Scope "Render"
+{
+    def RenderSettings "settings"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (800, 960)
+        token karma:global:convergence_mode = "Path Traced"
+        int karma:global:pathtracedsamples = 16
+    }
+}

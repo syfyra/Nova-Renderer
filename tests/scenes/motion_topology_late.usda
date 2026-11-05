@@ -1,0 +1,93 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 0
+    endTimeCode = 2
+)
+
+# A shutter that excludes the frame (tests/husk/check_motion.py): [0.25, 0.75]
+# around frame 1, and the topology changes at 1.1, so every sample inside the
+# shutter has the same length but not the frame's. Hydra hands the frame's
+# topology, so both meshes must render sharp at their frame-1 points, as in
+# Karma. Rows, top to bottom:
+#   lateShrink: two quads at frame 1 (x0 = -10 and 10, y 0.5..2.5), one quad
+#               (x0 = 0) from 1.1 on;
+#   lateGrow:   one quad at frame 1 (x0 = -10, y -2.5..-0.5), two quads
+#               (x0 = 0 and 10) from 1.1 on.
+# Orthographic camera: x in -20..20, y in -6..6, 10 pixels per unit.
+def Xform "World"
+{
+    def Mesh "lateShrink"
+    {
+        int[] faceVertexCounts.timeSamples = {
+            1: [4, 4],
+            1.1: [4],
+            2: [4],
+        }
+        int[] faceVertexIndices.timeSamples = {
+            1: [0, 1, 2, 3, 4, 5, 6, 7],
+            1.1: [0, 1, 2, 3],
+            2: [0, 1, 2, 3],
+        }
+        point3f[] points.timeSamples = {
+            1: [(-10, 0.5, 0), (-8, 0.5, 0), (-8, 2.5, 0), (-10, 2.5, 0),
+                (10, 0.5, 0), (12, 0.5, 0), (12, 2.5, 0), (10, 2.5, 0)],
+            1.1: [(0, 0.5, 0), (2, 0.5, 0), (2, 2.5, 0), (0, 2.5, 0)],
+            2: [(0, 0.5, 0), (2, 0.5, 0), (2, 2.5, 0), (0, 2.5, 0)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "lateGrow"
+    {
+        int[] faceVertexCounts.timeSamples = {
+            1: [4],
+            1.1: [4, 4],
+            2: [4, 4],
+        }
+        int[] faceVertexIndices.timeSamples = {
+            1: [0, 1, 2, 3],
+            1.1: [0, 1, 2, 3, 4, 5, 6, 7],
+            2: [0, 1, 2, 3, 4, 5, 6, 7],
+        }
+        point3f[] points.timeSamples = {
+            1: [(-10, -2.5, 0), (-8, -2.5, 0), (-8, -0.5, 0), (-10, -0.5, 0)],
+            1.1: [(0, -2.5, 0), (2, -2.5, 0), (2, -0.5, 0), (0, -0.5, 0),
+                  (10, -2.5, 0), (12, -2.5, 0), (12, -0.5, 0), (10, -0.5, 0)],
+            2: [(0, -2.5, 0), (2, -2.5, 0), (2, -0.5, 0), (0, -0.5, 0),
+                (10, -2.5, 0), (12, -2.5, 0), (12, -0.5, 0), (10, -0.5, 0)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 400
+        float verticalAperture = 120
+        float2 clippingRange = (0.1, 100)
+        double shutter:open = 0.25
+        double shutter:close = 0.75
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "late"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 120)
+        int nova:samples = 16
+        int nova:maxDepth = 1
+        token nova:pixelFilter = "box"
+    }
+}

@@ -1,0 +1,182 @@
+[
+ {
+  "case": "ss_speconly_r00",
+  "karma_disk": 0.0624,
+  "ss_disk": 0.0696,
+  "ss_rel": -0.1032,
+  "ss_worstbin_rel": 0.2257,
+  "turquin_disk": 0.0696,
+  "turquin_rel": -0.1032,
+  "turquin_worstbin_rel": 0.2257
+ },
+ {
+  "case": "ss_metal_r00",
+  "karma_disk": 0.9918,
+  "ss_disk": 0.9918,
+  "ss_rel": 0.0,
+  "ss_worstbin_rel": 0.0,
+  "turquin_disk": 0.9918,
+  "turquin_rel": 0.0,
+  "turquin_worstbin_rel": 0.0
+ },
+ {
+  "case": "op_metal_r00",
+  "karma_disk": 1.0,
+  "ss_disk": 0.9918,
+  "ss_rel": 0.0083,
+  "ss_worstbin_rel": 0.01,
+  "turquin_disk": 0.9918,
+  "turquin_rel": 0.0083,
+  "turquin_worstbin_rel": 0.01
+ },
+ {
+  "case": "ss_speconly_r02",
+  "karma_disk": 0.0625,
+  "ss_disk": 0.0691,
+  "ss_rel": -0.0947,
+  "ss_worstbin_rel": 0.2059,
+  "turquin_disk": 0.0691,
+  "turquin_rel": -0.0954,
+  "turquin_worstbin_rel": 0.206
+ },
+ {
+  "case": "ss_metal_r02",
+  "karma_disk": 0.9935,
+  "ss_disk": 0.9882,
+  "ss_rel": 0.0054,
+  "ss_worstbin_rel": 0.0152,
+  "turquin_disk": 0.9917,
+  "turquin_rel": 0.0018,
+  "turquin_worstbin_rel": 0.0094
+ },
+ {
+  "case": "op_metal_r02",
+  "karma_disk": 1.0018,
+  "ss_disk": 0.9882,
+  "ss_rel": 0.0137,
+  "ss_worstbin_rel": 0.0213,
+  "turquin_disk": 0.9917,
+  "turquin_rel": 0.0101,
+  "turquin_worstbin_rel": 0.0161
+ },
+ {
+  "case": "ss_speconly_r04",
+  "karma_disk": 0.0542,
+  "ss_disk": 0.0608,
+  "ss_rel": -0.1094,
+  "ss_worstbin_rel": 0.1743,
+  "turquin_disk": 0.0613,
+  "turquin_rel": -0.1168,
+  "turquin_worstbin_rel": 0.1779
+ },
+ {
+  "case": "ss_metal_r04",
+  "karma_disk": 0.9923,
+  "ss_disk": 0.9368,
+  "ss_rel": 0.0593,
+  "ss_worstbin_rel": 0.1068,
+  "turquin_disk": 0.9912,
+  "turquin_rel": 0.0012,
+  "turquin_worstbin_rel": 0.021
+ },
+ {
+  "case": "op_metal_r04",
+  "karma_disk": 1.0007,
+  "ss_disk": 0.9368,
+  "ss_rel": 0.0683,
+  "ss_worstbin_rel": 0.1127,
+  "turquin_disk": 0.9912,
+  "turquin_rel": 0.0096,
+  "turquin_worstbin_rel": 0.0175
+ },
+ {
+  "case": "ss_speconly_r06",
+  "karma_disk": 0.04,
+  "ss_disk": 0.0453,
+  "ss_rel": -0.1161,
+  "ss_worstbin_rel": 0.1589,
+  "turquin_disk": 0.0463,
+  "turquin_rel": -0.1346,
+  "turquin_worstbin_rel": 0.1784
+ },
+ {
+  "case": "ss_metal_r06",
+  "karma_disk": 0.9834,
+  "ss_disk": 0.7934,
+  "ss_rel": 0.2396,
+  "ss_worstbin_rel": 0.2613,
+  "turquin_disk": 0.9896,
+  "turquin_rel": -0.0063,
+  "turquin_worstbin_rel": 0.0184
+ },
+ {
+  "case": "op_metal_r06",
+  "karma_disk": 0.9921,
+  "ss_disk": 0.7934,
+  "ss_rel": 0.2505,
+  "ss_worstbin_rel": 0.2714,
+  "turquin_disk": 0.9896,
+  "turquin_rel": 0.0025,
+  "turquin_worstbin_rel": 0.0115
+ },
+ {
+  "case": "ss_speconly_r08",
+  "karma_disk": 0.0269,
+  "ss_disk": 0.0304,
+  "ss_rel": -0.1144,
+  "ss_worstbin_rel": 0.16,
+  "turquin_disk": 0.0319,
+  "turquin_rel": -0.1552,
+  "turquin_worstbin_rel": 0.2328
+ },
+ {
+  "case": "ss_metal_r08",
+  "karma_disk": 0.9726,
+  "ss_disk": 0.5874,
+  "ss_rel": 0.6559,
+  "ss_worstbin_rel": 0.7845,
+  "turquin_disk": 0.9875,
+  "turquin_rel": -0.0151,
+  "turquin_worstbin_rel": 0.0662
+ },
+ {
+  "case": "op_metal_r08",
+  "karma_disk": 0.9816,
+  "ss_disk": 0.5874,
+  "ss_rel": 0.6711,
+  "ss_worstbin_rel": 0.802,
+  "turquin_disk": 0.9875,
+  "turquin_rel": -0.006,
+  "turquin_worstbin_rel": 0.0586
+ },
+ {
+  "case": "ss_speconly_r10",
+  "karma_disk": 0.0161,
+  "ss_disk": 0.0189,
+  "ss_rel": -0.1462,
+  "ss_worstbin_rel": 0.2414,
+  "turquin_disk": 0.0209,
+  "turquin_rel": -0.2264,
+  "turquin_worstbin_rel": 0.3497
+ },
+ {
+  "case": "ss_metal_r10",
+  "karma_disk": 0.9278,
+  "ss_disk": 0.3872,
+  "ss_rel": 1.3964,
+  "ss_worstbin_rel": 2.1629,
+  "turquin_disk": 0.9856,
+  "turquin_rel": -0.0586,
+  "turquin_worstbin_rel": 0.1691
+ },
+ {
+  "case": "op_metal_r10",
+  "karma_disk": 0.9366,
+  "ss_disk": 0.3872,
+  "ss_rel": 1.419,
+  "ss_worstbin_rel": 2.1938,
+  "turquin_disk": 0.9856,
+  "turquin_rel": -0.0498,
+  "turquin_worstbin_rel": 0.1619
+ }
+]
