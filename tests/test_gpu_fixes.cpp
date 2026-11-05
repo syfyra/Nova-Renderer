@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -467,4 +468,88 @@ TEST_CASE("XPU refreshes a texture replaced under its id", "[gpu][render][textur
     CHECK_THAT(first.y, WithinAbs(0.0, 0.01));
     CHECK_THAT(second.x, WithinAbs(0.0, 0.01));
     CHECK_THAT(second.y, WithinAbs(1.0, 0.01));
+}
+
+// R1-48: the texture budget is planned from the textures' shapes before any
+// texel is read, and only the kept levels are read and uploaded. A texture
+// over the budget renders bit for bit as the same texture holding only the
+// kept levels: levels 2 on of a 1024^2 float chain under 2 MB, which the
+// per-texture policy before the change kept as well.
+TEST_CASE("XPU keeps the texture levels its budget plans", "[gpu][render][texture]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    using namespace shading;
+    // Level l: the constant color (l / 10, 1 - l / 10, 0.5).
+    const auto level = [](int size, uint32_t l) {
+        std::vector<float> texels;
+        texels.reserve(size_t(size) * size_t(size) * 3);
+        for (int i = 0; i < size * size; ++i)
+            texels.insert(texels.end(), {float(l) / 10.0f, 1.0f - float(l) / 10.0f, 0.5f});
+        return texels;
+    };
+    MemorySampler textures;
+    std::vector<std::vector<float>> mips;
+    for (uint32_t l = 1; (1024 >> l) >= 1; ++l)
+        mips.push_back(level(1024 >> l, l));
+    const TextureId full = textures.add(1024, 1024, 3, level(1024, 0), mips);
+    const TextureId from2 =
+        textures.add(256, 256, 3, level(256, 2), std::vector<std::vector<float>>(mips.begin() + 2, mips.end()));
+
+    // An unlit quad showing the texture at its st, 4 texels of level 0 per
+    // pixel: level 0 is sampled when everything fits.
+    const auto render = [&](TextureId tex, uint32_t budgetMb, bool &onGpu) {
+        Scene scene;
+        MeshDesc quad = makeQuad(1.0f);
+        quad.setAttribute({"st", AttributeRate::Vertex, 2, {0, 0, 1, 0, 1, 1, 0, 1}});
+        const MeshId mesh = scene.createMesh();
+        scene.updateMesh(mesh, quad);
+        IrGraph g;
+        g.model = SurfaceModel::Unlit;
+        IrBuilder b(g);
+        const uint32_t slot = b.textureSlot(TexSlot{});
+        b.output(surface_field::emissionColor, 3, b.tex2D(slot, b.primvar("st", 2, b.constant(0.0f)), b.constant(0.0f)));
+        MaterialDesc material;
+        material.inputs = unlitDefaults();
+        material.program = compile(g).program;
+        REQUIRE(material.program);
+        material.textures = {tex};
+        const MaterialId m = scene.createMaterial();
+        scene.updateMaterial(m, material);
+        scene.setMeshMaterials(mesh, {m});
+        scene.setTextureSampler(&textures);
+        scene.commit();
+        Renderer renderer;
+        RenderSettings settings;
+        settings.device = RenderDevice::Xpu;
+        settings.maxSamples = 4;
+        settings.maxDepth = 1;
+        settings.gpuTextureBudget = budgetMb;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 5.0f}, 0.5f, 128, 128));
+        renderer.resize(128, 128);
+        while (!renderer.converged()) {
+            renderer.renderPass({});
+            onGpu = onGpu && renderer.lastPassOnGpu();
+        }
+        return renderer.film();
+    };
+    bool onGpu = true;
+    const uint64_t before = textures.texelsRead();
+    const Film budgeted = render(full, 2, onGpu);
+    const uint64_t read = textures.texelsRead() - before;
+    const Film kept = render(from2, 0, onGpu);
+    const Film everything = render(full, 0, onGpu);
+    REQUIRE(onGpu);
+    // Only levels 2 to 10 of the full chain were read.
+    CHECK(read == 87381);
+    REQUIRE(budgeted.colorSum.size() == kept.colorSum.size());
+    CHECK(std::memcmp(budgeted.colorSum.data(), kept.colorSum.data(),
+                      budgeted.colorSum.size() * sizeof(budgeted.colorSum[0])) == 0);
+    CHECK(budgeted.count == kept.count);
+    const Vec3f limited = channelMeans(budgeted), all = channelMeans(everything);
+    INFO("budgeted " << limited.x << " " << limited.y << ", everything " << all.x << " " << all.y);
+    CHECK_THAT(limited.x, WithinAbs(0.2, 0.01)); // level 2
+    CHECK_THAT(all.x, WithinAbs(0.0, 0.01));     // level 0
 }

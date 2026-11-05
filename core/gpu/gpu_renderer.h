@@ -15,6 +15,7 @@
 #include "core/integrator/wavefront.h"
 #include "core/scene/camera.h"
 #include "core/texture/texture.h"
+#include "core/texture/texture_budget.h"
 
 #include <cstdint>
 #include <string>
@@ -79,20 +80,33 @@ private:
     bool uploadLpe(const LpeTables &tables, uint64_t generation);
     bool launch(CUfunction fn, uint32_t threads, void *args);
 
-    // Textures (D10): per TextureId of the scene's sampler its tiles' MIP
-    // chains on the device (uploaded on first use, within the budget), and
-    // a material slot's texture objects (per texture, address modes and
-    // filter).
+    // Textures (D10): per TextureId of the scene's sampler its shape, the
+    // levels the budget plan keeps of each tile (planTextures, before any
+    // texel is read) and its tiles' MIP chains on the device (uploaded on
+    // first use: only the planned levels are read), and a material slot's
+    // texture objects (per texture, address modes and filter).
     struct Texture {
-        bool ok = false;
+        bool ok = false;         // uploaded, with at least one tile
         bool udim = false;
-        uint32_t generation = 0; // the sampler's textureGeneration when uploaded
+        bool known = false;      // `info` holds the texture's shape
+        bool uploaded = false;   // its upload was tried (per `plan`)
+        uint32_t generation = 0; // the sampler's textureGeneration when its shape was taken
+        TexInfo info;
+        std::vector<TexTilePlan> plan; // per tile of `info` (empty: not planned)
+        size_t bytes = 0;              // on the device
         std::vector<std::pair<uint32_t, CUmipmappedArray>> tiles; // UDIM number (0: none), chain
         std::vector<uint32_t> levels;
     };
+    Texture &textureEntry(const ITextureSampler *sampler, TextureId id);
     Texture &texture(const ITextureSampler *sampler, TextureId id);
+    // The budget plan over the textures the scene's materials sample; drops
+    // the device copies that no longer match it.
+    void planTextures(const Scene &scene);
+    size_t textureBudget();
     DeviceTexSlot textureSlot(const ITextureSampler *sampler, const TexSampler &s);
     CUtexObject textureObject(CUmipmappedArray chain, uint32_t levels, const TexSlot &slot, bool udim);
+    // The device copies and texture objects (the shapes stay).
+    void freeTextureData();
     void releaseTextures();
     // Whether `sampler` (the current one) replaced the data of a texture
     // uploaded from it (ITextureSampler::textureGeneration).

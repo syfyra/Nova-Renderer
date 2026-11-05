@@ -2,7 +2,8 @@
 
 // Textures on the GPU (docs/design/M10.md D10): the texture objects of a
 // material's slots, made by core/gpu/gpu_renderer.cpp from the host's MIP
-// chains (ITextureSampler::textureData), and the lookup the VM's Tex2D does
+// levels (ITextureSampler::textureLevels, within the texture budget of
+// core/texture/texture_budget.h), and the lookup the VM's Tex2D does
 // with them in place of the host sampler. Hardware filtering: trilinear
 // across the MIP levels with up to 8x anisotropy (the host's OIIO filters
 // stochastically; the GPU matches it statistically, D11).
