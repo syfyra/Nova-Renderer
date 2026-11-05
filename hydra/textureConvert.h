@@ -81,4 +81,16 @@ std::string HdNovaTextureCacheDir(HdNovaTextureOptions const &options);
 // when it cannot be extracted.
 std::string HdNovaLocalizeTexture(std::string const &path, HdNovaTextureOptions const &options, std::string &error);
 
+// A file OIIO can read for `path`: HdNovaLocalizeTexture's, except that a
+// `.rat` file (no OIIO reader) is converted once by Houdini's imaketx into a
+// tiled, MIP-mapped EXR in the cache directory, named by the file's size and
+// modification time. Karma treats a .rat like any other file, its stored
+// color space being its metadata (measured): so the EXR holds what imaketx
+// decodes (8-bit sRGB data linearized, tagged with the stored space, e.g.
+// lin_rec709), or with `stored` (for HdNovaTextureColorSpaceIsNamed) the
+// stored values unchanged. Empty (with `error`) when it cannot be read or
+// converted.
+std::string HdNovaReadableTexture(std::string const &path, HdNovaTextureOptions const &options, bool stored,
+                                  std::string &error);
+
 PXR_NAMESPACE_CLOSE_SCOPE

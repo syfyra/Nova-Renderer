@@ -2,7 +2,8 @@
 // measured in docs/research/m3/textures.md 1.7, 1.8, 4, 8): address modes,
 // UDIM like Karma, sRGB decoding before filtering (also of 8-bit .tx files),
 // a linear gamut as a matrix after the lookup, grey to RGB, premultiplied
-// PNG alpha, missing files, .rat through imaketx, the conversion cache,
+// PNG alpha, missing files, .rat through imaketx (also for light textures),
+// the conversion cache,
 // textures changed on disk, files in .usdz packages and the translation of
 // image nodes.
 
@@ -25,6 +26,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <process.h>
 #include <filesystem>
@@ -33,6 +35,7 @@
 
 PXR_NAMESPACE_USING_DIRECTIVE
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 namespace fs = std::filesystem;
 
 namespace {
@@ -321,6 +324,67 @@ TEST_CASE("Grey files with an explicit color space are decoded", "[hydra][textur
     REQUIRE(a.status == 0);
     CHECK_THAT(a.v[1], WithinAbs(0.215861, 1e-4));
     CHECK_THAT(a.v[3], WithinAbs(1.0, 1e-3));
+}
+
+TEST_CASE("Light and surface textures read .rat files as Karma does", "[hydra][textures]") {
+    // Houdini's HDRIs are .rat files ($HFS/houdini/pic/hdri), which OIIO
+    // cannot read; dome and rect lights failed to load them and lit with
+    // their plain color. Karma decides a .rat file's color space like any
+    // file's, its stored color space being the metadata (measured with husk,
+    // docs/design/M3.md): float data as stored, 8-bit sRGB data decoded, a
+    // name a file rule matches and an explicit color space apply to the
+    // stored values.
+    const auto imaketx = [](std::string const &src, std::string const &dst) {
+        const std::string cmd = "\"\"" NOVA_HFS "/bin/imaketx.exe\" \"" + src + "\" \"" + dst + "\"\"";
+        REQUIRE(std::system(cmd.c_str()) == 0);
+    };
+    const auto srgbToLinear = [](float v) { return std::pow((v + 0.055f) / 1.055f, 2.4f); };
+    const float c[3] = {2.0f, 0.6f, 0.15f};
+    const float M[3][3] = {{1.7051f, -0.6218f, -0.0833f}, {-0.1303f, 1.1408f, -0.0105f}, {-0.0240f, -0.1290f, 1.1530f}};
+    const std::string floatRat = testDir() + "/hdri.rat";
+    imaketx(writeImage("hdri_src.exr", 16, 8, {c[0], c[1], c[2]}, OIIO::TypeDesc::FLOAT), floatRat);
+    const std::string byteRat = testDir() + "/c128_light.rat";
+    imaketx(writeImage("c128_light.png", 8, 8, {128 / 255.0f, 128 / 255.0f, 128 / 255.0f}, OIIO::TypeDesc::UINT8),
+            byteRat);
+    // The same float file under names the file rules match.
+    const std::string srgbRat = testDir() + "/hdri_srgb_tx.rat", acescgRat = testDir() + "/hdri_ACEScg.rat";
+    fs::copy_file(fs::u8path(floatRat), fs::u8path(srgbRat), fs::copy_options::overwrite_existing);
+    fs::copy_file(fs::u8path(floatRat), fs::u8path(acescgRat), fs::copy_options::overwrite_existing);
+
+    HdNovaTextureCache lights;
+    const std::shared_ptr<const nova::Image> hdri = lights.Load(floatRat);
+    REQUIRE(hdri);
+    CHECK((hdri->width == 16 && hdri->height == 8));
+    CHECK_THAT(hdri->pixels[0].x, WithinAbs(c[0], 1e-5));
+    CHECK_THAT(hdri->pixels[0].y, WithinAbs(c[1], 1e-5));
+    CHECK_THAT(hdri->pixels[0].z, WithinAbs(c[2], 1e-5));
+    const std::shared_ptr<const nova::Image> decoded = lights.Load(byteRat);
+    REQUIRE(decoded);
+    CHECK_THAT(decoded->pixels[0].y, WithinAbs(0.215861, 1e-3)); // half float after imaketx
+    const std::shared_ptr<const nova::Image> named = lights.Load(srgbRat);
+    REQUIRE(named);
+    CHECK_THAT(named->pixels[0].x, WithinRel(srgbToLinear(c[0]), 1e-4f)); // Karma: 4.9539
+    CHECK_THAT(named->pixels[0].z, WithinRel(srgbToLinear(c[2]), 1e-3f));
+    const std::shared_ptr<const nova::Image> aces = lights.Load(acescgRat);
+    REQUIRE(aces);
+    for (int r = 0; r < 3; ++r)
+        CHECK_THAT((&aces->pixels[0].x)[r], WithinAbs(M[r][0] * c[0] + M[r][1] * c[1] + M[r][2] * c[2], 3e-3));
+
+    // Surface textures: the same rules, and a raw color space keeps an 8-bit
+    // file's stored codes (Karma: 0.502, not the decoded 0.216).
+    HdNovaTextureSystem ts;
+    ts.SetOptions(testOptions());
+    const nova::TexSlot slot = rgbSlot(nova::TexFilter::Closest);
+    CHECK_THAT(sample(ts, ts.Acquire({floatRat, "", ""}), slot, 0.5f, 0.5f).v[1], WithinAbs(c[1], 1e-5));
+    CHECK_THAT(sample(ts, ts.Acquire({byteRat, "", ""}), slot, 0.5f, 0.5f).v[1], WithinAbs(0.215861, 1e-3));
+    CHECK_THAT(sample(ts, ts.Acquire({byteRat, "raw", ""}), slot, 0.5f, 0.5f).v[1], WithinAbs(128 / 255.0, 1e-3));
+    CHECK_THAT(sample(ts, ts.Acquire({srgbRat, "", ""}), slot, 0.5f, 0.5f).v[0],
+               WithinRel(srgbToLinear(c[0]), 2e-3f)); // converted to half
+    const Lookup hinted = sample(ts, ts.Acquire({floatRat, "ACEScg", ""}), slot, 0.5f, 0.5f);
+    REQUIRE(hinted.status == 0);
+    for (int r = 0; r < 3; ++r)
+        CHECK_THAT(hinted.v[r], WithinAbs(M[r][0] * c[0] + M[r][1] * c[1] + M[r][2] * c[2], 3e-3));
+    CHECK(ts.MissingCount() == 0);
 }
 
 TEST_CASE("Direct UDIM sets see changed and added tiles", "[hydra][textures]") {

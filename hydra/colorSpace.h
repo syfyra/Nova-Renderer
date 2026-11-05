@@ -25,6 +25,11 @@ PXR_NAMESPACE_OPEN_SCOPE
 std::string HdNovaTextureColorSpace(std::string const &path, OIIO::ImageSpec const &spec,
                                     std::string const &hint = std::string());
 
+// True when the hint or a real file rule decides the color space of `path`,
+// not the file's own encoding (metadata, format, bit depth). Such a `.rat`
+// file is read with its stored values (HdNovaReadableTexture).
+bool HdNovaTextureColorSpaceIsNamed(std::string const &path, std::string const &hint = std::string());
+
 // How a color space reaches scene_linear.
 struct HdNovaColorTransform {
     enum class Kind { Identity, Matrix, Nonlinear };

@@ -27,7 +27,10 @@
 # hair ribbons through the Render Geometry Settings LOP's Nova tab, live, then
 # Karma (30_m9_nova ... 33_m9_karma). -Only xpu: Nova XPU in the viewport,
 # the Nova LOP set to XPU with a sample count it does not reach, a prim added
-# live, then Nova on the CPU (40_xpu ... 44_nova_cpu, ui_xpu_lop).
+# live, then Nova on the CPU (40_xpu ... 44_nova_cpu, ui_xpu_lop). -Only dome:
+# a Dome Light LOP with Houdini's .rat HDRI over a plane in Nova CPU, Nova XPU
+# and Karma (60_dome_nova ... 62_dome_karma; log.json has the sky and ground
+# means of each).
 param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Hfs = 'C:\Program Files\Side Effects Software\Houdini 22.0.466',
