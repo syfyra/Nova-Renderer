@@ -12,6 +12,8 @@ other per-light expressions) are compared with Karma CPU's measured values:
   and a large light (lights with a shadow link are sampled by NEE alone);
 - an object excluded from a light loses its highlight (metal);
 - a dome linked to the spheres leaves the ground to their indirect light;
+- a dome whose shadow link excludes A is not occluded by A (an untextured
+  dome: BSDF samples only, as shadow rays of their own; bug audit R1-31);
 - native instances link per instance, a point instancer as a whole; an
   instance proxy in a collection is ignored; a membership expression with
   includeRoot blocked;
@@ -46,6 +48,7 @@ REGIONS = {
     "shadowA": region(-2.35, 2.2, 0.12), "shadowB": region(2.35, 2.2, 0.12), "open": region(0.0, 2.2, 0.12),
     "mid": region(0.0, 0.0, 0.15), "ni1": region(-2.0, -2.5, 0.12), "ni2": region(2.0, -2.5, 0.12),
     "pi0": region(-0.6, -2.5, 0.12), "pi1": region(0.6, -2.5, 0.12),
+    "nearA": region(-2.45, -0.2, 0.1),
 }
 
 MATERIALS = '''
@@ -261,6 +264,13 @@ CONFIGS = {
         uniform bool collection:lightLink:includeRoot = 0
         rel collection:lightLink:includes = [</World/sphA>, </World/sphB>]'''),
                           [("L4", "A_top", 0.14895), ("L4", "open", 0.00116)]),
+    # Karma CPU at 1024 samples (2026-11, the shadow-linked dome fix): without
+    # the link nearA 0.12721, mid 0.13315, open 0.14868 (Nova before the fix
+    # kept those: nearA 0.12544). nearB (0.12861, B still shadows) is left
+    # out: Nova reads 3-4 % below Karma there with or without the link.
+    "dome_shadow_excl_A": (dict(dome_extra='''
+        rel collection:shadowLink:excludes = </World/sphA>'''),
+                           [("L4", "nearA", 0.15540), ("L4", "mid", 0.14328), ("L4", "open", 0.15121)]),
     "key_instances": (dict(key_extra='''
         uniform bool collection:lightLink:includeRoot = 0
         rel collection:lightLink:includes = [</World/ni1>, </World/pi>]'''),

@@ -65,7 +65,7 @@ struct MeshRecord {
     // turns them into a receiver set and a shadow mask per instance.
     std::vector<std::string> categories;
     std::vector<std::vector<std::string>> instanceCategories;
-    std::vector<uint8_t> receiverSets; // per instance (empty: set 0, every light)
+    std::vector<uint32_t> receiverSets; // per instance (empty: set 0, the unlinked lights only)
     std::vector<uint64_t> shadowMasks; // per instance: the shadow-link categories it is in
     // Emissive triangles as lights (M9 D14), from commit(): per triangle its
     // emitter number (kInvalidId: it does not emit; empty: none does), and
@@ -285,15 +285,21 @@ public:
     // Power-proportional light selection over lights(); pmf is indexed alike.
     LightSamplerView lightSampler() const { return m_lightSampler.view(); }
     LightTreeView lightTree() const { return m_lightTree.view(); }
-    // Light linking (M9 D15): per light the receiver sets it lights (null: no
-    // linking), an object instance's receiver set, and whether it blocks a
-    // shadow-linked light's shadow rays.
-    const uint64_t *lightLinkMasks() const { return m_linking ? m_lightLinkMask.data() : nullptr; }
+    // Light linking (M9 D15): per light its link and per receiver set its
+    // categories (null: no linking), an object instance's receiver set, and
+    // whether it blocks a shadow-linked light's shadow rays.
+    LightLinks lightLinks() const {
+        return m_linking ? LightLinks{m_lightLinkMask.data(), m_receiverCategories.data()} : LightLinks{};
+    }
+    uint32_t receiverSetCount() const { return uint32_t(m_receiverCategories.size()); }
     bool shadowLinking() const { return m_shadowLinking; }
     uint32_t receiverSet(MeshId mesh, uint32_t instance) const {
-        const std::vector<uint8_t> &r = m_meshes[mesh].receiverSets;
+        const std::vector<uint32_t> &r = m_meshes[mesh].receiverSets;
         return r.empty() ? 0u : r[instance < r.size() ? instance : 0];
     }
+    // Shadow-linked dome lights (M9 D15): their indices in lights(). Their
+    // BSDF samples are shadow rays of their own (path.h).
+    const std::vector<uint32_t> &shadowLinkedDomes() const { return m_shadowDomes; }
     bool castsShadow(MeshId mesh, uint32_t instance, uint16_t category) const {
         if (category >= 64)
             return true;
@@ -415,7 +421,9 @@ private:
     std::vector<LightData> m_lightData;   // the host's lights, then the volume lights
     std::vector<std::string> m_lightTags; // parallel to m_lightData
     std::vector<std::pair<std::string, std::string>> m_lightLinks; // lightLink, shadowLink; parallel to m_lightData
-    std::vector<uint64_t> m_lightLinkMask; // per light: the receiver sets it lights
+    std::vector<uint64_t> m_lightLinkMask;      // per light: its link (LightLinks::light)
+    std::vector<uint64_t> m_receiverCategories; // per receiver set: its link categories (set 0: none)
+    std::vector<uint32_t> m_shadowDomes;        // shadow-linked dome lights
     bool m_linking = false, m_shadowLinking = false, m_linksDirty = false;
     void computeLinks();
     size_t m_hostLightCount = 0;

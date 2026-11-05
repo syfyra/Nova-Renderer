@@ -610,7 +610,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
     // The light tree (M9 D11) with its lights at infinity, the light-linking
     // masks (D15).
     const LightTreeView tree = scene.lightTree();
-    const size_t lightTotal = lights.size(), treeLights = tree.lightCount;
+    const size_t treeLights = tree.lightCount;
     LightTreeView &t = m_view.tree;
     t = tree;
     t.nodes = put(tree.nodes, tree.nodeCount).ptr;
@@ -623,8 +623,11 @@ bool GpuRenderer::setScene(const Scene &scene) {
     t.infiniteTable.alias = put(tree.infiniteTable.alias, tree.infiniteTable.count).ptr;
     t.infiniteSlot = put(tree.infiniteSlot, treeLights).ptr;
     t.cut = put(tree.cut, tree.cutCount).ptr;
-    t.lightMask = put(tree.lightMask, treeLights).ptr;
-    m_view.linkMask = put(scene.lightLinkMasks(), lightTotal).ptr;
+    t.links.light = put(tree.links.light, treeLights).ptr;
+    t.links.receiver = put(tree.links.receiver, tree.receiverSetCount).ptr;
+    m_view.links = t.links; // over every light, as Scene::lightLinks()
+    m_view.shadowDomes = put(scene.shadowLinkedDomes()).ptr;
+    m_view.shadowDomeCount = uint32_t(scene.shadowLinkedDomes().size());
     m_view.anyEmitters = uint8_t(scene.anyEmitters());
     uint32_t categories = 0;
     for (const LightData &l : lights)
@@ -740,7 +743,7 @@ bool GpuRenderer::setFilm(const Film &film) {
 }
 
 bool GpuRenderer::reserveWave(uint32_t paths) {
-    const uint32_t slots = m_mayWalk ? 3u : 2u;
+    const uint32_t slots = (m_mayWalk ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u);
     if (paths <= m_capacity && slots <= m_shadowSlots)
         return true;
     m_waveBuffers.clear();
@@ -789,7 +792,8 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.hitInstance, paths);
     // Up to two light samples per path and depth: at the hit or volume
     // event, and an equiangular one along the ray's medium segment; with
-    // subsurface walks a third at a walk's exit.
+    // subsurface walks a third at a walk's exit; with shadow-linked domes
+    // one more, a dome's BSDF sample at the event or the exit (path.h).
     const size_t shadows = size_t(paths) * slots;
     rays(w.shadow, 2, shadows);
     field(w.shadowContribution, shadows);
@@ -1253,6 +1257,11 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             }
             if (walked) { // the walk exits' shadow rays: a third run
                 sh.slot = 2;
+                if (!launch(m_shadow, shadows, &sh))
+                    return false;
+            }
+            if (view.shadowDomeCount > 0) { // shadow-linked domes' BSDF samples: a fourth run
+                sh.slot = 3;
                 if (!launch(m_shadow, shadows, &sh))
                     return false;
             }

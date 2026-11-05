@@ -185,6 +185,10 @@ NOVA_INLINE constexpr uint32_t walkLight(uint32_t depth) { return kWalkLightBase
 // all from an Rng seeded with this stream id (the M8 D18 scheme).
 constexpr uint32_t kEquiangularBase = 0x70000u;
 NOVA_INLINE constexpr uint32_t equiangular(uint32_t depth) { return kEquiangularBase + depth; }
+// The choice among several shadow-linked domes for a continuation's own
+// shadow ray (docs/design/M9.md D15, core/integrator/path.h), 1D per depth.
+constexpr uint32_t kShadowDomeBase = 0x80000u;
+NOVA_INLINE constexpr uint32_t shadowDome(uint32_t depth) { return kShadowDomeBase + depth; }
 } // namespace stream
 
 } // namespace nova

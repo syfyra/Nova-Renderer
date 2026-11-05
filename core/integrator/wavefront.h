@@ -199,7 +199,7 @@ struct WaveQueues {
     // position, normal and receiver kind (Receiver).
     std::vector<Vec3f> prevP, prevN;
     std::vector<uint8_t> prevReceiver;
-    std::vector<uint8_t> prevSet; // its light-linking receiver set (M9 D15)
+    std::vector<uint32_t> prevSet; // its light-linking receiver set (M9 D15, path.h)
     std::vector<lpe::State> lpeState;  // the path's events so far (light path expressions)
     std::vector<uint32_t> firstHitPixels; // the wave's pixels without samples yet (first-hit AOVs)
 

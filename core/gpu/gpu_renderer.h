@@ -143,7 +143,7 @@ private:
     // shadow queue and the queue lengths (rays A, rays B, shadow rays, AO
     // rays).
     uint32_t m_capacity = 0;
-    uint32_t m_shadowSlots = 0; // shadow rays per path the wave holds (2, or 3 with walks)
+    uint32_t m_shadowSlots = 0; // shadow rays per path the wave holds (2, 3 with walks, +1 with shadow-linked domes)
     std::vector<DeviceBuffer> m_waveBuffers;
     GpuWave m_wave;
     GpuRays m_rays[2];

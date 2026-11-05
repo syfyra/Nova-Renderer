@@ -92,12 +92,12 @@ struct EmissionGather {
     const float *tablePmf = nullptr;
     Vec3f prevP{0.0f, 0.0f, 0.0f}, prevN{0.0f, 0.0f, 0.0f};
     Receiver prevReceiver = Receiver::None;
-    uint32_t prevSet = 0;                // its light-linking receiver set (M9 D15)
-    const uint64_t *linkMask = nullptr;  // per light, the sets it lights (null: no linking)
+    uint32_t prevSet = 0; // its light-linking receiver set (M9 D15)
+    LightLinks links;     // light linking (null: none)
     NOVA_INLINE float lightPmf(uint32_t li) const {
         return tree ? tree->pmf(li, prevP, prevN, prevReceiver, prevSet) : tablePmf[li];
     }
-    NOVA_INLINE bool links(uint32_t li) const { return !linkMask || ((linkMask[li] >> prevSet) & 1u) != 0; }
+    NOVA_INLINE bool linksLight(uint32_t li) const { return links.links(li, prevSet); }
     // Out: the sums; per light up to kSlots lights (further ones add to
     // the last slot).
     static constexpr int kSlots = 4;
@@ -325,7 +325,7 @@ NOVA_INLINE void gatherEmission(EmissionGather &g, const MediumVolume &rec, size
     if (!g.lights)
         return;
     const uint32_t li = rec.lightIndex;
-    if (!g.links(li)) // light linking (M9 D15): the light does not light the ray's receiver
+    if (!g.linksLight(li)) // light linking (M9 D15): the light does not light the ray's receiver
         return;
     float weight = 1.0f;
     if (g.bsdfPdf > 0.0f) {
