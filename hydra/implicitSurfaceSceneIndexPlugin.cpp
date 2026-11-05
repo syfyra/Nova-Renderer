@@ -62,7 +62,7 @@ HdSceneIndexBaseRefPtr HdNova_ImplicitSurfaceSceneIndexPlugin::_AppendSceneIndex
     const HdContainerDataSourceHandle &inputArgs) {
     // Velocity and acceleration blur (docs/design/M8.md D19): velocities
     // resolved into sampled points and instance positions per the settings.
-    HdSceneIndexBaseRefPtr scene = HdNovaVelocityModeSceneIndex::Append(inputScene, renderInstanceId);
+    HdSceneIndexBaseRefPtr scene = HdNovaVelocityModeSceneIndex::Append(inputScene);
     scene = HdsiImplicitSurfaceSceneIndex::New(scene, inputArgs);
     // Volumes depend on their fields (docs/design/M8.md D3), forwarded as Storm does.
     scene = HdDependencyForwardingSceneIndex::New(HdNovaVolumeDependencySceneIndex::New(scene));

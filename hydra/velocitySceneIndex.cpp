@@ -2,21 +2,24 @@
 
 #include "diagnostics.h"
 
-#include <pxr/base/gf/quath.h>
+#include <pxr/base/gf/quatf.h>
 #include <pxr/base/tf/stringUtils.h>
 #include <pxr/base/vt/types.h>
 #include <pxr/imaging/hd/overlayContainerDataSource.h>
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/primvarsSchema.h>
+#include <pxr/imaging/hd/renderIndex.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
 #include <pxr/imaging/hd/sceneGlobalsSchema.h>
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/imaging/hdsi/velocityMotionResolvingSceneIndex.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <mutex>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -30,6 +33,7 @@ TF_DEFINE_PRIVATE_TOKENS(_tokens,
     ((karmaInstanceVelocityBlur, "karma:object:instance_vblur"))
     ((karmaGeoSamples, "karma:object:geosamples"))
     ((karmaInstanceSamples, "karma:object:instance_samples"))
+    (angularVelocities)
 );
 
 int HdNovaVelocityBlurMode(VtValue const &value) {
@@ -55,12 +59,16 @@ int HdNovaVelocityBlurMode(VtValue const &value) {
 }
 
 // Shared by the index and the data sources it hands out (which Hydra may
-// keep beyond a GetPrim call): the render settings' defaults.
+// keep beyond a GetPrim call): the render settings' defaults of the render
+// index, and whether anything has resolved with them since they were set
+// (if not, a change needs no dirtying: nothing was computed from them).
 struct HdNovaVelocityModeSceneIndex::State {
     mutable std::mutex mutex;
     HdNovaVelocityDefaults defaults;
+    mutable std::atomic<bool> used{false};
 
     HdNovaVelocityDefaults Get() const {
+        used.store(true, std::memory_order_relaxed);
         std::lock_guard<std::mutex> lock(mutex);
         return defaults;
     }
@@ -71,16 +79,12 @@ namespace {
 using StatePtr = std::shared_ptr<const HdNovaVelocityModeSceneIndex::State>;
 
 // The value of a primvar (empty if absent).
-VtValue primvarValue(HdPrimvarsSchema const &primvars, TfToken const &name) {
+VtValue primvarValue(HdPrimvarsSchema const &primvars, TfToken const &name, HdSampledDataSource::Time t = 0.0f) {
     HdPrimvarSchema pv = primvars.GetPrimvar(name);
     if (!pv)
         return VtValue();
     HdSampledDataSourceHandle v = pv.GetPrimvarValue();
-    return v ? v->GetValue(0.0f) : VtValue();
-}
-
-VtValue primvarValue(HdContainerDataSourceHandle const &prim, TfToken const &name) {
-    return primvarValue(HdPrimvarsSchema::GetFromParent(prim), name);
+    return v ? v->GetValue(t) : VtValue();
 }
 
 int sampleCount(VtValue const &value) {
@@ -90,29 +94,46 @@ int sampleCount(VtValue const &value) {
     return int(std::clamp(std::lround(d.UncheckedGet<double>()), 1l, 64l));
 }
 
-// A prim's velocity blur mode (0 none, 1 velocity, 2 acceleration) and the
-// shutter samples of acceleration blur, from its primvars (with those
-// inherited from ancestors) or the render settings' defaults.
-int resolveMode(HdPrimvarsSchema const &primvars, bool instancer, HdNovaVelocityModeSceneIndex::State const &state) {
-    int mode = HdNovaVelocityBlurMode(
+// A prim's own velocity blur mode (0 none, 1 velocity, 2 acceleration) and
+// acceleration samples from its primvars (with those inherited from
+// ancestors); -1 where it sets nothing.
+int ownMode(HdPrimvarsSchema const &primvars, bool instancer) {
+    const int mode = HdNovaVelocityBlurMode(
         primvarValue(primvars, instancer ? _tokens->novaInstanceVelocityBlur : _tokens->novaVelocityBlur));
-    if (mode < 0)
-        mode = HdNovaVelocityBlurMode(
-            primvarValue(primvars, instancer ? _tokens->karmaInstanceVelocityBlur : _tokens->karmaVelocityBlur));
-    if (mode >= 0)
-        return mode;
-    const HdNovaVelocityDefaults defaults = state.Get();
-    return instancer ? defaults.instanceVelocityBlur : defaults.velocityBlur;
+    return mode >= 0 ? mode
+                     : HdNovaVelocityBlurMode(primvarValue(
+                           primvars, instancer ? _tokens->karmaInstanceVelocityBlur : _tokens->karmaVelocityBlur));
+}
+
+int ownSamples(HdPrimvarsSchema const &primvars, bool instancer) {
+    const int samples = sampleCount(primvarValue(primvars, _tokens->novaAccelerationSamples));
+    return samples >= 0 ? samples
+                        : sampleCount(primvarValue(
+                              primvars, instancer ? _tokens->karmaInstanceSamples : _tokens->karmaGeoSamples));
+}
+
+int modeWith(int own, bool instancer, HdNovaVelocityDefaults const &d) {
+    return own >= 0 ? own : instancer ? d.instanceVelocityBlur : d.velocityBlur;
+}
+
+int samplesWith(int own, bool instancer, HdNovaVelocityDefaults const &d) {
+    return own >= 0 ? own : instancer ? d.instanceSamples : d.geoSamples;
+}
+
+int resolveMode(HdPrimvarsSchema const &primvars, bool instancer, HdNovaVelocityModeSceneIndex::State const &state) {
+    const int own = ownMode(primvars, instancer);
+    return own >= 0 ? own : modeWith(own, instancer, state.Get());
 }
 
 int resolveSamples(HdPrimvarsSchema const &primvars, bool instancer, HdNovaVelocityModeSceneIndex::State const &state) {
-    int samples = sampleCount(primvarValue(primvars, _tokens->novaAccelerationSamples));
-    if (samples < 0)
-        samples = sampleCount(primvarValue(primvars, instancer ? _tokens->karmaInstanceSamples : _tokens->karmaGeoSamples));
-    if (samples >= 0)
-        return samples;
-    const HdNovaVelocityDefaults defaults = state.Get();
-    return instancer ? defaults.instanceSamples : defaults.geoSamples;
+    const int own = ownSamples(primvars, instancer);
+    return own >= 0 ? own : samplesWith(own, instancer, state.Get());
+}
+
+// Whether a prim carries motion that the velocity indices resolve.
+bool hasVelocityData(HdPrimvarsSchema const &primvars, bool instancer) {
+    return primvars.GetPrimvar(HdTokens->velocities) || primvars.GetPrimvar(HdTokens->accelerations) ||
+           (instancer && primvars.GetPrimvar(_tokens->angularVelocities));
 }
 
 // __velocityMotionMode, evaluated when read: settings may change while
@@ -162,24 +183,27 @@ private:
     StatePtr _state;
 };
 
-TF_DEFINE_PRIVATE_TOKENS(_pxrTokens, (angularVelocities));
-
-// Identity orientations, one per angular velocity: the resolving index only
+// Identity orientations, one per instance position: the resolving index only
 // turns orientations that exist, Karma turns instances without them as well.
-class IdentityRotationsDataSource final : public HdTypedSampledDataSource<VtQuathArray> {
+// Single precision (pxr keeps the type; half precision would quantize the
+// turned orientations to about 3e-4 radians).
+class IdentityRotationsDataSource final : public HdTypedSampledDataSource<VtQuatfArray> {
 public:
     HD_DECLARE_DATASOURCE(IdentityRotationsDataSource);
 
     VtValue GetValue(Time t) override { return VtValue(GetTypedValue(t)); }
-    VtQuathArray GetTypedValue(Time t) override {
-        const size_t n = _angular ? _angular->GetValue(t).GetArraySize() : 0;
-        return VtQuathArray(n, GfQuath::GetIdentity());
+    VtQuatfArray GetTypedValue(Time t) override {
+        const size_t n = _positions ? _positions->GetValue(t).GetArraySize() : 0;
+        return VtQuatfArray(n, GfQuatf::GetIdentity());
     }
-    bool GetContributingSampleTimesForInterval(Time, Time, std::vector<Time> *) override { return false; }
+    bool GetContributingSampleTimesForInterval(Time start, Time end, std::vector<Time> *times) override {
+        // The count follows the positions.
+        return _positions && _positions->GetContributingSampleTimesForInterval(start, end, times);
+    }
 
 private:
-    explicit IdentityRotationsDataSource(HdSampledDataSourceHandle angular) : _angular(std::move(angular)) {}
-    HdSampledDataSourceHandle _angular;
+    explicit IdentityRotationsDataSource(HdSampledDataSourceHandle positions) : _positions(std::move(positions)) {}
+    HdSampledDataSourceHandle _positions;
 };
 
 // What a prim's primvars gain: nonlinearSampleCount while it blurs by
@@ -194,15 +218,18 @@ public:
         TfTokenVector names;
         const HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(_prim);
         const int mode = resolveMode(primvars, _instancer, *_state);
+        if (mode == 0 || !hasVelocityData(primvars, _instancer))
+            return names; // nothing to resolve: the input's primvars as they are
         if (mode == 2)
             names.push_back(HdTokens->nonlinearSampleCount);
-        if (mode >= 1 && _NeedsRotations(primvars))
+        if (_NeedsRotations(primvars))
             names.push_back(HdInstancerTokens->instanceRotations);
         return names;
     }
     HdDataSourceBaseHandle Get(TfToken const &name) override {
         if (name == HdTokens->nonlinearSampleCount) {
-            if (resolveMode(HdPrimvarsSchema::GetFromParent(_prim), _instancer, *_state) != 2)
+            const HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(_prim);
+            if (resolveMode(primvars, _instancer, *_state) != 2 || !hasVelocityData(primvars, _instancer))
                 return nullptr;
             return HdPrimvarSchema::Builder()
                 .SetPrimvarValue(SamplesDataSource::New(_prim, _instancer, _state))
@@ -215,7 +242,7 @@ public:
                 return nullptr;
             return HdPrimvarSchema::Builder()
                 .SetPrimvarValue(IdentityRotationsDataSource::New(
-                    primvars.GetPrimvar(_pxrTokens->angularVelocities).GetPrimvarValue()))
+                    primvars.GetPrimvar(HdInstancerTokens->instanceTranslations).GetPrimvarValue()))
                 .SetInterpolation(HdPrimvarSchema::BuildInterpolationDataSource(HdPrimvarSchemaTokens->instance))
                 .Build();
         }
@@ -226,7 +253,7 @@ private:
     PrimvarsDataSource(HdContainerDataSourceHandle prim, bool instancer, StatePtr state)
         : _prim(std::move(prim)), _instancer(instancer), _state(std::move(state)) {}
     bool _NeedsRotations(HdPrimvarsSchema const &primvars) const {
-        return _instancer && primvars.GetPrimvar(_pxrTokens->angularVelocities) &&
+        return _instancer && primvars.GetPrimvar(_tokens->angularVelocities) &&
                !primvars.GetPrimvar(HdInstancerTokens->instanceRotations);
     }
     HdContainerDataSourceHandle _prim;
@@ -234,23 +261,28 @@ private:
     StatePtr _state;
 };
 
-// Downstream of the resolving index: a prim whose velocity motion has two
-// samples (velocity blur, and acceleration blur at Karma's default of 2)
-// samples its resolved primvars at shutter open and close only. The
-// resolving index samples rotations (angular velocities) and accelerations
-// at least three times; Karma uses the two ends.
-bool resolvedTwice(HdContainerDataSourceHandle const &prim) {
+// Downstream of the resolving index: where Karma samples velocity motion
+// twice (velocity blur, and acceleration blur at Karma's default of 2), a
+// resolved primvar keeps only shutter open and close. pxr samples rotations
+// (angular velocities) and accelerations at least three times.
+//
+// Only motion pxr made from velocity data is trimmed, per primvar: points
+// and instance positions need velocities, orientations angular velocities,
+// each with one value per element (pxr's validity rule), and pxr's times
+// must differ from the input's (with invalid data pxr passes USD's time
+// samples through, e.g. the subframe samples of Houdini's Motion Blur LOP
+// at the shutter ends, which stay).
+bool nearTime(float a, float b, float length) { return std::fabs(a - b) <= 1e-4f * std::max(1.0f, length); }
+
+bool sampledTwice(HdContainerDataSourceHandle const &prim) {
     auto modeDs = HdTypedSampledDataSource<TfToken>::Cast(
         prim->Get(HdsiVelocityMotionResolvingSceneIndexTokens->velocityMotionMode));
     if (!modeDs)
         return false;
     const TfToken mode = modeDs->GetTypedValue(0.0f);
-    const bool twice = mode == HdsiVelocityMotionResolvingSceneIndexTokens->noAcceleration ||
-                       (mode == HdsiVelocityMotionResolvingSceneIndexTokens->enable &&
-                        sampleCount(primvarValue(prim, HdTokens->nonlinearSampleCount)) <= 2);
-    // Only motion from velocities (a prim without them keeps its time samples).
-    HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(prim);
-    return twice && (primvars.GetPrimvar(HdTokens->velocities) || primvars.GetPrimvar(_pxrTokens->angularVelocities));
+    return mode == HdsiVelocityMotionResolvingSceneIndexTokens->noAcceleration ||
+           (mode == HdsiVelocityMotionResolvingSceneIndexTokens->enable &&
+            sampleCount(primvarValue(HdPrimvarsSchema::GetFromParent(prim), HdTokens->nonlinearSampleCount)) <= 2);
 }
 
 class EndpointsDataSource final : public HdSampledDataSource {
@@ -261,18 +293,38 @@ public:
     bool GetContributingSampleTimesForInterval(Time start, Time end, std::vector<Time> *times) override {
         if (!_input->GetContributingSampleTimesForInterval(start, end, times))
             return false;
-        // Only the resolving index's own samples (within the interval, from
-        // end to end); USD's samples (invalid velocities) stay as they are.
-        if (times->size() > 2 && times->front() == start && times->back() == end && resolvedTwice(_prim))
+        const float length = end - start;
+        if (times->size() > 2 && nearTime(times->front(), start, length) && nearTime(times->back(), end, length) &&
+            sampledTwice(_prim) && _Resolved(start, end, *times))
             *times = {start, end};
         return true;
     }
 
 private:
-    EndpointsDataSource(HdSampledDataSourceHandle input, HdContainerDataSourceHandle prim)
-        : _input(std::move(input)), _prim(std::move(prim)) {}
+    EndpointsDataSource(HdSampledDataSourceHandle input, HdContainerDataSourceHandle prim, TfToken name,
+                        HdSceneIndexBaseRefPtr upstream, SdfPath path)
+        : _input(std::move(input)), _prim(std::move(prim)), _name(std::move(name)), _upstream(std::move(upstream)),
+          _path(std::move(path)) {}
+    // pxr resolved this primvar from valid velocity data: one velocity per
+    // element, and times other than those of the resolving index's input.
+    bool _Resolved(Time start, Time end, std::vector<Time> const &times) const {
+        const TfToken &source =
+            _name == HdInstancerTokens->instanceRotations ? _tokens->angularVelocities : HdTokens->velocities;
+        const size_t n = primvarValue(HdPrimvarsSchema::GetFromParent(_prim), source).GetArraySize();
+        if (n == 0 || n != _input->GetValue(0.0f).GetArraySize())
+            return false;
+        HdSampledDataSourceHandle before =
+            HdPrimvarsSchema::GetFromParent(_upstream->GetPrim(_path).dataSource).GetPrimvar(_name).GetPrimvarValue();
+        std::vector<Time> inputTimes;
+        if (!before || !before->GetContributingSampleTimesForInterval(start, end, &inputTimes))
+            return true;
+        return inputTimes != times;
+    }
     HdSampledDataSourceHandle _input;
     HdContainerDataSourceHandle _prim;
+    TfToken _name;
+    HdSceneIndexBaseRefPtr _upstream; // the resolving index's input
+    SdfPath _path;
 };
 
 class EndpointPrimvarsDataSource final : public HdContainerDataSource {
@@ -283,7 +335,7 @@ public:
     TfTokenVector GetNames() override { return {}; }
     HdDataSourceBaseHandle Get(TfToken const &name) override {
         if (name != HdTokens->points && name != HdInstancerTokens->instanceTranslations &&
-            name != HdInstancerTokens->instanceRotations && name != HdInstancerTokens->instanceScales)
+            name != HdInstancerTokens->instanceRotations)
             return nullptr;
         HdPrimvarSchema pv = HdPrimvarsSchema::GetFromParent(_prim).GetPrimvar(name);
         HdSampledDataSourceHandle value = pv.GetPrimvarValue();
@@ -291,28 +343,33 @@ public:
             return nullptr;
         return HdOverlayContainerDataSource::New(
             HdRetainedContainerDataSource::New(HdPrimvarSchemaTokens->primvarValue,
-                                               EndpointsDataSource::New(value, _prim)),
+                                               EndpointsDataSource::New(value, _prim, name, _upstream, _path)),
             pv.GetContainer());
     }
 
 private:
-    explicit EndpointPrimvarsDataSource(HdContainerDataSourceHandle prim) : _prim(std::move(prim)) {}
+    EndpointPrimvarsDataSource(HdContainerDataSourceHandle prim, HdSceneIndexBaseRefPtr upstream, SdfPath path)
+        : _prim(std::move(prim)), _upstream(std::move(upstream)), _path(std::move(path)) {}
     HdContainerDataSourceHandle _prim;
+    HdSceneIndexBaseRefPtr _upstream;
+    SdfPath _path;
 };
 
 TF_DECLARE_REF_PTRS(EndpointsSceneIndex);
 
+// `input` is pxr's resolving index, `upstream` its input.
 class EndpointsSceneIndex final : public HdSingleInputFilteringSceneIndexBase {
 public:
-    static EndpointsSceneIndexRefPtr New(HdSceneIndexBaseRefPtr const &input) {
-        return TfCreateRefPtr(new EndpointsSceneIndex(input));
+    static EndpointsSceneIndexRefPtr New(HdSceneIndexBaseRefPtr const &input, HdSceneIndexBaseRefPtr const &upstream) {
+        return TfCreateRefPtr(new EndpointsSceneIndex(input, upstream));
     }
     HdSceneIndexPrim GetPrim(SdfPath const &primPath) const override {
         HdSceneIndexPrim prim = _GetInputSceneIndex()->GetPrim(primPath);
         if (prim.dataSource && HdsiVelocityMotionResolvingSceneIndex::PrimTypeSupportsVelocityMotion(prim.primType))
             prim.dataSource = HdOverlayContainerDataSource::New(
-                HdRetainedContainerDataSource::New(HdPrimvarsSchema::GetSchemaToken(),
-                                                   EndpointPrimvarsDataSource::New(prim.dataSource)),
+                HdRetainedContainerDataSource::New(
+                    HdPrimvarsSchema::GetSchemaToken(),
+                    EndpointPrimvarsDataSource::New(prim.dataSource, _upstream, primPath)),
                 prim.dataSource);
         return prim;
     }
@@ -321,7 +378,9 @@ public:
     }
 
 protected:
-    explicit EndpointsSceneIndex(HdSceneIndexBaseRefPtr const &input) : HdSingleInputFilteringSceneIndexBase(input) {}
+    EndpointsSceneIndex(HdSceneIndexBaseRefPtr const &input, HdSceneIndexBaseRefPtr const &upstream)
+        : HdSingleInputFilteringSceneIndexBase(input), _upstream(upstream) {}
+    HdSceneIndexBaseRefPtr _upstream;
     void _PrimsAdded(HdSceneIndexBase const &, HdSceneIndexObserver::AddedPrimEntries const &entries) override {
         _SendPrimsAdded(entries);
     }
@@ -376,40 +435,39 @@ HdDataSourceLocatorSet const &resolvedLocators() {
     return locators;
 }
 
-// Live indices by render instance (weak: the render index owns them).
-std::mutex &registryMutex() {
-    static std::mutex m;
-    return m;
-}
-
-std::vector<std::pair<std::string, HdNovaVelocityModeSceneIndexPtr>> &registry() {
-    static std::vector<std::pair<std::string, HdNovaVelocityModeSceneIndexPtr>> r;
-    return r;
-}
-
 } // namespace
 
-HdNovaVelocityModeSceneIndexRefPtr HdNovaVelocityModeSceneIndex::New(HdSceneIndexBaseRefPtr const &input,
-                                                                     std::string const &renderInstanceId) {
-    HdNovaVelocityModeSceneIndexRefPtr result =
-        TfCreateRefPtr(new HdNovaVelocityModeSceneIndex(input, renderInstanceId));
-    std::lock_guard<std::mutex> lock(registryMutex());
-    registry().emplace_back(renderInstanceId, HdNovaVelocityModeSceneIndexPtr(result));
-    return result;
+HdNovaVelocityModeSceneIndexRefPtr HdNovaVelocityModeSceneIndex::New(HdSceneIndexBaseRefPtr const &input) {
+    return TfCreateRefPtr(new HdNovaVelocityModeSceneIndex(input));
 }
 
-HdNovaVelocityModeSceneIndex::HdNovaVelocityModeSceneIndex(HdSceneIndexBaseRefPtr const &input,
-                                                           std::string const &renderInstanceId)
-    : HdSingleInputFilteringSceneIndexBase(input), _renderInstanceId(renderInstanceId),
-      _state(std::make_shared<State>()) {}
+HdNovaVelocityModeSceneIndex::HdNovaVelocityModeSceneIndex(HdSceneIndexBaseRefPtr const &input)
+    : HdSingleInputFilteringSceneIndexBase(input), _state(std::make_shared<State>()) {}
 
-HdNovaVelocityModeSceneIndex::~HdNovaVelocityModeSceneIndex() {
-    std::lock_guard<std::mutex> lock(registryMutex());
-    auto &r = registry();
-    r.erase(std::remove_if(r.begin(), r.end(),
-                           [this](auto const &entry) { return !entry.second || get_pointer(entry.second) == this; }),
-            r.end());
+HdNovaVelocityModeSceneIndex::~HdNovaVelocityModeSceneIndex() = default;
+
+HdNovaVelocityModeSceneIndexRefPtr HdNovaVelocityModeSceneIndex::Find(HdRenderIndex *index) {
+    if (!index)
+        return {};
+    // The render index's chain: its terminal scene index and, through the
+    // filtering indices (the merging index included), everything above.
+    std::vector<HdSceneIndexBaseRefPtr> todo{index->GetTerminalSceneIndex()};
+    std::unordered_set<const HdSceneIndexBase *> seen;
+    while (!todo.empty()) {
+        HdSceneIndexBaseRefPtr scene = todo.back();
+        todo.pop_back();
+        if (!scene || !seen.insert(get_pointer(scene)).second)
+            continue;
+        if (HdNovaVelocityModeSceneIndexRefPtr found = TfDynamic_cast<HdNovaVelocityModeSceneIndexRefPtr>(scene))
+            return found;
+        if (HdFilteringSceneIndexBaseRefPtr filtering = TfDynamic_cast<HdFilteringSceneIndexBaseRefPtr>(scene))
+            for (HdSceneIndexBaseRefPtr const &input : filtering->GetInputScenes())
+                todo.push_back(input);
+    }
+    return {};
 }
+
+HdNovaVelocityDefaults HdNovaVelocityModeSceneIndex::GetDefaults() const { return _state->Get(); }
 
 HdSceneIndexPrim HdNovaVelocityModeSceneIndex::GetPrim(SdfPath const &primPath) const {
     HdSceneIndexPrim prim = _GetInputSceneIndex()->GetPrim(primPath);
@@ -470,68 +528,70 @@ void HdNovaVelocityModeSceneIndex::_PrimsDirtied(HdSceneIndexBase const &,
     _SendPrimsDirtied(out);
 }
 
-void HdNovaVelocityModeSceneIndex::_DirtyAll(bool timeCodes) {
-    if (!_IsObserved())
-        return;
-    HdSceneIndexObserver::DirtiedPrimEntries entries;
-    if (timeCodes) {
-        HdDataSourceLocatorSet root;
-        root.insert(HdSceneGlobalsSchema::GetTimeCodesPerSecondLocator());
-        entries.emplace_back(HdSceneGlobalsSchema::GetDefaultPrimPath(), root);
+bool HdNovaVelocityModeSceneIndex::SetDefaults(HdNovaVelocityDefaults const &defaults) {
+    HdNovaVelocityDefaults old;
+    {
+        std::lock_guard<std::mutex> lock(_state->mutex);
+        if (_state->defaults == defaults)
+            return false;
+        old = _state->defaults;
+        _state->defaults = defaults;
     }
+    TF_DEBUG(HDNOVA_MOTION)
+        .Msg("Nova: velocity blur defaults vblur %d instance_vblur %d geosamples %d instance_samples %d, "
+             "%g time codes per second\n",
+             defaults.velocityBlur, defaults.instanceVelocityBlur, defaults.geoSamples, defaults.instanceSamples,
+             defaults.timeCodesPerSecond);
+    // Nothing resolved with the old defaults yet (before the first sync):
+    // nothing to redo.
+    if (!_state->used.load() || !_IsObserved())
+        return false;
+
+    // The prims whose motion the change affects: meshes, curves, points and
+    // instancers with velocity data whose mode, samples (in acceleration
+    // mode) or frame rate (when they blur) change; volumes whose velocity
+    // blur switches or whose blur depends on the frame rate (D17).
+    const bool timeCodes = old.timeCodesPerSecond != defaults.timeCodesPerSecond;
+    HdDataSourceLocatorSet volumeLocators;
+    volumeLocators.insert(HdPrimvarsSchema::GetDefaultLocator());
+    HdSceneIndexObserver::DirtiedPrimEntries entries;
     SdfPathVector stack{SdfPath::AbsoluteRootPath()};
     while (!stack.empty()) {
         const SdfPath path = stack.back();
         stack.pop_back();
-        if (HdsiVelocityMotionResolvingSceneIndex::PrimTypeSupportsVelocityMotion(
-                _GetInputSceneIndex()->GetPrim(path).primType))
-            entries.emplace_back(path, resolvedLocators());
+        const HdSceneIndexPrim prim = _GetInputSceneIndex()->GetPrim(path);
+        const HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(prim.dataSource);
+        if (prim.primType == HdPrimTypeTokens->volume) {
+            const int own = ownMode(primvars, false);
+            const bool before = modeWith(own, false, old) >= 1, after = modeWith(own, false, defaults) >= 1;
+            if (before != after || (after && timeCodes))
+                entries.emplace_back(path, volumeLocators);
+        } else if (HdsiVelocityMotionResolvingSceneIndex::PrimTypeSupportsVelocityMotion(prim.primType)) {
+            const bool instancer = prim.primType == HdPrimTypeTokens->instancer;
+            if (hasVelocityData(primvars, instancer)) {
+                const int own = ownMode(primvars, instancer);
+                const int before = modeWith(own, instancer, old), after = modeWith(own, instancer, defaults);
+                bool dirty = before != after || (after >= 1 && timeCodes);
+                if (!dirty && after == 2) {
+                    const int samples = ownSamples(primvars, instancer);
+                    dirty = samplesWith(samples, instancer, old) != samplesWith(samples, instancer, defaults);
+                }
+                if (dirty)
+                    entries.emplace_back(path, resolvedLocators());
+            }
+        }
         for (SdfPath const &child : _GetInputSceneIndex()->GetChildPrimPaths(path))
             stack.push_back(child);
     }
-    if (!entries.empty())
-        _SendPrimsDirtied(entries);
+    if (entries.empty())
+        return false;
+    _SendPrimsDirtied(entries);
+    return true;
 }
 
-bool HdNovaVelocityModeSceneIndex::SetDefaults(std::string const &renderInstanceId,
-                                               HdNovaVelocityDefaults const &defaults) {
-    std::vector<HdNovaVelocityModeSceneIndexRefPtr> targets;
-    {
-        std::lock_guard<std::mutex> lock(registryMutex());
-        for (auto const &[id, index] : registry())
-            if (id == renderInstanceId && index)
-                targets.emplace_back(index);
-        // As HdNovaResyncSceneIndex: a render index created without an
-        // instance name hands "" to the plugins but reports its address.
-        if (targets.empty())
-            for (auto const &[id, index] : registry())
-                if (id.empty() && index)
-                    targets.emplace_back(index);
-    }
-    bool changed = false;
-    for (HdNovaVelocityModeSceneIndexRefPtr const &index : targets) {
-        bool timeCodes = false;
-        {
-            std::lock_guard<std::mutex> lock(index->_state->mutex);
-            if (index->_state->defaults == defaults)
-                continue;
-            timeCodes = index->_state->defaults.timeCodesPerSecond != defaults.timeCodesPerSecond;
-            index->_state->defaults = defaults;
-        }
-        TF_DEBUG(HDNOVA_MOTION)
-            .Msg("Nova: velocity blur defaults vblur %d instance_vblur %d geosamples %d instance_samples %d, "
-                 "%g time codes per second\n",
-                 defaults.velocityBlur, defaults.instanceVelocityBlur, defaults.geoSamples, defaults.instanceSamples,
-                 defaults.timeCodesPerSecond);
-        index->_DirtyAll(timeCodes);
-        changed = true;
-    }
-    return changed;
-}
-
-HdSceneIndexBaseRefPtr HdNovaVelocityModeSceneIndex::Append(HdSceneIndexBaseRefPtr const &input,
-                                                           std::string const &renderInstanceId) {
-    return EndpointsSceneIndex::New(HdsiVelocityMotionResolvingSceneIndex::New(New(input, renderInstanceId)));
+HdSceneIndexBaseRefPtr HdNovaVelocityModeSceneIndex::Append(HdSceneIndexBaseRefPtr const &input) {
+    HdNovaVelocityModeSceneIndexRefPtr modes = New(input);
+    return EndpointsSceneIndex::New(HdsiVelocityMotionResolvingSceneIndex::New(modes), modes);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

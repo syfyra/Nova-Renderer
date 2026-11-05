@@ -4,12 +4,19 @@
 // curves, points and instances sample the resolved motion over the shutter.
 
 #include "hydra/motion.h"
+#include "hydra/renderBuffer.h"
 #include "hydra/renderDelegate.h"
 #include "hydra/renderParam.h"
 #include "hydra/velocitySceneIndex.h"
 
+#include <pxr/base/gf/vec4d.h>
+#include <pxr/base/gf/vec4f.h>
 #include <pxr/base/tf/stringUtils.h>
+#include <pxr/imaging/hd/camera.h>
 #include <pxr/imaging/hd/engine.h>
+#include <pxr/imaging/hd/primvarsSchema.h>
+#include <pxr/imaging/hd/renderPassState.h>
+#include <pxr/imaging/hd/sceneIndexObserver.h>
 #include <pxr/imaging/hd/renderIndex.h>
 #include <pxr/imaging/hd/renderPass.h>
 #include <pxr/imaging/hd/rprimCollection.h>
@@ -109,7 +116,7 @@ struct Driver {
         info.addDrawModeSceneIndex = false;
         sceneIndices = UsdImagingCreateSceneIndices(info);
         sceneIndices.stageSceneIndex->SetTime(UsdTimeCode(1.0));
-        index->InsertSceneIndex(HdNovaVelocityModeSceneIndex::Append(sceneIndices.finalSceneIndex, ""),
+        index->InsertSceneIndex(HdNovaVelocityModeSceneIndex::Append(sceneIndices.finalSceneIndex),
                                 SdfPath::AbsoluteRootPath(), false);
         pass = delegate->CreateRenderPass(index.get(),
                                           HdRprimCollection(HdTokens->geometry, HdReprSelector(HdReprTokens->refined)));
@@ -129,7 +136,9 @@ struct Driver {
     }
     // What the render pass does with the render settings' defaults.
     bool applyDefaults() {
-        return HdNovaVelocityModeSceneIndex::SetDefaults(index->GetInstanceName(), delegate->GetVelocityDefaults());
+        HdNovaVelocityModeSceneIndexRefPtr velocity = HdNovaVelocityModeSceneIndex::Find(index.get());
+        REQUIRE(velocity);
+        return velocity->SetDefaults(delegate->GetVelocityDefaults());
     }
     HdNovaRenderParam &param() { return *static_cast<HdNovaRenderParam *>(delegate->GetRenderParam()); }
     nova::Scene &scene() { return param().GetScene(); }
@@ -181,7 +190,7 @@ void checkSteps(std::vector<float> const &xs, std::vector<float> const &want) {
 
 // The sync cost of the velocity indices (run by hand): 22500 meshes without
 // velocities through UsdImaging alone, pxr's resolving index, and Nova's
-// chain (twice). Measured 266 / 286 / 335 / 327 ms.
+// chain (twice). Measured 254 / 271 / 311 / 313 ms.
 TEST_CASE("Velocity scene indices add little to the sync", "[.][velocity][bench]") {
     std::string body;
     for (int i = 0; i < 150; ++i)
@@ -207,7 +216,7 @@ TEST_CASE("Velocity scene indices add little to the sync", "[.][velocity][bench]
         if (variant == 1)
             si = HdsiVelocityMotionResolvingSceneIndex::New(si);
         else if (variant >= 2)
-            si = HdNovaVelocityModeSceneIndex::Append(si, "");
+            si = HdNovaVelocityModeSceneIndex::Append(si);
         index->InsertSceneIndex(si, SdfPath::AbsoluteRootPath(), false);
         HdRenderPassSharedPtr pass = delegate->CreateRenderPass(
             index.get(), HdRprimCollection(HdTokens->geometry, HdReprSelector(HdReprTokens->refined)));
@@ -412,15 +421,16 @@ def PointInstancer "inst"
     nova::MeshRecord const &r = record();
     // Shutter open and close only (as Karma; pxr samples rotations three
     // times): 5 units apart, turned -45 and +45 degrees about z although
-    // the instancer has no orientations (half-precision quaternions).
+    // the instancer has no orientations (Nova's single-precision identity
+    // orientations: no half-precision quantization).
     REQUIRE(r.motionSteps == 2);
     REQUIRE(r.motionKeys.size() == r.motionSteps);
     const nova::Affine3f open = nova::srtToAffine(r.motionKeys.front());
     const nova::Affine3f close = nova::srtToAffine(r.motionKeys.back());
     CHECK_THAT(open.t.x, WithinAbs(-2.5, 1e-4));
     CHECK_THAT(close.t.x, WithinAbs(2.5, 1e-4));
-    CHECK_THAT(std::atan2(open.x.y, open.x.x), WithinAbs(-M_PI / 4, 1e-3));
-    CHECK_THAT(std::atan2(close.x.y, close.x.x), WithinAbs(M_PI / 4, 1e-3));
+    CHECK_THAT(std::atan2(open.x.y, open.x.x), WithinAbs(-M_PI / 4, 1e-5));
+    CHECK_THAT(std::atan2(close.x.y, close.x.x), WithinAbs(M_PI / 4, 1e-5));
 
     // Acceleration blur at more samples turns along the arc in between.
     d.setInt("/inst", "karma:object:instance_vblur", 2);
@@ -432,4 +442,259 @@ def PointInstancer "inst"
     d.setInt("/inst", "nova:object:instanceVelocityBlur", 0);
     d.sync();
     CHECK(record().motionSteps == 1);
+}
+
+namespace {
+
+nova::MeshRecord const &instancedRecord(Driver &d) {
+    for (uint32_t id = 0; id < d.scene().meshCount(); ++id)
+        if (d.scene().meshRecord(id).alive && d.scene().meshRecord(id).instanced)
+            return d.scene().meshRecord(id);
+    FAIL("no instanced mesh");
+    static nova::MeshRecord none;
+    return none;
+}
+
+// The angle about z of the x axis of a motion key.
+double turn(nova::SrtTransform const &key) {
+    const nova::Affine3f a = nova::srtToAffine(key);
+    return std::atan2(a.x.y, a.x.x);
+}
+
+} // namespace
+
+TEST_CASE("Editing an inherited velocity setting re-resolves the descendants", "[hydra][motion][velocity][ipr]") {
+    Driver d("def Xform \"group\"\n{\n" + primvar("karma:object:vblur", 1) + quad("child", 0, "") + "}\n");
+    checkSteps(d.xSteps(0), {-2.5f, 2.5f});
+    d.setInt("/group", "karma:object:vblur", 0);
+    d.sync();
+    checkSteps(d.xSteps(0), {0.0f});
+    d.setInt("/group", "nova:object:velocityBlur", 1);
+    d.sync();
+    checkSteps(d.xSteps(0), {-2.5f, 2.5f});
+}
+
+TEST_CASE("The render pass applies the render settings' velocity blur", "[hydra][motion][velocity][ipr]") {
+    // An orthographic camera with the rig's shutter, rendering 8 x 8 pixels.
+    struct ShutterCamera final : HdCamera {
+        ShutterCamera() : HdCamera(SdfPath("/shutterCam")) {
+            _projection = Orthographic;
+            _horizontalAperture = 400.0f;
+            _verticalAperture = 400.0f;
+            _clippingRange = GfRange1f(0.1f, 100.0f);
+            _shutterOpen = -0.25;
+            _shutterClose = 0.25;
+            _transform = GfMatrix4d(1.0).SetTranslate(GfVec3d(0.0, 0.0, 10.0));
+        }
+    };
+    Driver d(quad("q", 0, ""));
+    d.delegate->SetRenderSetting(HdNovaSettingsTokens->samples, VtValue(1));
+    auto *buffer =
+        static_cast<HdNovaRenderBuffer *>(d.delegate->CreateBprim(HdPrimTypeTokens->renderBuffer, SdfPath("/rb")));
+    buffer->Allocate(GfVec3i(8, 8, 1), HdFormatFloat32Vec4, false);
+    ShutterCamera camera;
+    auto state = std::make_shared<HdRenderPassState>();
+    state->SetCamera(&camera);
+    state->SetViewport(GfVec4d(0, 0, 8, 8));
+    HdRenderPassAovBinding binding;
+    binding.aovName = HdAovTokens->color;
+    binding.renderBuffer = buffer;
+    binding.clearValue = VtValue(GfVec4f(0.0f));
+    state->SetAovBindings({binding});
+    auto execute = [&] {
+        for (int i = 0; i < 4; ++i) { // a few rounds: each resync returns before rendering
+            d.pass->Execute(state, TfTokenVector());
+            d.sync();
+        }
+    };
+    execute();
+    checkSteps(d.xSteps(0), {0.0f});
+    d.delegate->SetRenderSetting(TfToken("karma:object:vblur"), VtValue(TfToken("Velocity Blur")));
+    execute();
+    checkSteps(d.xSteps(0), {-2.5f, 2.5f});
+    d.delegate->SetRenderSetting(TfToken("houdini:fps"), VtValue(48.0));
+    execute();
+    checkSteps(d.xSteps(0), {-1.25f, 1.25f});
+    d.delegate->GetRenderThread().StopRender();
+    buffer->Finalize(d.delegate->GetRenderParam());
+    d.delegate->DestroyBprim(buffer);
+}
+
+// Houdini's Motion Blur LOP writes subframe samples at the shutter ends:
+// with invalid velocities (another count) pxr passes them through, and they
+// stay (a bent path), not cut to the two ends.
+TEST_CASE("Time samples at the shutter ends stay where velocities are invalid", "[hydra][motion][velocity]") {
+    Driver d(R"(
+def Mesh "bent"
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points.timeSamples = {
+        0.75: [(-2, 0, 0), (0, 0, 0), (0, 2, 0), (-2, 2, 0)],
+        1: [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)],
+        1.25: [(4, 0, 0), (6, 0, 0), (6, 2, 0), (4, 2, 0)],
+    }
+    vector3f[] velocities = [(240, 0, 0), (240, 0, 0)]
+    uniform token subdivisionScheme = "none"
+    int primvars:karma:object:vblur = 1 (interpolation = "constant")
+}
+)");
+    checkSteps(d.xSteps(0), {-2.0f, 0.0f, 4.0f});
+}
+
+// Velocities move the instances, but turning comes from the orientations'
+// own time samples (no angular velocities): those stay, not cut to the
+// shutter ends (which would turn 180 degrees the short way).
+TEST_CASE("Orientation samples stay without angular velocities", "[hydra][motion][velocity][instancing]") {
+    Driver d(R"(
+def PointInstancer "inst"
+{
+    point3f[] positions = [(0, 0, 0)]
+    vector3f[] velocities = [(240, 0, 0)]
+    quath[] orientations.timeSamples = {
+        0.75: [(1, 0, 0, 0)],
+        1: [(0.70710677, 0, 0, 0.70710677)],
+        1.25: [(0, 0, 0, 1)],
+    }
+    int[] protoIndices = [0]
+    rel prototypes = </inst/protos/quad>
+    int primvars:karma:object:instance_vblur = 1 (interpolation = "constant")
+    def Scope "protos"
+    {
+        def Mesh "quad"
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+}
+)");
+    nova::MeshRecord const &r = instancedRecord(d);
+    REQUIRE(r.motionSteps == 3);
+    REQUIRE(r.motionKeys.size() == 3);
+    CHECK_THAT(turn(r.motionKeys[0]), WithinAbs(0.0, 1e-3));
+    CHECK_THAT(turn(r.motionKeys[1]), WithinAbs(M_PI / 2, 1e-3));
+    CHECK_THAT(std::fabs(turn(r.motionKeys[2])), WithinAbs(M_PI, 1e-3));
+    CHECK_THAT(nova::srtToAffine(r.motionKeys[0]).t.x, WithinAbs(-2.5, 1e-4));
+    CHECK_THAT(nova::srtToAffine(r.motionKeys[2]).t.x, WithinAbs(2.5, 1e-4));
+}
+
+TEST_CASE("Each render index keeps its own render settings' defaults", "[hydra][motion][velocity]") {
+    // Two viewers at once (say Nova CPU and Nova XPU): neither index takes
+    // the other's defaults, and neither undoes the other's.
+    Driver a(quad("q", 0, "")), b(quad("q", 0, ""));
+    REQUIRE(HdNovaVelocityModeSceneIndex::Find(a.index.get()) != HdNovaVelocityModeSceneIndex::Find(b.index.get()));
+    a.delegate->SetRenderSetting(TfToken("karma:object:vblur"), VtValue(1));
+    REQUIRE(a.applyDefaults());
+    CHECK_FALSE(b.applyDefaults());
+    a.sync();
+    b.sync();
+    checkSteps(a.xSteps(0), {-2.5f, 2.5f});
+    checkSteps(b.xSteps(0), {0.0f});
+    for (int i = 0; i < 3; ++i) { // alternating passes: nothing flips back and forth
+        CHECK_FALSE(a.applyDefaults());
+        CHECK_FALSE(b.applyDefaults());
+    }
+    a.sync();
+    b.sync();
+    checkSteps(a.xSteps(0), {-2.5f, 2.5f});
+    checkSteps(b.xSteps(0), {0.0f});
+}
+
+TEST_CASE("Defaults dirty only prims whose motion they change", "[hydra][motion][velocity]") {
+    // Counts the prims a defaults change dirties.
+    struct Counter final : HdSceneIndexObserver {
+        size_t dirtied = 0;
+        void PrimsAdded(HdSceneIndexBase const &, AddedPrimEntries const &) override {}
+        void PrimsRemoved(HdSceneIndexBase const &, RemovedPrimEntries const &) override {}
+        void PrimsDirtied(HdSceneIndexBase const &, DirtiedPrimEntries const &entries) override {
+            dirtied += entries.size();
+        }
+        void PrimsRenamed(HdSceneIndexBase const &, RenamedPrimEntries const &) override {}
+    };
+    SdfLayerRefPtr layer = SdfLayer::CreateAnonymous(".usda");
+    layer->ImportFromString(std::string(kHeader) + quad("moving", 0, "") + R"(
+def Mesh "still"
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points = [(0, 10, 0), (2, 10, 0), (2, 12, 0), (0, 12, 0)]
+}
+)");
+    UsdStageRefPtr stage = UsdStage::Open(layer);
+    UsdImagingCreateSceneIndicesInfo info;
+    info.stage = stage;
+    info.addDrawModeSceneIndex = false;
+    UsdImagingSceneIndices sis = UsdImagingCreateSceneIndices(info);
+    sis.stageSceneIndex->SetTime(UsdTimeCode(1.0));
+    HdSceneIndexBaseRefPtr chain = HdNovaVelocityModeSceneIndex::Append(sis.finalSceneIndex);
+    Counter counter;
+    chain->AddObserver(HdSceneIndexObserverPtr(&counter));
+    HdNovaVelocityModeSceneIndexRefPtr modes;
+    for (HdSceneIndexBaseRefPtr s = chain; s && !modes;) { // Endpoints -> pxr -> modes
+        modes = TfDynamic_cast<HdNovaVelocityModeSceneIndexRefPtr>(s);
+        auto filtering = TfDynamic_cast<HdFilteringSceneIndexBaseRefPtr>(s);
+        s = filtering && !filtering->GetInputScenes().empty() ? filtering->GetInputScenes()[0] : nullptr;
+    }
+    REQUIRE(modes);
+
+    // Before anything resolved (before the first sync): nothing to redo.
+    HdNovaVelocityDefaults defaults;
+    defaults.timeCodesPerSecond = 25.0;
+    CHECK_FALSE(modes->SetDefaults(defaults));
+    CHECK(counter.dirtied == 0);
+
+    // Once resolved: only the prim with velocities, only when its motion changes.
+    std::vector<HdSampledDataSource::Time> times;
+    HdPrimvarsSchema::GetFromParent(chain->GetPrim(SdfPath("/moving")).dataSource)
+        .GetPrimvar(HdTokens->points)
+        .GetPrimvarValue()
+        ->GetContributingSampleTimesForInterval(-0.25f, 0.25f, &times);
+    defaults.timeCodesPerSecond = 30.0; // mode 0: the frame rate does not matter
+    CHECK_FALSE(modes->SetDefaults(defaults));
+    CHECK(counter.dirtied == 0);
+    defaults.velocityBlur = 1;
+    CHECK(modes->SetDefaults(defaults));
+    CHECK(counter.dirtied == 1);
+    defaults.geoSamples = 5; // velocity mode: the acceleration samples do not matter
+    CHECK_FALSE(modes->SetDefaults(defaults));
+    CHECK(counter.dirtied == 1);
+    chain->RemoveObserver(HdSceneIndexObserverPtr(&counter));
+}
+
+TEST_CASE("Volumes blur by the render settings' velocity blur", "[hydra][motion][velocity][volume]") {
+    const std::string vdb = TfStringReplace(std::string(NOVA_TEST_DIR) + "/data/volumes/pyro.vdb", "\\", "/");
+    Driver d(R"(
+def Volume "smoke"
+{
+    rel field:density = </smoke/density>
+    def OpenVDBAsset "density"
+    {
+        asset filePath = @)" + vdb + R"(@
+        token fieldName = "density"
+    }
+}
+)");
+    auto record = [&]() -> nova::VolumeRecord const & {
+        REQUIRE(d.scene().activeVolumes().size() == 1);
+        return d.scene().volumeRecord(d.scene().activeVolumes()[0]);
+    };
+    CHECK(record().desc.velocityTime[1] == 0.0f);
+    d.delegate->SetRenderSetting(TfToken("karma:object:vblur"), VtValue(1));
+    REQUIRE(d.applyDefaults());
+    d.sync();
+    // Seconds from the frame to shutter close: 0.25 frames at 24 fps.
+    CHECK_THAT(record().desc.velocityTime[1], WithinAbs(0.25 / 24.0, 1e-7));
+    d.delegate->SetRenderSetting(TfToken("houdini:fps"), VtValue(48.0));
+    REQUIRE(d.applyDefaults());
+    d.sync();
+    CHECK_THAT(record().desc.velocityTime[1], WithinAbs(0.25 / 48.0, 1e-7));
+    // The volume's own Karma setting wins.
+    UsdGeomPrimvarsAPI(d.stage->GetPrimAtPath(SdfPath("/smoke")))
+        .CreatePrimvar(TfToken("karma:object:vblur"), SdfValueTypeNames->Int, UsdGeomTokens->constant)
+        .Set(0);
+    d.sync();
+    CHECK(record().desc.velocityTime[1] == 0.0f);
 }

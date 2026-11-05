@@ -4,6 +4,7 @@
 #include "field.h"
 #include "primvarUtil.h"
 #include "renderParam.h"
+#include "velocitySceneIndex.h"
 
 #include <pxr/base/tf/stringUtils.h>
 #include <pxr/imaging/hd/renderIndex.h>
@@ -108,18 +109,24 @@ bool otherVolumeFilter(HdSceneDelegate *sd, SdfPath const &id) {
 }
 
 // Velocity blur (D17): Nova's nova:object:velocityBlur, else Karma's
-// karma:object:vblur (1 velocity, 2 acceleration: velocity here), and
-// Karma's volumevblurscale; the scale, 0 if off.
-float velocityBlurOf(HdSceneDelegate *sd, SdfPath const &id) {
+// karma:object:vblur, else the render settings' karma:object:vblur (Karma
+// blurs volumes by it too, measured; D19's defaults of the render index),
+// 1 velocity, 2 acceleration (velocity here); Karma's volumevblurscale.
+// Returns the seconds the fields move per frame of shutter (scale / fps),
+// 0 if off.
+float velocityBlurOf(HdSceneDelegate *sd, SdfPath const &id, float fps) {
     static const TfToken nova("nova:object:velocityBlur"), vblur("karma:object:vblur"),
         scale("karma:object:volumevblurscale");
     float mode = constantFloat(sd, id, nova);
     if (!(mode >= 0.0f))
         mode = constantFloat(sd, id, vblur);
+    if (!(mode >= 0.0f))
+        if (HdNovaVelocityModeSceneIndexRefPtr velocity = HdNovaVelocityModeSceneIndex::Find(&sd->GetRenderIndex()))
+            mode = float(velocity->GetDefaults().velocityBlur);
     if (!(mode >= 0.5f))
         return 0.0f;
     const float s = constantFloat(sd, id, scale);
-    return s >= 0.0f ? s : 1.0f;
+    return (s >= 0.0f ? s : 1.0f) / (fps > 0.0f ? fps : 24.0f);
 }
 
 VolumeLightSettings volumeLightOf(HdSceneDelegate *sd, SdfPath const &id) {
@@ -179,7 +186,7 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     // Velocity blur reads the velocity field (Houdini's vel, or v) as well.
     bool blurDirty = false;
     if (first || (bits & HdChangeTracker::DirtyPrimvar)) {
-        const float blur = velocityBlurOf(sd, id);
+        const float blur = velocityBlurOf(sd, id, param->GetFps());
         blurDirty = blur != _velocityBlur;
         _velocityBlur = blur;
     }
@@ -273,9 +280,8 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
                 }
             }
             // Seconds from the fields' time (the frame) at shutter open and close.
-            const float fps = param->GetFps() > 0.0f ? param->GetFps() : 24.0f;
-            desc.velocityTime[0] = shutterNow.open / fps * _velocityBlur;
-            desc.velocityTime[1] = shutterNow.close / fps * _velocityBlur;
+            desc.velocityTime[0] = shutterNow.open * _velocityBlur;
+            desc.velocityTime[1] = shutterNow.close * _velocityBlur;
         }
         if (desc.fields.empty())
             HD_NOVA_WARN("volume %s has none of the fields its material reads (%s)", id.GetText(),
