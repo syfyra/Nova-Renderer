@@ -1,9 +1,9 @@
-"""Draws Nova's mark (a four-pointed star with a violet-to-cyan gradient and a
-soft glow on a dark rounded square) and writes icons/icon.ico (16-256 px,
-PNG-compressed entries) and icons/preview.png (the 256 px one) for the
-installer. The setup window draws the same mark as SVG (ui/index.html).
+"""Renders Nova's icon, icons/icon.svg (the O of the Nova logo on the logo's
+off-white), into icons/icon.ico (16-256 px, PNG-compressed entries) and
+icons/preview.png (the 256 px one) for the installer. The setup window's title
+bar draws the same O as SVG (ui/index.html).
 
-Run with Houdini's Python (numpy and OpenImageIO):
+Run with Houdini's Python (Qt's SVG renderer from Houdini's PySide6):
 
   "%HFS%/python313/python.exe" -I tools/installer/make_icon.py
 """
@@ -11,73 +11,42 @@ Run with Houdini's Python (numpy and OpenImageIO):
 import os
 import struct
 import sys
-import tempfile
 
 HFS = os.environ.get('HFS', r'C:\Program Files\Side Effects Software\Houdini 22.0.466')
 os.add_dll_directory(os.path.join(HFS, 'bin'))
-import numpy as np  # noqa: E402
-import OpenImageIO as oiio  # noqa: E402
+sys.path.insert(0, os.path.join(HFS, 'python313', 'lib', 'site-packages-forced'))
+from PySide6 import QtCore, QtGui, QtSvg  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VIOLET = np.array([0.55, 0.36, 0.98])
-CYAN = np.array([0.13, 0.83, 0.93])
+SIZES = [256, 64, 48, 32, 24, 16]
 
 
-def mark(size, background=True):
-    """RGBA float image of the mark, supersampled 4x."""
-    ss = 4
-    n = size * ss
-    c = (np.arange(n) + 0.5) / n * 2.0 - 1.0
-    x, y = np.meshgrid(c, -c)
-    rgba = np.zeros((n, n, 4))
-    if background:
-        # A rounded square, a faint vertical gradient.
-        r = 0.36
-        qx, qy = np.maximum(np.abs(x) - (1 - r), 0), np.maximum(np.abs(y) - (1 - r), 0)
-        inside = np.sqrt(qx * qx + qy * qy) <= r
-        shade = 0.055 + 0.03 * (y + 1) / 2
-        rgba[..., 0] = np.where(inside, shade * 0.9, 0)
-        rgba[..., 1] = np.where(inside, shade * 0.95, 0)
-        rgba[..., 2] = np.where(inside, shade * 1.6, 0)
-        rgba[..., 3] = inside
-    # The star: |x|^q + |y|^q <= s^q (four concave sides, sharp points).
-    q, s = 0.55, 0.74 if background else 0.92
-    d = (np.abs(x) ** q + np.abs(y) ** q) ** (1 / q) / s
-    t = np.clip((x - y) * 0.5 + 0.5, 0, 1)[..., None]
-    colour = VIOLET * (1 - t) + CYAN * t
-    star = (d <= 1.0).astype(float)
-    glow = np.exp(-np.maximum(d - 1.0, 0) * 4.0) * 0.3 * (1 - star)
-    core = np.exp(-(x * x + y * y) / 0.02)[..., None] * 0.6  # a bright centre
-    lit = np.clip(colour + core, 0, 1)
-    for k in range(3):
-        rgba[..., k] = rgba[..., k] * (1 - star - glow) + lit[..., k] * star + colour[..., k] * glow
-    rgba[..., 3] = np.clip(rgba[..., 3] + star + glow, 0, 1)
-    # Box filter down to the size.
-    return rgba.reshape(size, ss, size, ss, 4).mean(axis=(1, 3))
-
-
-def png_bytes(image):
-    path = os.path.join(tempfile.mkdtemp(), 'mark.png')
-    spec = oiio.ImageSpec(image.shape[1], image.shape[0], 4, oiio.UINT8)
-    out = oiio.ImageOutput.create(path)
-    out.open(path, spec)
-    # Premultiplied in the drawing; PNG wants straight alpha.
-    a = image[..., 3:4]
-    straight = np.where(a > 0, image[..., :3] / np.maximum(a, 1e-6), 0)
-    out.write_image(np.concatenate([np.clip(straight, 0, 1), a], axis=2).astype(np.float32))
-    out.close()
-    with open(path, 'rb') as f:
-        return f.read()
+def png_bytes(renderer, size):
+    """The SVG rendered at size x size, as PNG (straight alpha)."""
+    image = QtGui.QImage(size, size, QtGui.QImage.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QtGui.QPainter(image)
+    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+    renderer.render(painter, QtCore.QRectF(0, 0, size, size))
+    painter.end()
+    data = QtCore.QByteArray()
+    buffer = QtCore.QBuffer(data)
+    buffer.open(QtCore.QIODevice.WriteOnly)
+    image.convertToFormat(QtGui.QImage.Format_ARGB32).save(buffer, 'PNG')
+    buffer.close()
+    return bytes(data)
 
 
 def main():
-    os.makedirs(os.path.join(HERE, 'icons'), exist_ok=True)
-    sizes = [256, 64, 48, 32, 24, 16]
-    images = [png_bytes(mark(s)) for s in sizes]
-    header = struct.pack('<HHH', 0, 1, len(sizes))
-    offset = 6 + 16 * len(sizes)
+    app = QtGui.QGuiApplication(['make_icon', '-platform', 'offscreen'])  # noqa: F841 (Qt needs one)
+    renderer = QtSvg.QSvgRenderer(os.path.join(HERE, 'icons', 'icon.svg'))
+    if not renderer.isValid():
+        raise RuntimeError('icons/icon.svg is not a valid SVG')
+    images = [png_bytes(renderer, s) for s in SIZES]
+    header = struct.pack('<HHH', 0, 1, len(SIZES))
+    offset = 6 + 16 * len(SIZES)
     entries, blobs = b'', b''
-    for s, data in zip(sizes, images):
+    for s, data in zip(SIZES, images):
         entries += struct.pack('<BBBBHHII', s % 256, s % 256, 0, 0, 1, 32, len(data), offset)
         offset += len(data)
         blobs += data
@@ -85,7 +54,7 @@ def main():
         f.write(header + entries + blobs)
     with open(os.path.join(HERE, 'icons', 'preview.png'), 'wb') as f:
         f.write(images[0])
-    print('wrote icons/icon.ico (%s px) and icons/preview.png' % ', '.join(map(str, sizes)))
+    print('wrote icons/icon.ico (%s px) and icons/preview.png' % ', '.join(map(str, SIZES)))
 
 
 if __name__ == '__main__':

@@ -50,4 +50,5 @@ powershell -ExecutionPolicy Bypass -File tools\installer\build.ps1
 ```
 
 `build.ps1` zips `dist/nova` into `payload/nova.zip`, takes the version from `CMakeLists.txt` and writes
-`dist/NovaSetup-<version>.exe`. `make_icon.py` (Houdini's Python) draws the icon in `icons/`.
+`dist/NovaSetup-<version>.exe`. The icon is `icons/icon.svg` (the O of the Nova logo); `make_icon.py` (Houdini's
+Python) renders it into `icons/icon.ico` and `icons/preview.png`.

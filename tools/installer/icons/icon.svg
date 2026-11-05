@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The icon of Nova Setup: the O of the Nova logo on the logo's off-white. The
+     outer contour and the counter are the logo's, each fitted with four cubic arcs
+     (semi-axes 195.4 x 210 and 95.4 x 124 logo pixels, handle factors 0.600 and
+     0.630); ink #0a0a0a, the counter and the tile #f9f7f3, the dot #fe4819 with the
+     logo's glow. make_icon.py renders it into icon.ico and preview.png. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <radialGradient id="glow" cx="50" cy="50" r="20.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fe4819" stop-opacity="0.33"/>
+      <stop offset="0.34" stop-color="#fe4819" stop-opacity="0.33"/>
+      <stop offset="0.38" stop-color="#fe4819" stop-opacity="0.29"/>
+      <stop offset="0.43" stop-color="#fe4819" stop-opacity="0.23"/>
+      <stop offset="0.48" stop-color="#fe4819" stop-opacity="0.18"/>
+      <stop offset="0.57" stop-color="#fe4819" stop-opacity="0.1"/>
+      <stop offset="0.67" stop-color="#fe4819" stop-opacity="0.06"/>
+      <stop offset="0.76" stop-color="#fe4819" stop-opacity="0.03"/>
+      <stop offset="0.86" stop-color="#fe4819" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#fe4819" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="100" height="100" rx="20" fill="#f9f7f3"/>
+  <path d="M68.63,50 C68.63,65.25 61.74,74.21 50,74.21 C38.26,74.21 31.37,65.25 31.37,50 C31.37,34.75 38.26,25.79 50,25.79 C61.74,25.79 68.63,34.75 68.63,50 Z" fill="#f9f7f3"/>
+  <circle cx="50" cy="50" r="20.5" fill="url(#glow)"/>
+  <path d="M88.14,50 C88.14,74.6 72.89,91 50,91 C27.11,91 11.86,74.6 11.86,50 C11.86,25.4 27.11,9 50,9 C72.89,9 88.14,25.4 88.14,50 Z M68.63,50 C68.63,65.25 61.74,74.21 50,74.21 C38.26,74.21 31.37,65.25 31.37,50 C31.37,34.75 38.26,25.79 50,25.79 C61.74,25.79 68.63,34.75 68.63,50 Z" fill="#0a0a0a" fill-rule="evenodd"/>
+  <circle cx="50" cy="50" r="7.03" fill="#fe4819"/>
+</svg>
