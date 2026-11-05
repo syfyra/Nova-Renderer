@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Nova's mark as a Houdini icon: the installer's four-pointed star
+     (tools/installer/ui/index.html), a little fuller for small sizes, violet to
+     blue with a bright centre, transparent around it. Houdini finds it by name
+     (NOVA_logo) in config/Icons on HOUDINI_PATH. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="fill" x1="22" y1="22" x2="78" y2="78" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8c5cfa"/>
+      <stop offset="1" stop-color="#2f9bf5"/>
+    </linearGradient>
+    <radialGradient id="core" cx="50" cy="50" r="17" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <path d="M50,3 C55,33 67,45 97,50 C67,55 55,67 50,97 C45,67 33,55 3,50 C33,45 45,33 50,3 Z"
+        fill="url(#fill)" stroke="#2a1d80" stroke-opacity="0.4" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M50,3 C55,33 67,45 97,50 C67,55 55,67 50,97 C45,67 33,55 3,50 C33,45 45,33 50,3 Z" fill="url(#core)"/>
+</svg>

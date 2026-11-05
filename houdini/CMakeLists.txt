@@ -16,6 +16,8 @@ install(DIRECTORY package/soho DESTINATION "${NOVA_PACKAGE_ROOT}")
 install(DIRECTORY package/otls DESTINATION "${NOVA_PACKAGE_ROOT}" OPTIONAL PATTERN backup EXCLUDE)
 # The Nova Material Builder (M4.8): tab/shelf tool and its Python module.
 install(DIRECTORY package/toolbar DESTINATION "${NOVA_PACKAGE_ROOT}")
+# Nova's icon (config/Icons/NOVA_logo.svg) for its HDAs and tools.
+install(DIRECTORY package/config DESTINATION "${NOVA_PACKAGE_ROOT}")
 install(DIRECTORY package/python3.13libs DESTINATION "${NOVA_PACKAGE_ROOT}"
         PATTERN "__pycache__" EXCLUDE)
 install(FILES package/usd_plugins_plugInfo.json

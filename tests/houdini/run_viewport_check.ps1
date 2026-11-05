@@ -27,13 +27,24 @@
 # hair ribbons through the Render Geometry Settings LOP's Nova tab, live, then
 # Karma (30_m9_nova ... 33_m9_karma). -Only xpu: Nova XPU in the viewport,
 # the Nova LOP set to XPU with a sample count it does not reach, a prim added
-# live, then Nova on the CPU (40_xpu ... 44_nova_cpu, ui_xpu_lop).
+# live, then Nova on the CPU (40_xpu ... 44_nova_cpu, ui_xpu_lop). -Only icons:
+# Nova's icon on the Nova (Setup) nodes, the Nova LOP and a Nova Material
+# Builder in the network editor (icons_stage_close, icons_stage_far,
+# icons_matlib), every Nova tool's and LOP's icon at 16-48 px (icons_tools),
+# the TAB menu filtered to "nova" in /stage and in the material library
+# (icons_tabmenu, icons_tabmenu_matlib: screen grabs) and, with -Prefs, a
+# shelf tab of the Nova tools (icons_shelf).
+#
+# -Prefs <dir> gives the instance its own preference directory (created if
+# needed; no user packages then). The first start in a new one takes a few
+# minutes (Houdini generates its icon cache there).
 param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Hfs = 'C:\Program Files\Side Effects Software\Houdini 22.0.466',
     [int]$TimeoutSeconds = 480,
     [string]$Stage = '',
-    [string]$Only = ''
+    [string]$Only = '',
+    [string]$Prefs = ''
 )
 
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -50,6 +61,14 @@ if ($Stage) {
     $Stage = (Resolve-Path $Stage).Path
     $env:HOUDINI_PACKAGE_SKIPLIST = 'nova'
     $env:HOUDINI_PATH = $Stage.Replace('\', '/') + ';' + $env:HOUDINI_PATH
+}
+if ($Prefs) {
+    New-Item -ItemType Directory -Force $Prefs | Out-Null
+    # Houdini ignores a preference directory without __HVER__.
+    $env:HOUDINI_USER_PREF_DIR = (Join-Path (Resolve-Path $Prefs).Path 'houdini__HVER__').Replace('\', '/')
+    $env:NOVA_VIEWPORT_CHECK_OWN_PREFS = '1'
+} else {
+    Remove-Item Env:NOVA_VIEWPORT_CHECK_OWN_PREFS -ErrorAction SilentlyContinue
 }
 $env:NOVA_VIEWPORT_CHECK = $Out
 $env:NOVA_VIEWPORT_CHECK_ONLY = $Only
