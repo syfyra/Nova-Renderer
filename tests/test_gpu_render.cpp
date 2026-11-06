@@ -325,6 +325,134 @@ TEST_CASE("XPU lights: tree, emissive meshes, linking", "[gpu][render][lights]")
     CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.002 * cpuMean));
 }
 
+// docs/design/M11-P4.md: light filters (Karma's blocker) on the GPU as on the
+// CPU: a box with rounded corners and a soft tinted edge and an inverted
+// sphere on an area light (light samples and BSDF rays), a blocker on a dome
+// (BSDF rays only), one on a camera-visible light around part of the camera
+// plane, and one limited to a ball by a link category (the core's mechanism,
+// which Hydra leaves unused as Karma ignores filterLink); with the light tree and by
+// power, and light path expressions with weight-1 parts.
+TEST_CASE("XPU light filters", "[gpu][render][lights][filters]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    MeshDesc ground = makeQuad(6.0f);
+    ground.setDisplayColor(spectrum(0.5f));
+    scene.updateMesh(scene.createMesh(), ground);
+    MeshDesc ball = makeSphere(0.6f, 48, 24);
+    ball.setDisplayColor(Spectrum{0.8f, 0.6f, 0.4f});
+    ball.transform = translation({1.0f, -1.0f, 0.6f});
+    const MeshId ballId = scene.createMesh();
+    scene.updateMesh(ballId, ball);
+    scene.setMeshCategories(ballId, {"ball"});
+    LightDesc rect;
+    rect.type = LightType::Rect;
+    rect.width = rect.height = 2.0f;
+    rect.intensity = 3.0f;
+    rect.transform = translation({-0.5f, 0.5f, 3.0f});
+    rect.filters = {"box", "ball"};
+    scene.updateLight(scene.createLight(), rect);
+    LightDesc dome;
+    dome.type = LightType::Dome;
+    dome.intensity = 0.3f;
+    dome.filters = {"inv"};
+    scene.updateLight(scene.createLight(), dome);
+    LightDesc panel; // camera-visible, facing the camera
+    panel.type = LightType::Rect;
+    panel.width = panel.height = 1.0f;
+    panel.intensity = 2.0f;
+    panel.cameraVisible = true;
+    Mat4 up = Mat4::identity();
+    up.m[1][1] = -1.0;
+    up.m[2][2] = -1.0;
+    panel.transform = up * translation({-2.0f, 2.0f, 0.5f});
+    panel.filters = {"cam"};
+    scene.updateLight(scene.createLight(), panel);
+
+    LightFilterDesc box;
+    box.shape = BlockerShape::Box;
+    box.width = 2.0f;
+    box.height = 1.5f;
+    box.depth = 1.0f;
+    box.roundedCorner = 0.4f;
+    box.falloff = 0.3f;
+    box.intensity = 0.2f;
+    box.tint = {1.0f, 0.6f, 0.3f};
+    box.spaceFromWorld = inverse(translation({-1.0f, 0.0f, 0.0f}));
+    scene.setLightFilter("box", box);
+    LightFilterDesc inv;
+    inv.radius = 2.0f;
+    inv.falloff = 0.5f;
+    inv.intensity = 0.3f;
+    inv.exposure = 1.0f; // 0.6 outside the sphere
+    inv.invert = true;
+    scene.setLightFilter("inv", inv);
+    LightFilterDesc cam;
+    cam.radius = 1.0f;
+    cam.intensity = 0.0f;
+    cam.spaceFromWorld = inverse(translation({-2.0f, 2.3f, 5.0f}));
+    scene.setLightFilter("cam", cam);
+    LightFilterDesc linked;
+    linked.radius = 3.0f;
+    linked.intensity = 0.0f;
+    linked.link = "ball";
+    scene.setLightFilter("ball", linked);
+    scene.commit();
+    REQUIRE(scene.lights()[0].filterCount == 2);
+
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 3.0f, 48, 48);
+    for (const bool tree : {true, false}) {
+        INFO("light tree " << tree);
+        const Render cpu = render(scene, camera, 48, 48, 128, RenderDevice::Cpu, 4, tree);
+        const Render gpu = render(scene, camera, 48, 48, 128, RenderDevice::Xpu, 4, tree);
+        REQUIRE(gpu.gpu);
+        const double close = closePixels(cpu.film, gpu.film), cpuMean = luminanceMean(cpu.film),
+                     gpuMean = luminanceMean(gpu.film);
+        INFO("pixels within 1e-3: " << close << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
+        CHECK(close >= 0.95);
+        CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.002 * cpuMean));
+    }
+
+    // Light path expressions: per-light parts and the weight-1 unoccluded;
+    // estimate (the dome is never light-sampled: its continuation carries it).
+    const std::vector<std::string> expressions = {"C.*L", "unoccluded;C<RD>L"};
+    const auto compiled = std::make_shared<lpe::Compiled>(lpe::compile(expressions));
+    REQUIRE(compiled->ok());
+    const auto renderLpe = [&](RenderDevice device, bool &onGpu) {
+        Renderer renderer;
+        RenderSettings settings;
+        settings.device = device;
+        settings.maxSamples = 128;
+        settings.lpe = compiled;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        renderer.setCamera(camera);
+        renderer.resize(32, 32);
+        onGpu = true;
+        while (!renderer.converged()) {
+            renderer.renderPass({});
+            onGpu = onGpu && renderer.lastPassOnGpu();
+        }
+        return renderer.film();
+    };
+    bool cpuGpu = false, gpuGpu = false;
+    const Film cpu = renderLpe(RenderDevice::Cpu, cpuGpu);
+    const Film gpu = renderLpe(RenderDevice::Xpu, gpuGpu);
+    REQUIRE(gpuGpu);
+    REQUIRE(gpu.lpeOutputs == cpu.lpeOutputs);
+    for (uint32_t o = 0; o < cpu.lpeOutputs; ++o) {
+        double a = 0.0, b = 0.0;
+        for (size_t i = 0; i < size_t(32 * 32); ++i) {
+            a += double(luminance(cpu.lpe(o)[i]));
+            b += double(luminance(gpu.lpe(o)[i]));
+        }
+        INFO("output " << o << " (" << expressions[o] << "): CPU " << a << ", GPU " << b);
+        CHECK(a > 0.0);
+        CHECK_THAT(b, WithinAbs(a, 0.003 * a + 1e-3));
+    }
+}
+
 // M9 D15 (R1-28): light linking with 255 distinct category combinations
 // (receiver sets) of a grid of quads, 8 lights linked to one category each
 // (test_light_tree.cpp has the exact references): the GPU's links and light

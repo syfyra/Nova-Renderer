@@ -77,6 +77,14 @@
       }
     },
     {
+      "name": "light_blocker",
+      "file": "scenes/light_blocker.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
       "name": "dome_sky",
       "file": "scenes/dome_sky.usda",
       "settings": "/Render/ref",

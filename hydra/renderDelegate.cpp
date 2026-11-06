@@ -5,6 +5,7 @@
 #include "field.h"
 #include "instancer.h"
 #include "light.h"
+#include "lightFilter.h"
 #include "material/material.h"
 #include "sphere.h"
 #include "curves.h"
@@ -62,6 +63,7 @@ const TfTokenVector HdNovaRenderDelegate::SUPPORTED_SPRIM_TYPES = {
     HdPrimTypeTokens->rectLight,
     HdPrimTypeTokens->diskLight,
     HdPrimTypeTokens->cylinderLight,
+    HdPrimTypeTokens->lightFilter, // docs/design/M11-P4.md
     HdPrimTypeTokens->light, // Karma's sky dome (docs/design/M11-P3.md)
 };
 
@@ -816,6 +818,8 @@ HdSprim *HdNovaRenderDelegate::CreateSprim(TfToken const &typeId, SdfPath const 
         typeId == HdPrimTypeTokens->diskLight || typeId == HdPrimTypeTokens->cylinderLight ||
         typeId == HdPrimTypeTokens->light)
         return new HdNovaLight(sprimId, typeId);
+    if (typeId == HdPrimTypeTokens->lightFilter)
+        return new HdNovaLightFilter(sprimId);
     TF_CODING_ERROR("Nova: unknown Sprim type %s", typeId.GetText());
     return nullptr;
 }
