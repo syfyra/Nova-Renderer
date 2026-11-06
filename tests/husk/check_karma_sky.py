@@ -21,7 +21,8 @@ husk (CPU, and Nova XPU for the Physical Sky scenes) and must match:
     the fade, about 1 degree wide by default, linearly between rows);
   * the quad's mean (irradiance) within 2 % (measured 0.0..0.8 %: Karma's
     default MIS on the sky is biased high by up to 0.8 %, Nova matches the
-    model's integral within 0.01 %).
+    model's integral within 0.01 %);
+  * a sky whose light link excludes the quad leaves it black (Karma too).
 
 Needs numpy and OpenImageIO, so run it with Houdini's Python:
 $HFS/python313/python.exe -I check_karma_sky.py --hfs ... --stage ... --out ...
@@ -378,6 +379,33 @@ def main():
             ratio = [float(m) / k for m, k in zip(mean, patch)]
             check(all(abs(r - 1.0) <= 0.02 for r in ratio),
                   f"{name} irradiance ({tag}): Nova/Karma {tuple(round(r, 4) for r in ratio)}")
+
+    # Light linking: sd_default with the sky's light link excluding the quad
+    # (the generic light goes through the light-linking scene index). Karma:
+    # the quad black, the sky unchanged (front (20, 80): 0.13721, 0.16108,
+    # 0.20063).
+    with open(os.path.join(SCENES, "sd_default.usda"), encoding="utf-8") as f:
+        text = f.read()
+    linked = text.replace('apiSchemas = ["HoudiniViewportGuideAPI", "KarmaLightAPI"]',
+                          'apiSchemas = ["HoudiniViewportGuideAPI", "KarmaLightAPI", "CollectionAPI:lightLink"]', 1)
+    linked = linked.replace("bool inputs:karma:light:renderlightgeo = 1",
+                            "bool inputs:karma:light:renderlightgeo = 1\n"
+                            "        rel collection:lightLink:excludes = </rig/patch>", 1)
+    check(linked.count("collection:lightLink") == 2, "light-link variant of sd_default written")
+    usd = os.path.join(args.out, "sd_link.usda")
+    with open(usd, "w", encoding="utf-8", newline="\n") as f:
+        f.write(linked)
+    exr = os.path.join(args.out, "sd_link_front.exr")
+    proc = run([tool(args, "husk.exe"), "--renderer", "Nova", "--headlight", "none", "-s", "/Render/front", "-o",
+                exr, usd], env, args.out)
+    check(proc.returncode == 0, "husk sd_link.usda exits with 0")
+    img = read_rgb(oiio, np, exr)
+    if img is not None:
+        quad = float(img[PATCH].max())
+        check(quad == 0.0, f"a sky linked away from the quad leaves it black (max {quad:.3g}; Karma 0)")
+        sky = [float(v) for v in img[20, 80]]
+        check(all(abs(n - k) <= 0.02 * k for n, k in zip(sky, (0.13721, 0.16108, 0.20063))),
+              f"the linked sky is still seen by the camera: {tuple(round(v, 5) for v in sky)}")
     shutil.rmtree(prefs, ignore_errors=True)
     print(f"{len(FAILURES)} failure(s)")
     return 1 if FAILURES else 0

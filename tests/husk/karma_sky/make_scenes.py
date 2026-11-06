@@ -161,12 +161,13 @@ def build(name, kind, params):
         del layer.rootPrims["HoudiniLayerInfo"]
 
     def strip(spec):
-        for key in ("HoudiniPrimEditorNodes",):
-            if key in spec.customData:
-                spec.ClearInfo("customData") if len(spec.customData) == 1 else None
-        for prop in spec.properties:
-            if "HoudiniPrimEditorNodes" in prop.customData:
-                prop.ClearInfo("customData")
+        for item in [spec] + list(spec.properties):
+            data = dict(item.customData)
+            if data.pop("HoudiniPrimEditorNodes", None) is not None:
+                if data:
+                    item.customData = data
+                else:
+                    item.ClearInfo("customData")
         for child in spec.nameChildren:
             strip(child)
 

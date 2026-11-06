@@ -175,6 +175,13 @@ if(EXISTS "${HFS}/bin/hython.exe")
                 -Stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" -Hfs "${HFS}"
                 "${CMAKE_CURRENT_BINARY_DIR}/houdini_vex_builder/$<CONFIG>")
     set_tests_properties(houdini_vex_builder PROPERTIES LABELS houdini TIMEOUT 600)
+    # The Karma sky LOPs (M11 P3) still author the scenes husk_karma_sky
+    # was measured with.
+    add_test(NAME houdini_karma_sky_lops
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/houdini/run_hython.ps1"
+                -Script "${CMAKE_CURRENT_SOURCE_DIR}/houdini/test_karma_sky_lops.py" -Hfs "${HFS}"
+                "${CMAKE_CURRENT_BINARY_DIR}/houdini_karma_sky_lops/$<CONFIG>")
+    set_tests_properties(houdini_karma_sky_lops PROPERTIES LABELS houdini TIMEOUT 600)
     # Volume data paths (M8.0): in-memory SOP volumes, .bgeo.sc, husk on a
     # USD-ROP-saved stage, Hydra in the cooking process.
     add_test(NAME houdini_volumes
