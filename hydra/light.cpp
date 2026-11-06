@@ -177,6 +177,14 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     // the light's collections (empty: every object).
     desc.lightLink = lightParam<TfToken>(sd, id, HdTokens->lightLink, TfToken()).GetString();
     desc.shadowLink = lightParam<TfToken>(sd, id, HdTokens->shadowLink, TfToken()).GetString();
+    // Light filters (docs/design/M11-P4.md): the paths of `light:filters`,
+    // in order; the scene resolves them against the lightFilter sprims.
+    {
+        const VtValue filters = sd->GetLightParamValue(id, HdTokens->filters);
+        if (filters.IsHolding<SdfPathVector>())
+            for (SdfPath const &path : filters.UncheckedGet<SdfPathVector>())
+                desc.filters.push_back(path.GetString());
+    }
 
     if (_lightType == HdPrimTypeTokens->domeLight || _lightType == HdPrimTypeTokens->rectLight) {
         const std::string path = assetPath(sd->GetLightParamValue(id, HdLightTokens->textureFile));

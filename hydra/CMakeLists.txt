@@ -21,6 +21,7 @@ add_library(hdNova_objects OBJECT
     instancer.cpp
     camera.cpp
     light.cpp
+    lightFilter.cpp
     textureCache.cpp
     colorSpace.cpp
     textureConvert.cpp

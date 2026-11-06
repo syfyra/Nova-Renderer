@@ -673,11 +673,14 @@ bool GpuRenderer::setScene(const Scene &scene) {
         materials[id].resolved = resolved.ptr + id;
     m_view.materials = put(materials).ptr;
 
-    // Lights, their textures and dome distributions, the power table.
+    // Lights, their textures, dome distributions and filters (M11-P4), the
+    // power table.
     std::vector<LightData> lights = scene.lights();
     for (LightData &l : lights) {
         if (l.texels)
             l.texels = put(l.texels, size_t(l.texWidth) * l.texHeight).ptr;
+        if (l.filters)
+            l.filters = put(l.filters, l.filterCount).ptr;
         Distribution2DView &d = l.distribution;
         if (d.func) {
             const size_t nu = d.nu, nv = d.nv;

@@ -27,7 +27,13 @@
 //   fallback) means no cone.
 // - Dome textures: latlong after OpenEXR; rect textures: top-left image
 //   corner at the light's (+X, +Y) corner with the default flip.
+// - Light filters (light_filter.h, docs/design/M11-P4.md) scale what a light
+//   gives a point being lit wherever light is gathered: light samples, BSDF
+//   rays that reach the light (evaluated at the ray's MIS vertex, or at a
+//   delta event's own point) and camera rays that see it (at their origin).
+//   MIS weights stay those of the unfiltered light.
 
+#include "core/lights/light_filter.h"
 #include "core/lights/light_strategy.h"
 #include "core/lights/light_tree.h"
 #include "core/lights/shapes.h"
@@ -123,7 +129,26 @@ struct LightData {
     uint16_t shadowCategory = 0xFFFFu;
     NOVA_INLINE bool shadowLinked() const { return shadowCategory != 0xFFFFu; }
     NOVA_INLINE bool neeOnly() const { return shadowLinked() && type != LightType::Dome; }
+    // Light filters (docs/design/M11-P4.md): the light's filters in order
+    // (Scene-owned; null: none).
+    const LightFilterData *filters = nullptr;
+    uint32_t filterCount = 0;
 };
+
+// The product of a light's filters at a site (1 without filters).
+NOVA_INLINE Spectrum lightFilters(const LightData &light, const LightFilterSite &site) {
+    return lightFilterProduct(light.filters, light.filterCount, site);
+}
+
+// The largest factor a light's filters can give together (1 without
+// filters): its selection weight scales by it (Scene::commit), so lights
+// that filters brighten keep their share of light samples.
+inline float lightFilterBound(const LightData &light) {
+    float b = 1.0f;
+    for (uint32_t i = 0; i < light.filterCount; ++i)
+        b *= lightFilterBound(light.filters[i]);
+    return b;
+}
 
 // Applies the UsdLux conventions (see above) and transforms the shape to
 // world space. Dome lights ignore `normalize`; distant lights divide by
@@ -372,8 +397,8 @@ NOVA_INLINE LightSample noLightSample() {
 }
 
 // Light sample for next-event estimation from P, the origin of the shadow
-// ray (the surface point offset by offsetRayOrigin()).
-NOVA_INLINE LightSample sampleLight(const LightData &light, Vec3f P, Vec2f u) {
+// ray (the surface point offset by offsetRayOrigin()), without filters.
+NOVA_INLINE LightSample sampleLightUnfiltered(const LightData &light, Vec3f P, Vec2f u) {
     if (light.type == LightType::Distant)
         return sampleDistantLight(light, u);
     if (light.type == LightType::Dome) {
@@ -451,6 +476,16 @@ NOVA_INLINE LightSample sampleLight(const LightData &light, Vec3f P, Vec2f u) {
     return s;
 }
 
+// Light sample for next-event estimation from P (as sampleLightUnfiltered),
+// scaled by the light's filters at P for a receiver of the given
+// light-linking categories (docs/design/M11-P4.md).
+NOVA_INLINE LightSample sampleLight(const LightData &light, Vec3f P, Vec2f u, uint64_t categories = 0) {
+    LightSample s = sampleLightUnfiltered(light, P, u);
+    if (light.filterCount > 0 && s.pdf > 0.0f)
+        s.Li *= lightFilters(light, LightFilterSite{P, categories});
+    return s;
+}
+
 // ---------------------------------------------------------------------------
 // Combining strategies
 // ---------------------------------------------------------------------------
@@ -519,13 +554,14 @@ struct NoAtten {
 
 // Radiance from the lights at infinity along `dir` for a ray scattered by a
 // surface with BSDF density `bsdfPdf` (< 0: a delta event) that escaped the
-// scene, scaled by the lights' multipliers for the event's `diffuseShare`.
-// `pmf(i)` is light i's selection probability at the vertex the ray left
-// (asked only where MIS needs it).
+// scene, scaled by the lights' multipliers for the event's `diffuseShare`
+// and by their filters at `site` (the ray's vertex). `pmf(i)` is light i's
+// selection probability at the vertex the ray left (asked only where MIS
+// needs it).
 template <typename Pmf, typename Sink = NoLightSink>
 NOVA_INLINE Spectrum escapedRadiance(const LightData *lights, const Pmf &pmf, uint32_t count, Vec3f dir,
-                                     float bsdfPdf, LightStrategy strategy, float diffuseShare = 1.0f,
-                                     const Sink &sink = Sink{}) {
+                                     const LightFilterSite &site, float bsdfPdf, LightStrategy strategy,
+                                     float diffuseShare = 1.0f, const Sink &sink = Sink{}) {
     Spectrum L{0.0f, 0.0f, 0.0f};
     for (uint32_t i = 0; i < count; ++i) {
         const LightData &light = lights[i];
@@ -538,15 +574,19 @@ NOVA_INLINE Spectrum escapedRadiance(const LightData *lights, const Pmf &pmf, ui
             const float weight =
                 bsdfSampleWeight(strategy, bsdfPdf, misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * domePdf(light, dir) : 0.0f);
             if (weight > 0.0f) {
-                const Spectrum Li = domeRadiance(light, dir) * (lightMultiplier(light, diffuseShare) * weight);
+                Spectrum Li = domeRadiance(light, dir) * (lightMultiplier(light, diffuseShare) * weight);
+                if (light.filterCount > 0)
+                    Li *= lightFilters(light, site);
                 L += Li;
                 sink(i, Li);
             }
         } else if (light.type == LightType::Distant && !light.delta && inDistantCone(light, dir)) {
             const float lightPdf =
                 misNeedsPmf(strategy, bsdfPdf) ? pmf(i) / uniformConeSolidAngle(light.oneMinusCosThetaMax) : 0.0f;
-            const Spectrum Li =
+            Spectrum Li =
                 light.emission * (lightMultiplier(light, diffuseShare) * bsdfSampleWeight(strategy, bsdfPdf, lightPdf));
+            if (light.filterCount > 0)
+                Li *= lightFilters(light, site);
             L += Li;
             sink(i, Li);
         }
@@ -554,11 +594,12 @@ NOVA_INLINE Spectrum escapedRadiance(const LightData *lights, const Pmf &pmf, ui
     return L;
 }
 
-// What a camera ray that escaped the scene sees: camera-visible domes and
-// cone-shaped distant lights, unweighted. `visible` reports whether any
-// light was seen (it then counts as opaque).
+// What a camera ray (origin o) that escaped the scene sees: camera-visible
+// domes and cone-shaped distant lights, unweighted, with their filters at
+// the ray's origin (the camera is no receiver: no link categories).
+// `visible` reports whether any light was seen (it then counts as opaque).
 template <typename Sink = NoLightSink>
-NOVA_INLINE Spectrum cameraEnvironment(const LightData *lights, uint32_t count, Vec3f dir, bool &visible,
+NOVA_INLINE Spectrum cameraEnvironment(const LightData *lights, uint32_t count, Vec3f o, Vec3f dir, bool &visible,
                                        const Sink &sink = Sink{}) {
     Spectrum L{0.0f, 0.0f, 0.0f};
     visible = false;
@@ -566,16 +607,18 @@ NOVA_INLINE Spectrum cameraEnvironment(const LightData *lights, uint32_t count, 
         const LightData &light = lights[i];
         if (!light.cameraVisible)
             continue;
-        if (light.type == LightType::Dome) {
-            const Spectrum Li = domeRadiance(light, dir);
-            L += Li;
-            sink(i, Li);
-            visible = true;
-        } else if (light.type == LightType::Distant && !light.delta && inDistantCone(light, dir)) {
-            L += light.emission;
-            sink(i, light.emission);
-            visible = true;
-        }
+        Spectrum Li;
+        if (light.type == LightType::Dome)
+            Li = domeRadiance(light, dir);
+        else if (light.type == LightType::Distant && !light.delta && inDistantCone(light, dir))
+            Li = light.emission;
+        else
+            continue;
+        if (light.filterCount > 0)
+            Li *= lightFilters(light, LightFilterSite{o, 0});
+        L += Li;
+        sink(i, Li);
+        visible = true;
     }
     return L;
 }
@@ -697,12 +740,13 @@ NOVA_INLINE void forEachAreaLightCrossing(const LightData *lights, uint32_t coun
 // light along the segment contributes. `pdfOrigin` is the path's MIS vertex,
 // where next-event estimation sampled the lights: the ray's origin, except
 // past null events (fake-caustic pass-throughs), which move the ray on but
-// keep the vertex (M4 3.3).
+// keep the vertex (M4 3.3). The lights' filters act at `site` (the vertex).
 template <typename Pmf, typename Sink = NoLightSink, typename Atten = NoAtten>
 NOVA_INLINE Spectrum areaLightsAlongRay(const LightData *lights, const Pmf &pmf, uint32_t count,
                                         const LightTreeView *tree, Vec3f o, Vec3f d, float tMax, Vec3f pdfOrigin,
-                                        float bsdfPdf, LightStrategy strategy, float diffuseShare = 1.0f,
-                                        const Sink &sink = Sink{}, const Atten &atten = Atten{}) {
+                                        const LightFilterSite &site, float bsdfPdf, LightStrategy strategy,
+                                        float diffuseShare = 1.0f, const Sink &sink = Sink{},
+                                        const Atten &atten = Atten{}) {
     Spectrum L{0.0f, 0.0f, 0.0f};
     forEachAreaLightCrossing(lights, count, tree, o, d, tMax, [&](uint32_t i, float t, Vec3f n, bool) {
         const LightData &light = lights[i];
@@ -712,13 +756,24 @@ NOVA_INLINE Spectrum areaLightsAlongRay(const LightData *lights, const Pmf &pmf,
         const float weight = bsdfSampleWeight(
             strategy, bsdfPdf, misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * areaLightPdf(light, pdfOrigin, p, n) : 0.0f);
         if (weight > 0.0f) {
-            const Spectrum Li =
+            Spectrum Li =
                 areaLightRadiance(light, p, d) * (lightMultiplier(light, diffuseShare) * weight) * atten(i, t);
+            if (light.filterCount > 0)
+                Li *= lightFilters(light, site);
             L += Li;
             sink(i, Li);
         }
     });
     return L;
+}
+
+// The site where a ray scattered at a vertex gathers lights (their filters'
+// point): its MIS vertex `prevP` after a non-delta event (bsdfPdf >= 0; the
+// point light samples were drawn from), the ray's own origin after a delta
+// event (a mirror filters at the mirror, as Karma), with the vertex's
+// light-linking categories.
+NOVA_INLINE LightFilterSite gatherSite(float bsdfPdf, Vec3f prevP, Vec3f rayOrigin, uint64_t categories) {
+    return LightFilterSite{bsdfPdf >= 0.0f ? prevP : rayOrigin, categories};
 }
 
 // The area lights a ray (origin o, unit direction d) crosses before tMax,
@@ -798,6 +853,8 @@ NOVA_INLINE bool cameraAreaLight(const LightData *lights, uint32_t count, Vec3f 
         return false;
     const LightData &light = lights[i];
     L = emitsFrom(light, front) ? areaLightRadiance(light, o + d * t, d) : Spectrum{0.0f, 0.0f, 0.0f};
+    if (light.filterCount > 0) // at the ray's origin; the camera is no receiver
+        L *= lightFilters(light, LightFilterSite{o, 0});
     return true;
 }
 

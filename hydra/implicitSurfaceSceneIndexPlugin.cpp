@@ -37,17 +37,7 @@ TF_REGISTRY_FUNCTION(HdSceneIndexPlugin) {
     // Light linking (docs/design/M9.md D15): pxr's light-linking scene index
     // turns the lights' UsdLux collections into categories on lights and
     // geometry, as Karma's own plugin does for Karma (research lights.md 4.2).
-    // Not `instancer` among the geometry: per-instance categories would be lost.
-    VtArray<TfToken> lights{HdPrimTypeTokens->distantLight, HdPrimTypeTokens->domeLight,
-                            HdPrimTypeTokens->sphereLight,  HdPrimTypeTokens->rectLight,
-                            HdPrimTypeTokens->diskLight,    HdPrimTypeTokens->cylinderLight,
-                            HdPrimTypeTokens->meshLight};
-    VtArray<TfToken> geometry{HdPrimTypeTokens->mesh, HdPrimTypeTokens->basisCurves, HdPrimTypeTokens->points,
-                              HdPrimTypeTokens->sphere, HdPrimTypeTokens->volume};
-    const HdContainerDataSourceHandle linkArgs = HdRetainedContainerDataSource::New(
-        HdsiLightLinkingSceneIndexTokens->lightPrimTypes, HdRetainedTypedSampledDataSource<VtArray<TfToken>>::New(lights),
-        HdsiLightLinkingSceneIndexTokens->geometryPrimTypes,
-        HdRetainedTypedSampledDataSource<VtArray<TfToken>>::New(geometry));
+    const HdContainerDataSourceHandle linkArgs = HdNovaLightLinkingArgs();
     for (const char *renderer : _rendererDisplayNames)
         HdSceneIndexPluginRegistry::GetInstance().RegisterSceneIndexForRenderer(
             renderer,
@@ -55,6 +45,24 @@ TF_REGISTRY_FUNCTION(HdSceneIndexPlugin) {
                 return HdSceneIndexBaseRefPtr(HdsiLightLinkingSceneIndex::New(input, args));
             },
             linkArgs, 0, HdSceneIndexPluginRegistry::InsertionOrderAtEnd);
+}
+
+HdContainerDataSourceHandle HdNovaLightLinkingArgs() {
+    // Not `instancer` among the geometry: per-instance categories would be lost.
+    VtArray<TfToken> lights{HdPrimTypeTokens->distantLight, HdPrimTypeTokens->domeLight,
+                            HdPrimTypeTokens->sphereLight,  HdPrimTypeTokens->rectLight,
+                            HdPrimTypeTokens->diskLight,    HdPrimTypeTokens->cylinderLight,
+                            HdPrimTypeTokens->meshLight};
+    VtArray<TfToken> geometry{HdPrimTypeTokens->mesh, HdPrimTypeTokens->basisCurves, HdPrimTypeTokens->points,
+                              HdPrimTypeTokens->sphere, HdPrimTypeTokens->volume};
+    // Light filters' filterLink collections (docs/design/M11-P4.md).
+    VtArray<TfToken> filters{HdPrimTypeTokens->lightFilter};
+    return HdRetainedContainerDataSource::New(
+        HdsiLightLinkingSceneIndexTokens->lightPrimTypes, HdRetainedTypedSampledDataSource<VtArray<TfToken>>::New(lights),
+        HdsiLightLinkingSceneIndexTokens->lightFilterPrimTypes,
+        HdRetainedTypedSampledDataSource<VtArray<TfToken>>::New(filters),
+        HdsiLightLinkingSceneIndexTokens->geometryPrimTypes,
+        HdRetainedTypedSampledDataSource<VtArray<TfToken>>::New(geometry));
 }
 
 HdSceneIndexBaseRefPtr HdNova_ImplicitSurfaceSceneIndexPlugin::_AppendSceneIndex(
