@@ -162,7 +162,7 @@ Result render(Scene &scene, std::vector<std::string> const &expressions, RenderD
 struct Region {
     float x, y, h;
 };
-template <class F> double mean(const Film &film, Region r, F &&value) {
+template <class F> double mean(const Film &, Region r, F &&value) {
     double sum = 0.0;
     int n = 0;
     for (int py = 0; py < kRes; ++py)
