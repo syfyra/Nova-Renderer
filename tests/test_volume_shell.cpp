@@ -419,8 +419,6 @@ TEST_CASE("Interval bounds of noise hold for every value", "[volume][shell][nois
     const Ref terms[5] = {b.noise(p, 1), b.noise(p2, 1), b.noise(p, 3),
                           b.fractal(p, b.constant(4.0f), b.constant(2.0f), b.constant(0.6f), 1),
                           b.fractal(p2, b.constant(3.0f), b.constant(1.9f), b.constant(0.5f), 3)};
-    Ref sum = b.constant(0.0f);
-    std::vector<uint16_t> fields;
     for (int i = 0; i < 5; ++i) {
         // One volume output per term, so each keeps its own row.
         const uint16_t field = uint16_t(i == 0 ? volume_field::anisotropy
@@ -429,7 +427,6 @@ TEST_CASE("Interval bounds of noise hold for every value", "[volume][shell][nois
                                         : i == 3 ? volume_field::secondaryMix
                                                  : volume_field::emission);
         b.output(uint16_t(volume_field::kBase + field), b.width(terms[i]), terms[i]);
-        fields.push_back(field);
     }
     const CompileResult r = compile(g);
     REQUIRE(r.program);
