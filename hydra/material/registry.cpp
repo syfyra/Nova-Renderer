@@ -76,6 +76,23 @@ std::vector<std::string> HdNovaMaterialRegistry::GetVolumeFields(SdfPath const &
     return it != _volumeFields.end() ? it->second : std::vector<std::string>{};
 }
 
+void HdNovaMaterialRegistry::SetMaterialKind(SdfPath const &material, HdNovaMaterialKind kind) {
+    std::lock_guard lock(_displacementMutex);
+    HdNovaMaterialKind &slot = _kinds[material];
+    if (slot == kind)
+        return;
+    slot = kind;
+    const auto it = _meshesOfMaterial.find(material);
+    if (it != _meshesOfMaterial.end())
+        _pendingMeshes.insert(it->second.begin(), it->second.end());
+}
+
+HdNovaMaterialKind HdNovaMaterialRegistry::GetMaterialKind(SdfPath const &material) const {
+    std::lock_guard lock(_displacementMutex);
+    const auto it = _kinds.find(material);
+    return it != _kinds.end() ? it->second : HdNovaMaterialKind{};
+}
+
 std::vector<SdfPath> HdNovaMaterialRegistry::TakePendingMeshes() {
     std::lock_guard lock(_displacementMutex);
     std::vector<SdfPath> out(_pendingMeshes.begin(), _pendingMeshes.end());

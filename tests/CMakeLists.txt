@@ -41,6 +41,7 @@ add_executable(nova_tests
     test_volume_shader.cpp
     test_volume_render.cpp
     test_volume_scatter.cpp
+    test_volume_shell.cpp
     test_curves.cpp
     test_subsurface.cpp
     test_hair.cpp
@@ -85,7 +86,7 @@ endif()
 # Hydra-level tests against the delegate's object files.
 add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oiio.cpp test_hydra_materials.cpp
     test_hydra_textures.cpp test_hydra_normals.cpp test_hydra_bench.cpp test_hydra_karma.cpp test_hydra_graphs.cpp
-    test_hydra_displacement.cpp test_hydra_vex.cpp test_ipr_latency.cpp test_hydra_volumes.cpp test_hydra_velocity.cpp)
+    test_hydra_displacement.cpp test_hydra_vex.cpp test_ipr_latency.cpp test_hydra_volumes.cpp test_hydra_velocity.cpp test_hydra_medium.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nova_hydra_tests PRIVATE hdNova_objects Catch2::Catch2WithMain
     Houdini::Dep::pxr_usd Houdini::Dep::pxr_usdGeom Houdini::Dep::pxr_usdShade Houdini::Dep::pxr_usdImaging)
@@ -243,6 +244,11 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_lights/$<CONFIG>")
     set_tests_properties(husk_lights PROPERTIES LABELS husk TIMEOUT 600)
+    add_test(NAME husk_karma_fogbox
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_fogbox.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_fogbox/$<CONFIG>")
+    set_tests_properties(husk_karma_fogbox PROPERTIES LABELS husk TIMEOUT 900)
     add_test(NAME husk_emitters
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_emitters.py"
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"

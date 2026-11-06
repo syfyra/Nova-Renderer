@@ -1,0 +1,24 @@
+{
+  "scene": "fogbox",
+  "created": "2026-11-06",
+  "inputs": {
+    "scenes/fogbox.usda": "8c5200b5f2be1fd75055ff96b8e708e2d651125a",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/fogbox.exr",
+  "sigma": "images/fogbox.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.001934,
+    "flip_test_pair": 0.002995,
+    "relmse": 9e-06,
+    "global_z": [
+      0.738,
+      0.813,
+      0.71,
+      3.247
+    ]
+  }
+}

@@ -711,6 +711,102 @@ TEST_CASE("XPU volumes: media, volume lights, equiangular", "[gpu][render][volum
     CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.005 * cpuMean));
 }
 
+// docs/design/M11-P5.md: media bounded by surfaces on the GPU (the shells'
+// crossings in medium_track.h): a fog box scattering with a heavier shadow
+// density (ray:isshadowray), a noise sphere (fractal3d in P), an emitting
+// box as a volume light, all inside a large thin fog box around the camera.
+TEST_CASE("XPU media bounded by surfaces", "[gpu][render][volume][shell]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    using namespace shading;
+    const auto field = [](uint16_t f) { return uint16_t(volume_field::kBase + f); };
+    Scene scene;
+    MeshDesc ground = makeQuad(3.0f);
+    ground.setDisplayColor(spectrum(0.5f));
+    scene.updateMesh(scene.createMesh(), ground);
+    const auto shellOf = [](const MeshDesc &m) {
+        return makeTriangleShell(m.points.data(), m.pointCount(), m.indices.data(), m.triangleCount());
+    };
+    const auto addShell = [&](MediumShellPtr shell, const MaterialDesc &material, bool light = false) {
+        VolumeDesc desc;
+        desc.shell = std::move(shell);
+        desc.material = scene.createMaterial();
+        scene.updateMaterial(desc.material, material);
+        desc.light = light;
+        const VolumeId id = scene.createVolume();
+        scene.updateVolume(id, desc);
+        scene.updateVolumeMotion(id, {Mat4::identity()});
+    };
+    { // fog: scattering 1.5, shadow rays 3 (the Fog Box's switch)
+        IrGraph g;
+        IrBuilder b(g);
+        const Ref shadow = b.binary(Op::Equal, b.global(Global::RayType), b.constant(float(RayClass::Shadow)));
+        const Ref d = b.ternary(Op::Select, shadow, b.constant(3.0f), b.constant(1.5f));
+        b.output(field(volume_field::scattering), 3, b.convert(d, 3));
+        b.output(field(volume_field::anisotropy), 1, b.constant(0.3f));
+        MaterialDesc m;
+        m.program = compile(g).program;
+        addShell(shellOf(box({-1.6f, -0.5f, 0.2f}, {-0.4f, 0.5f, 1.2f})), m);
+    }
+    { // noise: 2 (fractal3d(3 P) + 0.5), half absorbing
+        IrGraph g;
+        IrBuilder b(g);
+        const Ref n = b.fractal(b.mul(b.global(Global::P), b.constant(3.0f)), b.constant(3.0f), b.constant(2.0f),
+                                b.constant(0.5f), 1);
+        const Ref d = b.convert(b.mul(b.constant(2.0f), b.add(n, b.constant(0.5f))), 3);
+        b.output(field(volume_field::scattering), 3, d);
+        b.output(field(volume_field::absorption), 3, d);
+        MaterialDesc m;
+        m.program = compile(g).program;
+        addShell(makeSphereShell({1.0f, 0.0f, 0.7f}, 0.5f), m);
+    }
+    { // an emitting box, light-sampled
+        IrGraph g;
+        IrBuilder b(g);
+        b.output(field(volume_field::absorption), 3, b.constant(1.0f, 1.0f, 1.0f));
+        b.output(field(volume_field::emission), 3, b.constant(3.0f, 1.5f, 0.5f));
+        MaterialDesc m;
+        m.program = compile(g).program;
+        addShell(shellOf(box({-0.3f, 1.0f, 0.1f}, {0.3f, 1.6f, 0.5f})), m, true);
+    }
+    { // thin fog around everything, the camera inside it
+        IrGraph g;
+        IrBuilder b(g);
+        b.output(field(volume_field::scattering), 3, b.constant(0.08f, 0.08f, 0.08f));
+        MaterialDesc m;
+        m.program = compile(g).program;
+        addShell(shellOf(box({-4.0f, -4.0f, -1.0f}, {4.0f, 4.0f, 6.0f})), m);
+    }
+    LightDesc sun;
+    sun.type = LightType::Distant;
+    sun.intensity = 2.0f;
+    scene.updateLight(scene.createLight(), sun);
+    scene.commit();
+    REQUIRE(scene.activeVolumes().size() == 4);
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 2.0f, 32, 32);
+    const Render cpu = render(scene, camera, 32, 32, 256, RenderDevice::Cpu, 4, true);
+    const Render gpu = render(scene, camera, 32, 32, 256, RenderDevice::Xpu, 4, true);
+    REQUIRE(gpu.gpu);
+    // Every path scatters in the fog around the camera, so paths part ways at
+    // floating-point differences early: compare means (the image's and each
+    // quadrant's), not pixels.
+    const double cpuMean = luminanceMean(cpu.film), gpuMean = luminanceMean(gpu.film);
+    INFO("mean CPU " << cpuMean << ", GPU " << gpuMean);
+    CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.005 * cpuMean));
+    for (int q = 0; q < 4; ++q) {
+        double a = 0.0, b = 0.0;
+        for (int y = (q / 2) * 16; y < (q / 2) * 16 + 16; ++y)
+            for (int x = (q % 2) * 16; x < (q % 2) * 16 + 16; ++x) {
+                const size_t i = size_t(y) * 32 + size_t(x);
+                a += luminance(cpu.film.colorSum[i]) / cpu.film.count[i];
+                b += luminance(gpu.film.colorSum[i]) / gpu.film.count[i];
+            }
+        INFO("quadrant " << q << ": CPU " << a / 256.0 << ", GPU " << b / 256.0);
+        CHECK_THAT(b, WithinAbs(a, 0.02 * a));
+    }
+}
+
 // docs/design/M10.md G6: curves of every basis (round: OptiX's tubes; flat:
 // round tubes, the same coverage, D5), points (sphere: a custom sphere;
 // ray-facing disc: the built-in sphere; oriented disc: a custom disc).

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "medium.h"
 #include "motion.h"
 #include "material/registry.h"
 
@@ -97,6 +98,12 @@ private:
     int _dicingDepth = -1;
     bool _displacementEnabled = true;
     uint64_t _builtDisplacement = 0;
+    // A medium bounded by the mesh (docs/design/M11-P5.md) instead of a
+    // surface: its scene volume, and the shell (the control mesh triangulated,
+    // at the shutter's middle step).
+    nova::MediumShellPtr _BuildShell(HdSceneDelegate *sceneDelegate, HdNovaRenderParam &param);
+    HdNovaMedium _medium;
+    bool _warnedMediumMotion = false, _warnedMediumInstances = false;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

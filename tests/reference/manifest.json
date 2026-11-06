@@ -958,6 +958,13 @@
       "settings": "/Render/ref",
       "test": {"spp": 256},
       "reference": {"type": "karma"}
+    },
+    {
+      "name": "fogbox",
+      "file": "scenes/fogbox.usda",
+      "settings": "/Render/ref",
+      "test": {"spp": 256},
+      "reference": {"type": "karma"}
     }
   ]
 }

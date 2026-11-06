@@ -61,6 +61,16 @@ Interval monotone(Interval a, F f) {
     return make(f(a.lo), f(a.hi));
 }
 
+// The largest magnitude of noise.h's Perlin noise in `dim` dimensions (also
+// per channel of the vector forms), 0.1 % wider for rounding. A corner's
+// gradient term is at most |u| + 2|v| (2D) or |u| + |v| (3D) of its
+// offsets, and the fade-weighted mean offset from the corners along an axis,
+// (1 - s(f)) f + s(f) (1 - f), is at most 1/2: the interpolated sum stays
+// below 2 (2D: 2 x (1/2 + 1/2)) and 3/2 (3D), times the scales 0.6616 and
+// 0.9820. Fog Box noise (docs/design/M11-P5.md) needs a bound, not the
+// tighter observed range.
+float perlinBound(int dim) { return (dim == 2 ? 0.6616f * 2.0f : 0.9820f * 1.5f) * 1.001f; }
+
 Interval unary(Op op, Interval a) {
     switch (op) {
     case Op::Copy:
@@ -304,6 +314,32 @@ void executeInterval(const Instr *code, size_t count, Interval *R, const float *
                 for (int k = 0; k < w; ++k)
                     out[k] = {0.0f, 1.0f};
                 break;
+            case Op::Noise: { // Perlin, any position
+                const float b = perlinBound(int(in.imm & 15u));
+                for (int k = 0; k < w; ++k)
+                    out[k] = {-b, b};
+                break;
+            }
+            case Op::Fractal: { // the octaves' amplitudes |diminish|^i summed (ops.h: 0 to 32 octaves)
+                const Interval octaves = operand(R, U, in.b, ub, false, 0);
+                const Interval diminish = operand(R, U, in.c, uc, false, 1);
+                if (!octaves.bounded() || !diminish.bounded()) {
+                    for (int k = 0; k < w; ++k)
+                        out[k] = Interval::unbounded();
+                    break;
+                }
+                const int n = std::clamp(int(octaves.hi), 0, 32);
+                const float m = std::max(std::fabs(diminish.lo), std::fabs(diminish.hi));
+                float sum = 0.0f, amp = 1.0f;
+                for (int octave = 0; octave < n; ++octave) {
+                    sum += amp;
+                    amp *= m;
+                }
+                const float b = perlinBound(int(in.imm & 15u)) * sum * 1.001f;
+                for (int k = 0; k < w; ++k)
+                    out[k] = std::isfinite(b) ? Interval{-b, b} : Interval::unbounded();
+                break;
+            }
             case Op::Blackbody: // the ends and the table entries between them, 1 % wider
                 blackbodyRange(operand(R, U, in.a, ua, false, 0), w, out);
                 break;

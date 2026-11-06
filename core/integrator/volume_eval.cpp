@@ -32,8 +32,8 @@ VolumePoint VolumeEvaluator::operator()(Vec3f p, Vec3f w, Vec3f dir, float time,
         const float dt = t[0] + time * (t[1] - t[0]);
         lookup = p - Vec3f{field(m_rec.velocity[0], p), field(m_rec.velocity[1], p), field(m_rec.velocity[2], p)} * dt;
     }
-    if (!m_rec.program) { // the default volume (D6)
-        const float d = std::max(field(m_rec.reference, lookup), 0.0f);
+    if (!m_rec.program) { // the default volume (D6); a shell's: density 1 (Karma)
+        const float d = m_rec.desc.shell ? 1.0f : std::max(field(m_rec.reference, lookup), 0.0f);
         out.scattering = {d, d, d};
         return out;
     }
@@ -93,7 +93,7 @@ VolumePoint VolumeEvaluator::operator()(Vec3f p, Vec3f w, Vec3f dir, float time,
         const PrimvarBinding &b = prog.primvarBindings[i];
         for (int k = 0; k < b.width; ++k) {
             const int32_t f = m_rec.bindings[i][size_t(k)];
-            R[b.row + k] = f >= 0 ? field(f, lookup) : U[b.fallback + k];
+            R[b.row + k] = f >= 0 ? field(f, lookup) : (f <= -2 ? m_rec.constantValues[size_t(-2 - f)] : U[b.fallback + k]);
         }
     }
     const TextureContext tex{m_scene.textureSampler(), m_material->samplers.data(),
