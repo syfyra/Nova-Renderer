@@ -176,6 +176,43 @@ LightData makeLightData(const LightDesc &desc) {
     return d;
 }
 
+LightFilterData makeLightFilterData(const LightFilterDesc &desc) {
+    LightFilterData f;
+    f.kind = desc.kind;
+    f.shape = desc.shape;
+    // World -> space with row vectors (q = P * M), as light_filter.h applies it.
+    const Mat4 &m = desc.spaceFromWorld;
+    const auto row = [&](int i) { return Vec3f{float(m.m[i][0]), float(m.m[i][1]), float(m.m[i][2])}; };
+    f.x = row(0);
+    f.y = row(1);
+    f.z = row(2);
+    f.t = row(3);
+    const auto positive = [](float v) { return std::isfinite(v) && v > 0.0f ? v : 0.0f; };
+    float size = 0.0f;
+    switch (desc.shape) {
+    case BlockerShape::Sphere:
+        size = positive(desc.radius);
+        f.half = {size, 0.0f, 0.0f};
+        break;
+    case BlockerShape::Capsule:
+        size = positive(desc.radius);
+        f.half = {size, 0.5f * positive(desc.height), 0.0f};
+        break;
+    default: // box: the corner rounding and the falloff scale with its smallest half extent (Karma, measured)
+        f.half = {0.5f * positive(desc.width), 0.5f * positive(desc.height), 0.5f * positive(desc.depth)};
+        size = std::min({f.half.x, f.half.y, f.half.z});
+        f.rounded = std::clamp(positive(desc.roundedCorner), 0.0f, 1.0f) * size;
+        break;
+    }
+    f.invSize = size > 0.0f ? 1.0f / size : 0.0f; // an empty shape blocks nothing
+    f.falloff = std::clamp(positive(desc.falloff), 0.0f, 1.0f);
+    f.invert = desc.invert ? 1u : 0u;
+    f.blocked = desc.tint * (desc.intensity * std::exp2(desc.exposure));
+    if (!isFinite(f.blocked))
+        f.blocked = {0.0f, 0.0f, 0.0f};
+    return f;
+}
+
 float textureMeanLuminance(const Image &texture) {
     if (texture.pixels.empty())
         return 0.0f;

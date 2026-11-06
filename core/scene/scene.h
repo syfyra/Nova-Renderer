@@ -22,6 +22,7 @@
 #include <mutex>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -243,6 +244,11 @@ public:
     LightId createLight();
     void updateLight(LightId id, const LightDesc &desc);
     void removeLight(LightId id);
+    // Light filters (docs/design/M11-P4.md), by key: lights list the keys of
+    // theirs (LightDesc::filters), resolved at commit(), so filters and
+    // lights may arrive in any order.
+    void setLightFilter(const std::string &key, const LightFilterDesc &desc);
+    void removeLightFilter(const std::string &key);
 
     // Volumes (docs/design/M8.md). The majorants are built at commit().
     VolumeId createVolume();
@@ -457,6 +463,12 @@ private:
     std::vector<uint32_t> m_shadowDomes;        // shadow-linked dome lights
     bool m_linking = false, m_shadowLinking = false, m_linksDirty = false;
     void computeLinks();
+    // Light filters (M11-P4): by key; the records of every light's filters
+    // in order (LightData::filters points in here), each with its filter's
+    // filterLink category.
+    std::unordered_map<std::string, LightFilterDesc> m_lightFilters;
+    std::vector<LightFilterData> m_lightFilterData;
+    std::vector<std::string> m_lightFilterLinks; // parallel to m_lightFilterData
     size_t m_hostLightCount = 0;
     // Emissive triangles (M9 D14): lights from m_emitterBegin on; rebuilt
     // when a treated mesh, its materials or the lights before them change.

@@ -4,9 +4,12 @@
 #include "core/math/spectrum.h"
 #include "core/scene/image.h"
 
+#include "core/lights/light_filter.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace nova {
 
@@ -61,6 +64,9 @@ struct LightDesc {
     // and of those that shadow it (empty: every object; UsdLux collections
     // through HdsiLightLinkingSceneIndex).
     std::string lightLink, shadowLink;
+    // Light filters (docs/design/M11-P4.md): the keys of the light's filters
+    // (Scene::setLightFilter), in order; keys without a filter are skipped.
+    std::vector<std::string> filters;
 
     // Dome light: latlong environment (UsdLux/OpenEXR orientation: +Y is the
     // pole, the image center looks down +Z, u = 0.25 down +X). Rect light:
@@ -70,5 +76,27 @@ struct LightDesc {
     Mat4 transform = Mat4::identity(); // light -> world
     bool visible = true;
 };
+
+// Host-side light filter (docs/design/M11-P4.md, core/lights/light_filter.h):
+// Karma's blocker with the inputs of its USD schema (KarmaBlockerLightFilter).
+struct LightFilterDesc {
+    LightFilterKind kind = LightFilterKind::Blocker;
+    BlockerShape shape = BlockerShape::Sphere;
+    float radius = 0.5f;        // sphere and capsule
+    float width = 1.0f;         // box, along local X
+    float height = 1.0f;        // box (local Y), capsule: its segment's length along local Y
+    float depth = 1.0f;         // box, along local Z
+    float roundedCorner = 0.1f; // box: share of its smallest half extent
+    float falloff = 0.0f;       // share of the shape's size, up to 1
+    float intensity = 1.0f;     // the light's factor inside the shape ...
+    float exposure = 0.0f;      // ... times 2^exposure ...
+    Spectrum tint{1.0f, 1.0f, 1.0f}; // ... times the tint
+    bool invert = false;        // the factor applies outside the shape instead
+    Mat4 spaceFromWorld = Mat4::identity(); // world -> the shape's space (row vectors, like LightDesc::transform)
+    std::string link;           // link category (empty: every object; Hydra sets none, M11-P4 F6)
+};
+
+// The integrator's record of a filter (light_filter.h).
+LightFilterData makeLightFilterData(const LightFilterDesc &desc);
 
 } // namespace nova

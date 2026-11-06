@@ -88,12 +88,13 @@ NOVA_INLINE uint32_t prevLinkSet(uint32_t prevSet) { return prevSet & ~kPrevSetD
 // domes `domes` chosen in proportion to the magnitude of its weighted
 // radiance along dir (u: a uniform number, read only with several domes).
 // Returns the dome's index (kInvalidId: none) with its MIS-weighted radiance
-// divided by the choice probability (Le, times the light multiplier) and the
-// MIS weight alone.
+// divided by the choice probability (Le, times the light multiplier and the
+// dome's filters at `site`, the vertex) and the MIS weight alone.
 template <typename Pmf>
 NOVA_INLINE uint32_t sampleShadowLinkedDome(const LightData *lights, const uint32_t *domes, uint32_t domeCount,
-                                            const Pmf &pmf, Vec3f dir, float bsdfPdf, LightStrategy strategy,
-                                            float diffuseShare, float u, Spectrum &Le, float &weight) {
+                                            const Pmf &pmf, Vec3f dir, const LightFilterSite &site, float bsdfPdf,
+                                            LightStrategy strategy, float diffuseShare, float u, Spectrum &Le,
+                                            float &weight) {
     const auto radiance = [&](uint32_t i, float &w) -> Spectrum {
         const LightData &light = lights[i];
         w = 0.0f;
@@ -103,7 +104,8 @@ NOVA_INLINE uint32_t sampleShadowLinkedDome(const LightData *lights, const uint3
                              misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * domePdf(light, dir) : 0.0f);
         if (!(w > 0.0f))
             return Spectrum{0.0f, 0.0f, 0.0f};
-        return domeRadiance(light, dir) * (lightMultiplier(light, diffuseShare) * w);
+        const Spectrum L = domeRadiance(light, dir) * (lightMultiplier(light, diffuseShare) * w);
+        return light.filterCount > 0 ? L * lightFilters(light, site) : L;
     };
     if (domeCount == 1) {
         Le = radiance(domes[0], weight);

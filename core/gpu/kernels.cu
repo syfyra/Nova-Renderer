@@ -280,7 +280,7 @@ __device__ GpuLightChoice chooseLight(const GpuScene &sc, const GpuSettings &st,
     if (n.light != kInvalidId)
         n.ls = sc.lights[n.light].type == LightType::Volume
                    ? sampleVolumeLight(sc, st, w, p, sc.lights[n.light], origin, time, {ul.x, ul.y}, lightStream, depth)
-                   : sampleLight(sc.lights[n.light], origin, {ul.x, ul.y});
+                   : sampleLight(sc.lights[n.light], origin, {ul.x, ul.y}, sc.links.categories(set));
     return n;
 }
 
@@ -428,8 +428,10 @@ __device__ void pushShadowDomeRay(const ShadeArgs &a, uint32_t p, const PathPmf 
                         : 0.0f;
     Spectrum Le;
     float weight = 0.0f;
-    const uint32_t li = sampleShadowLinkedDome(sc.lights, sc.shadowDomes, sc.shadowDomeCount, pmf, wi, pdf,
-                                               a.settings.lightStrategy, diffuseShare, u, Le, weight);
+    const uint32_t li =
+        sampleShadowLinkedDome(sc.lights, sc.shadowDomes, sc.shadowDomeCount, pmf, wi,
+                               LightFilterSite{pmf.p, sc.links.categories(pmf.set)}, pdf, a.settings.lightStrategy,
+                               diffuseShare, u, Le, weight);
     if (li == kInvalidId)
         return;
     const Spectrum contribution = beta * Le;
@@ -477,6 +479,7 @@ __device__ void shadePrelit(const ShadeArgs &a, uint32_t k, const SurfaceHit &hi
         Rng rng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], stream::prelit(a.depth));
         const PathPmf pmf{sc, origin, ng, Receiver::OneSided, set};
         const LightStrategy strategy = st.lightStrategy;
+        const LightFilterSite site{origin, sc.links.categories(set)}; // light filters (M11 P4)
         const PrelitPick pick = prelitPick(rng, [&](Rng &r, int kind, PrelitCandidate &out) -> float {
             const Vec3f u{r.next(), r.next(), r.next()};
             if (kind == 0) { // a light sample
@@ -488,7 +491,7 @@ __device__ void shadePrelit(const ShadeArgs &a, uint32_t k, const SurfaceHit &hi
                 const LightData &light = sc.lights[li];
                 if (light.type == LightType::Volume)
                     return 0.0f;
-                const LightSample ls = sampleLight(light, origin, {u.x, u.y});
+                const LightSample ls = sampleLight(light, origin, {u.x, u.y}, sc.links.categories(set));
                 if (!(ls.pdf > 0.0f) || dot(ls.wi, ng) <= 0.0f)
                     return 0.0f;
                 const Spectrum Li = light.type == LightType::Triangle ? ls.Li * light.emission : ls.Li;
@@ -506,7 +509,7 @@ __device__ void shadePrelit(const ShadeArgs &a, uint32_t k, const SurfaceHit &hi
             if (!(pdf > 0.0f))
                 return 0.0f;
             Spectrum L{0.0f, 0.0f, 0.0f}, illum{0.0f, 0.0f, 0.0f};
-            escapedRadiance(sc.lights, pmf, sc.lightCount, d, pdf, strategy, 1.0f, [&](uint32_t i, const Spectrum &Li) {
+            escapedRadiance(sc.lights, pmf, sc.lightCount, d, site, pdf, strategy, 1.0f, [&](uint32_t i, const Spectrum &Li) {
                 (sc.lights[i].illumBackground ? illum : L) += Li;
             });
             // Only illumbackground domes there: they count as reaching it.
@@ -880,9 +883,16 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     w.beta[p] = beta;
     if (state) {
         w.lpeState[p] = next;
-        if (next && lpe.unit && !intoSolid) // as light samples: none into solid glass
+        if (next && lpe.unit && !intoSolid) { // as light samples: none into solid glass
+            // Gathered at this hit with the receiver set the continuation
+            // will carry (gatherSite()).
+            const uint32_t set = !s.delta                          ? receiverSet
+                                 : (w.prevSet[p] & kPrevSetDelta) ? mesh.receiverSet(hit.instance)
+                                                                  : prevLinkSet(w.prevSet[p]);
             lpeUnoccludedEnvironment(lpe, sc.lights, sc.lightCount, sc.lightSampler.pmf, film, pixel, next, s.wi,
-                                     s.diffuseShare, beta, !s.delta);
+                                     LightFilterSite{origin, sc.links.categories(set)}, s.diffuseShare, beta,
+                                     !s.delta);
+        }
     }
     w.bsdfPdf[p] = s.delta ? -1.0f : s.pdf;
     w.diffuseShare[p] = s.diffuseShare;
@@ -1201,7 +1211,7 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             float alpha = 1.0f;
             if (miss) {
                 bool visible = false;
-                cameraEnvironment(sc.lights, sc.lightCount, dir, visible);
+                cameraEnvironment(sc.lights, sc.lightCount, a.rays.org[k], dir, visible);
                 alpha = visible ? 1.0f : volumeAlpha();
             } else if (a.settings.crypto) { // volumes are transparent to cryptomattes
                 w.cryptoMesh[p] = w.hitMesh[k];
@@ -1216,12 +1226,12 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             if (state) // B: the ray left the scene (D8)
                 lpeDeposit(lpe, film, pixel, lpe.program.step(state, lpe.backgroundSymbol), beta);
             bool visible = false;
-            const Spectrum Le = state ? cameraEnvironment(sc.lights, sc.lightCount, dir, visible,
+            const Spectrum Le = state ? cameraEnvironment(sc.lights, sc.lightCount, a.rays.org[k], dir, visible,
                                                           [&](uint32_t i, const Spectrum &Li) {
                                                               lpeDepositAll(lpe, film, pixel,
                                                                             lpeLightStep(lpe, state, i), beta * Li);
                                                           })
-                                      : cameraEnvironment(sc.lights, sc.lightCount, dir, visible);
+                                      : cameraEnvironment(sc.lights, sc.lightCount, a.rays.org[k], dir, visible);
             addRadiance(w, p, beta * Le);
             w.alpha[p] += visible ? 1.0f : media ? volumeAlpha() : 0.0f;
             return;
@@ -1251,6 +1261,9 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
         // own (its light event); the parts take the clamp of the sum.
         const float clampEscape = a.depth > 1 ? a.settings.clampIndirect : 0.0f;
         const PathPmf pmf = pathPmf(sc, w, p);
+        // Where the ray gathers lights, for their filters (M11-P4).
+        const LightFilterSite site =
+            gatherSite(w.bsdfPdf[p], w.prevP[p], a.rays.org[k], sc.links.categories(pmf.set));
         GpuLpeParts parts;
         const auto addPart = [&](uint32_t i, const Spectrum &Li) {
             lpePartsAdd(lpe, parts, lpeLightStep(lpe, state, i), Li);
@@ -1268,10 +1281,11 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             // fake-caustic pass-through leaves behind the ray.
             const Spectrum Le =
                 state ? areaLightsAlongRay(sc.lights, pmf, sc.lightCount, tree, a.rays.org[k], dir, tEnd, w.prevP[p],
-                                           w.bsdfPdf[p], a.settings.lightStrategy, w.diffuseShare[p], addPart, atten)
+                                           site, w.bsdfPdf[p], a.settings.lightStrategy, w.diffuseShare[p], addPart,
+                                           atten)
                       : areaLightsAlongRay(sc.lights, pmf, sc.lightCount, tree, a.rays.org[k], dir, tEnd, w.prevP[p],
-                                           w.bsdfPdf[p], a.settings.lightStrategy, w.diffuseShare[p], NoLightSink{},
-                                           atten);
+                                           site, w.bsdfPdf[p], a.settings.lightStrategy, w.diffuseShare[p],
+                                           NoLightSink{}, atten);
             if (!isBlack(Le)) {
                 const Spectrum contribution = betaIn * Le;
                 const float scale = clampScale(contribution, clampEscape);
@@ -1288,7 +1302,7 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
                 // Lights at infinity that light sampling never picks give the
                 // lit shadow; estimate here with weight 1.
                 parts.clear();
-                Le = escapedRadiance(sc.lights, pmf, sc.lightCount, dir, w.bsdfPdf[p], a.settings.lightStrategy,
+                Le = escapedRadiance(sc.lights, pmf, sc.lightCount, dir, site, w.bsdfPdf[p], a.settings.lightStrategy,
                                      w.diffuseShare[p], [&](uint32_t i, const Spectrum &Li) {
                                          const lpe::State s = lpeLightStep(lpe, state, i);
                                          lpePartsAdd(lpe, parts, s, Li);
@@ -1296,7 +1310,7 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
                                              lpeDepositUnit(lpe, film, pixel, s, beta * Li, false, true);
                                      });
             } else {
-                Le = escapedRadiance(sc.lights, pmf, sc.lightCount, dir, w.bsdfPdf[p], a.settings.lightStrategy,
+                Le = escapedRadiance(sc.lights, pmf, sc.lightCount, dir, site, w.bsdfPdf[p], a.settings.lightStrategy,
                                      w.diffuseShare[p]);
             }
             const Spectrum contribution = beta * Le;
@@ -1413,8 +1427,8 @@ extern "C" __global__ void novaWalkExit(const ShadeArgs a) {
     }
     w.beta[p] = beta;
     if (state && lpe.unit)
-        lpeUnoccludedEnvironment(lpe, sc.lights, sc.lightCount, sc.lightSampler.pmf, film, pixel, state, wi, 1.0f,
-                                 beta, true);
+        lpeUnoccludedEnvironment(lpe, sc.lights, sc.lightCount, sc.lightSampler.pmf, film, pixel, state, wi,
+                                 LightFilterSite{origin, sc.links.categories(receiverSet)}, 1.0f, beta, true);
     w.bsdfPdf[p] = pdf;
     w.diffuseShare[p] = 1.0f;
     w.prevP[p] = origin;
@@ -1549,9 +1563,9 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     w.beta[p] = beta;
     if (state) {
         w.lpeState[p] = scattered;
-        if (scattered && lpe.unit)
+        if (scattered && lpe.unit) // volume events are receiver set 0
             lpeUnoccludedEnvironment(lpe, sc.lights, sc.lightCount, sc.lightSampler.pmf, film, pixel, scattered, wi,
-                                     1.0f, beta, true);
+                                     LightFilterSite{x, sc.links.categories(0u)}, 1.0f, beta, true);
     }
     w.bsdfPdf[p] = pdf;
     w.diffuseShare[p] = 1.0f;

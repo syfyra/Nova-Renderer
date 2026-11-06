@@ -191,11 +191,13 @@ NOVA_INLINE void lpeAlbedoEvents(const LpeView &t, Film &film, uint32_t pixel, l
 // beta). After a non-delta event (`nonDelta`) shadow-linked lights are left
 // out: the continuation never collects them, a dome's own shadow ray carries
 // its weight-1 parts (path.h). Lights whose illumination is off (sampling
-// quality 0, docs/design/M9.md D18) give nothing.
+// quality 0, docs/design/M9.md D18) give nothing. The lights' filters act at
+// `site`, where the continuation gathers them (gatherSite()).
 template <class Film>
 NOVA_INLINE void lpeUnoccludedEnvironment(const LpeView &t, const LightData *lights, uint32_t lightCount,
                                           const float *pmf, Film &film, uint32_t pixel, lpe::State state, Vec3f dir,
-                                          float diffuseShare, const Spectrum &beta, bool nonDelta) {
+                                          const LightFilterSite &site, float diffuseShare, const Spectrum &beta,
+                                          bool nonDelta) {
     for (uint32_t i = 0; i < lightCount; ++i) {
         const LightData &light = lights[i];
         if (pmf[i] > 0.0f || !light.illuminates() || (nonDelta && light.shadowLinked()))
@@ -207,6 +209,8 @@ NOVA_INLINE void lpeUnoccludedEnvironment(const LpeView &t, const LightData *lig
             Le = light.emission;
         else
             continue;
+        if (light.filterCount > 0)
+            Le *= lightFilters(light, site);
         lpeDepositUnit(t, film, pixel, lpeLightStep(t, state, i), beta * Le * lightMultiplier(light, diffuseShare),
                        true, false);
     }
