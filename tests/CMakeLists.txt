@@ -48,6 +48,7 @@ add_executable(nova_tests
     test_light_tree.cpp
     test_emitters.cpp
     test_scene_view.cpp
+    test_holdouts.cpp
     test_light_filter.cpp
     test_sky.cpp
 )
@@ -89,6 +90,7 @@ endif()
 add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oiio.cpp test_hydra_materials.cpp
     test_hydra_textures.cpp test_hydra_normals.cpp test_hydra_bench.cpp test_hydra_karma.cpp test_hydra_graphs.cpp
     test_hydra_displacement.cpp test_hydra_vex.cpp test_ipr_latency.cpp test_hydra_volumes.cpp test_hydra_velocity.cpp
+    test_hydra_holdouts.cpp
     test_hydra_filters.cpp
     test_hydra_sky.cpp test_hydra_medium.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
@@ -255,6 +257,13 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_lights/$<CONFIG>")
     set_tests_properties(husk_lights PROPERTIES LABELS husk TIMEOUT 600)
+    # Karma's Shadow Catcher and Background Plate (docs/design/M11-P2.md):
+    # probes and the LOPs' scenes (husk/karma_nodes) against Karma's values.
+    add_test(NAME husk_karma_nodes
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_nodes.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_nodes/$<CONFIG>")
+    set_tests_properties(husk_karma_nodes PROPERTIES LABELS husk TIMEOUT 900)
     # Karma's Fog Box (docs/design/M11-P5.md): scenes built by the LOP
     # (husk/fogbox), Karma's values and analytic ones; CPU and Nova XPU.
     add_test(NAME husk_karma_fogbox

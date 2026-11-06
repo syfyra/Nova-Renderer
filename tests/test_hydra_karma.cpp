@@ -721,3 +721,41 @@ TEST_CASE("Blackbody matches Karma's measured ND_blackbody", "[hydra][karma][bla
     CHECK(nova::blackbody(0.0f).x == 0.0f);
     CHECK_THAT(nova::blackbody(80000.0f).y / nova::blackbody(40000.0f).y, WithinRel(16.0, 1e-4));
 }
+
+TEST_CASE("Karma's spaces: current is world, positions in NDC", "[hydra][karma]") {
+    // The Background Plate's projection (docs/design/M11-P2.md): the ray
+    // direction from space:current to space:world, the hit in space:ndc.
+    Network net;
+    HdMaterialNode2 &dir = net.add("dir", node("ND_dot_vector3"));
+    dir.parameters[TfToken("note")] = VtValue(std::string("ray:direction"));
+    HdMaterialNode2 &xf = net.add("xf", node("ND_transformvector_vector3"));
+    xf.parameters[TfToken("fromspace")] = VtValue(std::string("space:current"));
+    xf.parameters[TfToken("tospace")] = VtValue(std::string("space:world"));
+    net.connect("xf", "in", "dir");
+    net.emission("xf");
+    const HdNovaTranslatedMaterial tr = HdNovaTranslateMaterial(net.src);
+    CHECK(tr.warnings.empty());
+    Globals g = camera();
+    g[Global::I] = {0.6f, 0.0f, -0.8f};
+    const std::vector<float> e = emission(tr, g);
+    CHECK_THAT(e[0], WithinAbs(0.6, 1e-6));
+    CHECK_THAT(e[2], WithinAbs(-0.8, 1e-6));
+
+    Network ndc;
+    HdMaterialNode2 &pos = ndc.add("pos", node("ND_position_vector3"));
+    pos.parameters[TfToken("space")] = VtValue(std::string("space:ndc"));
+    ndc.emission("pos");
+    const HdNovaTranslatedMaterial trn = HdNovaTranslateMaterial(ndc.src);
+    CHECK(trn.warnings.empty());
+    Globals gn = camera();
+    gn[Global::Pndc] = {0.25f, 0.75f, 3.0f};
+    const std::vector<float> p = emission(trn, gn);
+    CHECK(p == std::vector<float>{0.25f, 0.75f, 3.0f});
+
+    // An unknown space warns and falls back.
+    Network cam;
+    HdMaterialNode2 &pc = cam.add("pos", node("ND_position_vector3"));
+    pc.parameters[TfToken("space")] = VtValue(std::string("space:camera"));
+    cam.emission("pos");
+    CHECK(hasWarning(HdNovaTranslateMaterial(cam.src), "space 'camera'"));
+}

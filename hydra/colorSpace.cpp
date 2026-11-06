@@ -114,6 +114,10 @@ std::string HdNovaTextureColorSpace(std::string const &path, OIIO::ImageSpec con
         return {};
     if (fileRuleColorSpace(path, cs))
         return cs;
+    // Houdini's .pic images: their stored values, whatever their depth or
+    // metadata (Karma, measured with an 8-bit plate: docs/design/M11-P2.md).
+    if (OIIO::Strutil::iends_with(path, ".pic"))
+        return {};
     // Metadata naming a known space; others (e.g. "Gamma2.2" from a PNG's
     // gAMA chunk) are skipped, as Karma does.
     if (const std::string meta = canonicalName(spec.get_string_attribute("oiio:ColorSpace")); !meta.empty())

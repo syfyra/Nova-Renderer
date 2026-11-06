@@ -48,6 +48,39 @@ HdNovaDenoiseRequest HdNovaParseKarmaImageFilter(std::string const &json) {
     return out;
 }
 
+HdNovaBackgroundFilter HdNovaParseKarmaBackgroundFilter(std::string const &json) {
+    HdNovaBackgroundFilter out;
+    if (json.empty())
+        return out;
+    JsValue root = JsParseString(json);
+    // background_iprfilter holds one filter, imagefilter a list of them.
+    if (root.IsArray() && !root.GetJsArray().empty() && root.GetJsArray()[0].IsString())
+        root = JsValue(JsArray{root});
+    if (!root.IsArray())
+        return out;
+    for (JsValue const &filter : root.GetJsArray()) {
+        if (!filter.IsArray() || filter.GetJsArray().size() < 2 || !filter.GetJsArray()[0].IsString() ||
+            filter.GetJsArray()[0].GetString() != "background" || !filter.GetJsArray()[1].IsObject())
+            continue;
+        JsObject const &o = filter.GetJsArray()[1].GetJsObject();
+        const auto text = [&](char const *key, std::string const &fallback) {
+            const auto it = o.find(key);
+            return it != o.end() && it->second.IsString() ? it->second.GetString() : fallback;
+        };
+        out.destination = text("destination", "C");
+        out.shadows = text("shadows", "");
+        if (const auto it = o.find("shadowcatcherenable"); it != o.end() && it->second.IsBool())
+            out.shadowCatcher = it->second.GetBool() && !out.shadows.empty();
+        if (const auto it = o.find("shadowcatcheralpha"); it != o.end() && it->second.IsReal())
+            out.alpha = float(it->second.GetReal());
+        else if (it != o.end() && it->second.IsInt())
+            out.alpha = float(it->second.GetInt());
+        out.plate = !text("backgroundfile", "").empty();
+        return out;
+    }
+    return out;
+}
+
 std::vector<std::string> HdNovaSplitAovNames(std::string const &names) {
     std::vector<std::string> out;
     std::string current;

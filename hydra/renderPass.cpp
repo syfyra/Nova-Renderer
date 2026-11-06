@@ -410,6 +410,9 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     _delegate->ConsumeNeedsReset();
 
     scene.setDefaultFakeCaustics(settings.limits.fakeCaustics);
+    // Ray visibility and holdouts of objects without their own (M11 P2).
+    scene.setDefaultVisibility(settings.objectVisibility);
+    scene.setBackgroundOccludesShadows(settings.backgroundOccludesShadows);
     // Volume majorants of Time/Frame-driven shaders bound the rendered frame.
     scene.setShadeFrame(settings.frame, settings.fps);
     scene.commit();

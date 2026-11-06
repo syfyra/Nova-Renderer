@@ -587,6 +587,8 @@ bool GpuRenderer::setScene(const Scene &scene) {
         g.bindings = put(bindings);
         g.shadowMasks = put(rec.shadowMasks);
         g.fakeCaustics = uint8_t(rec.fakeCaustics);
+        g.visibility = rec.visibility;
+        g.holdout = uint8_t(rec.holdout);
         g.emitterOf = put(rec.emitterOf);
         g.emitterBase = rec.emitterBase;
         g.emitterStride = rec.emitterStride;
@@ -819,6 +821,13 @@ bool GpuRenderer::setScene(const Scene &scene) {
     m_view.eqPmf = put(eq.pmf, scene.analyticLightCount()).ptr;
     m_view.tolerance = scene.intersectionTolerance();
     m_view.anyFiltered = uint8_t(scene.anyFiltered());
+    // Holdouts (core/integrator/holdout.h).
+    m_view.anyHoldouts = uint8_t(scene.anyHoldouts());
+    m_view.shadowVisibilityDiffers = uint8_t(scene.shadowVisibilityDiffers());
+    m_view.illumBackground = 0;
+    if (scene.anyBackground())
+        for (uint32_t i = 0; i < scene.analyticLightCount(); ++i)
+            m_view.illumBackground |= uint8_t(scene.lights()[i].illumBackground);
     if (m_failed || !m_device.sync())
         return false;
     m_scene = &scene;
@@ -838,7 +847,9 @@ bool GpuRenderer::setFilm(const Film &film) {
 }
 
 bool GpuRenderer::reserveWave(uint32_t paths) {
-    const uint32_t slots = (m_mayWalk ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u);
+    // Pre-lit background holdouts with illumbackground lights use the walk
+    // exits' kind (kernels.cu shadePrelit).
+    const uint32_t slots = (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u);
     if (paths <= m_capacity && slots <= m_shadowSlots)
         return true;
     m_waveBuffers.clear();
@@ -875,6 +886,7 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.limitDither, paths);
     field(w.lightOnly, paths);
     field(w.afterDiffuse, paths);
+    field(w.holdout, paths);
     field(w.coneWidth, paths);
     field(w.coneSpread, paths);
     field(w.prevP, paths);
@@ -885,6 +897,11 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.hitPrim, paths);
     field(w.hitUv, paths);
     field(w.hitInstance, paths);
+    field(w.lightMesh, paths);
+    field(w.lightHitT, paths);
+    field(w.lightPrim, paths);
+    field(w.lightUv, paths);
+    field(w.lightInstance, paths);
     // Up to two light samples per path and depth: at the hit or volume
     // event, and an equiangular one along the ray's medium segment; with
     // subsurface walks a third at a walk's exit; with shadow-linked domes
@@ -1132,7 +1149,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     gs.clampIndirect = settings.clampIndirect;
     gs.lightStrategy = settings.lightStrategy;
     gs.limits = settings.limits;
-    gs.globals = ShadeGlobals{settings.frame, settings.fps};
+    gs.globals = shadeGlobals(settings, camera); // the frame, and the camera for NDC positions
     gs.textureFilterWidth = settings.textureFilterWidth;
     UtilityPlane *aoPlane = film.findUtility(UtilityKind::Ao);
     gs.ao = aoPlane != nullptr;
@@ -1238,6 +1255,22 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             closest.seed = r.filterSeed;
             closest.rayType = r.rayType;
             closest.depth = depth;
+            // Where scattered rays find their lights when shadow visibility
+            // differs from theirs (intersectRays): the rays as shadow rays,
+            // traced first (the closest query overwrites tMax).
+            const bool lightQuery = depth > 0 && view.shadowVisibilityDiffers;
+            if (lightQuery) {
+                TraceParams light = closest;
+                light.mesh = m_wave.lightMesh;
+                light.prim = m_wave.lightPrim;
+                light.uv = m_wave.lightUv;
+                light.instance = m_wave.lightInstance;
+                light.hitT = m_wave.lightHitT;
+                light.shadowClass = 1;
+                if (!m_accel.launch(Raygen::Closest, light, count))
+                    return false;
+                rays += count;
+            }
             if (!m_accel.launch(Raygen::Closest, closest, count) || !setCount(next, 0) ||
                 !setCount(m_wave.shadow, 0) || !setCount(m_wave.aoRays, 0) ||
                 !m_device.check(cu.p_cuMemsetD32Async(CUdeviceptr(m_wave.walks.count), 0, 1, stream),
@@ -1250,6 +1283,8 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             s.film = gf;
             s.settings = gs;
             s.wave = m_wave;
+            if (!lightQuery)
+                s.wave.lightMesh = nullptr;
             s.rays = r;
             s.next = next;
             s.depth = depth;
@@ -1301,6 +1336,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             occluded.seed = m_wave.shadow.filterSeed;
             occluded.depth = depth;
             occluded.occlusion = 1;
+            occluded.rayType = m_wave.shadow.rayType; // the hit filter's flags (holdout.h)
             ShadowArgs sh;
             sh.scene = view;
             sh.film = gf;
@@ -1309,6 +1345,16 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             sh.depth = depth;
             if (!m_accel.launch(Raygen::Occluded, occluded, shadows))
                 return false;
+            if (m_scene->backgroundOccludesShadows() && m_scene->anyBackground() && shadows > 0) {
+                // Karma's bgoccludeshadow (holdout.h): the occluded rays from
+                // background points that a background holdout occludes.
+                TraceParams probe = occluded;
+                probe.category = nullptr;
+                probe.probeBackground = 1;
+                if (!m_accel.launch(Raygen::Occluded, probe, shadows))
+                    return false;
+                rays += shadows;
+            }
             if (fake && shadows > 0) {
                 // Fake caustics (fakeCausticTransmittance): the unoccluded
                 // rays cross the fake-caustic surfaces in front of the light,
@@ -1351,7 +1397,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 if (!launch(m_shadow, shadows, &sh))
                     return false;
             }
-            if (walked) { // the walk exits' shadow rays: a third run
+            if (walked || view.illumBackground) { // the walk exits' (and pre-lit plates') shadow rays: a third run
                 sh.slot = 2;
                 if (!launch(m_shadow, shadows, &sh))
                     return false;

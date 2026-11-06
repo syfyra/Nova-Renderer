@@ -81,6 +81,16 @@ struct TraceParams {
     // shadow rays, RayBatch::skipFakeCaustics); 0 for ambient occlusion,
     // which every surface blocks.
     uint32_t skipFakeCaustics = 1;
+    // Occlusion rays: Karma's bgoccludeshadow probe (core/integrator/holdout.h):
+    // the occluded rays from background points (rayType's kRayFromBackground)
+    // are traced again against background holdouts alone; a hit clears
+    // `occluded`. Every mesh is filtered while it may run.
+    uint32_t probeBackground = 0;
+    // Closest hits as shadow rays (the hit filter's class; where scattered
+    // rays find their lights, Scene::shadowVisibilityDiffers), the distance
+    // into hitT instead of tMax.
+    uint32_t shadowClass = 0;
+    float *hitT = nullptr;
     // Subsurface walks (Raygen::Walk): per mesh its GAS, and the walks (a
     // GpuWalks in device memory; null: another raygen).
     const MeshGas *gas = nullptr;

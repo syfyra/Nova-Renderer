@@ -861,6 +861,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         }
         _lpeTag = HdNovaObjectLpeTag(sd, id); // light path expressions
         _lightSource = HdNovaMeshLightSource(sd, id); // emissive meshes as lights (M9 D14)
+        _visibility = HdNovaObjectVisibility(sd, id); // ray visibility and holdouts (M11 P2)
         // Displacement dicing (M4.6).
         _dicingQuality = 0.5f;
         _dicingDepth = -1;
@@ -1090,6 +1091,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         scene.setMeshLpeTag(_meshId, _lpeTag);
         _appliedLpeTag = _lpeTag;
     }
+    scene.setMeshVisibility(_meshId, _visibility); // a no-op while unchanged
     if (first || !(_lightSource == _appliedLightSource)) {
         scene.setMeshLightSource(_meshId, _lightSource);
         _appliedLightSource = _lightSource;

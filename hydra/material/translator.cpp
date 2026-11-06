@@ -398,6 +398,23 @@ private:
             rows.push_back(asParam ? Param(m + i * n, n) : _b.constant(m + i * n, n));
         return rows;
     }
+    // A space name of MaterialX (object, model, world) or Karma (the same with
+    // "space:", and current: Karma shades in world space, so its current
+    // space is the world's; ndc for positions): 1 object, 2 world, 3 NDC
+    // (with `ndc`); an empty name is object space (MaterialX's default).
+    // Others warn once and give 0 (`fallback` names what happens then).
+    int KarmaSpace(std::string s, bool ndc, char const *fallback) {
+        if (s.rfind("space:", 0) == 0)
+            s = s.substr(6);
+        if (s.empty() || s == "object" || s == "model")
+            return 1;
+        if (s == "world" || s == "current")
+            return 2;
+        if (ndc && s == "ndc")
+            return 3;
+        Warn("space:" + s, "space '" + s + "' is not supported; " + fallback);
+        return 0;
+    }
     // A world-space vector (or point) in object space: Cramer's rule on the
     // object axes.
     Ref WorldToObject(Ref v, bool point) {
@@ -2093,10 +2110,12 @@ bool Translator::LowerNative(mx::NodeDefPtr const &nd, ValueMap &in, ValueMap &o
     if (category == "texcoord")
         return set(_b.primvar(primaryUvName(), w, Zero(1)));
     if (category == "position" || category == "normal") {
-        const bool world = text("space") == "world";
+        // Karma's spaces too (space:world, space:current = world, space:ndc
+        // for positions: docs/design/M11-P2.md).
+        const int space = KarmaSpace(text("space"), category == "position", "using object space");
         if (category == "position")
-            return set(_b.global(world ? Global::P : Global::Pobject));
-        return set(world ? _b.normalize(_b.global(Global::N)) : _b.global(Global::Nobject));
+            return set(_b.global(space == 2 ? Global::P : space == 3 ? Global::Pndc : Global::Pobject));
+        return set(space == 2 ? _b.normalize(_b.global(Global::N)) : _b.global(Global::Nobject));
     }
     if (category == "tangent" || category == "bitangent") // Karma's frame from the primary uv set
         return set(InSpace(category == "tangent" ? KarmaT() : KarmaB(), text("space")));
@@ -2212,12 +2231,7 @@ bool Translator::LowerNative(mx::NodeDefPtr const &nd, ValueMap &in, ValueMap &o
             const std::string s = text(name);
             if (s.empty())
                 return 0; // unspecified: no transform
-            if (s == "object" || s == "model")
-                return 1;
-            if (s == "world")
-                return 2;
-            Warn("space:" + s, "space '" + s + "' is not supported; using no transform");
-            return 0;
+            return KarmaSpace(s, false, "using no transform");
         };
         const int from = space("fromspace"), to = space("tospace");
         const Ref v = get("in", 3);

@@ -311,6 +311,33 @@ TEST_CASE("Missing files, .rat files and the conversion cache", "[hydra][texture
     CHECK(HdNovaSceneLinearTransformId("srgb_tx") != HdNovaSceneLinearTransformId("ACEScg"));
 }
 
+TEST_CASE("Houdini .pic images read with their stored values", "[hydra][textures]") {
+    // Karma's Background Plate uses $HFS/houdini/pic/Mandril.pic; Karma reads
+    // an 8-bit .pic undecoded (measured, docs/design/M11-P2.md): code 128 is
+    // 0.502, not 0.2158. OIIO cannot read .pic: through imaketx.
+    HdNovaTextureSystem ts;
+    ts.SetOptions(testOptions());
+    const std::string png = writeImage("pic_src.png", 8, 8, {128 / 255.0f, 64 / 255.0f, 32 / 255.0f},
+                                       OIIO::TypeDesc::UINT8);
+    const std::string pic = testDir() + "/c128.pic";
+    const std::string cmd = "\"\"" NOVA_HFS "/bin/iconvert.exe\" \"" + png + "\" \"" + pic + "\"\"";
+    REQUIRE(std::system(cmd.c_str()) == 0);
+    const Lookup r = sample(ts, ts.Acquire({pic, "", ""}), rgbSlot(), 0.5f, 0.5f);
+    REQUIRE(r.status == 0);
+    CHECK_THAT(r.v[0], WithinAbs(128 / 255.0, 2e-3));
+    CHECK_THAT(r.v[1], WithinAbs(64 / 255.0, 2e-3));
+    CHECK_THAT(r.v[2], WithinAbs(32 / 255.0, 2e-3));
+    // A named color space still decodes it.
+    const Lookup s = sample(ts, ts.Acquire({pic, "srgb_texture", ""}), rgbSlot(), 0.5f, 0.5f);
+    REQUIRE(s.status == 0);
+    CHECK_THAT(s.v[0], WithinAbs(0.2158, 2e-3));
+    // Houdini's own plate is found and read.
+    const HdNovaPreparedTexture mandril =
+        HdNovaPrepareTexture(NOVA_HFS "/houdini/pic/Mandril.pic", "", "", testOptions());
+    CHECK(mandril.found);
+    CHECK(mandril.colorSpace.empty());
+}
+
 TEST_CASE("Grey files with an explicit color space are decoded", "[hydra][textures]") {
     HdNovaTextureSystem ts;
     ts.SetOptions(testOptions());

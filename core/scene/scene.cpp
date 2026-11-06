@@ -117,10 +117,24 @@ uint32_t hashMix(uint32_t h) {
 } // namespace
 
 bool Scene::OpacityFilter::accept(const HitCandidate &c, const RayBatch &rays) const {
+    const MeshRecord &mesh = scene->meshRecord(c.mesh);
+    const uint8_t raw = rays.rayType ? rays.rayType[c.ray] : 0;
+    // Ray visibility (core/scene/visibility.h); occlusion queries are shadow rays.
+    if (!visibleTo(mesh.visibility, c.occlusion ? uint8_t(RayClass::Shadow) : uint8_t(raw & kRayClassBits)))
+        return false;
+    // Shadow rays from background-holdout points (docs/design/M11-P2.md):
+    // other background holdouts do not shadow them; the bgoccludeshadow
+    // probe sees nothing but background holdouts.
+    if (raw & kRayProbeBackground) {
+        if (mesh.holdout != HoldoutMode::Background)
+            return false;
+    } else if ((raw & kRayFromBackground) && mesh.holdout == HoldoutMode::Background) {
+        return false;
+    }
     // Fake caustics: shadow rays ignore the object here and multiply its
     // transmittance afterwards (docs/design/M4.md 3.3); ambient occlusion
     // has no such phase, the object blocks it by its opacity.
-    if (c.occlusion && rays.skipFakeCaustics && scene->meshRecord(c.mesh).fakeCaustics)
+    if (c.occlusion && rays.skipFakeCaustics && mesh.fakeCaustics)
         return false;
     // Shadow linking (M9 D15): only the objects in the light's shadow set block it.
     if (c.occlusion && rays.shadowCategory && rays.shadowCategory[c.ray] != 0xFFFFu &&
@@ -135,7 +149,7 @@ bool Scene::OpacityFilter::accept(const HitCandidate &c, const RayBatch &rays) c
         const float time = rays.time ? rays.time[c.ray] : 0.0f;
         const SurfaceHit hit =
             scene->resolveHit(c.mesh, c.prim, c.uv, c.t, c.instance, time, rays.org[c.ray], rays.dir[c.ray]);
-        const uint8_t type = c.occlusion ? uint8_t(RayClass::Shadow) : rays.rayType ? rays.rayType[c.ray] : 0;
+        const uint8_t type = c.occlusion ? uint8_t(RayClass::Shadow) : uint8_t(raw & kRayClassBits);
         o = evaluateOpacity(*scene, id, hit, rays.dir[c.ray], time, type, rays.depth, rays.globals);
     }
     if (o >= 1.0f)
@@ -154,13 +168,39 @@ bool Scene::OpacityFilter::accept(const HitCandidate &c, const RayBatch &rays) c
 void Scene::updateFilterFlags(bool &geometryChanged) {
     m_anyFiltered = false;
     m_anyFakeCaustics = false;
+    // Ray visibility and holdouts (core/scene/visibility.h): the effective
+    // settings; a partial mask or a background holdout (which shadow rays
+    // from background points cross) goes through the filter, and with
+    // bgoccludeshadow every object does (the probe of background occluders
+    // must see only them, docs/design/M11-P2.md).
+    m_anyHoldouts = false;
+    m_shadowVisibilityDiffers = false;
+    bool anyBackground = false;
+    for (MeshRecord &rec : m_meshes) {
+        if (!rec.alive)
+            continue;
+        const ObjectVisibility &own = rec.visibilitySettings;
+        const int mask = own.mask >= 0 ? own.mask : m_defaultVisibility.mask;
+        const int holdout = own.holdout >= 0 ? own.holdout : m_defaultVisibility.holdout;
+        rec.visibility = mask >= 0 ? uint8_t(mask & kVisibleAll) : kVisibleAll;
+        rec.holdout = holdout > 0 && holdout <= int(HoldoutMode::Background) ? HoldoutMode(holdout) : HoldoutMode::None;
+        m_anyHoldouts |= rec.holdout != HoldoutMode::None;
+        anyBackground |= rec.holdout == HoldoutMode::Background;
+        // Visible to the shadow rays but not to some scattered ray, or the
+        // other way round (light collection, Scene::shadowVisibilityDiffers).
+        const bool shadow = visibleTo(rec.visibility, uint8_t(RayClass::Shadow));
+        for (RayClass c : {RayClass::Diffuse, RayClass::Reflect, RayClass::Refract, RayClass::Sss, RayClass::Volume})
+            m_shadowVisibilityDiffers |= visibleTo(rec.visibility, uint8_t(c)) != shadow;
+    }
+    m_anyBackground = anyBackground;
+    const bool filterAll = anyBackground && m_bgOccludeShadow;
     for (MeshId id = 0; id < m_meshes.size(); ++id) {
         MeshRecord &rec = m_meshes[id];
         if (!rec.alive)
             continue;
-        bool want = false;
+        bool want = rec.visibility != kVisibleAll || rec.holdout == HoldoutMode::Background || filterAll;
         if (rec.materialSlots.empty()) {
-            want = material(kDefaultMaterialId).hasOpacity;
+            want |= material(kDefaultMaterialId).hasOpacity;
         } else {
             for (MaterialId m : rec.materialSlots)
                 want |= material(m).hasOpacity;
@@ -381,6 +421,30 @@ void Scene::setDefaultFakeCaustics(bool on) {
     if (m_defaultFakeCaustics == on)
         return;
     m_defaultFakeCaustics = on;
+    ++m_version;
+}
+
+void Scene::setMeshVisibility(MeshId id, const ObjectVisibility &visibility) {
+    std::lock_guard lock(m_mutex);
+    if (id >= m_meshes.size() || !m_meshes[id].alive || m_meshes[id].visibilitySettings == visibility)
+        return;
+    m_meshes[id].visibilitySettings = visibility;
+    ++m_version;
+}
+
+void Scene::setDefaultVisibility(const ObjectVisibility &visibility) {
+    std::lock_guard lock(m_mutex);
+    if (m_defaultVisibility == visibility)
+        return;
+    m_defaultVisibility = visibility;
+    ++m_version;
+}
+
+void Scene::setBackgroundOccludesShadows(bool on) {
+    std::lock_guard lock(m_mutex);
+    if (m_bgOccludeShadow == on)
+        return;
+    m_bgOccludeShadow = on;
     ++m_version;
 }
 

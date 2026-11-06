@@ -13,6 +13,7 @@
 #include "material/networkSource.h"
 #include "material/nodeDefDatabase.h"
 #include "mesh.h"
+#include "primvarUtil.h"
 #include "renderBuffer.h"
 #include "renderPass.h"
 #include "volume.h"
@@ -212,11 +213,8 @@ HdNovaRenderDelegate::GetLpeProgram(HdRenderPassAovBindingVector const &bindings
     for (size_t i = 0; i < expressions.size(); ++i) {
         if (!warned.insert(expressions[i]).second)
             continue;
-        const uint8_t flags = compiled->outputFlags[i];
         if (!compiled->errors[i].empty())
             HD_NOVA_WARN("AOV %s: %s; it keeps its clear value", names[i].c_str(), compiled->errors[i].c_str());
-        else if (flags & nova::lpe::OutputHoldout)
-            HD_NOVA_WARN("AOV %s: Nova has no holdouts yet; it renders black", names[i].c_str());
     }
     if (compiled->ok())
         _lpeProgram = std::move(compiled);
@@ -293,6 +291,51 @@ void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bi
             std::fflush(stderr);
         }
         _aovSources.push_back(std::move(s));
+    }
+    // Karma's background image filter (M11 P2): the shadow catcher's alpha
+    // from the bound shadow AOV; its plate composite is not applied.
+    const auto text = [&](TfToken const &key) {
+        const VtValue v = GetRenderSetting(key);
+        return v.IsHolding<std::string>() ? v.UncheckedGet<std::string>()
+               : v.IsHolding<TfToken>()   ? v.UncheckedGet<TfToken>().GetString()
+                                          : std::string();
+    };
+    const HdNovaBackgroundFilter filter = HdNovaParseKarmaBackgroundFilter(text(HdNovaSettingsTokens->karmaImageFilter));
+    if (filter.shadowCatcher) {
+        int output = -1, slot = -1;
+        for (size_t i = 0; i < bindings.size(); ++i)
+            if (bindings[i].aovName.GetString() == filter.shadows && _aovSources[i].kind == HdNovaAovKind::Lpe &&
+                _aovSources[i].shadowSlot >= 0) {
+                output = _aovSources[i].output;
+                slot = _aovSources[i].shadowSlot;
+            }
+        for (size_t i = 0; i < bindings.size(); ++i)
+            if (bindings[i].aovName.GetString() == filter.destination && _aovSources[i].kind == HdNovaAovKind::Beauty) {
+                _aovSources[i].catcherOutput = output;
+                _aovSources[i].catcherSlot = slot;
+                _aovSources[i].catcherAlpha = filter.alpha;
+            }
+        if (output < 0) {
+            static std::once_flag warned;
+            std::call_once(warned, [&] {
+                HD_NOVA_WARN("Karma's shadow catcher filter reads AOV '%s', which is not a bound shadow; expression; "
+                             "the beauty's alpha keeps no shadows",
+                             filter.shadows.c_str());
+            });
+        }
+    }
+    static const TfToken useBackground("karma:global:use_background"), iprFilter("karma:global:background_iprfilter");
+    const std::string use = TfStringToLower(text(useBackground));
+    const HdNovaBackgroundFilter ipr = HdNovaParseKarmaBackgroundFilter(text(iprFilter));
+    if (filter.plate || ((use == "on" || (use != "off" && GetRenderSetting<bool>(HdNovaSettingsTokens->houdiniViewport,
+                                                                                  false))) &&
+                         ipr.plate)) {
+        static std::once_flag warned;
+        std::call_once(warned, [] {
+            HD_NOVA_WARN("Karma's background image filter (the Background Plate's composite of the plate, the holdout "
+                         "shadows and extras under the beauty) is not applied by Nova; the holdout AOVs hold its "
+                         "inputs");
+        });
     }
 }
 
@@ -535,6 +578,16 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
             VtValue::Cast<bool>(GetRenderSetting(HdNovaSettingsTokens->thinWallAtRefractLimit)).GetWithDefault(true);
         s.limits.fakeCaustics =
             VtValue::Cast<bool>(GetRenderSetting(HdNovaSettingsTokens->fakeCaustics)).GetWithDefault(false);
+    }
+    // Ray visibility and holdouts of objects without their own (M11 P2):
+    // Karma's object defaults on the render settings (the holdout mode as its
+    // menu label there), and whether background holdouts occlude shadows.
+    {
+        static const TfToken visibility("karma:object:rendervisibility"), holdout("karma:object:holdoutmode"),
+            bgOcclude("karma:global:bgoccludeshadow");
+        s.objectVisibility.mask = int16_t(HdNovaRenderVisibilityValue(GetRenderSetting(visibility), "render settings"));
+        s.objectVisibility.holdout = int8_t(HdNovaHoldoutModeValue(GetRenderSetting(holdout), "render settings"));
+        s.backgroundOccludesShadows = VtValue::Cast<bool>(GetRenderSetting(bgOcclude)).GetWithDefault(false);
     }
     // Light selection (docs/design/M9.md D11, D18): the light tree, unless
     // Nova's light sampling mode asks for Uniform ("uniform" or 0), or while

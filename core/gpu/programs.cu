@@ -77,7 +77,7 @@ extern "C" __global__ void __raygen__closest() {
     nova::Vec2f uv = hitUv();
     if (optixGetPrimitiveType(optixHitObjectGetHitKind()) == OPTIX_PRIMITIVE_TYPE_TRIANGLE)
         ribbonHit(mesh, prim, uv);
-    params.tMax[i] = optixHitObjectGetRayTmax();
+    (params.hitT ? params.hitT : params.tMax)[i] = optixHitObjectGetRayTmax();
     params.mesh[i] = mesh;
     params.prim[i] = prim;
     params.uv[i] = uv;
@@ -91,6 +91,18 @@ extern "C" __global__ void __raygen__occluded() {
         return;
     const unsigned c = params.category ? params.category[i] : 0xFFFFu;
     const unsigned mask = c < 7 ? 1u << c : 0x80u;
+    if (params.probeBackground) {
+        // Karma's bgoccludeshadow (core/integrator/holdout.h): an occluded
+        // ray from a background point that a background holdout occludes
+        // keeps its light; the any-hit filter sees only those.
+        if (!params.occluded[i] || !params.rayType || !(params.rayType[i] & nova::kRayFromBackground))
+            return;
+        optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), params.tMin, params.tMax[i], rayTime(i),
+                      0xFFu, OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT, 0, 1, 0);
+        if (optixHitObjectIsHit())
+            params.occluded[i] = 0;
+        return;
+    }
     // Filtered meshes' any-hit decides (their instances allow it).
     optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), params.tMin, params.tMax[i], rayTime(i), mask,
                   OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT, 0, 1, 0);
@@ -229,7 +241,12 @@ extern "C" __global__ void __anyhit__filter() {
         uv = {optixGetCurveParameter(), 0.0f};
     }
     const float seed = params.seed ? params.seed[i] : 0.5f;
-    const uint8_t rayType = params.rayType ? params.rayType[i] : uint8_t(0);
+    // The class in the low bits, the hit filter's flags in the high ones
+    // (core/scene/visibility.h).
+    const uint8_t raw = params.shadowClass ? uint8_t(nova::RayClass::Shadow)
+                        : params.rayType   ? params.rayType[i]
+                                           : uint8_t(0);
+    const uint8_t rayType = raw & nova::kRayClassBits;
     const uint16_t category = params.category ? params.category[i] : uint16_t(0xFFFFu);
     // Ambient occlusion (skipFakeCaustics 0): acceptHit's occlusion rules
     // (fake caustics, shadow links) are a light sample's; its rays are
@@ -239,6 +256,8 @@ extern "C" __global__ void __anyhit__filter() {
     if (!nova::gpu::acceptHit(f->scene, f->globals, params.depth, mesh, prim,
                               optixGetInstanceIndex() - params.firstInstance[mesh], uv, optixGetRayTmax(),
                               params.org[i], params.dir[i], rayTime(i), seed,
-                              occlusion ? uint8_t(nova::RayClass::Shadow) : rayType, lightShadow, category))
+                              occlusion ? uint8_t(nova::RayClass::Shadow) : rayType, lightShadow, category,
+                              uint8_t((raw & ~nova::kRayClassBits) |
+                                      (params.probeBackground ? nova::kRayProbeBackground : 0u))))
         optixIgnoreIntersection();
 }

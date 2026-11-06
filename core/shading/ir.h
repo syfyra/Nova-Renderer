@@ -48,6 +48,9 @@ enum class Global : uint8_t {
     P, Pobject, N, Ng, Nobject, I, Time, PrimId, InstanceId, Frame, ObjX, ObjY, ObjZ, ObjT,
     PDx, PDy, PobjectDx, PobjectDy, DPdu, DPdv,
     RayType, RayDepth, HitDist, Backface,
+    // The hit in the render camera's NDC space (Karma's space:ndc): x, y in
+    // [0, 1] across the image (y up), z the depth in front of the camera.
+    Pndc,
     Count
 };
 

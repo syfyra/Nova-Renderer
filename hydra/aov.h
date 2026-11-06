@@ -40,6 +40,11 @@ struct HdNovaAovSource {
     int output = -1;        // the LPE program's output (Lpe; -1: the expression failed)
     bool invert = false;    // !expression: 1 - value (Lpe)
     int shadowSlot = -1;    // shadow;expression: its lit sum, the value 1 - lit / unoccluded (Lpe)
+    // Karma's shadow catcher image filter on this beauty (denoise.h
+    // HdNovaBackgroundFilter): the shadow AOV's output and lit slot, and the
+    // factor its value adds to the alpha (-1: none).
+    int catcherOutput = -1, catcherSlot = -1;
+    float catcherAlpha = 0.0f;
     nova::UtilityRequest utility; // Utility
     int utilityIndex = -1;  // the film's plane (Utility)
     nova::CryptoRequest crypto;   // Crypto

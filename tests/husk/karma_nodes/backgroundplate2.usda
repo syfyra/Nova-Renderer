@@ -1,0 +1,1351 @@
+#usda 1.0
+(
+    customLayerData = {
+    }
+    framesPerSecond = 24
+    metersPerUnit = 1
+    renderSettingsPrimPath = "/Render/rendersettings"
+    timeCodesPerSecond = 24
+)
+
+def "World"
+{
+    def Mesh "ground" (
+        apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        float3[] extent = [(-6, 0, -6), (6, 0, 6)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </materials/background>
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (
+            interpolation = "vertex"
+        )
+        point3f[] points = [(-6, 0, 6), (6, 0, 6), (6, 0, -6), (-6, 0, -6)]
+        int primvars:karma:object:holdoutmode = 2 (
+            interpolation = "constant"
+        )
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Sphere "ball" (
+        apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/m/grey>
+        double radius = 1
+        double3 xformOp:translate = (0, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def "m"
+    {
+        def Material "grey"
+        {
+            token outputs:mtlx:surface.connect = </World/m/grey/s.outputs:out>
+
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.5, 0.5, 0.5)
+                float inputs:specular = 0
+                token outputs:out
+            }
+        }
+    }
+}
+
+def Camera "cam"
+{
+    float2 clippingRange = (0.1, 100)
+    float horizontalAperture = 80
+    token projection = "orthographic"
+    float verticalAperture = 80
+    float3 xformOp:rotateXYZ = (-90, 0, 0)
+    double3 xformOp:translate = (0, 10, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+}
+
+def "lights"
+{
+    def DistantLight "sun"
+    {
+        float inputs:angle = 0.53
+        float inputs:intensity = 3
+        bool inputs:normalize = 1
+        float3 xformOp:rotateXYZ = (-45, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def DomeLight "dome"
+    {
+        float inputs:intensity = 0.3
+    }
+}
+
+def Scope "materials"
+{
+    def Material "background" (
+        apiSchemas = ["MaterialXConfigAPI"]
+    )
+    {
+        string config:mtlx:version = "1.39"
+        asset inputs:bgplate = @./plate.pic@ (
+            displayName = "Background Plate"
+        )
+        color3f inputs:offscreen_col = (0, 0, 0) (
+            displayName = "Offscreen Color"
+        )
+        asset inputs:offscreentex = @@ (
+            displayName = "Offscreen Texture"
+        )
+        vector3f inputs:offscreentex_rotate = (0, 0, 0) (
+            displayName = "Rotate"
+        )
+        float2 inputs:scal = (1, 1) (
+            displayName = "Scale"
+        )
+        float2 inputs:transl = (0, 0) (
+            displayName = "Translate"
+        )
+        int inputs:useoffscreentex = 0 (
+            displayName = "Offscreen Texture"
+        )
+        token outputs:kma:displacement.connect = </materials/background/mtlxdisplacement.outputs:out>
+        token outputs:kma:surface.connect = </materials/background/mtlxstandard_surface.outputs:out>
+        token outputs:surface.connect = </materials/background/mtlxstandard_preview.outputs:surface>
+
+        def Shader "mtlxstandard_surface" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base
+            color3f inputs:base_color.connect = </materials/background/mtlxifequal2.outputs:out>
+            float inputs:coat
+            float inputs:coat_roughness
+            float inputs:emission
+            color3f inputs:emission_color
+            float inputs:metalness
+            float inputs:specular
+            color3f inputs:specular_color
+            float inputs:specular_IOR
+            float inputs:specular_roughness = 0.3
+            float inputs:transmission
+            token outputs:out
+            uniform float2 ui:nodegraph:node:pos = (25.7406, -1.5694)
+        }
+
+        def Shader "mtlxifequal2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_ifequal_color3"
+            color3f inputs:in1 = (0.2, 0.2, 0.2)
+            color3f inputs:in2.connect = </materials/background/mtlxifequal1.outputs:out>
+            float inputs:value1.connect = </materials/background/kma_rayimport2.outputs:out>
+            color3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (19.3581, -4.14587)
+        }
+
+        def NodeGraph "kma_rayimport2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            float outputs:out.connect = </materials/background/kma_rayimport2/karma_mtlx_ray_import.outputs:out>
+            uniform float2 ui:nodegraph:node:pos = (14.8412, -0.889402)
+
+            def Shader "karma_mtlx_ray_import" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_dot_float"
+                string inputs:note = "ray:level"
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (2.46893, 1.66053)
+            }
+        }
+
+        def Shader "mtlxifequal1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_ifequal_color3"
+            color3f inputs:in1.connect = </materials/background/mtlximage1.outputs:out>
+            color3f inputs:in2.connect = </materials/background/mtlxswitch2.outputs:out>
+            float inputs:value1.connect = </materials/background/mtlxadd6.outputs:out>
+            color3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (10.2951, -6.08592)
+        }
+
+        def Shader "mtlxadd6" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1.connect = </materials/background/mtlxadd5.outputs:out>
+            float inputs:in2.connect = </materials/background/mtlxif_vz_greater_0.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (7.85107, 4.57062)
+        }
+
+        def Shader "mtlxadd5" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1.connect = </materials/background/mtlxadd3.outputs:out>
+            float inputs:in2.connect = </materials/background/mtlxadd4.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (5.02382, 4.57062)
+        }
+
+        def Shader "mtlxadd3" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1.connect = </materials/background/mtlxif_vx_greatereq_0.outputs:out>
+            float inputs:in2.connect = </materials/background/mtlxif_vx_greatereq_1.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (2.43613, 5.40062)
+        }
+
+        def Shader "mtlxif_vx_greatereq_0" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_ifgreatereq_float"
+            float inputs:in2 = 1
+            float inputs:value1.connect = </materials/background/mtlxseparate3v1.outputs:outx>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-0.864768, 8.2425)
+        }
+
+        def Shader "mtlxseparate3v1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate3_vector3"
+            vector3f inputs:in.connect = </materials/background/mtlxadd2.outputs:out>
+            float outputs:outx
+            float outputs:outy
+            float outputs:outz
+            uniform float2 ui:nodegraph:node:pos = (-4.3571, 2.42179)
+        }
+
+        def Shader "mtlxadd2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_vector3"
+            vector3f inputs:in1.connect = </materials/background/mtlxmultiply1.outputs:out>
+            vector3f inputs:in2 = (0.5, 0.5, 0.5)
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-10.1935, 2.42179)
+        }
+
+        def Shader "mtlxmultiply1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_vector3"
+            vector3f inputs:in1.connect = </materials/background/mtlxadd1.outputs:out>
+            vector3f inputs:in2.connect = </materials/background/mtlxcombine4.outputs:out>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-12.8617, 2.42179)
+        }
+
+        def Shader "mtlxadd1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_vector3"
+            vector3f inputs:in1.connect = </materials/background/mtlxposition1.outputs:out>
+            vector3f inputs:in2.connect = </materials/background/mtlxcombine3.outputs:out>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-15.7841, 4.52247)
+        }
+
+        def Shader "mtlxposition1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_position_vector3"
+            string inputs:space = "space:ndc"
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-27.4879, 6.31826)
+        }
+
+        def Shader "mtlxcombine3" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/mtlxseparate2.outputs:outx>
+            float inputs:in2.connect = </materials/background/mtlxseparate2.outputs:outy>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-19.1158, 2.67591)
+        }
+
+        def Shader "mtlxseparate2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate2_vector2"
+            float2 inputs:in.connect = </materials/background/mtlxsubtract1.outputs:out>
+            float outputs:outx
+            float outputs:outy
+            uniform float2 ui:nodegraph:node:pos = (-21.3323, 2.67591)
+        }
+
+        def Shader "mtlxsubtract1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_subtract_vector2"
+            float2 inputs:in1 = (-0.5, -0.5)
+            float2 inputs:in2.connect = </materials/background.inputs:transl>
+            float2 outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-23.577, 2.67591)
+        }
+
+        def Shader "mtlxcombine4" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/mtlxseparate3.outputs:outx>
+            float inputs:in2.connect = </materials/background/mtlxseparate3.outputs:outy>
+            float inputs:in3 = 1
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-15.7841, -0.472325)
+        }
+
+        def Shader "mtlxseparate3" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate2_vector2"
+            float2 inputs:in.connect = </materials/background/mtlxdivide1.outputs:out>
+            float outputs:outx
+            float outputs:outy
+            uniform float2 ui:nodegraph:node:pos = (-18.0005, -0.472325)
+        }
+
+        def Shader "mtlxdivide1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_divide_vector2"
+            float2 inputs:in1 = (1, 1)
+            float2 inputs:in2.connect = </materials/background.inputs:scal>
+            float2 outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-20.2452, -0.472325)
+        }
+
+        def Shader "mtlxif_vx_greatereq_1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_ifgreatereq_float"
+            float inputs:in1 = 1
+            float inputs:value1.connect = </materials/background/mtlxseparate3v1.outputs:outx>
+            float inputs:value2 = 1
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-0.864768, 6.42669)
+        }
+
+        def Shader "mtlxadd4" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1.connect = </materials/background/mtlxif_vy_greatereq_0.outputs:out>
+            float inputs:in2.connect = </materials/background/mtlxif_vy_greatereq_1.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (2.43613, 3.56584)
+        }
+
+        def Shader "mtlxif_vy_greatereq_0" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_ifgreatereq_float"
+            float inputs:in2 = 1
+            float inputs:value1.connect = </materials/background/mtlxseparate3v1.outputs:outy>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-0.864768, 4.44345)
+        }
+
+        def Shader "mtlxif_vy_greatereq_1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_ifgreatereq_float"
+            float inputs:in1 = 1
+            float inputs:value1.connect = </materials/background/mtlxseparate3v1.outputs:outy>
+            float inputs:value2 = 1
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-0.864768, 2.7561)
+        }
+
+        def Shader "mtlxif_vz_greater_0" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_ifgreater_float"
+            float inputs:in2 = 1
+            float inputs:value1.connect = </materials/background/mtlxseparate3v1.outputs:outz>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-0.864768, 0.936618)
+        }
+
+        def Shader "mtlximage1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_image_color3"
+            color3f inputs:default = (0.2, 0.2, 0.2)
+            asset inputs:file.connect = </materials/background.inputs:bgplate>
+            float2 inputs:texcoord.connect = </materials/background/mtlxcombine6.outputs:out>
+            string inputs:uaddressmode = "constant"
+            string inputs:vaddressmode = "constant"
+            color3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (5.40863, -5.63592)
+        }
+
+        def Shader "mtlxcombine6" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine2_vector2"
+            float inputs:in1.connect = </materials/background/mtlxseparate3v4.outputs:outx>
+            float inputs:in2.connect = </materials/background/mtlxseparate3v4.outputs:outy>
+            float2 outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-4.3571, -1.30233)
+        }
+
+        def Shader "mtlxseparate3v4" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate3_vector3"
+            vector3f inputs:in.connect = </materials/background/mtlxadd2.outputs:out>
+            float outputs:outx
+            float outputs:outy
+            uniform float2 ui:nodegraph:node:pos = (-6.89093, -1.30233)
+        }
+
+        def Shader "mtlxswitch2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_switch_color3"
+            color3f inputs:in1.connect = </materials/background.inputs:offscreen_col>
+            color3f inputs:in2.connect = </materials/background/mtlximage2.outputs:out>
+            float inputs:which.connect = </materials/background.inputs:useoffscreentex>
+            color3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (5.40863, -13.251)
+        }
+
+        def Shader "mtlximage2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_image_color3"
+            asset inputs:file.connect = </materials/background.inputs:offscreentex>
+            float2 inputs:texcoord.connect = </materials/background/mtlxcombine2.outputs:out>
+            color3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (2.24807, -16.7501)
+        }
+
+        def Shader "mtlxcombine2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine2_vector2"
+            float inputs:in1.connect = </materials/background/mtlxadd8.outputs:out>
+            float inputs:in2.connect = </materials/background/mtlxadd9.outputs:out>
+            float2 outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-1.54275, -18.1907)
+        }
+
+        def Shader "mtlxadd8" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1.connect = </materials/background/mtlxmultiply10.outputs:out>
+            float inputs:in2 = 0.5
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-5.41076, -17.8953)
+        }
+
+        def Shader "mtlxmultiply10" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/mtlxatan2.outputs:out>
+            float inputs:in2 = 0.15915494
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-8.13207, -17.8953)
+        }
+
+        def Shader "mtlxatan2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_atan2_float"
+            float inputs:inx.connect = </materials/background/mtlxmultiply12.outputs:out>
+            float inputs:iny.connect = </materials/background/mtlxseparate3v3.outputs:outx>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-11.1464, -17.4712)
+        }
+
+        def Shader "mtlxseparate3v3" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate3_vector3"
+            vector3f inputs:in.connect = </materials/background/mtlxnormalize1.outputs:out>
+            float outputs:outx
+            float outputs:outy
+            float outputs:outz
+            uniform float2 ui:nodegraph:node:pos = (-16.0127, -18.4206)
+        }
+
+        def Shader "mtlxnormalize1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_normalize_vector3"
+            vector3f inputs:in.connect = </materials/background/mtlxcombine7.outputs:out>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-18.8778, -18.4206)
+        }
+
+        def Shader "mtlxcombine7" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/mtlxdotproduct4.outputs:out>
+            float inputs:in2.connect = </materials/background/mtlxdotproduct5.outputs:out>
+            float inputs:in3.connect = </materials/background/mtlxdotproduct6.outputs:out>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-21.7636, -18.4206)
+        }
+
+        def Shader "mtlxdotproduct4" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_dotproduct_vector3"
+            vector3f inputs:in1.connect = </materials/background/mtlxcombine5.outputs:out>
+            vector3f inputs:in2.connect = </materials/background/row1_const.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-25.635, -16.626)
+        }
+
+        def Shader "mtlxcombine5" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/mtlxdotproduct1.outputs:out>
+            float inputs:in2.connect = </materials/background/mtlxdotproduct2.outputs:out>
+            float inputs:in3.connect = </materials/background/mtlxdotproduct3.outputs:out>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-31.4812, -19.0922)
+        }
+
+        def Shader "mtlxdotproduct1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_dotproduct_vector3"
+            vector3f inputs:in1.connect = </materials/background/row1_transpose.outputs:out>
+            vector3f inputs:in2.connect = </materials/background/mtlxtransformvector1.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-34.6708, -17.3167)
+        }
+
+        def Shader "row1_transpose" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/mtlxseparate3v5.outputs:outx>
+            float inputs:in2.connect = </materials/background/mtlxseparate3v6.outputs:outx>
+            float inputs:in3.connect = </materials/background/mtlxseparate3v7.outputs:outx>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-39.0811, -16.8469)
+        }
+
+        def Shader "mtlxseparate3v5" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate3_vector3"
+            vector3f inputs:in.connect = </materials/background/row1.outputs:out>
+            float outputs:outx
+            float outputs:outy
+            float outputs:outz
+            uniform float2 ui:nodegraph:node:pos = (-42.9051, -16.476)
+        }
+
+        def Shader "row1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/cosycosz.outputs:out>
+            float inputs:in2.connect = </materials/background/sinxsinycosz_cosxsinz.outputs:out>
+            float inputs:in3.connect = </materials/background/cosxsinycosz_sinxsinz.outputs:out>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-45.9051, -16.8469)
+        }
+
+        def Shader "cosycosz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/cos_y.outputs:out>
+            float inputs:in2.connect = </materials/background/cos_z.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.3542, -12.8355)
+        }
+
+        def Shader "cos_y" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_cos_float"
+            float inputs:in.connect = </materials/background/_ry.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-61.5706, -20.0387)
+        }
+
+        def Shader "_ry" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/mtlxseparate3v2.outputs:outy>
+            float inputs:in2 = 0.0174533
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-65.7913, -18.9756)
+        }
+
+        def Shader "mtlxseparate3v2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate3_vector3"
+            vector3f inputs:in.connect = </materials/background.inputs:offscreentex_rotate>
+            float outputs:outx
+            float outputs:outy
+            float outputs:outz
+            uniform float2 ui:nodegraph:node:pos = (-69.4101, -19.0607)
+        }
+
+        def Shader "cos_z" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_cos_float"
+            float inputs:in.connect = </materials/background/mtlxmultiply2.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-61.5706, -22.7337)
+        }
+
+        def Shader "mtlxmultiply2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/mtlxseparate3v2.outputs:outz>
+            float inputs:in2 = 0.0174533
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-65.6463, -21.518)
+        }
+
+        def Shader "sinxsinycosz_cosxsinz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_subtract_float"
+            float inputs:in1.connect = </materials/background/sinxsinycosz.outputs:out>
+            float inputs:in2.connect = </materials/background/cosxsinz.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-49.7923, -16.8469)
+        }
+
+        def Shader "sinxsinycosz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/sinxsiny.outputs:out>
+            float inputs:in2.connect = </materials/background/cos_z.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-52.298, -16.8469)
+        }
+
+        def Shader "sinxsiny" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/sin_x.outputs:out>
+            float inputs:in2.connect = </materials/background/sin_y.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.4687, -17.6303)
+        }
+
+        def Shader "sin_x" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_sin_float"
+            float inputs:in.connect = </materials/background/_rx.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-61.5706, -15.946)
+        }
+
+        def Shader "_rx" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/mtlxseparate3v2.outputs:outx>
+            float inputs:in2 = 0.0174533
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-65.6463, -16.8003)
+        }
+
+        def Shader "sin_y" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_sin_float"
+            float inputs:in.connect = </materials/background/_ry.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-61.5706, -18.9013)
+        }
+
+        def Shader "cosxsinz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/sin_z.outputs:out>
+            float inputs:in2.connect = </materials/background/cos_x.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.4687, -19.2107)
+        }
+
+        def Shader "sin_z" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_sin_float"
+            float inputs:in.connect = </materials/background/mtlxmultiply2.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-61.5706, -21.5296)
+        }
+
+        def Shader "cos_x" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_cos_float"
+            float inputs:in.connect = </materials/background/_rx.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-61.5706, -17.3205)
+        }
+
+        def Shader "cosxsinycosz_sinxsinz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1.connect = </materials/background/cosxsinycosz.outputs:out>
+            float inputs:in2.connect = </materials/background/sinxsinz.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-49.7923, -18.7023)
+        }
+
+        def Shader "cosxsinycosz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/cosxsiny.outputs:out>
+            float inputs:in2.connect = </materials/background/cos_z.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-52.298, -18.7023)
+        }
+
+        def Shader "cosxsiny" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/cos_x.outputs:out>
+            float inputs:in2.connect = </materials/background/sin_y.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.3542, -24.5486)
+        }
+
+        def Shader "sinxsinz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/sin_x.outputs:out>
+            float inputs:in2.connect = </materials/background/sin_z.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.3542, -26.2545)
+        }
+
+        def Shader "mtlxseparate3v6" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate3_vector3"
+            vector3f inputs:in.connect = </materials/background/row2.outputs:out>
+            float outputs:outx
+            float outputs:outy
+            float outputs:outz
+            uniform float2 ui:nodegraph:node:pos = (-42.9051, -19.0888)
+        }
+
+        def Shader "row2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/cosysinz.outputs:out>
+            float inputs:in2.connect = </materials/background/sinxsinysinz_cosxcosz.outputs:out>
+            float inputs:in3.connect = </materials/background/cosxsinysinz_sinxcosz.outputs:out>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-45.9051, -19.5265)
+        }
+
+        def Shader "cosysinz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/cos_y.outputs:out>
+            float inputs:in2.connect = </materials/background/sin_z.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.3542, -14.5356)
+        }
+
+        def Shader "sinxsinysinz_cosxcosz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1.connect = </materials/background/sinxsinysinz.outputs:out>
+            float inputs:in2.connect = </materials/background/cosxcosz.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-49.7923, -20.5065)
+        }
+
+        def Shader "sinxsinysinz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/sinxsiny.outputs:out>
+            float inputs:in2.connect = </materials/background/sin_z.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-52.298, -20.5065)
+        }
+
+        def Shader "cosxcosz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/cos_x.outputs:out>
+            float inputs:in2.connect = </materials/background/cos_z.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.3542, -22.5226)
+        }
+
+        def Shader "cosxsinysinz_sinxcosz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_subtract_float"
+            float inputs:in1.connect = </materials/background/cosxsinysinz.outputs:out>
+            float inputs:in2.connect = </materials/background/sinxcosz.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-49.7923, -22.5226)
+        }
+
+        def Shader "cosxsinysinz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/cosxsinz.outputs:out>
+            float inputs:in2.connect = </materials/background/sin_y.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-52.7152, -22.5226)
+        }
+
+        def Shader "sinxcosz" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/sin_x.outputs:out>
+            float inputs:in2.connect = </materials/background/cos_z.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.3542, -27.9241)
+        }
+
+        def Shader "mtlxseparate3v7" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_separate3_vector3"
+            vector3f inputs:in.connect = </materials/background/row3.outputs:out>
+            float outputs:outx
+            float outputs:outy
+            float outputs:outz
+            uniform float2 ui:nodegraph:node:pos = (-42.9051, -22.1462)
+        }
+
+        def Shader "row3" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/_siny.outputs:out>
+            float inputs:in2.connect = </materials/background/sinxcosy.outputs:out>
+            float inputs:in3.connect = </materials/background/cosxcosy.outputs:out>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-45.9494, -22.6088)
+        }
+
+        def Shader "_siny" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/sin_y.outputs:out>
+            float inputs:in2 = -1
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.3542, -16.1937)
+        }
+
+        def Shader "sinxcosy" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/sin_x.outputs:out>
+            float inputs:in2.connect = </materials/background/cos_y.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-49.7923, -24.7993)
+        }
+
+        def Shader "cosxcosy" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/cos_x.outputs:out>
+            float inputs:in2.connect = </materials/background/cos_y.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-56.4687, -21.0323)
+        }
+
+        def Shader "mtlxtransformvector1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_transformvector_vector3"
+            string inputs:fromspace = "space:current"
+            vector3f inputs:in.connect = </materials/background/kma_rayimport1.outputs:out>
+            string inputs:tospace = "space:world"
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-39.0811, -12.6855)
+        }
+
+        def NodeGraph "kma_rayimport1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            vector3f outputs:out.connect = </materials/background/kma_rayimport1/karma_mtlx_ray_import.outputs:out>
+            uniform float2 ui:nodegraph:node:pos = (-43.7163, -12.541)
+
+            def Shader "karma_mtlx_ray_import" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_dot_vector3"
+                string inputs:note = "ray:direction"
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (2.46893, 1.66053)
+            }
+        }
+
+        def Shader "mtlxdotproduct2" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_dotproduct_vector3"
+            vector3f inputs:in1.connect = </materials/background/row2_transpose.outputs:out>
+            vector3f inputs:in2.connect = </materials/background/mtlxtransformvector1.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-34.6708, -19.3753)
+        }
+
+        def Shader "row2_transpose" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/mtlxseparate3v5.outputs:outy>
+            float inputs:in2.connect = </materials/background/mtlxseparate3v6.outputs:outy>
+            float inputs:in3.connect = </materials/background/mtlxseparate3v7.outputs:outy>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-39.0811, -19.2007)
+        }
+
+        def Shader "mtlxdotproduct3" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_dotproduct_vector3"
+            vector3f inputs:in1.connect = </materials/background/row3_transpose.outputs:out>
+            vector3f inputs:in2.connect = </materials/background/mtlxtransformvector1.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-34.6708, -21.4719)
+        }
+
+        def Shader "row3_transpose" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1.connect = </materials/background/mtlxseparate3v5.outputs:outz>
+            float inputs:in2.connect = </materials/background/mtlxseparate3v6.outputs:outz>
+            float inputs:in3.connect = </materials/background/mtlxseparate3v7.outputs:outz>
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-39.0811, -21.6288)
+        }
+
+        def Shader "row1_const" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in1 = -1
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-31.5907, -22.3019)
+        }
+
+        def Shader "mtlxdotproduct5" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_dotproduct_vector3"
+            vector3f inputs:in1.connect = </materials/background/mtlxcombine5.outputs:out>
+            vector3f inputs:in2.connect = </materials/background/row2_const.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-25.635, -18.5075)
+        }
+
+        def Shader "row2_const" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in2 = 1
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-31.5907, -24.2916)
+        }
+
+        def Shader "mtlxdotproduct6" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_dotproduct_vector3"
+            vector3f inputs:in1.connect = </materials/background/mtlxcombine5.outputs:out>
+            vector3f inputs:in2.connect = </materials/background/row3_const.outputs:out>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-25.635, -20.4222)
+        }
+
+        def Shader "row3_const" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_combine3_vector3"
+            float inputs:in3 = -1
+            vector3f outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-31.5907, -26.0964)
+        }
+
+        def Shader "mtlxmultiply12" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/mtlxseparate3v3.outputs:outz>
+            float inputs:in2 = -1
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-13.757, -17.2174)
+        }
+
+        def Shader "mtlxadd9" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_add_float"
+            float inputs:in1.connect = </materials/background/mtlxmultiply11.outputs:out>
+            float inputs:in2 = 0.5
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-5.41076, -19.4006)
+        }
+
+        def Shader "mtlxmultiply11" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_multiply_float"
+            float inputs:in1.connect = </materials/background/mtlxasin1.outputs:out>
+            float inputs:in2 = 0.31830987
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-8.13207, -19.5249)
+        }
+
+        def Shader "mtlxasin1" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_asin_float"
+            float inputs:in.connect = </materials/background/mtlxseparate3v3.outputs:outy>
+            float outputs:out
+            uniform float2 ui:nodegraph:node:pos = (-11.5709, -19.945)
+        }
+
+        def Shader "mtlxdisplacement" (
+            apiSchemas = ["NodeGraphNodeAPI"]
+        )
+        {
+            uniform token info:id = "ND_displacement_float"
+            token outputs:out
+            uniform float2 ui:nodegraph:node:pos = (25.7406, -6.23592)
+        }
+
+        def Shader "mtlxstandard_preview"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            float inputs:clearcoatRoughness = 0.1
+            color3f inputs:diffuseColor = (0.8, 0.8, 0.8)
+            float inputs:roughness = 0.3
+            color3f inputs:specularColor = (1, 1, 1)
+            token outputs:surface
+        }
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rendersettings" (
+        apiSchemas = ["KarmaRenderSettingsAPI", "HuskRenderSettingsAPI", "HuskRenderProductAPI"]
+    )
+    {
+        uniform token aspectRatioConformPolicy = "expandAperture"
+        rel camera = </cam>
+        uniform float4 dataWindowNDC = (0, 0, 1, 1)
+        uniform bool disableDepthOfField = 0
+        uniform bool disableMotionBlur = 0
+        string husk:default_delegate = "BRAY_HdKarma"
+        rel husk:orderedImageFilters
+        bool husk:scene_lights = 1
+        bool husk:scene_materials = 1
+        uniform token[] includedPurposes = ["default", "render"]
+        bool karma:global:abortmissingtexture = 0
+        bool karma:global:abortnogpudevice = 0
+        bool karma:global:autoraybias = 1
+        string karma:global:background_iprfilter = '["background", {"destination": "C", "foreground": "C", "shadows": "holdout_shadows", "backgroundfile": "./plate.pic", "backgroundscale": [1.0, 1.0], "backgroundtranslate": [0.0, 0.0], "extras": "holdout_diffuse"}]'
+        token karma:global:bucketorder = "Middle"
+        int karma:global:bucketsize = 32
+        float karma:global:cacheratio = 0.25
+        int karma:global:cachesize = 1000
+        float karma:global:colorlimit = 20
+        float karma:global:colorlimitindirect = 20
+        bool karma:global:colorlimitindlinked = 1
+        bool karma:global:constrainmaxrough = 1
+        token karma:global:convergence_mode = "Variance"
+        bool karma:global:dcm_excludeholdouts = 0
+        bool karma:global:dcm_usehitdist = 0
+        float karma:global:dicingqualityscale = 1
+        string karma:global:diffusecomponents = "diffuse"
+        custom bool karma:global:enable_dof = 1
+        string karma:global:exportcomponents = "diffuse reflect coat refract volume sss"
+        string karma:global:globalaovmaterial = ""
+        bool karma:global:guiding_enable = 0
+        int karma:global:guiding_samples = 0
+        bool karma:global:image_blur = 1
+        string karma:global:imagefilter = "[]"
+        token karma:global:imagemode = "Progressive"
+        token karma:global:light_sampling_mode = "Light Tree"
+        float karma:global:light_sampling_quality = 1
+        float karma:global:offscreenquality = 0.1
+        bool karma:global:outline_apply = 1
+        float3 karma:global:outline_color = (1, 0, 1)
+        bool karma:global:outline_debug = 0
+        float karma:global:outline_depthblend = 0
+        float karma:global:outline_depththreshold = 1
+        bool karma:global:outline_enable = 0
+        float karma:global:outline_fitmax = 1
+        float karma:global:outline_fitmin = 0
+        float karma:global:outline_intensity = 1
+        bool karma:global:outline_linesaovs = 0
+        bool karma:global:outline_mode = 0
+        bool karma:global:outline_primary = 1
+        int karma:global:outline_primary_samples = 4
+        int karma:global:outline_primary_stencils = 1
+        float karma:global:outline_radius = 1
+        bool karma:global:outline_secondary = 1
+        int karma:global:outline_secondary_samples = 4
+        int karma:global:outline_secondary_stencils = 1
+        int karma:global:pathtracedsamples = 256
+        string karma:global:pixelfilter = "box"
+        float karma:global:pixelfilterscale = 1
+        string karma:global:pixeloracle = '["uniform", {"minrays": -1, "plane": "C", "variance": 0.01, "ociomode": 0, "ociodisplay": "sRGB - Display", "ocioview": "", "ociocolorspace": "default"}]'
+        float karma:global:raybias = 0.001
+        string karma:global:refractcomponents = "refract"
+        int karma:global:russianroulette_cutoff = 2
+        int karma:global:samplesperpixel = 256
+        int karma:global:screendoorlimit = 4
+        string karma:global:ssscomponents = "sss"
+        token karma:global:use_background = "Auto"
+        bool karma:global:usecacheratio = 1
+        string karma:global:volumecomponents = "volume"
+        custom token karma:object:blurstyle = "Rotation Blur"
+        custom bool karma:object:causticsenable = 0
+        custom float karma:object:causticsroughnessclamp = 0.2
+        custom token karma:object:cull_backface = "Off"
+        custom int karma:object:curve_basis = 0
+        custom token karma:object:curve_style = "Rounded Curves"
+        custom float karma:object:diffuselimit = 1
+        custom float karma:object:diffusequality = 1
+        custom int karma:object:geosamples = 2
+        custom int karma:object:instance_samples = 2
+        custom token karma:object:instance_vblur = "No Velocity Blur"
+        custom bool karma:object:mblur = 1
+        custom token karma:object:point_style = "Spheres"
+        custom float karma:object:reflectlimit = 4
+        custom float karma:object:reflectquality = 1
+        custom float karma:object:refractlimit = 4
+        custom float karma:object:refractquality = 1
+        custom bool karma:object:samplesfromstage = 1
+        custom float karma:object:ssslimit = 1
+        custom float karma:object:sssquality = 1
+        custom string karma:object:truedisplace = "True Displacement"
+        custom int karma:object:varianceaa_maxsamples = 9
+        custom int karma:object:varianceaa_minsamples = 1
+        custom float karma:object:varianceaa_thresh = 0.01
+        custom token karma:object:vblur = "No Velocity Blur"
+        custom float karma:object:volumelimit = 0
+        custom float karma:object:volumequality = 1
+        custom float karma:object:volumesteprate = 0.25
+        custom float karma:object:volumevblurscale = 1
+        custom int karma:object:xformsamples = 2
+        uniform token[] materialBindingPurposes = ["full", ""]
+        uniform float pixelAspectRatio = 1
+        rel products = </Render/backgroundplate2_rs/Products/renderproduct>
+        uniform int2 resolution = (96, 96)
+    }
+
+    def Scope "Products"
+    {
+        def Scope "Vars"
+        {
+            def RenderVar "holdout_shadow" (
+                apiSchemas = ["HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "holdout_shadows"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "holdout_shadows"
+                uniform string sourceName = "holdouts;shadow;CDL"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "holdout_diffuse" (
+                apiSchemas = ["HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "holdout_diffuse"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3h"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "holdout_diffuse"
+                uniform string sourceName = "holdouts;CD.+L"
+                uniform token sourceType = "lpe"
+            }
+        }
+    }
+
+    def Scope "backgroundplate2_rs"
+    {
+        def Scope "Products"
+        {
+            def RenderProduct "renderproduct" (
+                apiSchemas = ["HuskRenderProductAPI"]
+            )
+            {
+                string driver:parameters:husk:artist = ""
+                string driver:parameters:husk:comment = ""
+                string driver:parameters:husk:hostname = ""
+                string driver:parameters:husk:OpenEXR:compression = "zips"
+                int driver:parameters:husk:OpenEXR:dwa_compression = 85
+                rel orderedVars = [
+                    </Render/backgroundplate2_rs/Vars/beauty>,
+                    </Render/Products/Vars/holdout_diffuse>,
+                    </Render/Products/Vars/holdout_shadow>,
+                ]
+                token productName = "out.exr"
+                uniform token productType = "raster"
+            }
+        }
+
+        def Scope "Vars"
+        {
+            def RenderVar "beauty" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color4f"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color4h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "C"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+        }
+    }
+}
+
