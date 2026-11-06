@@ -505,9 +505,16 @@ std::set<size_t> ends(Node const &n, std::vector<Event> const &ev, size_t i) {
 bool matches(std::string const &text, std::vector<Event> const &events, std::string *error) {
     try {
         std::string t = text;
-        stripPrefixes(t);
+        const uint8_t flags = stripPrefixes(t);
         auto root = Parser(t).parse();
-        return ends(*root, events, 0).count(events.size()) != 0;
+        // holdout; expressions take the paths that start with the holdout
+        // event, the others never (compile()).
+        const bool holdoutPath = !events.empty() && events[0].type == TypeHoldout;
+        if (holdoutPath != ((flags & OutputHoldout) != 0))
+            return false;
+        const size_t first = holdoutPath ? 1 : 0;
+        const std::vector<Event> rest(events.begin() + std::ptrdiff_t(first), events.end());
+        return ends(*root, rest, 0).count(rest.size()) != 0;
     } catch (ParseError const &e) {
         if (error)
             *error = e.what();

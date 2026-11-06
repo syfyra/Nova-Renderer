@@ -74,9 +74,11 @@ struct Limits {
 // error and no output; an automaton beyond `limits` fails every expression.
 Compiled compile(std::vector<std::string> const &expressions, Limits const &limits = {});
 
-// Reference matcher for tests: whether expression `text` (without prefixes)
-// accepts exactly `events`, by backtracking over the parsed expression (not
-// through the automaton). False with `error` if it does not parse.
+// Reference matcher for tests: whether expression `text` accepts exactly
+// `events`, by backtracking over the parsed expression (not through the
+// automaton); holdout; expressions accept the paths that start with the
+// holdout event (then the camera), the others only paths without it. False
+// with `error` if it does not parse.
 bool matches(std::string const &text, std::vector<Event> const &events, std::string *error = nullptr);
 
 } // namespace nova::lpe
