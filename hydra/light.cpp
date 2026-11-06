@@ -1,5 +1,6 @@
 #include "light.h"
 
+#include "colorSpace.h"
 #include "diagnostics.h"
 #include "instancer.h"
 #include "renderParam.h"
@@ -40,7 +41,24 @@ TF_DEFINE_PRIVATE_TOKENS(_tokens,
     ((flipNone, "None"))
     ((flipX, "Flip X"))
     ((flipY, "Flip Y"))
-    ((flipXY, "Flip XY")));
+    ((flipXY, "Flip XY"))
+    ((skyShaderId, "kma:light:shaderId"))
+    ((karmaSkyShader, "KMAskyDomeLight"))
+    ((skyResolution, "inputs:nova:light:skyResolution")));
+
+// Karma sky inputs by their input name: the attribute name first, then the
+// bare name (scene delegates differ in which they answer).
+VtValue skyInput(HdSceneDelegate *sd, SdfPath const &id, char const *name) {
+    VtValue v = sd->GetLightParamValue(id, TfToken(std::string("inputs:") + name));
+    return v.IsEmpty() ? sd->GetLightParamValue(id, TfToken(name)) : v;
+}
+
+template <typename T>
+T skyInput(HdSceneDelegate *sd, SdfPath const &id, char const *name, T fallback) {
+    return VtValue::Cast<T>(skyInput(sd, id, name)).template GetWithDefault<T>(fallback);
+}
+
+nova::Spectrum toSpectrum(GfVec3f const &v) { return {v[0], v[1], v[2]}; }
 
 // Casts, so e.g. a double-authored intensity is still read.
 template <typename T>
@@ -91,7 +109,80 @@ nova::LightType lightType(TfToken const &type) {
     return nova::LightType::Distant;
 }
 
+// Karma's sky dome (KarmaSkyDomeLight) reaches Hydra as a generic light;
+// it is recognised by its shader id or its sky inputs.
+bool isKarmaSky(HdSceneDelegate *sd, SdfPath const &id) {
+    const VtValue shader = sd->GetLightParamValue(id, _tokens->skyShaderId);
+    if (shader.IsHolding<TfToken>() && shader.UncheckedGet<TfToken>() == _tokens->karmaSkyShader)
+        return true;
+    return !skyInput(sd, id, "solar_altitude").IsEmpty() || !skyInput(sd, id, "turbidity").IsEmpty();
+}
+
 } // namespace
+
+void HdNovaLight::_SyncKarmaSky(HdSceneDelegate *sd, nova::LightDesc &desc) {
+    const SdfPath &id = GetId();
+    // Defaults: the KarmaSkyDomeLight schema's.
+    nova::KarmaSkyDesc sky;
+    sky.solarAltitude = skyInput<float>(sd, id, "solar_altitude", 45.0f);
+    sky.solarAzimuth = skyInput<float>(sd, id, "solar_azimuth", 0.0f);
+    sky.turbidity = skyInput<float>(sd, id, "turbidity", 3.0f);
+    sky.horizonBlur = skyInput<float>(sd, id, "horizon_blur", 0.5f);
+    sky.groundAlbedo = toSpectrum(skyInput<GfVec3f>(sd, id, "ground_albedo", GfVec3f(0.5f)));
+    sky.groundColor = toSpectrum(skyInput<GfVec3f>(sd, id, "ground_color", GfVec3f(0.0f)));
+    const VtValue compute = skyInput(sd, id, "computegroundcolor");
+    sky.computeGroundColor = compute.IsEmpty() || VtValue::Cast<int>(compute).GetWithDefault(1) != 0;
+    // Karma's sky ignores the colour temperature and normalize (measured).
+    const GfVec3f color = lightParam<GfVec3f>(sd, id, HdLightTokens->color, GfVec3f(1.0f));
+    sky.lightColor = toSpectrum(color) * (lightParam<float>(sd, id, HdLightTokens->intensity, 1.0f) *
+                                          std::exp2(lightParam<float>(sd, id, HdLightTokens->exposure, 0.0f)));
+    // Karma converts the model's linear Rec.709 into the rendering space.
+    const HdNovaColorTransform toRendering = HdNovaGetColorTransform("lin_rec709");
+    if (toRendering.kind == HdNovaColorTransform::Kind::Matrix)
+        std::copy(std::begin(toRendering.matrix), std::end(toRendering.matrix), std::begin(sky.skyToRendering));
+    else if (toRendering.kind == HdNovaColorTransform::Kind::Nonlinear)
+        HD_NOVA_WARN("the rendering space is not a linear transform of Linear Rec.709; the Karma sky %s is not "
+                     "converted to it",
+                     id.GetText());
+
+    // Latlong width (height: half). 2048 keeps the bilinear lookup within
+    // 0.05 % of the model away from the horizon and resolves the default
+    // 1 degree horizon fade in 6 rows; baking takes about 20 ms, the
+    // sampling distribution 30 ms (docs/design/M11-P3.md).
+    const int width = std::clamp(lightParam<int>(sd, id, _tokens->skyResolution, 2048), 16, 16384) & ~1;
+
+    // The texture holds the final radiance.
+    desc.type = nova::LightType::Dome;
+    desc.color = {1.0f, 1.0f, 1.0f};
+    desc.intensity = 1.0f;
+    desc.exposure = 0.0f;
+    desc.normalize = false;
+    desc.shaped = false;
+    if (!nova::isFinite(sky.lightColor) || !nova::isFinite(sky.groundColor)) {
+        HD_NOVA_WARN("the Karma sky %s has a non-finite color, intensity, exposure or ground color and emits nothing",
+                     id.GetText());
+        desc.intensity = 0.0f;
+        _skyImage.reset();
+        return;
+    }
+    if (!_skyImage || !(_sky == sky) || _skyWidth != width) {
+        _skyImage = nova::bakeKarmaSky(sky, width);
+        _sky = sky;
+        _skyWidth = width;
+    }
+    desc.texture = _skyImage;
+}
+
+void HdNovaLight::_RemoveLights(HdRenderParam *renderParam) {
+    if (_lightId == nova::kInvalidId)
+        return;
+    nova::Scene &scene = static_cast<HdNovaRenderParam *>(renderParam)->AcquireSceneForEdit();
+    scene.removeLight(_lightId);
+    for (nova::LightId extra : _instanceLightIds)
+        scene.removeLight(extra);
+    _instanceLightIds.clear();
+    _lightId = nova::kInvalidId;
+}
 
 HdNovaLight::HdNovaLight(SdfPath const &id, TfToken const &lightType) : HdLight(id), _lightType(lightType) {}
 
@@ -100,6 +191,20 @@ HdDirtyBits HdNovaLight::GetInitialDirtyBitsMask() const { return AllDirty; }
 void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBits *dirtyBits) {
     const SdfPath &id = GetId();
     if (id.IsEmpty()) { // fallback prim
+        *dirtyBits = Clean;
+        return;
+    }
+
+    // Generic lights: only Karma's sky dome is known.
+    const bool karmaSky = _lightType == HdPrimTypeTokens->light && isKarmaSky(sd, id);
+    if (_lightType == HdPrimTypeTokens->light && !karmaSky) {
+        if (!_warnedUnsupported) {
+            _warnedUnsupported = true;
+            HD_NOVA_WARN("%s is a light of a type Nova does not support (a generic Hydra light that is not a "
+                         "Karma Sky Dome Light); it is ignored",
+                         id.GetText());
+        }
+        _RemoveLights(renderParam);
         *dirtyBits = Clean;
         return;
     }
@@ -201,6 +306,8 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     for (int i = 0; i < 4; ++i)
         for (int j = 0; j < 4; ++j)
             desc.transform.m[i][j] = xf[i][j];
+    if (karmaSky)
+        _SyncKarmaSky(sd, desc);
 
     // The core turns non-finite emission off; say why the light is dark.
     const nova::Spectrum emission = desc.color * (desc.intensity * std::exp2(desc.exposure));
@@ -256,14 +363,8 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
 }
 
 void HdNovaLight::Finalize(HdRenderParam *renderParam) {
-    if (_lightId != nova::kInvalidId) {
-        nova::Scene &scene = static_cast<HdNovaRenderParam *>(renderParam)->AcquireSceneForEdit();
-        scene.removeLight(_lightId);
-        for (nova::LightId extra : _instanceLightIds)
-            scene.removeLight(extra);
-        _instanceLightIds.clear();
-        _lightId = nova::kInvalidId;
-    }
+    _RemoveLights(renderParam);
+    _skyImage.reset();
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

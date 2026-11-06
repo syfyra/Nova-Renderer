@@ -67,6 +67,7 @@ const TfTokenVector HdNovaRenderDelegate::SUPPORTED_SPRIM_TYPES = {
     HdPrimTypeTokens->rectLight,
     HdPrimTypeTokens->diskLight,
     HdPrimTypeTokens->cylinderLight,
+    HdPrimTypeTokens->light, // Karma's sky dome (docs/design/M11-P3.md)
 };
 
 const TfTokenVector HdNovaRenderDelegate::SUPPORTED_BPRIM_TYPES = {
@@ -1201,7 +1202,8 @@ HdSprim *HdNovaRenderDelegate::CreateSprim(TfToken const &typeId, SdfPath const 
         return new HdNovaMaterial(sprimId);
     if (typeId == HdPrimTypeTokens->distantLight || typeId == HdPrimTypeTokens->domeLight ||
         typeId == HdPrimTypeTokens->sphereLight || typeId == HdPrimTypeTokens->rectLight ||
-        typeId == HdPrimTypeTokens->diskLight || typeId == HdPrimTypeTokens->cylinderLight)
+        typeId == HdPrimTypeTokens->diskLight || typeId == HdPrimTypeTokens->cylinderLight ||
+        typeId == HdPrimTypeTokens->light)
         return new HdNovaLight(sprimId, typeId);
     TF_CODING_ERROR("Nova: unknown Sprim type %s", typeId.GetText());
     return nullptr;

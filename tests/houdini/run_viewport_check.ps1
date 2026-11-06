@@ -40,8 +40,11 @@
 # -Only velocity: tests/scenes/motion_velocity.usda, velocity blur of a quad
 # switched on and off live through the Render Geometry Settings LOP's Nova
 # tab, then Karma (60_velocity_before ... 63_velocity_karma).
+# -Only sky: a Karma Physical Sky LOP over a plane in Nova CPU, its solar
+# altitude and turbidity edited live, then Karma and Nova XPU (70_sky_nova ...
+# 73_sky_xpu_edit; log.json has the sky and ground means of each).
 # -Only karmasettings: the scene under a Karma Render Settings LOP in Nova
-# CPU (70_karma_settings); stdout.txt lists the render settings Nova
+# CPU (80_karma_settings); stdout.txt lists the render settings Nova
 # receives (TF_DEBUG HDNOVA_SETTINGS).
 #
 # -Prefs <dir> gives the instance its own preference directory (created if
