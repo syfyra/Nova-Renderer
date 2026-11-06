@@ -1,0 +1,25 @@
+{
+  "scene": "light_blocker",
+  "created": "2026-11-06",
+  "inputs": {
+    "scenes/light_blocker.usda": "13cc0cb72708f61c1b62806ef59642c8e525c65f",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/light_blocker.exr",
+  "sigma": "images/light_blocker.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.015954,
+    "flip_test_pair": 0.025893,
+    "relmse": 5e-05,
+    "global_z": [
+      -0.001,
+      -0.144,
+      -0.835,
+      2.823
+    ]
+  }
+}

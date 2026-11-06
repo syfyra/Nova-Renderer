@@ -589,12 +589,18 @@ NOVA_INLINE PathLightPmf pathPmf(const ShadeContext &c, const WaveQueues &q, uin
     return {c, q.prevP[p], q.prevN[p], Receiver(q.prevReceiver[p]), prevLinkSet(q.prevSet[p])};
 }
 
+// Where the ray of slot k (path p) gathers lights: their filters' site
+// (gatherSite(), docs/design/M11-P4.md).
+NOVA_INLINE LightFilterSite pathFilterSite(const ShadeContext &c, const WaveQueues &q, uint32_t k, uint32_t p) {
+    return gatherSite(q.bsdfPdf[p], q.prevP[p], q.rays.org[k], c.links.categories(prevLinkSet(q.prevSet[p])));
+}
+
 // cameraEnvironment, each light's share to its outputs.
 NOVA_NOINLINE Spectrum cameraEnvironmentLpe(const ShadeContext &c, const WaveQueues &q, uint32_t p, lpe::State state,
-                                            Vec3f dir, bool &visible) {
+                                            Vec3f org, Vec3f dir, bool &visible) {
     const Spectrum beta = q.beta[p];
     const uint32_t pixel = q.pixel[p];
-    return cameraEnvironment(c.lights, c.lightCount, dir, visible, [&](uint32_t i, const Spectrum &Li) {
+    return cameraEnvironment(c.lights, c.lightCount, org, dir, visible, [&](uint32_t i, const Spectrum &Li) {
         lpeDepositAll(*c.lpe, c.film, pixel, lpeLightStep(*c.lpe, state, i), beta * Li);
     });
 }
@@ -602,10 +608,11 @@ NOVA_NOINLINE Spectrum cameraEnvironmentLpe(const ShadeContext &c, const WaveQue
 // areaLightsAlongRay and escapedRadiance, each light's share as a part.
 template <typename Atten>
 NOVA_NOINLINE Spectrum areaLightsAlongRayLpe(const ShadeContext &c, WaveQueues &q, uint32_t p, lpe::State state,
-                                             Vec3f org, Vec3f dir, float tEnd, const Atten &atten) {
+                                             Vec3f org, Vec3f dir, float tEnd, const LightFilterSite &site,
+                                             const Atten &atten) {
     lpePartsClear(q);
     return areaLightsAlongRay(
-        c.lights, pathPmf(c, q, p), c.lightCount, c.lightTree, org, dir, tEnd, q.prevP[p], q.bsdfPdf[p],
+        c.lights, pathPmf(c, q, p), c.lightCount, c.lightTree, org, dir, tEnd, q.prevP[p], site, q.bsdfPdf[p],
         c.settings.lightStrategy, q.diffuseShare[p],
         [&](uint32_t i, const Spectrum &Li) { lpePartsAdd(*c.lpe, q, lpeLightStep(*c.lpe, state, i), Li); }, atten);
 }
@@ -616,10 +623,10 @@ NOVA_NOINLINE Spectrum areaLightsAlongRayLpe(const ShadeContext &c, WaveQueues &
 // throughput (gatherLights': with level-dependent volumes the light
 // transmittance, not the flight's weight).
 NOVA_NOINLINE Spectrum escapedRadianceLpe(const ShadeContext &c, WaveQueues &q, uint32_t p, lpe::State state,
-                                          Vec3f dir, const Spectrum &beta) {
+                                          Vec3f dir, const LightFilterSite &site, const Spectrum &beta) {
     lpePartsClear(q);
-    return escapedRadiance(c.lights, pathPmf(c, q, p), c.lightCount, dir, q.bsdfPdf[p], c.settings.lightStrategy,
-                           q.diffuseShare[p], [&](uint32_t i, const Spectrum &Li) {
+    return escapedRadiance(c.lights, pathPmf(c, q, p), c.lightCount, dir, site, q.bsdfPdf[p],
+                           c.settings.lightStrategy, q.diffuseShare[p], [&](uint32_t i, const Spectrum &Li) {
                                const lpe::State s = lpeLightStep(*c.lpe, state, i);
                                lpePartsAdd(*c.lpe, q, s, Li);
                                if (c.lpe->unit && !(c.lightSampler.pmf[i] > 0.0f))
@@ -629,11 +636,12 @@ NOVA_NOINLINE Spectrum escapedRadianceLpe(const ShadeContext &c, WaveQueues &q, 
 
 // The unoccluded; estimate of the lights at infinity that light sampling
 // never picks, along a continuation (direction, weight already in beta) of a
-// non-delta event or not.
+// non-delta event or not, gathered at `site`.
 NOVA_NOINLINE void lpeUnoccludedEnvironment(const ShadeContext &c, uint32_t pixel, lpe::State state, Vec3f dir,
-                                            float diffuseShare, const Spectrum &beta, bool nonDelta) {
+                                            const LightFilterSite &site, float diffuseShare, const Spectrum &beta,
+                                            bool nonDelta) {
     nova::lpeUnoccludedEnvironment(*c.lpe, c.lights, c.lightCount, c.lightSampler.pmf, c.film, pixel, state, dir,
-                                   diffuseShare, beta, nonDelta);
+                                   site, diffuseShare, beta, nonDelta);
 }
 
 // evalClosure and sampleClosure with the lobes' values, out of line.
@@ -1045,7 +1053,7 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 float alpha = 1.0f;
                 if (miss) {
                     bool visible = false;
-                    cameraEnvironment(c.lights, c.lightCount, dir, visible);
+                    cameraEnvironment(c.lights, c.lightCount, q.rays.org[k], dir, visible);
                     alpha = visible ? 1.0f : volumeAlpha();
                 } else if (!film.crypto.empty()) { // volumes are transparent to cryptomattes
                     cryptoAccumulate(c.scene, film, q.pixel[p], q.hitMesh[k], q.hitPrim[k]);
@@ -1059,8 +1067,8 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                     lpeDeposit(*lpe, film, q.pixel[p], lpe->program.step(state, lpe->backgroundSymbol), q.beta[p]);
                 bool visible = false;
                 const Spectrum beta = q.beta[p];
-                const Spectrum Le = state ? cameraEnvironmentLpe(c, q, p, state, dir, visible)
-                                          : cameraEnvironment(c.lights, c.lightCount, dir, visible);
+                const Spectrum Le = state ? cameraEnvironmentLpe(c, q, p, state, q.rays.org[k], dir, visible)
+                                          : cameraEnvironment(c.lights, c.lightCount, q.rays.org[k], dir, visible);
                 addRadiance(q, p, beta * Le);
                 film.alphaSum[q.pixel[p]] += visible ? 1.0f : q.media ? volumeAlpha() : 0.0f;
                 continue;
@@ -1077,14 +1085,16 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
             // The lights' densities are measured from the MIS vertex (prevP),
             // which a fake-caustic pass-through leaves behind the ray.
             const bool split = q.media && q.lightSplit;
+            // Where the ray gathers lights, for their filters (M11-P4).
+            const LightFilterSite site = pathFilterSite(c, q, k, p);
             if (hasAreaLights) {
                 const float tEnd = event && !split ? q.volumeT[k]
                                    : miss          ? q.rays.tMax[k]
                                                    : lightSearchLimit(q.hitT[k], c.tolerance);
                 const Spectrum Le =
-                    state ? areaLightsAlongRayLpe(c, q, p, state, q.rays.org[k], dir, tEnd, atten)
+                    state ? areaLightsAlongRayLpe(c, q, p, state, q.rays.org[k], dir, tEnd, site, atten)
                           : areaLightsAlongRay(c.lights, pathPmf(c, q, p), c.lightCount, c.lightTree, q.rays.org[k], dir,
-                                               tEnd, q.prevP[p], q.bsdfPdf[p], c.settings.lightStrategy,
+                                               tEnd, q.prevP[p], site, q.bsdfPdf[p], c.settings.lightStrategy,
                                                q.diffuseShare[p], NoLightSink{}, atten);
                 if (!isBlack(Le)) {
                     const Spectrum contribution = betaIn * Le;
@@ -1098,8 +1108,8 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 const Spectrum beta = split ? betaIn * q.lightT[k] : q.beta[p];
                 if (state)
                     lpeDeposit(*lpe, film, q.pixel[p], lpe->program.step(state, lpe->backgroundSymbol), beta);
-                const Spectrum Le = state ? escapedRadianceLpe(c, q, p, state, dir, beta)
-                                          : escapedRadiance(c.lights, pathPmf(c, q, p), c.lightCount, dir,
+                const Spectrum Le = state ? escapedRadianceLpe(c, q, p, state, dir, site, beta)
+                                          : escapedRadiance(c.lights, pathPmf(c, q, p), c.lightCount, dir, site,
                                                             q.bsdfPdf[p], c.settings.lightStrategy, q.diffuseShare[p]);
                 const Spectrum contribution = beta * Le;
                 const float scale = clampScale(contribution, c.clampEscape);
@@ -1228,7 +1238,7 @@ LightChoice chooseLight(const ShadeContext &c, WaveQueues &q, uint32_t p, float 
     if (n.light != kInvalidId)
         n.ls = c.lights[n.light].type == LightType::Volume
                    ? sampleVolumeLight(c, q, p, c.lights[n.light], origin, time, {ul.x, ul.y}, lightStream)
-                   : sampleLight(c.lights[n.light], origin, {ul.x, ul.y});
+                   : sampleLight(c.lights[n.light], origin, {ul.x, ul.y}, c.links.categories(set));
     return n;
 }
 
@@ -1340,8 +1350,10 @@ void pushShadowDomeRay(const ShadeContext &c, WaveQueues &q, uint32_t p, const P
                         : 0.0f;
     Spectrum Le;
     float weight = 0.0f;
-    const uint32_t li = sampleShadowLinkedDome(c.lights, c.shadowDomes, c.shadowDomeCount, pmf, wi, pdf,
-                                               c.settings.lightStrategy, diffuseShare, u, Le, weight);
+    const uint32_t li =
+        sampleShadowLinkedDome(c.lights, c.shadowDomes, c.shadowDomeCount, pmf, wi,
+                               LightFilterSite{pmf.p, c.links.categories(pmf.set)}, pdf, c.settings.lightStrategy,
+                               diffuseShare, u, Le, weight);
     if (li == kInvalidId)
         return;
     const Spectrum contribution = beta * Le;
@@ -1642,8 +1654,15 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                 q.beta[p] = beta;
                 if (lpe)
                     q.lpeState[p] = next;
-                if (next && lpe->unit && !intoSolid) // as light samples: none into solid glass
-                    lpeUnoccludedEnvironment(c, q.pixel[p], next, s.wi, s.diffuseShare, beta, !s.delta);
+                if (next && lpe->unit && !intoSolid) { // as light samples: none into solid glass
+                    // Gathered at this hit with the receiver set the
+                    // continuation will carry (gatherSite()).
+                    const uint32_t set = !s.delta                          ? receiverSet
+                                         : (q.prevSet[p] & kPrevSetDelta) ? c.scene.receiverSet(hit.mesh, q.hitInstance[k])
+                                                                          : prevLinkSet(q.prevSet[p]);
+                    lpeUnoccludedEnvironment(c, q.pixel[p], next, s.wi, LightFilterSite{origin, c.links.categories(set)},
+                                             s.diffuseShare, beta, !s.delta);
+                }
                 q.bsdfPdf[p] = s.delta ? -1.0f : s.pdf;
                 q.diffuseShare[p] = s.diffuseShare;
                 if (!s.delta) { // the MIS vertex: where this hit's light sample was chosen
@@ -1851,8 +1870,9 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
         q.beta[p] = beta;
         if (lpe)
             q.lpeState[p] = scattered;
-        if (scattered && lpe->unit)
-            lpeUnoccludedEnvironment(c, q.pixel[p], scattered, wi, 1.0f, beta, true);
+        if (scattered && lpe->unit) // volume events are receiver set 0
+            lpeUnoccludedEnvironment(c, q.pixel[p], scattered, wi, LightFilterSite{x, c.links.categories(0u)}, 1.0f,
+                                     beta, true);
         q.bsdfPdf[p] = pdf;
         q.diffuseShare[p] = 1.0f;
         q.prevP[p] = x;
@@ -1958,7 +1978,9 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
         }
         q.beta[p] = beta;
         if (state && lpe->unit)
-            lpeUnoccludedEnvironment(c, q.pixel[p], state, wi, 1.0f, beta, true);
+            lpeUnoccludedEnvironment(c, q.pixel[p], state, wi,
+                                     LightFilterSite{origin, c.links.categories(c.scene.receiverSet(w.mesh, w.instance))},
+                                     1.0f, beta, true);
         q.bsdfPdf[p] = pdf;
         q.diffuseShare[p] = 1.0f;
         q.prevP[p] = origin;

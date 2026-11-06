@@ -264,7 +264,38 @@ def light_scenes():
                                    "asset inputs:texture:file = @./assets/rect_pattern.exr@",
                                    "bool inputs:karma:light:renderlightgeo = 1"],
             translate=(-2.6, 1.6, -1.2), rotate=(-17, -141, 0))),
+        "light_blocker.usda": light_blocker(),
     }
+
+
+def light_blocker():
+    """Karma's blocker light filter (docs/design/M11-P4.md) on an area light:
+    a rotated box with rounded corners, a soft edge and a tinted factor across
+    the right ball and the ground, and an inverted soft sphere that darkens
+    everything outside it; a second light without filters. Generic UsdLux
+    LightFilter prims with Karma's shader id (the typed
+    KarmaBlockerLightFilter needs Karma's schema plugin), every input
+    authored. Both strategies of the area light (light samples, BSDF rays)
+    and the filters' product are compared."""
+    blocker = ['uniform token lightFilter:shaderId = "kma_lfilter_blocker"',
+               'uniform token kma:lightFilter:shaderId = "kma_lfilter_blocker"']
+    b = light("RectLight", "key", ["float inputs:intensity = 6", "float inputs:width = 1.5", "float inputs:height = 1.0",
+                                   "rel light:filters = [</World/blkBox>, </World/blkBall>]"],
+              translate=(1.2, 3.0, 2.0), rotate=(-60, 25, 0))
+    b += light("SphereLight", "fill", ["float inputs:intensity = 2", "float inputs:radius = 0.3"],
+               translate=(-2.5, 2.0, 1.5))
+    b += light("LightFilter", "blkBox", blocker + [
+        'token inputs:shape = "box"', "float inputs:width = 1.6", "float inputs:height = 1.4", "float inputs:depth = 1.0",
+        "float inputs:roundedcorner = 0.4", "float inputs:falloff = 0.3", "float inputs:intensity = 0.15",
+        "float inputs:exposure = 0", "color3f inputs:tint = (1, 0.6, 0.3)", "int inputs:invert = 0",
+        "float inputs:radius = 0.5", 'string inputs:space = "/World/blkBox"'],
+        translate=(1.1, 0.4, 0.4), rotate=(0, 30, 0))
+    b += light("LightFilter", "blkBall", blocker + [
+        'token inputs:shape = "sphere"', "float inputs:radius = 2.2", "float inputs:falloff = 0.4",
+        "float inputs:intensity = 0.25", "float inputs:exposure = 0", "color3f inputs:tint = (1, 1, 1)",
+        "int inputs:invert = 1", 'string inputs:space = "/World/blkBall"'],
+        translate=(-0.4, 0.5, -0.2))
+    return light_scene(b)
 
 
 def dome_sky():
