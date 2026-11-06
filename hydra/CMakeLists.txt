@@ -10,6 +10,7 @@ add_library(hdNova_objects OBJECT
     crypto.cpp
     denoise.cpp
     renderBuffer.cpp
+    medium.cpp
     mesh.cpp
     sphere.cpp
     curves.cpp
@@ -22,6 +23,7 @@ add_library(hdNova_objects OBJECT
     instancer.cpp
     camera.cpp
     light.cpp
+    lightFilter.cpp
     textureCache.cpp
     colorSpace.cpp
     textureConvert.cpp

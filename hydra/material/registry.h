@@ -27,6 +27,17 @@ struct HdNovaDisplacement {
 };
 using HdNovaDisplacementPtr = std::shared_ptr<const HdNovaDisplacement>;
 
+// What a material's network renders as (docs/design/M11-P5.md): it has a
+// surface terminal, a volume shader, and Karma's karma:volumeuniform on that
+// shader. Meshes and spheres with a volume shader become media bounded by
+// their surface (hydra/medium.h).
+struct HdNovaMaterialKind {
+    bool surface = false;
+    bool volume = false;
+    bool volumeUniform = false;
+    bool operator==(const HdNovaMaterialKind &) const = default;
+};
+
 class HdNovaMaterialRegistry {
 public:
     // The scene material of `path` (an empty path is the default material).
@@ -60,10 +71,16 @@ public:
     void SetVolumeFields(SdfPath const &material, std::vector<std::string> names);
     std::vector<std::string> GetVolumeFields(SdfPath const &material) const;
 
+    // The material's kind (M11-P5); a change queues the prims bound to it
+    // for a re-sync. Unknown materials: no surface, no volume.
+    void SetMaterialKind(SdfPath const &material, HdNovaMaterialKind kind);
+    HdNovaMaterialKind GetMaterialKind(SdfPath const &material) const;
+
 private:
     mutable std::mutex _displacementMutex;
     std::unordered_map<SdfPath, HdNovaDisplacementPtr, SdfPath::Hash> _displacements;
     std::unordered_map<SdfPath, std::vector<std::string>, SdfPath::Hash> _volumeFields;
+    std::unordered_map<SdfPath, HdNovaMaterialKind, SdfPath::Hash> _kinds;
     std::unordered_map<SdfPath, std::set<SdfPath>, SdfPath::Hash> _meshesOfMaterial;
     std::unordered_map<SdfPath, std::vector<SdfPath>, SdfPath::Hash> _materialsOfMesh;
     std::set<SdfPath> _pendingMeshes;

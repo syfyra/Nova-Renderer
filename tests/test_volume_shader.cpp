@@ -154,8 +154,9 @@ TEST_CASE("Interval runs bound every value of a program", "[volume][shader][inte
     IrGraph n;
     IrBuilder nb(n);
     const Ref P = nb.global(Global::P);
-    vout(nb, volume_field::scattering, 1, nb.mul(nb.noise(P, 1), nb.constant(0.0f)));
-    vout(nb, volume_field::absorption, 1, nb.add(nb.noise(P, 1), nb.constant(1.0f)));
+    // Worley has no rule (noise has one since M11-P5).
+    vout(nb, volume_field::scattering, 1, nb.mul(nb.worley(P, nb.constant(1.0f), 0, 1), nb.constant(0.0f)));
+    vout(nb, volume_field::absorption, 1, nb.add(nb.worley(P, nb.constant(1.0f), 0, 1), nb.constant(1.0f)));
     const CompileResult nr = compile(n);
     REQUIRE(nr.program);
     REQUIRE(nr.program->volume);
@@ -278,8 +279,9 @@ TEST_CASE("Cells without an interval bound take a sampled estimate", "[volume][s
     IrGraph g;
     IrBuilder b(g);
     const Ref d = b.primvar("density", 1, b.constant(0.0f));
-    // Noise has no interval rule.
-    const Ref n = b.add(b.mul(b.noise(b.global(Global::P), 1), b.constant(0.25f)), b.constant(1.0f));
+    // Worley has no interval rule.
+    const Ref n = b.add(b.mul(b.worley(b.global(Global::P), b.constant(1.0f), 0, 1), b.constant(0.25f)),
+                        b.constant(1.0f));
     vout(b, volume_field::scattering, 3, b.convert(b.mul(d, n), 3));
     MaterialDesc material;
     material.program = compile(g).program;

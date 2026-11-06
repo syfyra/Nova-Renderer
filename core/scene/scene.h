@@ -21,6 +21,7 @@
 #include <mutex>
 #include <optional>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -97,6 +98,7 @@ struct VolumeRecord {
     // the world bounds over the shutter (lower > upper: nothing to render).
     int32_t reference = -1;
     Affine3f indexToObject;
+    Affine3f objectToIndex; // its inverse
     MajorantLayout layout;
     std::vector<float> majorant;
     // The extinction bound alone, where emitting cells raised `majorant` to
@@ -108,11 +110,12 @@ struct VolumeRecord {
     // default volume, D6). Per field the map from the volume's object space
     // into its index space; per primvar read of the program
     // (Program::primvarBindings) the field of each component (-1: the read's
-    // fallback).
+    // fallback; -2 - i: constantValues[i], a shell's constant primvar).
     MaterialId material = kDefaultMaterialId;
     const shading::Program *program = nullptr;
     std::vector<Affine3f> fieldObjectToIndex;
     std::vector<std::array<int32_t, 4>> bindings;
+    std::vector<float> constantValues;
     // Cells whose extinction has no interval bound (D7): a sampled estimate,
     // which the tracker tolerates (D8); the host warns.
     uint32_t estimatedCells = 0;
@@ -219,6 +222,11 @@ public:
     LightId createLight();
     void updateLight(LightId id, const LightDesc &desc);
     void removeLight(LightId id);
+    // Light filters (docs/design/M11-P4.md), by key: lights list the keys of
+    // theirs (LightDesc::filters), resolved at commit(), so filters and
+    // lights may arrive in any order.
+    void setLightFilter(const std::string &key, const LightFilterDesc &desc);
+    void removeLightFilter(const std::string &key);
 
     // Volumes (docs/design/M8.md). The majorants are built at commit().
     VolumeId createVolume();
@@ -430,6 +438,12 @@ private:
     std::vector<uint32_t> m_shadowDomes;        // shadow-linked dome lights
     bool m_linking = false, m_shadowLinking = false, m_linksDirty = false;
     void computeLinks();
+    // Light filters (M11-P4): by key; the records of every light's filters
+    // in order (LightData::filters points in here), each with its filter's
+    // filterLink category.
+    std::unordered_map<std::string, LightFilterDesc> m_lightFilters;
+    std::vector<LightFilterData> m_lightFilterData;
+    std::vector<std::string> m_lightFilterLinks; // parallel to m_lightFilterData
     size_t m_hostLightCount = 0;
     // Emissive triangles (M9 D14): lights from m_emitterBegin on; rebuilt
     // when a treated mesh, its materials or the lights before them change.

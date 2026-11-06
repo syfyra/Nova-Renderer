@@ -190,9 +190,10 @@ __global__ void lightHeadersCheck(float *out, const LightData *lights, uint32_t 
     const LightSample ls = sampleLight(light, p, {0.25f, 0.5f});
     float sum = ls.pdf * pmf + tree.pmf(0u, p, n, Receiver::TwoSided, 0u) + emitterPdf(light, p, light.position);
     const DeviceLightPmf pm{&tree};
-    const Spectrum L = areaLightsAlongRay(lights, pm, count, &tree, p, Vec3f{0.0f, 0.0f, -1.0f}, 10.0f, p, 0.5f,
+    const LightFilterSite site{p, 0u};
+    const Spectrum L = areaLightsAlongRay(lights, pm, count, &tree, p, Vec3f{0.0f, 0.0f, -1.0f}, 10.0f, p, site, 0.5f,
                                           LightStrategy::MIS) +
-                       escapedRadiance(lights, pm, count, n, 0.5f, LightStrategy::MIS);
+                       escapedRadiance(lights, pm, count, n, site, 0.5f, LightStrategy::MIS);
     Vec2f bary;
     sum += sampleTriangle(light.position, light.axisU, light.axisV, p, {0.5f, 0.5f}, bary).pdf + bary.x;
     out[i] = sum + luminance(L) + luminance(ls.Li);

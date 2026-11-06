@@ -1,0 +1,149 @@
+#usda 1.0
+(
+    doc = "Built with the Karma Blocker Light Filter LOP (karmablockerlightfilter) in hython; tests/husk/check_karma_filters.py (docs/design/M11-P4.md)"
+    framesPerSecond = 24
+    metersPerUnit = 1
+    timeCodesPerSecond = 24
+)
+
+def "m"
+{
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </m/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def Material "mirror"
+    {
+        token outputs:mtlx:surface.connect = </m/mirror/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:metalness = 1
+            float inputs:specular = 0
+            float inputs:specular_roughness = 0
+            token outputs:out
+        }
+    }
+}
+
+def "World"
+{
+    def Mesh "ground" (
+        apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        float3[] extent = [(-4, 0, -4), (4, 0, 4)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </m/grey>
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (
+            interpolation = "vertex"
+        )
+        point3f[] points = [(-4, 0, 4), (4, 0, 4), (4, 0, -4), (-4, 0, -4)]
+    }
+
+    def Camera "cam"
+    {
+        float2 clippingRange = (0.1, 100)
+        float horizontalAperture = 80
+        token projection = "orthographic"
+        float verticalAperture = 80
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        double3 xformOp:translate = (0, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def "lights"
+{
+    def DistantLight "sun"
+    {
+        float inputs:angle = 0
+        float inputs:intensity = 1
+        bool inputs:normalize = 0
+        rel light:filters = </lightFilters/blk>
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+}
+
+def "Render"
+{
+    def RenderSettings "s"
+    {
+        rel camera = </World/cam>
+        custom float karma:global:colorlimit = 1000000000
+        custom float karma:global:colorlimitindirect = 1000000000
+        custom int karma:global:pathtracedsamples = 16
+        custom string karma:global:pixelfilter = "box"
+        custom float karma:global:pixelfilterscale = 0.000001
+        custom string karma:global:pixeloracle = "uniform"
+        custom int karma:global:samplesperpixel = 16
+        custom float nova:clampIndirect = 0
+        custom token nova:pixelFilter = "box"
+        custom float nova:pixelFilterScale = 0
+        custom int nova:samples = 16
+        rel products = </Render/p>
+        uniform int2 resolution = (320, 320)
+    }
+
+    def RenderProduct "p"
+    {
+        rel orderedVars = </Render/Vars/C>
+        token productName = "out.exr"
+    }
+
+    def "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            custom token driver:parameters:aov:format = "color4f"
+            custom string driver:parameters:aov:name = "C"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+        }
+    }
+}
+
+def Xform "lightFilters"
+{
+    def KarmaBlockerLightFilter "blk"
+    {
+        rel collection:filterLink:excludes
+        uniform token collection:filterLink:expansionRule = "explicitOnly"
+        uniform bool collection:filterLink:includeRoot = 0
+        rel collection:filterLink:includes
+        float inputs:exposure = 0
+        float inputs:falloff = 0.5
+        float inputs:intensity = 0.5
+        int inputs:invert = 1
+        float inputs:radius = 1
+        token inputs:shape = "sphere"
+        string inputs:space = "/lightFilters/blk"
+        color3f inputs:tint = (1, 1, 1)
+        uniform token kma:lightFilter:shaderId = "kma_lfilter_blocker"
+        uniform token lightFilter:shaderId = "kma_lfilter_blocker"
+        rel proxyPrim
+        uniform token purpose = "default"
+        token visibility = "inherited"
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (0, 0, 0)
+        float3 xformOp:translate:pivot = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:translate:pivot", "xformOp:rotateXYZ", "xformOp:scale", "!invert!xformOp:translate:pivot"]
+    }
+}
+

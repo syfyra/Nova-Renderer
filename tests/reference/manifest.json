@@ -77,6 +77,14 @@
       }
     },
     {
+      "name": "light_blocker",
+      "file": "scenes/light_blocker.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma"
+      }
+    },
+    {
       "name": "dome_sky",
       "file": "scenes/dome_sky.usda",
       "settings": "/Render/ref",
@@ -964,6 +972,13 @@
     {
       "name": "pyro_bare_vl4",
       "file": "scenes/pyro_bare_vl4.usda",
+      "settings": "/Render/ref",
+      "test": {"spp": 256},
+      "reference": {"type": "karma"}
+    },
+    {
+      "name": "fogbox",
+      "file": "scenes/fogbox.usda",
       "settings": "/Render/ref",
       "test": {"spp": 256},
       "reference": {"type": "karma"}

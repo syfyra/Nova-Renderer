@@ -524,6 +524,21 @@ void Scene::removeLight(LightId id) {
     ++m_version;
 }
 
+void Scene::setLightFilter(const std::string &key, const LightFilterDesc &desc) {
+    std::lock_guard lock(m_mutex);
+    m_lightFilters[key] = desc;
+    m_lightsDirty = true; // the lights' records are rebuilt with their filters
+    ++m_version;
+}
+
+void Scene::removeLightFilter(const std::string &key) {
+    std::lock_guard lock(m_mutex);
+    if (m_lightFilters.erase(key) == 0)
+        return;
+    m_lightsDirty = true;
+    ++m_version;
+}
+
 VolumeId Scene::createVolume() {
     std::lock_guard lock(m_mutex);
     VolumeId id;
@@ -652,8 +667,10 @@ void Scene::setMeshCategories(MeshId id, std::vector<std::string> categories,
 // (distinct combinations numbered, 0 = none, as many as there are); per
 // light the bit of its category (kLinksEveryone if its link is empty), so a
 // light lights a set exactly when the set holds its category
-// (light_tree.h). Shadow-link categories number separately; each instance
-// records which it is in. At most 64 categories of each.
+// (light_tree.h). Light filters' filterLink categories (M11-P4) number with
+// the light links, so receiver sets hold them too; a filter acts on a set
+// that holds its bit. Shadow-link categories number separately; each
+// instance records which it is in. At most 64 categories of each.
 void Scene::computeLinks() {
     m_linksDirty = false;
     std::unordered_map<std::string, int> linkCats, shadowCats;
@@ -662,6 +679,15 @@ void Scene::computeLinks() {
             linkCats.emplace(link, int(linkCats.size()));
         if (!shadow.empty() && !shadowCats.count(shadow))
             shadowCats.emplace(shadow, int(shadowCats.size()));
+    }
+    for (const std::string &link : m_lightFilterLinks)
+        if (!link.empty() && !linkCats.count(link))
+            linkCats.emplace(link, int(linkCats.size()));
+    for (size_t i = 0; i < m_lightFilterData.size(); ++i) {
+        const auto it = linkCats.find(m_lightFilterLinks[i]);
+        m_lightFilterData[i].link = m_lightFilterLinks[i].empty() || it == linkCats.end() || it->second >= 64
+                                        ? kLinksEveryone
+                                        : uint64_t(1) << it->second;
     }
     m_shadowDomes.clear();
     for (size_t i = 0; i < m_lightLinks.size(); ++i) { // emissive triangles (after them) link everything
@@ -806,10 +832,24 @@ bool Scene::commit() {
         m_lightData.clear();
         m_lightTags.clear();
         m_lightLinks.clear();
+        // Light filters (M11-P4): each light's records in order, pointed at
+        // once the array is complete.
+        m_lightFilterData.clear();
+        m_lightFilterLinks.clear();
+        std::vector<uint32_t> filterBegin;
         for (const std::optional<LightDesc> &light : m_lights) { // id order keeps sampling deterministic
             if (!light || !light->visible)
                 continue;
             LightData data = makeLightData(*light);
+            filterBegin.push_back(uint32_t(m_lightFilterData.size()));
+            for (const std::string &key : light->filters) {
+                const auto it = m_lightFilters.find(key);
+                if (it == m_lightFilters.end())
+                    continue; // not (yet) a filter: no effect
+                m_lightFilterData.push_back(makeLightFilterData(it->second));
+                m_lightFilterLinks.push_back(it->second.link);
+            }
+            data.filterCount = uint32_t(m_lightFilterData.size()) - filterBegin.back();
             if (data.texels && (data.type == LightType::Dome || data.type == LightType::Rect)) {
                 TextureData &t = textureData(light->texture);
                 if (data.type == LightType::Dome) {
@@ -828,6 +868,8 @@ bool Scene::commit() {
             m_lightTags.push_back(light->lpeTag);
             m_lightLinks.emplace_back(light->lightLink, light->shadowLink);
         }
+        for (size_t i = 0; i < m_lightData.size(); ++i)
+            m_lightData[i].filters = m_lightData[i].filterCount > 0 ? m_lightFilterData.data() + filterBegin[i] : nullptr;
         m_hostLightCount = m_lightData.size();
         m_textures = std::move(textures);
         m_lightsDirty = false;
@@ -931,6 +973,8 @@ bool Scene::commit() {
         };
         for (size_t i = 0; i < power.size(); ++i) {
             power[i] = lightPower(m_lightData[i], m_sceneRadius) * m_lightData[i].selection;
+            if (m_lightData[i].filterCount > 0) // filters that brighten (M11-P4)
+                power[i] *= lightFilterBound(m_lightData[i]);
             (atInfinity(i) ? infinite : local) += power[i];
         }
         // The light tree (docs/design/M9.md D11, D12): every bounded light by

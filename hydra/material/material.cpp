@@ -94,6 +94,29 @@ std::vector<std::string> volumeFieldsOf(nova::MaterialDesc const &desc) {
     return names;
 }
 
+// What the material renders as (docs/design/M11-P5.md): a surface terminal
+// (in any render context: Karma takes each terminal from its own context,
+// e.g. mtlx:surface beside kma:volume), a volume shader, and Karma's
+// karma:volumeuniform on the volume terminal's shader (the Karma Uniform
+// Volume recipe puts it there).
+HdNovaMaterialKind kindOf(HdNovaNetworkSource const &src, nova::MaterialDesc const &desc, bool anySurface) {
+    HdNovaMaterialKind kind;
+    kind.surface = anySurface || src.net.terminals.count(HdMaterialTerminalTokens->surface) > 0;
+    kind.volume = desc.program && desc.program->volume;
+    const auto terminal = src.net.terminals.find(HdMaterialTerminalTokens->volume);
+    if (kind.volume && terminal != src.net.terminals.end()) {
+        const auto node = src.net.nodes.find(terminal->second.upstreamNode);
+        if (node != src.net.nodes.end()) {
+            const auto p = node->second.parameters.find(TfToken("karma:volumeuniform"));
+            if (p != node->second.parameters.end()) {
+                const VtValue v = VtValue::Cast<double>(p->second);
+                kind.volumeUniform = v.IsHolding<double>() && v.UncheckedGet<double>() != 0.0;
+            }
+        }
+    }
+    return kind;
+}
+
 const TfToken vexContext("vex");
 
 // The VEX shader on the network's surface terminal, if it is one.
@@ -252,6 +275,14 @@ void HdNovaMaterial::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDir
         return; // e.g. a recook that produced the same material
     registry.SetDisplacement(id, vexDisplacement ? vexDisplacement : displacementOf(desc));
     registry.SetVolumeFields(id, volumeFieldsOf(desc));
+    bool anySurface = false;
+    for (size_t i = 0; translated && !anySurface && i < chain.size(); ++i) {
+        HdNovaNetworkSource other;
+        anySurface = (sceneIndex ? HdNovaReadNetwork(sceneIndex, id, chain[i], &other)
+                                 : (i == 0 && HdNovaReadNetworkFromDelegate(sd, id, &other))) &&
+                     other.net.terminals.count(HdMaterialTerminalTokens->surface) > 0;
+    }
+    registry.SetMaterialKind(id, translated ? kindOf(_source, desc, anySurface) : HdNovaMaterialKind{});
     _appliedVexDisplacement = vexDisplacementHash;
     nova::Scene &scene = param->AcquireSceneForEdit();
     desc.cryptoId = param->GetCryptoNames().Note("__materialname", id.GetString()); // cryptomatte (D10)
@@ -268,6 +299,7 @@ void HdNovaMaterial::Finalize(HdRenderParam *renderParam) {
     auto *param = static_cast<HdNovaRenderParam *>(renderParam);
     param->GetMaterials().SetDisplacement(GetId(), nullptr);
     param->GetMaterials().SetVolumeFields(GetId(), {});
+    param->GetMaterials().SetMaterialKind(GetId(), {});
     nova::Scene &scene = param->AcquireSceneForEdit();
     scene.updateMaterial(param->GetMaterials().Acquire(GetId(), scene), nova::defaultMaterial());
     _hasApplied = false;
