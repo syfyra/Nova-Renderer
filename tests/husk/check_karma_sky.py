@@ -391,7 +391,8 @@ def main():
     linked = linked.replace("bool inputs:karma:light:renderlightgeo = 1",
                             "bool inputs:karma:light:renderlightgeo = 1\n"
                             "        rel collection:lightLink:excludes = </rig/patch>", 1)
-    check(linked.count("collection:lightLink") == 2, "light-link variant of sd_default written")
+    check('"CollectionAPI:lightLink"' in linked and "collection:lightLink:excludes" in linked,
+          "light-link variant of sd_default written")
     usd = os.path.join(args.out, "sd_link.usda")
     with open(usd, "w", encoding="utf-8", newline="\n") as f:
         f.write(linked)
