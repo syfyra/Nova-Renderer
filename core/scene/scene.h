@@ -104,6 +104,7 @@ struct VolumeRecord {
     // the world bounds over the shutter (lower > upper: nothing to render).
     int32_t reference = -1;
     Affine3f indexToObject;
+    Affine3f objectToIndex; // its inverse
     MajorantLayout layout;
     std::vector<float> majorant;
     // The extinction bound alone, where emitting cells raised `majorant` to
@@ -115,11 +116,12 @@ struct VolumeRecord {
     // default volume, D6). Per field the map from the volume's object space
     // into its index space; per primvar read of the program
     // (Program::primvarBindings) the field of each component (-1: the read's
-    // fallback).
+    // fallback; -2 - i: constantValues[i], a shell's constant primvar).
     MaterialId material = kDefaultMaterialId;
     const shading::Program *program = nullptr;
     std::vector<Affine3f> fieldObjectToIndex;
     std::vector<std::array<int32_t, 4>> bindings;
+    std::vector<float> constantValues;
     // Cells whose extinction has no interval bound (D7): a sampled estimate,
     // which the tracker tolerates (D8); the host warns.
     uint32_t estimatedCells = 0;

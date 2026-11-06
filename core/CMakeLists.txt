@@ -32,6 +32,7 @@ add_library(nova_core STATIC
     geometry/curves.cpp
     volume/majorant.cpp
     volume/build.cpp
+    volume/shell.cpp
     shading/interval.cpp
     integrator/volume_eval.cpp
     integrator/volume_media.cpp

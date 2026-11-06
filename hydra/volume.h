@@ -18,6 +18,12 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+// A volume's per-object settings from its constant primvars (volumes and
+// media bounded by surfaces, docs/design/M11-P5.md): the Volume ray limit
+// (nova:object:volumeLimit, else karma:object:volumelimit), the LPE tag and
+// the light source settings (D13).
+void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc);
+
 class HdNovaVolume final : public HdVolume {
 public:
     explicit HdNovaVolume(SdfPath const &id);

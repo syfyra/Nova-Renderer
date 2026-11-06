@@ -183,6 +183,41 @@ void HdNovaSphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     const HdNovaShutter shutter = param->GetShutter();
     const unsigned maxSteps = param->GetMaxMotionSteps();
     const bool newShutter = !(shutter == _sampledShutter) || maxSteps != _sampledMaxSteps;
+
+    // A medium bounded by the sphere (docs/design/M11-P5.md): the Fog Box's
+    // sphere shape. The radius at the shutter's middle (transform motion is
+    // the volume's).
+    if (HdNovaIsMedium(sd, id, GetMaterialId(), param->GetMaterials())) {
+        if (_meshId != nova::kInvalidId) {
+            param->AcquireSceneForEdit().removeMesh(_meshId);
+            _meshId = nova::kInvalidId;
+        }
+        param->ForgetDisplacedMesh(id);
+        param->GetMaterials().BindMesh(id, {GetMaterialId()});
+        if (!GetInstancerId().IsEmpty()) {
+            if (!_warnedMediumInstances)
+                HD_NOVA_WARN("medium %s: instanced media bounded by surfaces are not supported; it renders nothing",
+                             id.GetText());
+            _warnedMediumInstances = true;
+            _medium.Remove(*param);
+        } else {
+            const bool fresh = !_medium.Active();
+            nova::MediumShellPtr shell;
+            if (fresh || newShutter || (bits & (HdChangeTracker::DirtyPoints | HdChangeTracker::DirtyTopology |
+                                                 HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyExtent))) {
+                const std::vector<float> radii = sampleRadius(sd, id, shutter, maxSteps);
+                shell = nova::makeSphereShell(nova::Vec3f{0.0f, 0.0f, 0.0f}, radii[(radii.size() - 1) / 2]);
+            }
+            _medium.Sync(sd, *param, id, GetMaterialId(), IsVisible(), GetPrimId(), shell,
+                         fresh || newShutter || (bits & HdChangeTracker::DirtyTransform));
+        }
+        _sampledShutter = shutter;
+        _sampledMaxSteps = maxSteps;
+        *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+        return;
+    }
+    if (_medium.Active())
+        _medium.Remove(*param);
     const bool geometryDirty =
         first || newShutter ||
         (bits & (HdChangeTracker::DirtyPoints | HdChangeTracker::DirtyTopology | HdChangeTracker::DirtyPrimvar |
@@ -347,6 +382,7 @@ void HdNovaSphere::Finalize(HdRenderParam *renderParam) {
         param->AcquireSceneForEdit().removeMesh(_meshId);
         _meshId = nova::kInvalidId;
     }
+    _medium.Remove(*param);
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

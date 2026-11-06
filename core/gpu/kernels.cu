@@ -98,8 +98,9 @@ NOVA_INLINE VolumePoint evaluateVolume(const GpuVolume &v, const ShadeGlobals &g
                            volumeField(v, v.velocity[2], p)} *
                          dt;
     }
-    if (!v.program) { // the default volume (M8 D6)
-        const float f = volumeField(v, v.reference, lookup), d = f < 0.0f ? 0.0f : f;
+    if (!v.program) { // the default volume (M8 D6); a shell's: density 1 (M11-P5, Karma)
+        const float f = v.medium.shell.kind != ShellKind::None ? 1.0f : volumeField(v, v.reference, lookup),
+                    d = f < 0.0f ? 0.0f : f;
         out.scattering = {d, d, d};
         return out;
     }
@@ -159,7 +160,7 @@ NOVA_INLINE VolumePoint evaluateVolume(const GpuVolume &v, const ShadeGlobals &g
         const PrimvarBinding &b = v.primvars[i];
         for (int k = 0; k < b.width; ++k) {
             const int32_t f = v.bindings[i * 4 + size_t(k)];
-            R[b.row + k] = f >= 0 ? volumeField(v, f, lookup) : U[b.fallback + k];
+            R[b.row + k] = f >= 0 ? volumeField(v, f, lookup) : (f <= -2 ? v.constants[-2 - f] : U[b.fallback + k]);
         }
     }
     TextureContext tex;
@@ -246,6 +247,9 @@ __device__ LightSample sampleVolumeLight(const GpuScene &sc, const GpuSettings &
     const Vec3f index{float(l.lo[0]) + (float(cx) + (x * float(cells.count) - float(cell))) * k,
                       float(l.lo[1]) + (float(cy) + u.y) * k, float(l.lo[2]) + (float(cz) + uz) * k};
     const Vec3f object = v.indexToObject.point(index);
+    // A shell's cells reach past it; there is no medium outside (M11-P5).
+    if (v.medium.shell.kind != ShellKind::None && !shellContains(v.medium.shell, object))
+        return ls;
     const Vec3f world = v.toWorld(time).point(object);
     const Vec3f d = world - origin;
     const float r2 = dot(d, d);

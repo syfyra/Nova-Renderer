@@ -900,6 +900,37 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     const unsigned maxSteps = param->GetMaxMotionSteps();
     const bool newShutter = !(shutter == _sampledShutter) || maxSteps != _sampledMaxSteps;
 
+    // A medium bounded by the mesh (docs/design/M11-P5.md): its inside is a
+    // volume, the mesh itself renders nothing. Back to a surface, the mesh
+    // is built anew (first: no scene mesh while it was a medium).
+    if (HdNovaIsMedium(sd, id, GetMaterialId(), param->GetMaterials())) {
+        if (_meshId != nova::kInvalidId) {
+            param->AcquireSceneForEdit().removeMesh(_meshId);
+            _meshId = nova::kInvalidId;
+        }
+        param->ForgetDisplacedMesh(id);
+        param->GetMaterials().BindMesh(id, {GetMaterialId()}); // material edits re-sync it
+        if (!GetInstancerId().IsEmpty()) {
+            if (!_warnedMediumInstances)
+                HD_NOVA_WARN("medium %s: instanced media bounded by surfaces are not supported; it renders nothing",
+                             id.GetText());
+            _warnedMediumInstances = true;
+            _medium.Remove(*param);
+        } else {
+            const bool fresh = !_medium.Active();
+            const bool shellDirty = fresh || newShutter || (bits & (HdChangeTracker::DirtyTopology | HdChangeTracker::DirtyPoints));
+            _medium.Sync(sd, *param, id, GetMaterialId(), IsVisible(), GetPrimId(),
+                         shellDirty ? _BuildShell(sd, *param) : nullptr,
+                         fresh || newShutter || (bits & HdChangeTracker::DirtyTransform));
+        }
+        _sampledShutter = shutter;
+        _sampledMaxSteps = maxSteps;
+        *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+        return;
+    }
+    if (_medium.Active())
+        _medium.Remove(*param);
+
     // A budget change only matters where it changes the tessellation rate.
     const bool subdivChanged = subdivLevel != _builtSubdivLevel || subdivRate != _builtSubdivRate ||
                                (bits & HdChangeTracker::DirtySubdivTags);
@@ -1091,6 +1122,39 @@ void HdNovaMesh::Finalize(HdRenderParam *renderParam) {
         param->AcquireSceneForEdit().removeMesh(_meshId);
         _meshId = nova::kInvalidId;
     }
+    _medium.Remove(*param);
+}
+
+nova::MediumShellPtr HdNovaMesh::_BuildShell(HdSceneDelegate *sd, HdNovaRenderParam &param) {
+    const SdfPath &id = GetId();
+    std::vector<VtVec3fArray> steps;
+    if (!HdNovaSampleVec3fArray(sd, id, HdTokens->points, param.GetShutter(), param.GetMaxMotionSteps(), &steps) ||
+        steps.empty())
+        return nullptr;
+    // One shape (transform motion is the volume's): the shutter's middle.
+    if (steps.size() > 1 && !_warnedMediumMotion) {
+        HD_NOVA_WARN("medium %s: its surface deforms over the shutter; the medium keeps the shape at the middle of "
+                     "the shutter",
+                     id.GetText());
+        _warnedMediumMotion = true;
+    }
+    VtVec3fArray const &points = steps[(steps.size() - 1) / 2];
+    if (_topology.GetNumPoints() > int(points.size()))
+        return nullptr;
+    // The control mesh (subdivision surfaces bound their medium by their hull).
+    HdMeshUtil meshUtil(&_topology, id);
+    VtVec3iArray triangles;
+    VtIntArray primitiveParams;
+    meshUtil.ComputeTriangleIndices(&triangles, &primitiveParams);
+    std::vector<nova::Vec3f> p(points.size());
+    for (size_t i = 0; i < points.size(); ++i)
+        p[i] = toNova(points[i]);
+    std::vector<uint32_t> indices;
+    indices.reserve(triangles.size() * 3);
+    for (GfVec3i const &t : triangles)
+        for (int c = 0; c < 3; ++c)
+            indices.push_back(t[c] >= 0 ? uint32_t(t[c]) : uint32_t(points.size())); // out of range: dropped
+    return nova::makeTriangleShell(p.data(), p.size(), indices.data(), triangles.size());
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

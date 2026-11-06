@@ -1,0 +1,1079 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Camera "cam"
+    {
+        float2 clippingRange = (0.1, 100)
+        float horizontalAperture = 80
+        token projection = "orthographic"
+        float verticalAperture = 60
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        double3 xformOp:translate = (0, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        float3[] extent = [(-20, 0, -20), (20, 0, 20)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </mtl/grey>
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (
+            interpolation = "vertex"
+        )
+        point3f[] points = [(-20, 0, 20), (20, 0, 20), (20, 0, -20), (-20, 0, -20)]
+    }
+}
+
+def DistantLight "sun"
+{
+    float inputs:angle = 0
+    float inputs:intensity = 2
+    float3 xformOp:rotateXYZ = (0, 90, 0)
+    float3 xformOp:rotateXYZ:tilt = (-45, 0, 0)
+    uniform token[] xformOpOrder = ["xformOp:rotateXYZ", "xformOp:rotateXYZ:tilt"]
+}
+
+def Scope "mtl"
+{
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </mtl/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "s"
+    {
+        rel camera = </World/cam>
+        float karma:global:colorlimit = 1000000000
+        float karma:global:colorlimitindirect = 1000000000
+        token karma:global:convergence_mode = "Path Traced"
+        int karma:global:pathtracedsamples = 256
+        string karma:global:pixelfilter = "box"
+        float karma:global:pixelfilterscale = 0.000001
+        float nova:clampIndirect = 0
+        token nova:pixelFilter = "box"
+        float nova:pixelFilterScale = 0
+        int nova:samples = 256
+        rel products = </Render/Products/p>
+        int2 resolution = (160, 120)
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "p"
+        {
+            rel orderedVars = </Render/Vars/C>
+            token productName = "out.exr"
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+        }
+    }
+}
+
+def Xform "fogA" (
+    kind = "component"
+)
+{
+    matrix4d xformOp:transform:karmafogbox1 = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 2, -2, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform:karmafogbox1"]
+
+    def Scope "geo"
+    {
+        def Scope "guide" (
+            apiSchemas = ["GeomModelAPI"]
+        )
+        {
+            float3[] extentsHint = [(3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (-0.5025, -0.5025, -0.5025), (0.5025, 0.5025, 0.5025)]
+            color3f[] primvars:displayColor = [(0, 0, 0)] (
+                interpolation = "constant"
+            )
+            uniform token purpose = "guide"
+
+            def BasisCurves "guide"
+            {
+                uniform token basis = ""
+                int[] curveVertexCounts = [5, 5, 5, 5, 5, 5]
+                point3f[] points = [(0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (0.5, 0.5, 0.5), (0.5, 0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, -0.5, -0.5), (-0.5, 0.5, -0.5), (-0.5, 0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (0.5, -0.5, -0.5), (-0.5, -0.5, -0.5), (-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.5, -0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5)] (
+                    interpolation = "vertex"
+                )
+                int primvars:houdini:gl_wireframe = 1
+                int[] primvars:houdini:gl_wireframe:indices = None
+                uniform token type = "linear"
+                float[] widths = [0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005] (
+                    interpolation = "vertex"
+                )
+                uniform token wrap = "nonperiodic"
+            }
+        }
+
+        def Scope "render" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            rel material:binding = </fogA/mtl/fogboxvolume>
+            float[] primvars:karma:object:volumesteprate = [0.02] (
+                interpolation = "constant"
+            )
+            bool[] primvars:karma:object:volumeuniform = [1] (
+                interpolation = "constant"
+            )
+            float[] primvars:karma:object:volumeuniformdensity = [1] (
+                interpolation = "constant"
+            )
+            uniform token purpose = "render"
+
+            def Cube "volume"
+            {
+                float3[] extent = [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+                double size = 1
+                matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+                uniform token[] xformOpOrder = ["xformOp:transform"]
+            }
+        }
+    }
+
+    def Scope "mtl"
+    {
+        def Material "fogboxvolume" (
+            apiSchemas = ["MaterialXConfigAPI"]
+        )
+        {
+            string config:mtlx:version = "1.39"
+            bool inputs:addnoise = 0 (
+                displayName = "Add Noise"
+            )
+            float inputs:amplitude = 1 (
+                displayName = "Amplitude"
+            )
+            float inputs:clouddensity = 1 (
+                displayName = "Cloud Density"
+            )
+            color3f inputs:color = (0, 0, 0) (
+                displayName = "Smoke Color"
+            )
+            float inputs:diminish = 0.5 (
+                displayName = "Diminish"
+            )
+            float3 inputs:freq = (1, 1, 1) (
+                displayName = "Frequency"
+            )
+            float inputs:lacunarity = 2 (
+                displayName = "Lacunarity"
+            )
+            float inputs:max = 1 (
+                displayName = "Max"
+            )
+            float inputs:min = 0 (
+                displayName = "Min"
+            )
+            int inputs:octaves = 3 (
+                displayName = "Octaves"
+            )
+            float3 inputs:offset = (0, 0, 0) (
+                displayName = "Offset"
+            )
+            float inputs:phase = 0 (
+                displayName = "Scattering Phase"
+            )
+            float inputs:scale = 1 (
+                displayName = "Scale"
+            )
+            float inputs:shadowscale = 0 (
+                displayName = "Shadow Density Multiplier"
+            )
+            token outputs:kma:volume.connect = </fogA/mtl/fogboxvolume/fogboxvolume.outputs:out>
+
+            def Shader "fogboxvolume" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "kma_volume"
+                color3f inputs:absorption.connect = </fogA/mtl/fogboxvolume/mtlxsubtract1.outputs:out>
+                float inputs:anisotropy.connect = </fogA/mtl/fogboxvolume.inputs:phase>
+                color3f inputs:scattering.connect = </fogA/mtl/fogboxvolume/mtlxmultiply2.outputs:out>
+                token outputs:out
+                uniform float2 ui:nodegraph:node:pos = (3.82857, -2.13123)
+            }
+
+            def Shader "mtlxsubtract1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_subtract_vector3"
+                vector3f inputs:in1.connect = </fogA/mtl/fogboxvolume/mtlxconvert1.outputs:out>
+                vector3f inputs:in2.connect = </fogA/mtl/fogboxvolume/mtlxmultiply2.outputs:out>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-1.32142, -1.07339)
+            }
+
+            def Shader "mtlxconvert1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_convert_float_vector3"
+                float inputs:in.connect = </fogA/mtl/fogboxvolume/mtlxswitch1.outputs:out>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-5.78574, 1.04346)
+            }
+
+            def Shader "mtlxswitch1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_switch_float"
+                float inputs:in1.connect = </fogA/mtl/fogboxvolume/mtlxswitch2.outputs:out>
+                float inputs:in2.connect = </fogA/mtl/fogboxvolume/mtlxmultiply1.outputs:out>
+                float inputs:which.connect = </fogA/mtl/fogboxvolume/kma_rayimport1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-7.94339, 1.04346)
+            }
+
+            def Shader "mtlxswitch2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_switch_floatI"
+                float inputs:in1.connect = </fogA/mtl/fogboxvolume/mtlxmultiply4.outputs:out>
+                float inputs:in2.connect = </fogA/mtl/fogboxvolume/mtlxmultiply6.outputs:out>
+                int inputs:which.connect = </fogA/mtl/fogboxvolume.inputs:addnoise>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-14.1921, 3.94279)
+            }
+
+            def Shader "mtlxmultiply4" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogA/mtl/fogboxvolume.inputs:clouddensity>
+                float inputs:in2.connect = </fogA/mtl/fogboxvolume/mtlxgeompropvalue1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-18.6805, 5.54726)
+            }
+
+            def Shader "mtlxgeompropvalue1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_geompropvalue_float"
+                float inputs:default = 1
+                string inputs:geomprop = "density"
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-21.257, 3.83164)
+            }
+
+            def Shader "mtlxmultiply6" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogA/mtl/fogboxvolume/mtlxmultiply4.outputs:out>
+                float inputs:in2.connect = </fogA/mtl/fogboxvolume/mtlxremap1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-16.6449, 4.8616)
+            }
+
+            def Shader "mtlxremap1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_remap_float"
+                float inputs:in.connect = </fogA/mtl/fogboxvolume/mtlxfractal3d1.outputs:out>
+                float inputs:inhigh = 0.5
+                float inputs:inlow = -0.5
+                float inputs:outhigh.connect = </fogA/mtl/fogboxvolume.inputs:max>
+                float inputs:outlow.connect = </fogA/mtl/fogboxvolume.inputs:min>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-22.8619, -0.66)
+            }
+
+            def Shader "mtlxfractal3d1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_fractal3d_float"
+                float inputs:amplitude.connect = </fogA/mtl/fogboxvolume.inputs:amplitude>
+                float inputs:diminish.connect = </fogA/mtl/fogboxvolume.inputs:diminish>
+                float inputs:lacunarity.connect = </fogA/mtl/fogboxvolume.inputs:lacunarity>
+                int inputs:octaves.connect = </fogA/mtl/fogboxvolume.inputs:octaves>
+                vector3f inputs:position.connect = </fogA/mtl/fogboxvolume/mtlxadd1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-25.8469, -0.66)
+            }
+
+            def Shader "mtlxadd1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_add_vector3"
+                vector3f inputs:in1.connect = </fogA/mtl/fogboxvolume/mtlxdivide1.outputs:out>
+                vector3f inputs:in2.connect = </fogA/mtl/fogboxvolume.inputs:offset>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-28.6043, -0.66)
+            }
+
+            def Shader "mtlxdivide1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_divide_vector3FA"
+                vector3f inputs:in1.connect = </fogA/mtl/fogboxvolume/mtlxmultiply3.outputs:out>
+                float inputs:in2.connect = </fogA/mtl/fogboxvolume.inputs:scale>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-33.1554, -0.66)
+            }
+
+            def Shader "mtlxmultiply3" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_vector3"
+                vector3f inputs:in1.connect = </fogA/mtl/fogboxvolume/kma_rayimport2.outputs:out>
+                vector3f inputs:in2.connect = </fogA/mtl/fogboxvolume.inputs:freq>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-36.5, -0.66)
+            }
+
+            def NodeGraph "kma_rayimport2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                vector3f outputs:out.connect = </fogA/mtl/fogboxvolume/kma_rayimport2/karma_mtlx_ray_import.outputs:out>
+                uniform float2 ui:nodegraph:node:pos = (-39.8569, -0.66)
+
+                def Shader "karma_mtlx_ray_import" (
+                    apiSchemas = ["NodeGraphNodeAPI"]
+                )
+                {
+                    uniform token info:id = "ND_dot_vector3"
+                    string inputs:note = "ray:hitP"
+                    vector3f outputs:out
+                    uniform float2 ui:nodegraph:node:pos = (2.46893, 1.66053)
+                }
+            }
+
+            def Shader "mtlxmultiply1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogA/mtl/fogboxvolume/mtlxswitch2.outputs:out>
+                float inputs:in2 = -1
+                float inputs:in2.connect = </fogA/mtl/fogboxvolume.inputs:shadowscale>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-10.5439, 0.743456)
+            }
+
+            def NodeGraph "kma_rayimport1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                float outputs:out.connect = </fogA/mtl/fogboxvolume/kma_rayimport1/karma_mtlx_ray_import.outputs:out>
+                uniform float2 ui:nodegraph:node:pos = (-10.0641, 2.51279)
+
+                def Shader "karma_mtlx_ray_import" (
+                    apiSchemas = ["NodeGraphNodeAPI"]
+                )
+                {
+                    uniform token info:id = "ND_dot_float"
+                    string inputs:note = "ray:isshadowray"
+                    float outputs:out
+                    uniform float2 ui:nodegraph:node:pos = (2.46893, 1.66053)
+                }
+            }
+
+            def Shader "mtlxmultiply2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_color3"
+                color3f inputs:in1.connect = </fogA/mtl/fogboxvolume/mtlxconvert1.outputs:out>
+                color3f inputs:in2.connect = </fogA/mtl/fogboxvolume.inputs:color>
+                color3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-3.53444, -1.90339)
+            }
+        }
+    }
+}
+
+def Xform "fogB" (
+    kind = "component"
+)
+{
+    matrix4d xformOp:transform:karmafogbox2 = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 2, 0, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform:karmafogbox2"]
+
+    def Scope "geo"
+    {
+        def Scope "guide" (
+            apiSchemas = ["GeomModelAPI"]
+        )
+        {
+            float3[] extentsHint = [(3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (-0.5025, -0.5025, -0.5025), (0.5025, 0.5025, 0.5025)]
+            color3f[] primvars:displayColor = [(0, 0, 0)] (
+                interpolation = "constant"
+            )
+            uniform token purpose = "guide"
+
+            def BasisCurves "guide"
+            {
+                uniform token basis = ""
+                int[] curveVertexCounts = [5, 5, 5, 5, 5, 5]
+                point3f[] points = [(0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (0.5, 0.5, 0.5), (0.5, 0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, -0.5, -0.5), (-0.5, 0.5, -0.5), (-0.5, 0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (0.5, -0.5, -0.5), (-0.5, -0.5, -0.5), (-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.5, -0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5)] (
+                    interpolation = "vertex"
+                )
+                int primvars:houdini:gl_wireframe = 1
+                int[] primvars:houdini:gl_wireframe:indices = None
+                uniform token type = "linear"
+                float[] widths = [0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005] (
+                    interpolation = "vertex"
+                )
+                uniform token wrap = "nonperiodic"
+            }
+        }
+
+        def Scope "render" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            rel material:binding = </fogB/mtl/fogboxvolume>
+            float[] primvars:karma:object:volumesteprate = [0.02] (
+                interpolation = "constant"
+            )
+            bool[] primvars:karma:object:volumeuniform = [1] (
+                interpolation = "constant"
+            )
+            float[] primvars:karma:object:volumeuniformdensity = [1] (
+                interpolation = "constant"
+            )
+            uniform token purpose = "render"
+
+            def Cube "volume"
+            {
+                float3[] extent = [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+                double size = 1
+                matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+                uniform token[] xformOpOrder = ["xformOp:transform"]
+            }
+        }
+    }
+
+    def Scope "mtl"
+    {
+        def Material "fogboxvolume" (
+            apiSchemas = ["MaterialXConfigAPI"]
+        )
+        {
+            string config:mtlx:version = "1.39"
+            bool inputs:addnoise = 0 (
+                displayName = "Add Noise"
+            )
+            float inputs:amplitude = 1 (
+                displayName = "Amplitude"
+            )
+            float inputs:clouddensity = 1 (
+                displayName = "Cloud Density"
+            )
+            color3f inputs:color = (0, 0, 0) (
+                displayName = "Smoke Color"
+            )
+            float inputs:diminish = 0.5 (
+                displayName = "Diminish"
+            )
+            float3 inputs:freq = (1, 1, 1) (
+                displayName = "Frequency"
+            )
+            float inputs:lacunarity = 2 (
+                displayName = "Lacunarity"
+            )
+            float inputs:max = 1 (
+                displayName = "Max"
+            )
+            float inputs:min = 0 (
+                displayName = "Min"
+            )
+            int inputs:octaves = 3 (
+                displayName = "Octaves"
+            )
+            float3 inputs:offset = (0, 0, 0) (
+                displayName = "Offset"
+            )
+            float inputs:phase = 0 (
+                displayName = "Scattering Phase"
+            )
+            float inputs:scale = 1 (
+                displayName = "Scale"
+            )
+            float inputs:shadowscale = 1 (
+                displayName = "Shadow Density Multiplier"
+            )
+            token outputs:kma:volume.connect = </fogB/mtl/fogboxvolume/fogboxvolume.outputs:out>
+
+            def Shader "fogboxvolume" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "kma_volume"
+                color3f inputs:absorption.connect = </fogB/mtl/fogboxvolume/mtlxsubtract1.outputs:out>
+                float inputs:anisotropy.connect = </fogB/mtl/fogboxvolume.inputs:phase>
+                color3f inputs:scattering.connect = </fogB/mtl/fogboxvolume/mtlxmultiply2.outputs:out>
+                token outputs:out
+                uniform float2 ui:nodegraph:node:pos = (3.82857, -2.13123)
+            }
+
+            def Shader "mtlxsubtract1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_subtract_vector3"
+                vector3f inputs:in1.connect = </fogB/mtl/fogboxvolume/mtlxconvert1.outputs:out>
+                vector3f inputs:in2.connect = </fogB/mtl/fogboxvolume/mtlxmultiply2.outputs:out>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-1.32142, -1.07339)
+            }
+
+            def Shader "mtlxconvert1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_convert_float_vector3"
+                float inputs:in.connect = </fogB/mtl/fogboxvolume/mtlxswitch1.outputs:out>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-5.78574, 1.04346)
+            }
+
+            def Shader "mtlxswitch1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_switch_float"
+                float inputs:in1.connect = </fogB/mtl/fogboxvolume/mtlxswitch2.outputs:out>
+                float inputs:in2.connect = </fogB/mtl/fogboxvolume/mtlxmultiply1.outputs:out>
+                float inputs:which.connect = </fogB/mtl/fogboxvolume/kma_rayimport1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-7.94339, 1.04346)
+            }
+
+            def Shader "mtlxswitch2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_switch_floatI"
+                float inputs:in1.connect = </fogB/mtl/fogboxvolume/mtlxmultiply4.outputs:out>
+                float inputs:in2.connect = </fogB/mtl/fogboxvolume/mtlxmultiply6.outputs:out>
+                int inputs:which.connect = </fogB/mtl/fogboxvolume.inputs:addnoise>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-14.1921, 3.94279)
+            }
+
+            def Shader "mtlxmultiply4" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogB/mtl/fogboxvolume.inputs:clouddensity>
+                float inputs:in2.connect = </fogB/mtl/fogboxvolume/mtlxgeompropvalue1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-18.6805, 5.54726)
+            }
+
+            def Shader "mtlxgeompropvalue1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_geompropvalue_float"
+                float inputs:default = 1
+                string inputs:geomprop = "density"
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-21.257, 3.83164)
+            }
+
+            def Shader "mtlxmultiply6" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogB/mtl/fogboxvolume/mtlxmultiply4.outputs:out>
+                float inputs:in2.connect = </fogB/mtl/fogboxvolume/mtlxremap1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-16.6449, 4.8616)
+            }
+
+            def Shader "mtlxremap1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_remap_float"
+                float inputs:in.connect = </fogB/mtl/fogboxvolume/mtlxfractal3d1.outputs:out>
+                float inputs:inhigh = 0.5
+                float inputs:inlow = -0.5
+                float inputs:outhigh.connect = </fogB/mtl/fogboxvolume.inputs:max>
+                float inputs:outlow.connect = </fogB/mtl/fogboxvolume.inputs:min>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-22.8619, -0.66)
+            }
+
+            def Shader "mtlxfractal3d1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_fractal3d_float"
+                float inputs:amplitude.connect = </fogB/mtl/fogboxvolume.inputs:amplitude>
+                float inputs:diminish.connect = </fogB/mtl/fogboxvolume.inputs:diminish>
+                float inputs:lacunarity.connect = </fogB/mtl/fogboxvolume.inputs:lacunarity>
+                int inputs:octaves.connect = </fogB/mtl/fogboxvolume.inputs:octaves>
+                vector3f inputs:position.connect = </fogB/mtl/fogboxvolume/mtlxadd1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-25.8469, -0.66)
+            }
+
+            def Shader "mtlxadd1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_add_vector3"
+                vector3f inputs:in1.connect = </fogB/mtl/fogboxvolume/mtlxdivide1.outputs:out>
+                vector3f inputs:in2.connect = </fogB/mtl/fogboxvolume.inputs:offset>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-28.6043, -0.66)
+            }
+
+            def Shader "mtlxdivide1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_divide_vector3FA"
+                vector3f inputs:in1.connect = </fogB/mtl/fogboxvolume/mtlxmultiply3.outputs:out>
+                float inputs:in2.connect = </fogB/mtl/fogboxvolume.inputs:scale>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-33.1554, -0.66)
+            }
+
+            def Shader "mtlxmultiply3" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_vector3"
+                vector3f inputs:in1.connect = </fogB/mtl/fogboxvolume/kma_rayimport2.outputs:out>
+                vector3f inputs:in2.connect = </fogB/mtl/fogboxvolume.inputs:freq>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-36.5, -0.66)
+            }
+
+            def NodeGraph "kma_rayimport2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                vector3f outputs:out.connect = </fogB/mtl/fogboxvolume/kma_rayimport2/karma_mtlx_ray_import.outputs:out>
+                uniform float2 ui:nodegraph:node:pos = (-39.8569, -0.66)
+
+                def Shader "karma_mtlx_ray_import" (
+                    apiSchemas = ["NodeGraphNodeAPI"]
+                )
+                {
+                    uniform token info:id = "ND_dot_vector3"
+                    string inputs:note = "ray:hitP"
+                    vector3f outputs:out
+                    uniform float2 ui:nodegraph:node:pos = (2.46893, 1.66053)
+                }
+            }
+
+            def Shader "mtlxmultiply1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogB/mtl/fogboxvolume/mtlxswitch2.outputs:out>
+                float inputs:in2 = -1
+                float inputs:in2.connect = </fogB/mtl/fogboxvolume.inputs:shadowscale>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-10.5439, 0.743456)
+            }
+
+            def NodeGraph "kma_rayimport1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                float outputs:out.connect = </fogB/mtl/fogboxvolume/kma_rayimport1/karma_mtlx_ray_import.outputs:out>
+                uniform float2 ui:nodegraph:node:pos = (-10.0641, 2.51279)
+
+                def Shader "karma_mtlx_ray_import" (
+                    apiSchemas = ["NodeGraphNodeAPI"]
+                )
+                {
+                    uniform token info:id = "ND_dot_float"
+                    string inputs:note = "ray:isshadowray"
+                    float outputs:out
+                    uniform float2 ui:nodegraph:node:pos = (2.46893, 1.66053)
+                }
+            }
+
+            def Shader "mtlxmultiply2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_color3"
+                color3f inputs:in1.connect = </fogB/mtl/fogboxvolume/mtlxconvert1.outputs:out>
+                color3f inputs:in2.connect = </fogB/mtl/fogboxvolume.inputs:color>
+                color3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-3.53444, -1.90339)
+            }
+        }
+    }
+}
+
+def Xform "fogC" (
+    kind = "component"
+)
+{
+    matrix4d xformOp:transform:karmafogbox3 = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 2, 2, 1) )
+    uniform token[] xformOpOrder = ["xformOp:transform:karmafogbox3"]
+
+    def Scope "geo"
+    {
+        def Scope "guide" (
+            apiSchemas = ["GeomModelAPI"]
+        )
+        {
+            float3[] extentsHint = [(3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (3.4028235e38, 3.4028235e38, 3.4028235e38), (-3.4028235e38, -3.4028235e38, -3.4028235e38), (-0.5025, -0.5025, -0.5025), (0.5025, 0.5025, 0.5025)]
+            color3f[] primvars:displayColor = [(0, 0, 0)] (
+                interpolation = "constant"
+            )
+            uniform token purpose = "guide"
+
+            def BasisCurves "guide"
+            {
+                uniform token basis = ""
+                int[] curveVertexCounts = [5, 5, 5, 5, 5, 5]
+                point3f[] points = [(0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (0.5, 0.5, 0.5), (0.5, 0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, -0.5, -0.5), (-0.5, 0.5, -0.5), (-0.5, 0.5, 0.5), (-0.5, -0.5, 0.5), (-0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (0.5, -0.5, -0.5), (-0.5, -0.5, -0.5), (-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.5, -0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5)] (
+                    interpolation = "vertex"
+                )
+                int primvars:houdini:gl_wireframe = 1
+                int[] primvars:houdini:gl_wireframe:indices = None
+                uniform token type = "linear"
+                float[] widths = [0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005, 0.005] (
+                    interpolation = "vertex"
+                )
+                uniform token wrap = "nonperiodic"
+            }
+        }
+
+        def Scope "render" (
+            apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            rel material:binding = </fogC/mtl/fogboxvolume>
+            float[] primvars:karma:object:volumesteprate = [0.02] (
+                interpolation = "constant"
+            )
+            bool[] primvars:karma:object:volumeuniform = [1] (
+                interpolation = "constant"
+            )
+            float[] primvars:karma:object:volumeuniformdensity = [1] (
+                interpolation = "constant"
+            )
+            uniform token purpose = "render"
+
+            def Cube "volume"
+            {
+                float3[] extent = [(-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)]
+                double size = 1
+                matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+                uniform token[] xformOpOrder = ["xformOp:transform"]
+            }
+        }
+    }
+
+    def Scope "mtl"
+    {
+        def Material "fogboxvolume" (
+            apiSchemas = ["MaterialXConfigAPI"]
+        )
+        {
+            string config:mtlx:version = "1.39"
+            bool inputs:addnoise = 0 (
+                displayName = "Add Noise"
+            )
+            float inputs:amplitude = 1 (
+                displayName = "Amplitude"
+            )
+            float inputs:clouddensity = 1 (
+                displayName = "Cloud Density"
+            )
+            color3f inputs:color = (0, 0, 0) (
+                displayName = "Smoke Color"
+            )
+            float inputs:diminish = 0.5 (
+                displayName = "Diminish"
+            )
+            float3 inputs:freq = (1, 1, 1) (
+                displayName = "Frequency"
+            )
+            float inputs:lacunarity = 2 (
+                displayName = "Lacunarity"
+            )
+            float inputs:max = 1 (
+                displayName = "Max"
+            )
+            float inputs:min = 0 (
+                displayName = "Min"
+            )
+            int inputs:octaves = 3 (
+                displayName = "Octaves"
+            )
+            float3 inputs:offset = (0, 0, 0) (
+                displayName = "Offset"
+            )
+            float inputs:phase = 0 (
+                displayName = "Scattering Phase"
+            )
+            float inputs:scale = 1 (
+                displayName = "Scale"
+            )
+            float inputs:shadowscale = 3 (
+                displayName = "Shadow Density Multiplier"
+            )
+            token outputs:kma:volume.connect = </fogC/mtl/fogboxvolume/fogboxvolume.outputs:out>
+
+            def Shader "fogboxvolume" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "kma_volume"
+                color3f inputs:absorption.connect = </fogC/mtl/fogboxvolume/mtlxsubtract1.outputs:out>
+                float inputs:anisotropy.connect = </fogC/mtl/fogboxvolume.inputs:phase>
+                color3f inputs:scattering.connect = </fogC/mtl/fogboxvolume/mtlxmultiply2.outputs:out>
+                token outputs:out
+                uniform float2 ui:nodegraph:node:pos = (3.82857, -2.13123)
+            }
+
+            def Shader "mtlxsubtract1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_subtract_vector3"
+                vector3f inputs:in1.connect = </fogC/mtl/fogboxvolume/mtlxconvert1.outputs:out>
+                vector3f inputs:in2.connect = </fogC/mtl/fogboxvolume/mtlxmultiply2.outputs:out>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-1.32142, -1.07339)
+            }
+
+            def Shader "mtlxconvert1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_convert_float_vector3"
+                float inputs:in.connect = </fogC/mtl/fogboxvolume/mtlxswitch1.outputs:out>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-5.78574, 1.04346)
+            }
+
+            def Shader "mtlxswitch1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_switch_float"
+                float inputs:in1.connect = </fogC/mtl/fogboxvolume/mtlxswitch2.outputs:out>
+                float inputs:in2.connect = </fogC/mtl/fogboxvolume/mtlxmultiply1.outputs:out>
+                float inputs:which.connect = </fogC/mtl/fogboxvolume/kma_rayimport1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-7.94339, 1.04346)
+            }
+
+            def Shader "mtlxswitch2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_switch_floatI"
+                float inputs:in1.connect = </fogC/mtl/fogboxvolume/mtlxmultiply4.outputs:out>
+                float inputs:in2.connect = </fogC/mtl/fogboxvolume/mtlxmultiply6.outputs:out>
+                int inputs:which.connect = </fogC/mtl/fogboxvolume.inputs:addnoise>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-14.1921, 3.94279)
+            }
+
+            def Shader "mtlxmultiply4" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogC/mtl/fogboxvolume.inputs:clouddensity>
+                float inputs:in2.connect = </fogC/mtl/fogboxvolume/mtlxgeompropvalue1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-18.6805, 5.54726)
+            }
+
+            def Shader "mtlxgeompropvalue1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_geompropvalue_float"
+                float inputs:default = 1
+                string inputs:geomprop = "density"
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-21.257, 3.83164)
+            }
+
+            def Shader "mtlxmultiply6" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogC/mtl/fogboxvolume/mtlxmultiply4.outputs:out>
+                float inputs:in2.connect = </fogC/mtl/fogboxvolume/mtlxremap1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-16.6449, 4.8616)
+            }
+
+            def Shader "mtlxremap1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_remap_float"
+                float inputs:in.connect = </fogC/mtl/fogboxvolume/mtlxfractal3d1.outputs:out>
+                float inputs:inhigh = 0.5
+                float inputs:inlow = -0.5
+                float inputs:outhigh.connect = </fogC/mtl/fogboxvolume.inputs:max>
+                float inputs:outlow.connect = </fogC/mtl/fogboxvolume.inputs:min>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-22.8619, -0.66)
+            }
+
+            def Shader "mtlxfractal3d1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_fractal3d_float"
+                float inputs:amplitude.connect = </fogC/mtl/fogboxvolume.inputs:amplitude>
+                float inputs:diminish.connect = </fogC/mtl/fogboxvolume.inputs:diminish>
+                float inputs:lacunarity.connect = </fogC/mtl/fogboxvolume.inputs:lacunarity>
+                int inputs:octaves.connect = </fogC/mtl/fogboxvolume.inputs:octaves>
+                vector3f inputs:position.connect = </fogC/mtl/fogboxvolume/mtlxadd1.outputs:out>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-25.8469, -0.66)
+            }
+
+            def Shader "mtlxadd1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_add_vector3"
+                vector3f inputs:in1.connect = </fogC/mtl/fogboxvolume/mtlxdivide1.outputs:out>
+                vector3f inputs:in2.connect = </fogC/mtl/fogboxvolume.inputs:offset>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-28.6043, -0.66)
+            }
+
+            def Shader "mtlxdivide1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_divide_vector3FA"
+                vector3f inputs:in1.connect = </fogC/mtl/fogboxvolume/mtlxmultiply3.outputs:out>
+                float inputs:in2.connect = </fogC/mtl/fogboxvolume.inputs:scale>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-33.1554, -0.66)
+            }
+
+            def Shader "mtlxmultiply3" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_vector3"
+                vector3f inputs:in1.connect = </fogC/mtl/fogboxvolume/kma_rayimport2.outputs:out>
+                vector3f inputs:in2.connect = </fogC/mtl/fogboxvolume.inputs:freq>
+                vector3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-36.5, -0.66)
+            }
+
+            def NodeGraph "kma_rayimport2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                vector3f outputs:out.connect = </fogC/mtl/fogboxvolume/kma_rayimport2/karma_mtlx_ray_import.outputs:out>
+                uniform float2 ui:nodegraph:node:pos = (-39.8569, -0.66)
+
+                def Shader "karma_mtlx_ray_import" (
+                    apiSchemas = ["NodeGraphNodeAPI"]
+                )
+                {
+                    uniform token info:id = "ND_dot_vector3"
+                    string inputs:note = "ray:hitP"
+                    vector3f outputs:out
+                    uniform float2 ui:nodegraph:node:pos = (2.46893, 1.66053)
+                }
+            }
+
+            def Shader "mtlxmultiply1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_float"
+                float inputs:in1.connect = </fogC/mtl/fogboxvolume/mtlxswitch2.outputs:out>
+                float inputs:in2 = -1
+                float inputs:in2.connect = </fogC/mtl/fogboxvolume.inputs:shadowscale>
+                float outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-10.5439, 0.743456)
+            }
+
+            def NodeGraph "kma_rayimport1" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                float outputs:out.connect = </fogC/mtl/fogboxvolume/kma_rayimport1/karma_mtlx_ray_import.outputs:out>
+                uniform float2 ui:nodegraph:node:pos = (-10.0641, 2.51279)
+
+                def Shader "karma_mtlx_ray_import" (
+                    apiSchemas = ["NodeGraphNodeAPI"]
+                )
+                {
+                    uniform token info:id = "ND_dot_float"
+                    string inputs:note = "ray:isshadowray"
+                    float outputs:out
+                    uniform float2 ui:nodegraph:node:pos = (2.46893, 1.66053)
+                }
+            }
+
+            def Shader "mtlxmultiply2" (
+                apiSchemas = ["NodeGraphNodeAPI"]
+            )
+            {
+                uniform token info:id = "ND_multiply_color3"
+                color3f inputs:in1.connect = </fogC/mtl/fogboxvolume/mtlxconvert1.outputs:out>
+                color3f inputs:in2.connect = </fogC/mtl/fogboxvolume.inputs:color>
+                color3f outputs:out
+                uniform float2 ui:nodegraph:node:pos = (-3.53444, -1.90339)
+            }
+        }
+    }
+}
+

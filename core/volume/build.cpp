@@ -84,6 +84,14 @@ struct ShaderBounds {
     float time = 0.0f;
     float frame = 1.0f;
 
+    // The value of component k of primvar read i where no field gives it: a
+    // shell's constant primvar, else the read's fallback.
+    float constant(size_t i, int k) const {
+        const int32_t f = rec.bindings[i][size_t(k)];
+        return f <= -2 ? rec.constantValues[size_t(-2 - f)]
+                       : material.volumeUniforms[p.primvarBindings[i].fallback + size_t(k)];
+    }
+
     // Ray state rows a shader may read: every ray class (Karma's 0 camera ...
     // 6 shadow) and any depth; the time and frame are the render's.
     shading::Interval global(shading::Global g, Vec3f lo, Vec3f hi, Vec3f olo, Vec3f ohi, int k) const {
@@ -142,7 +150,7 @@ struct ShaderBounds {
             const shading::PrimvarBinding &b = p.primvarBindings[i];
             for (int k = 0; k < b.width; ++k) {
                 const int32_t r = slot[i][k];
-                R[b.row + k] = r >= 0 ? Interval{ranges[r].lo[cell], ranges[r].hi[cell]} : Interval::point(U[b.fallback + k]);
+                R[b.row + k] = r >= 0 ? Interval{ranges[r].lo[cell], ranges[r].hi[cell]} : Interval::point(constant(i, k));
             }
         }
         shading::executeInterval(p.code.data(), p.code.size(), R.data(), U);
@@ -175,7 +183,7 @@ struct ShaderBounds {
             for (int k = 0; k < p.primvarBindings[i].width; ++k) {
                 const int32_t r = slot[i][k];
                 rows[p.primvarBindings[i].row + k] = r >= 0 ? shading::Interval{ranges[r].lo[cell], ranges[r].hi[cell]}
-                                                            : shading::Interval::point(U[p.primvarBindings[i].fallback + k]);
+                                                            : shading::Interval::point(constant(i, k));
             }
         int reported = 0;
         for (size_t i = 0; i < p.code.size() && reported < 8; ++i) {
@@ -226,7 +234,7 @@ struct ShaderBounds {
         for (size_t i = 0; i < p.primvarBindings.size(); ++i) {
             const shading::PrimvarBinding &b = p.primvarBindings[i];
             for (int k = 0; k < b.width; ++k)
-                rows[b.row + k] = slot[i][k] >= 0 ? values[size_t(slot[i][k])] : U[b.fallback + k];
+                rows[b.row + k] = slot[i][k] >= 0 ? values[size_t(slot[i][k])] : constant(i, k);
         }
         shading::execute<1>(p.code.data(), p.code.size(), rows.data(), U);
         VolumeInputs in = material.volume;
@@ -361,69 +369,18 @@ int32_t volumeFieldComponent(const VolumeDesc &desc, const std::string &name, in
     return fieldIndex(desc, name);
 }
 
-void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float frame, float fps) {
-    const VolumeDesc &d = rec.desc;
-    rec.reference = -1;
-    rec.layout = MajorantLayout{};
-    rec.majorant.clear();
-    rec.extinctionMajorant.clear();
-    rec.bindings.clear();
-    rec.estimatedCells = 0;
-    rec.frameDependent = false;
-    rec.lightCells = Distribution1D{};
-    rec.lightPower = 0.0f;
-    rec.cellVolume = 0.0f;
-    rec.lower = {1.0f, 1.0f, 1.0f};
-    rec.upper = {-1.0f, -1.0f, -1.0f};
-    rec.program = material ? material->desc.program->volume.get() : nullptr;
-    rec.material = material ? d.material : kDefaultMaterialId;
-    // Whether the coefficients depend on the ray level: the shader reads it,
-    // or Karma's modifiers are on (varying ones count as on).
-    rec.levelDependent = false;
-    if (rec.program) {
-        using namespace shading;
-        for (const GlobalBinding &g : rec.program->globals) {
-            rec.levelDependent |= g.global == Global::RayDepth;
-            rec.frameDependent |= g.global == Global::Time || g.global == Global::Frame;
-        }
-        const VolumeInputs &in = material->volume;
-        rec.levelDependent |= in.f(volume_field::extinctionModifier) > 0.0f ||
-                              in.f(volume_field::contributionModifier) < 1.0f;
-        for (const OutputBinding &o : rec.program->outputs)
-            for (int k = 0; k < o.width; ++k) {
-                const int f = o.field + k;
-                rec.levelDependent |= !o.uniform && (f == volume_field::extinctionModifier ||
-                                                     f == volume_field::contributionModifier);
-            }
-    }
-    rec.fieldObjectToIndex.clear();
-    for (const VolumeField &f : d.fields)
-        rec.fieldObjectToIndex.push_back(f.grid ? inverseAffine(f.indexToObject()) : Affine3f{});
+namespace {
 
-    // The fields the shader reads (D5); the default volume reads density.
-    std::vector<int32_t> read;
-    const auto note = [&read](int32_t f) {
-        if (f >= 0 && std::find(read.begin(), read.end(), f) == read.end())
-            read.push_back(f);
-    };
-    if (rec.program) {
-        for (const shading::PrimvarBinding &b : rec.program->primvarBindings) {
-            std::array<int32_t, 4> c{-1, -1, -1, -1};
-            for (int k = 0; k < b.width && k < 4; ++k) {
-                c[size_t(k)] = volumeFieldComponent(d, rec.program->primvars[b.name], b.width, k);
-                note(c[size_t(k)]);
-            }
-            rec.bindings.push_back(c);
-        }
-    } else {
-        note(fieldIndex(d, "density"));
-    }
-    if (read.empty())
-        return; // nothing in space to render
+// The domain of a volume with fields: the read fields' supports in the
+// reference field's index space (D7), the cells over it and the read fields'
+// ranges per cell (velocity blur widens both). False if it is empty.
+bool fieldDomain(VolumeRecord &rec, const std::vector<int32_t> &read, std::vector<CellRanges> &ranges) {
+    const VolumeDesc &d = rec.desc;
     const int32_t density = fieldIndex(d, "density");
     rec.reference = std::find(read.begin(), read.end(), density) != read.end() ? density : read.front();
     rec.indexToObject = d.fields[size_t(rec.reference)].indexToObject();
     const Affine3f objectToRef = inverseAffine(rec.indexToObject);
+    rec.objectToIndex = objectToRef;
 
     // Velocity blur (D17): the components and the largest offset, |v| at
     // most times the longest time from the fields'.
@@ -472,8 +429,8 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
     }
     rec.layout = majorantLayout(lower, upper);
     if (rec.layout.empty())
-        return;
-    std::vector<CellRanges> ranges(read.size());
+        return false;
+    ranges.assign(read.size(), CellRanges{});
     for (size_t r = 0; r < read.size(); ++r) {
         fieldCellRanges(*d.fields[size_t(read[r])].grid->grid(), toRef[r], rec.layout, ranges[r]);
         // A lookup moved by up to `reach` reads the values of the cells
@@ -481,13 +438,131 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
         if (reach > 0.0f)
             dilateCellRanges(rec.layout, int32_t(std::ceil(reach / float(rec.layout.k))), ranges[r]);
     }
+    return true;
+}
+
+// Cells along the longest axis of a shell whose shader depends on where it
+// runs (noise in ray:hitP): interval bounds per cell keep the majorant close.
+constexpr int32_t kShellCells = 32;
+
+// The domain of a medium bounded by a surface (docs/design/M11-P5.md): the
+// shell's object-space bounds, one cell if the shader does not depend on
+// the position (a homogeneous medium: the majorant is exact), else up to
+// kShellCells along the longest axis; an index space of one unit per cell.
+// No velocity blur (there are no fields).
+bool shellDomain(VolumeRecord &rec) {
+    const MediumShell &s = *rec.desc.shell;
+    rec.velocity = {-1, -1, -1};
+    rec.blurReach = 0.0f;
+    bool spatial = false;
+    if (rec.program)
+        for (const shading::GlobalBinding &g : rec.program->globals) {
+            using shading::Global;
+            spatial |= g.global == Global::P || g.global == Global::PDx || g.global == Global::PDy ||
+                       g.global == Global::Pobject || g.global == Global::PobjectDx || g.global == Global::PobjectDy;
+        }
+    const Vec3f extent = s.upper - s.lower;
+    const float longest = std::max({extent.x, extent.y, extent.z});
+    if (!(longest > 0.0f) || !std::isfinite(longest))
+        return false;
+    const float e[3] = {extent.x, extent.y, extent.z};
+    float size[3];
+    for (int a = 0; a < 3; ++a) {
+        rec.layout.lo[a] = 0;
+        rec.layout.res[a] = spatial ? std::max(1, int32_t(std::ceil(float(kShellCells) * e[a] / longest - 1e-3f))) : 1;
+        size[a] = std::max(e[a], longest * 1e-6f) / float(rec.layout.res[a]); // flat shells keep a cell
+    }
+    rec.layout.k = 1;
+    rec.indexToObject = Affine3f{};
+    rec.indexToObject.x = {size[0], 0.0f, 0.0f};
+    rec.indexToObject.y = {0.0f, size[1], 0.0f};
+    rec.indexToObject.z = {0.0f, 0.0f, size[2]};
+    rec.indexToObject.t = s.lower;
+    rec.objectToIndex = inverseAffine(rec.indexToObject);
+    return true;
+}
+
+} // namespace
+
+void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float frame, float fps) {
+    const VolumeDesc &d = rec.desc;
+    rec.reference = -1;
+    rec.layout = MajorantLayout{};
+    rec.majorant.clear();
+    rec.extinctionMajorant.clear();
+    rec.bindings.clear();
+    rec.estimatedCells = 0;
+    rec.frameDependent = false;
+    rec.lightCells = Distribution1D{};
+    rec.lightPower = 0.0f;
+    rec.cellVolume = 0.0f;
+    rec.lower = {1.0f, 1.0f, 1.0f};
+    rec.upper = {-1.0f, -1.0f, -1.0f};
+    rec.program = material ? material->desc.program->volume.get() : nullptr;
+    rec.material = material ? d.material : kDefaultMaterialId;
+    // Whether the coefficients depend on the ray level: the shader reads it,
+    // or Karma's modifiers are on (varying ones count as on).
+    rec.levelDependent = false;
+    if (rec.program) {
+        using namespace shading;
+        for (const GlobalBinding &g : rec.program->globals) {
+            rec.levelDependent |= g.global == Global::RayDepth;
+            rec.frameDependent |= g.global == Global::Time || g.global == Global::Frame;
+        }
+        const VolumeInputs &in = material->volume;
+        rec.levelDependent |= in.f(volume_field::extinctionModifier) > 0.0f ||
+                              in.f(volume_field::contributionModifier) < 1.0f;
+        for (const OutputBinding &o : rec.program->outputs)
+            for (int k = 0; k < o.width; ++k) {
+                const int f = o.field + k;
+                rec.levelDependent |= !o.uniform && (f == volume_field::extinctionModifier ||
+                                                     f == volume_field::contributionModifier);
+            }
+    }
+    rec.fieldObjectToIndex.clear();
+    for (const VolumeField &f : d.fields)
+        rec.fieldObjectToIndex.push_back(f.grid ? inverseAffine(f.indexToObject()) : Affine3f{});
+
+    // The fields the shader reads (D5); the default volume reads density.
+    std::vector<int32_t> read;
+    const auto note = [&read](int32_t f) {
+        if (f >= 0 && std::find(read.begin(), read.end(), f) == read.end())
+            read.push_back(f);
+    };
+    rec.constantValues.clear();
+    if (rec.program) {
+        for (const shading::PrimvarBinding &b : rec.program->primvarBindings) {
+            std::array<int32_t, 4> c{-1, -1, -1, -1};
+            const std::string &name = rec.program->primvars[b.name];
+            for (int k = 0; k < b.width && k < 4; ++k) {
+                c[size_t(k)] = volumeFieldComponent(d, name, b.width, k);
+                note(c[size_t(k)]);
+                // A shell's constant primvar of that name: its component k (a
+                // scalar for every component), as a field would be read.
+                if (c[size_t(k)] < 0)
+                    for (const VolumeConstant &v : d.constants)
+                        if (v.name == name && !v.values.empty()) {
+                            rec.constantValues.push_back(v.values[size_t(k) < v.values.size() ? size_t(k) : 0]);
+                            c[size_t(k)] = -1 - int32_t(rec.constantValues.size());
+                            break;
+                        }
+            }
+            rec.bindings.push_back(c);
+        }
+    } else {
+        note(fieldIndex(d, "density"));
+    }
+    std::vector<CellRanges> ranges;
+    if (d.shell ? !shellDomain(rec) : (read.empty() || !fieldDomain(rec, read, ranges)))
+        return; // nothing in space to render
 
     const std::vector<Affine3f> objectToWorld = worldMaps(rec);
     const size_t cells = rec.layout.cellCount();
     rec.majorant.assign(cells, 0.0f);
     if (!rec.program) {
+        // The default volume (D6): density, or a shell's density 1.
         for (size_t i = 0; i < cells; ++i)
-            rec.majorant[i] = std::max(ranges[0].hi[i], 0.0f);
+            rec.majorant[i] = d.shell ? 1.0f : std::max(ranges[0].hi[i], 0.0f);
     } else {
         // Time as VolumeEvaluator and the GPU's evaluateVolume take it.
         const float time = (frame - 1.0f) / (fps > 0.0f ? fps : 24.0f);
@@ -501,10 +576,16 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
         }
         // Emission is collected at tentative collisions, so cells that emit
         // get at least one per voxel (research A 4.5).
+        // A shell has no voxels: 1/32 of its longest side stands in.
         float voxel = kInfinity;
         for (const Affine3f &m : objectToWorld) {
             const Affine3f iw = compose(rec.indexToObject, m);
-            voxel = std::min({voxel, length(iw.x), length(iw.y), length(iw.z)});
+            if (d.shell)
+                voxel = std::min(voxel, std::max({length(iw.x) * float(rec.layout.res[0]), length(iw.y) * float(rec.layout.res[1]),
+                                                  length(iw.z) * float(rec.layout.res[2])}) /
+                                            float(kShellCells));
+            else
+                voxel = std::min({voxel, length(iw.x), length(iw.y), length(iw.z)});
         }
         const float floorRate = voxel > 0.0f && std::isfinite(voxel) ? 1.0f / voxel : 0.0f;
         const MajorantLayout &l = rec.layout;

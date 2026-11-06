@@ -10,6 +10,7 @@
 // sphere becomes a diced mesh: a cube cage projected onto the sphere, with
 // the same st, displaced like any mesh.
 
+#include "medium.h"
 #include "motion.h"
 
 #include "core/scene/mesh.h"
@@ -40,6 +41,8 @@ private:
     HdNovaShutter _sampledShutter;
     unsigned _sampledMaxSteps = 0;
     uint64_t _builtDisplacement = 0; // signature of the displaced build (0: analytic)
+    HdNovaMedium _medium;            // a medium bounded by the sphere (docs/design/M11-P5.md)
+    bool _warnedMediumInstances = false;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

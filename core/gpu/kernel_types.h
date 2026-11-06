@@ -141,7 +141,8 @@ struct GpuVolume {
     Span<shading::GlobalBinding> globals;
     Span<shading::PrimvarBinding> primvars;
     Span<shading::OutputBinding> outputs;
-    const int32_t *bindings = nullptr; // per primvar binding: the fields of its 4 components (-1: fallback)
+    const int32_t *bindings = nullptr; // per primvar binding: the fields of its 4 components (-1: fallback, -2 - i: constants[i])
+    const float *constants = nullptr;  // a shell's constant primvars (VolumeRecord::constantValues)
     const VolumeInputs *defaults = nullptr; // the inputs with the uniform outputs applied
     const DeviceTexSlot *textures = nullptr;
     uint32_t textureCount = 0;
