@@ -1,0 +1,190 @@
+#usda 1.0
+(
+    doc = "Built by tests/husk/karma_sky/make_scenes.py (karmaphysicalsky, ps_a30_t3)"
+    framesPerSecond = 24
+    metersPerUnit = 1
+    timeCodesPerSecond = 24
+)
+
+def Xform "lights"
+{
+    def Xform "physicalsky" (
+        apiSchemas = ["HoudiniEditableAPI", "HoudiniSelectableAPI"]
+        customData = {
+            string icon = "LOP_karmaphysicalsky"
+        }
+    )
+    {
+        uniform bool houdini:editable = 0
+        uniform bool houdini:selectable = 0
+
+        def DistantLight "sun" (
+            apiSchemas = ["HoudiniViewportGuideAPI", "KarmaLightAPI", "HoudiniViewportLightAPI"]
+        )
+        {
+            float2 houdini:clippingRange = (0.001, 10000)
+            float houdini:guidescale = 1
+            uniform bool houdini:inviewermenu = 0
+            float inputs:angle = 0.51
+            color3f inputs:color = (1, 0.7447988, 0.48761582) (
+                colorSpace = "lin_rec709"
+            )
+            float inputs:diffuse = 1
+            bool inputs:enableColorTemperature = 0
+            float inputs:exposure = 0
+            float inputs:intensity = 1.217769
+            bool inputs:karma:light:renderlightgeo = 1
+            bool inputs:normalize = 1
+            float inputs:specular = 1
+            rel light:filters
+            double xformOp:rotateX:altitude = -30
+            double xformOp:rotateY:azimuth = 150
+            uniform token[] xformOpOrder = ["xformOp:rotateY:azimuth", "xformOp:rotateX:altitude"]
+        }
+
+        def KarmaSkyDomeLight "sky" (
+            apiSchemas = ["HoudiniViewportGuideAPI", "KarmaLightAPI"]
+        )
+        {
+            custom rel filters
+            float houdini:guidescale = 1
+            uniform bool houdini:inviewermenu = 0
+            color3f inputs:color = (1, 1, 1)
+            float inputs:diffuse = 1
+            bool inputs:enableColorTemperature = 0
+            float inputs:exposure = 0
+            color3f inputs:ground_albedo = (0.2, 0.2, 0.2)
+            color3f inputs:ground_color = (0.047130395, 0.04159665, 0.03899128) (
+                colorSpace = "lin_rec709"
+            )
+            float inputs:horizon_blur = 0.5
+            float inputs:intensity = 1
+            bool inputs:karma:light:renderlightgeo = 1
+            bool inputs:normalize = 1
+            float inputs:solar_altitude = 30
+            float inputs:solar_azimuth = 30
+            float inputs:specular = 1
+            float inputs:turbidity = 3
+            rel light:filters
+            custom rel portals
+        }
+    }
+}
+
+def "rig"
+{
+    def Camera "up"
+    {
+        float2 clippingRange = (0.01, 1000000)
+        float focalLength = 10
+        float horizontalAperture = 228.60104
+        float verticalAperture = 228.60104
+        float3 xformOp:rotateXYZ = (90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def Camera "front"
+    {
+        float2 clippingRange = (0.01, 1000000)
+        float focalLength = 10
+        float horizontalAperture = 34.641018
+        float verticalAperture = 34.641018
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def "mtl"
+    {
+        def Material "white"
+        {
+            token outputs:mtlx:surface.connect = </rig/mtl/white/s.outputs:out>
+
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 1
+                color3f inputs:base_color = (1, 1, 1)
+                float inputs:specular = 0
+                token outputs:out
+            }
+        }
+    }
+
+    def Mesh "patch" (
+        apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        float3[] extent = [(-0.3, -1, -1.1), (0.3, -1, -0.5)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </rig/mtl/white>
+        point3f[] points = [(-0.3, -1, -0.5), (0.3, -1, -0.5), (0.3, -1, -1.1), (-0.3, -1, -1.1)]
+    }
+}
+
+def "Render"
+{
+    def RenderSettings "up"
+    {
+        rel camera = </rig/up>
+        custom float karma:global:colorlimit = 1000000
+        custom float karma:global:indirectcolorlimit = 1000000
+        custom int karma:global:pathtracedsamples = 1024
+        custom string karma:global:pixelfilter = "box"
+        custom float karma:global:pixelfilterscale = 0.000001
+        custom string karma:global:pixeloracle = "uniform"
+        custom int karma:global:samplesperpixel = 1024
+        custom float nova:clampIndirect = 0
+        custom token nova:pixelFilter = "box"
+        custom float nova:pixelFilterScale = 0
+        custom int nova:samples = 1024
+        rel products = </Render/Products/up>
+        uniform int2 resolution = (160, 160)
+    }
+
+    def "Products"
+    {
+        def RenderProduct "up"
+        {
+            rel orderedVars = </Render/Products/Vars/C>
+            token productName = "up.exr"
+        }
+
+        def "Vars"
+        {
+            def RenderVar "C"
+            {
+                uniform token dataType = "color4f"
+                custom token driver:parameters:aov:format = "color4f"
+                custom string driver:parameters:aov:name = "C"
+                uniform string sourceName = "C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+        }
+
+        def RenderProduct "front"
+        {
+            rel orderedVars = </Render/Products/Vars/C>
+            token productName = "front.exr"
+        }
+    }
+
+    def RenderSettings "front"
+    {
+        rel camera = </rig/front>
+        custom float karma:global:colorlimit = 1000000
+        custom float karma:global:indirectcolorlimit = 1000000
+        custom int karma:global:pathtracedsamples = 1024
+        custom string karma:global:pixelfilter = "box"
+        custom float karma:global:pixelfilterscale = 0.000001
+        custom string karma:global:pixeloracle = "uniform"
+        custom int karma:global:samplesperpixel = 1024
+        custom float nova:clampIndirect = 0
+        custom token nova:pixelFilter = "box"
+        custom float nova:pixelFilterScale = 0
+        custom int nova:samples = 1024
+        rel products = </Render/Products/front>
+        uniform int2 resolution = (160, 160)
+    }
+}
+

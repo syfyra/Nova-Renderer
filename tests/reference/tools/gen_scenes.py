@@ -282,6 +282,51 @@ def dome_sky():
     return scene(b, (144, 96), 4)
 
 
+def karma_sky():
+    """Karma Physical Sky (sky mode) as its LOP authors it at solar altitude
+    30, azimuth 30, turbidity 3 (tests/husk/karma_sky/ps_a30_t3.usda): the
+    sun DistantLight with the LOP's colour and intensity, and the
+    KarmaSkyDomeLight Nova bakes into a dome texture (docs/design/M11-P3.md).
+    The camera looks past the sun's side at the ground's far edge, so the sky,
+    the horizon fade and the ground colour below it are in view, the sun
+    disc is not."""
+    b = quads("ground", [[(-20, 0, 20), (20, 0, 20), (20, 0, -20), (-20, 0, -20)]], (0.6, 0.6, 0.6))
+    b += sphere("ballA", (-0.7, 0.5, 0.0), 0.5, (0.8, 0.3, 0.2))
+    b += sphere("ballB", (0.6, 0.35, 0.4), 0.35, (0.3, 0.5, 0.8))
+    b += quads("cube", box_quads((0.5, 0.4, -0.7), (0.8, 0.8, 0.8), 25), (0.7, 0.7, 0.6))
+    b += """    def DistantLight "sun" (
+        prepend apiSchemas = ["KarmaLightAPI"]
+    )
+    {
+        float inputs:angle = 0.51
+        color3f inputs:color = (1, 0.7447988, 0.48761582)
+        float inputs:intensity = 1.217769
+        bool inputs:normalize = 1
+        bool inputs:karma:light:renderlightgeo = 1
+        double xformOp:rotateX:altitude = -30
+        double xformOp:rotateY:azimuth = 150
+        uniform token[] xformOpOrder = ["xformOp:rotateY:azimuth", "xformOp:rotateX:altitude"]
+    }
+    def KarmaSkyDomeLight "sky" (
+        prepend apiSchemas = ["KarmaLightAPI"]
+    )
+    {
+        color3f inputs:ground_albedo = (0.2, 0.2, 0.2)
+        color3f inputs:ground_color = (0.047130395, 0.04159665, 0.03899128)
+        float inputs:horizon_blur = 0.5
+        bool inputs:normalize = 1
+        float inputs:solar_altitude = 30
+        float inputs:solar_azimuth = 30
+        float inputs:turbidity = 3
+        bool inputs:karma:light:renderlightgeo = 1
+        # Karma's default MIS on the sky is biased (+0.2..+0.8 % measured)
+        float inputs:karma:light:misbias = -1
+    }
+"""
+    b += camera((0, 1.0, 3.5), (-6, 0, 0), aperture=(36, 24))
+    return scene(b, (144, 96), 4)
+
+
 def dome_plane():
     b = quads("ground", [[(-1000, 0, 1000), (1000, 0, 1000), (1000, 0, -1000), (-1000, 0, -1000)]], (0.5, 0.5, 0.5))
     b += light("DomeLight", "sky", ["float inputs:intensity = 1", "asset inputs:texture:file = @./assets/sky_soft.exr@",
@@ -1592,7 +1637,7 @@ def main():
     os.makedirs(os.path.join(out, "assets"), exist_ok=True)
     files = {"assets/sphere.usda": sphere_asset(), "assets/sphere_st.usda": sphere_asset(st=True),
              "assets/sphere_uv.usda": sphere_asset(st=True, uv=True),
-             "cornell_rect.usda": cornell_rect(), "dome_sky.usda": dome_sky(),
+             "cornell_rect.usda": cornell_rect(), "dome_sky.usda": dome_sky(), "karma_sky.usda": karma_sky(),
              "dome_plane.usda": dome_plane(), "furnace_rectbox.usda": furnace_rectbox(),
              "instancer.usda": instancer(), "subdiv.usda": subdiv(), "subdiv_karma.usda": subdiv(karma=True),
              "dof.usda": dof(),

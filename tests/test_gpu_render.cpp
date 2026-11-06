@@ -14,6 +14,7 @@
 #include "core/film/lpe_compile.h"
 #include "core/geometry/curves.h"
 #include "core/gpu/device.h"
+#include "core/lights/sky.h"
 #include "core/math/rng.h"
 #include "core/integrator/renderer.h"
 #include "core/scene/scene.h"
@@ -449,6 +450,52 @@ TEST_CASE("XPU shadow-linked domes", "[gpu][render][lights][linking][lpe]") {
             CHECK_THAT(b, WithinAbs(a, 0.003 * a + 1e-3));
         }
     }
+}
+
+// M11 P3: Karma's sky dome is a dome light with a baked sky texture
+// (docs/design/M11-P3.md); the GPU renders the CPU's image of a ground and a
+// sphere under a low sun's sky seen by the camera, horizon and ground color
+// included.
+TEST_CASE("XPU Karma sky dome", "[gpu][render][lights][sky]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    MeshDesc ground = makeQuad(3.0f);
+    Mat4 yUp = Mat4::identity(); // the quad's +Z (its normal) to world +Y
+    yUp.m[1][1] = 0.0f;
+    yUp.m[1][2] = -1.0f;
+    yUp.m[2][1] = 1.0f;
+    yUp.m[2][2] = 0.0f;
+    ground.transform = yUp;
+    ground.setDisplayColor(spectrum(0.5f));
+    scene.updateMesh(scene.createMesh(), ground);
+    MeshDesc ball = makeSphere(0.5f, 64, 32);
+    ball.transform = translation({0.0f, 0.5f, 0.0f});
+    ball.setDisplayColor(spectrum(0.8f));
+    scene.updateMesh(scene.createMesh(), ball);
+    KarmaSkyDesc sky;
+    sky.solarAltitude = 25.0f;
+    sky.solarAzimuth = 20.0f;
+    sky.groundColor = {0.05f, 0.04f, 0.03f};
+    LightDesc dome;
+    dome.type = LightType::Dome;
+    dome.cameraVisible = true;
+    dome.texture = bakeKarmaSky(sky, 512);
+    scene.updateLight(scene.createLight(), dome);
+    scene.commit();
+    // Looks down -Z, towards the sun's side; the ground ends in view, so the
+    // sky's ground color and horizon show too.
+    const Camera camera = makePerspectiveCamera({0.0f, 1.0f, 4.0f}, 0.03, 0.036, 48, 32);
+    const Render cpu = render(scene, camera, 48, 32, 256, RenderDevice::Cpu);
+    const Render gpu = render(scene, camera, 48, 32, 256, RenderDevice::Xpu);
+    REQUIRE(gpu.gpu);
+    const double close = closePixels(cpu.film, gpu.film), cpuMean = luminanceMean(cpu.film),
+                 gpuMean = luminanceMean(gpu.film);
+    INFO("pixels within 1e-3: " << close << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
+    CHECK(cpuMean > 0.01);
+    CHECK(close >= 0.95);
+    CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.002 * cpuMean));
 }
 
 // M9 D18 (the follow-up of R1-31): lights with sampling quality 0 illuminate

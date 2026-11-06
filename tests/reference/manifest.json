@@ -86,6 +86,15 @@
       }
     },
     {
+      "name": "karma_sky",
+      "file": "scenes/karma_sky.usda",
+      "settings": "/Render/ref",
+      "reference": {
+        "type": "karma",
+        "spp_half": 8192
+      }
+    },
+    {
       "name": "dome_plane",
       "file": "scenes/dome_plane.usda",
       "settings": "/Render/ref",

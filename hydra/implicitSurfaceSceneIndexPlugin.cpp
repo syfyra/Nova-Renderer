@@ -38,10 +38,11 @@ TF_REGISTRY_FUNCTION(HdSceneIndexPlugin) {
     // turns the lights' UsdLux collections into categories on lights and
     // geometry, as Karma's own plugin does for Karma (research lights.md 4.2).
     // Not `instancer` among the geometry: per-instance categories would be lost.
+    // The generic `light` is Karma's sky dome (docs/design/M11-P3.md).
     VtArray<TfToken> lights{HdPrimTypeTokens->distantLight, HdPrimTypeTokens->domeLight,
                             HdPrimTypeTokens->sphereLight,  HdPrimTypeTokens->rectLight,
                             HdPrimTypeTokens->diskLight,    HdPrimTypeTokens->cylinderLight,
-                            HdPrimTypeTokens->meshLight};
+                            HdPrimTypeTokens->meshLight,    HdPrimTypeTokens->light};
     VtArray<TfToken> geometry{HdPrimTypeTokens->mesh, HdPrimTypeTokens->basisCurves, HdPrimTypeTokens->points,
                               HdPrimTypeTokens->sphere, HdPrimTypeTokens->volume};
     const HdContainerDataSourceHandle linkArgs = HdRetainedContainerDataSource::New(

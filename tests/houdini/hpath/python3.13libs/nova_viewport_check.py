@@ -29,6 +29,7 @@ OUT = os.environ.get("NOVA_VIEWPORT_CHECK", "")
 # on its nodes and tools (setup_icons); =dome a Dome Light LOP with Houdini's
 # .rat HDRI in Nova CPU, Nova XPU and Karma (setup_dome).
 # =velocity velocity blur switched on and off live (setup_velocity).
+# =sky the Karma Physical Sky, edited live (setup_sky).
 ONLY = os.environ.get("NOVA_VIEWPORT_CHECK_ONLY", "")
 SCENE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scenes", "basic.usda").replace("\\", "/")
 # "started" (absolute) tells this run's log from an earlier one in the same folder.
@@ -1111,6 +1112,62 @@ def step_dome_karma():
     later(2, finish)
 
 
+def setup_sky():
+    """A Karma Physical Sky LOP (sky mode: its sun light and a Karma Sky Dome
+    Light, docs/design/M11-P3.md) over the ground plane, in Nova CPU, then its
+    solar altitude and turbidity edited live (the sky re-bakes), Nova XPU and
+    Karma. Sky and ground must match Karma's."""
+    STATE["t0"] = time.time()
+    stage = hou.node("/stage")
+    ground = os.path.join(OUT, "dome_ground.usda")
+    with open(ground, "w") as f:
+        f.write(DOME_GROUND)
+    sub = stage.createNode("sublayer", "ground")
+    sub.parm("filepath1").set(ground.replace("\\", "/"))
+    sky = stage.createNode("karmaphysicalsky", "sky")
+    sky.setInput(0, sub)
+    sky.parm("solar_altitude").set(30.0)
+    sky.parm("solar_azimuth").set(160.0)  # behind the camera's right shoulder
+    sky.setDisplayFlag(True)
+    STATE["sky"] = sky
+    v = viewer()
+    v.setPwd(stage)
+    try:
+        v.curViewport().setCamera("/World/cam")
+    except Exception:  # noqa: BLE001
+        pass
+    log("sky setup", prims=[str(p.GetPath()) + " " + p.GetTypeName() for p in sky.stage().Traverse()])
+    set_renderer("Nova CPU")
+    later(25, step_sky_nova)
+
+
+def step_sky_nova():
+    capture("70_sky_nova")
+    STATE["sky"].parm("solar_altitude").set(8.0)
+    STATE["sky"].parm("turbidity").set(6.0)
+    later(25, step_sky_edit)
+
+
+def step_sky_edit():
+    capture("71_sky_nova_edit")
+    set_renderer("Karma CPU")
+    later(40, step_sky_edit_karma)
+
+
+def step_sky_edit_karma():
+    capture("72_sky_karma_edit")
+    set_renderer("Nova XPU")
+    later(25, step_sky_xpu)
+
+
+def step_sky_xpu():
+    capture("73_sky_xpu_edit")
+    log("sky", **{name: {"sky": region_mean(name, 0.02, 0.3), "ground": region_mean(name, 0.75, 0.98)}
+                  for name in ("70_sky_nova", "71_sky_nova_edit", "72_sky_karma_edit", "73_sky_xpu_edit")})
+    set_renderer("Nova CPU")
+    later(2, finish)
+
+
 def sharp_share(name):
     """The share of a capture's pixels as dark as the grey quads themselves:
     a quad that blurs mixes with the white dome behind it and leaves it."""
@@ -1196,5 +1253,5 @@ def start():
         return
     os.makedirs(OUT, exist_ok=True)
     modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble,
-             "icons": setup_icons, "dome": setup_dome, "velocity": setup_velocity}
+             "icons": setup_icons, "dome": setup_dome, "velocity": setup_velocity, "sky": setup_sky}
     later(5, modes.get(ONLY, setup))
