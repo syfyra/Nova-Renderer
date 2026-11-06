@@ -154,10 +154,11 @@ VolumeLightSettings volumeLightOf(HdSceneDelegate *sd, SdfPath const &id, HdNova
 
 } // namespace
 
-void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc) {
+void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc,
+                                HdNovaObjectDefaults const &defaults) {
     desc.volumeLimit = volumeLimitOf(sd, id);
     desc.lpeTag = HdNovaObjectLpeTag(sd, id);
-    const VolumeLightSettings light = volumeLightOf(sd, id);
+    const VolumeLightSettings light = volumeLightOf(sd, id, defaults);
     desc.light = light.light;
     desc.lightDiffuse = light.diffuse;
     desc.lightSpecular = light.specular;
