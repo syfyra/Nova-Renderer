@@ -1073,7 +1073,7 @@
                 type    toggle
                 size    1
                 default { 1 }
-                help    "Refracting surfaces reflect on their inside too. Off: light inside a solid dielectric leaves it without Fresnel loss and is never reflected back in (total internal reflection ends the path). Unset: Karma's internalreflectenable (off with Karma's render settings)."
+                help    "Refracting surfaces reflect on their inside too. Off: light inside a solid dielectric leaves it without Fresnel loss and only total internal reflection sends it back in. Unset: Karma's internalreflectenable (off with Karma's render settings)."
                 parmtag { "spare_category" "Shading" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }

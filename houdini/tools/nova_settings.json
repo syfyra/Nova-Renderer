@@ -37,7 +37,7 @@
         {"key": "nova:object:causticsRoughnessClamp", "label": "Caustics Roughness Clamp", "type": "float", "default": 0.0, "range": [0, 1],
          "section": "Shading", "scopes": ["global", "geometry"], "help": "The least roughness of glossy and refracting surfaces seen after a diffuse bounce (true caustics only): softer, less noisy caustics. Unset: Karma's causticsroughnessclamp (0.2 with Karma's render settings)."},
         {"key": "nova:object:internalReflection", "label": "Internal Reflection", "type": "bool", "default": true,
-         "section": "Shading", "scopes": ["global", "geometry"], "help": "Refracting surfaces reflect on their inside too. Off: light inside a solid dielectric leaves it without Fresnel loss and is never reflected back in (total internal reflection ends the path). Unset: Karma's internalreflectenable (off with Karma's render settings)."},
+         "section": "Shading", "scopes": ["global", "geometry"], "help": "Refracting surfaces reflect on their inside too. Off: light inside a solid dielectric leaves it without Fresnel loss and only total internal reflection sends it back in. Unset: Karma's internalreflectenable (off with Karma's render settings)."},
         {"key": "nova:constrainRoughness", "label": "Constrain by Maximum Roughness", "type": "bool", "default": false,
          "section": "Shading", "scopes": ["global"], "help": "Glossy surfaces along a path are at least as rough as the roughest glossy bounce before them (fewer fireflies from sharp reflections seen in blurry ones). Unset: Karma's constrainmaxrough (on with Karma's render settings)."},
         {"key": "nova:object:lightSource", "label": "Efficient Emission Sampling", "type": "int", "default": 0,

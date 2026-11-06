@@ -49,7 +49,8 @@ struct RayLimits {
     FakeCausticsStyle fakeStyle;
     // Reflection on the inside of refracting surfaces (Karma's
     // internalreflectenable; off: paths inside a solid dielectric leave it
-    // without Fresnel loss and never reflect back in, docs/design/M11-P1.md).
+    // without Fresnel loss, only total internal reflection reflects back in;
+    // docs/design/M11-P1.md).
     bool internalReflection = true;
     // The least GGX roughness of true-caustic paths (Karma's
     // causticsroughnessclamp): at hits after a diffuse event on objects

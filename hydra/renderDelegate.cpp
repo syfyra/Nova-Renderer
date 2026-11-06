@@ -933,8 +933,8 @@ void HdNovaRenderDelegate::_WarnUnsupportedKarmaSettings() const {
         {"karma:object:cuspangle", "the cusp angle of generated normals",
          [](VtValue const &v) { return std::fabs(HdNovaNumber(v).value_or(60.0) - 60.0) > 1e-6; }},
         {"karma:object:stencilmap", "stencil maps", text},
-        {"karma:object:volumesteprate", "the volume step rate (Nova does not ray-march volumes)",
-         [](VtValue const &v) { return std::fabs(HdNovaNumber(v).value_or(0.25) - 0.25) > 1e-6; }},
+        // Not volumesteprate: Nova's tracking is unbiased by design (M8 D16);
+        // finer rates converge to its image, the coarse default differs.
     };
     std::vector<std::string> messages;
     for (const Check &c : checks) {

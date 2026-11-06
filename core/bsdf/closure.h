@@ -497,9 +497,10 @@ NOVA_INLINE Spectrum fakeCausticFactor(const ClosureList &cl, Vec3f wo, const Ob
 
 // Karma's internalreflectenable off (docs/design/M11-P1.md): seen from the
 // inside of a refracting interface (the surface models face the frames to
-// wo and give the inside's lobes the inverse index), its dielectric lobes do
-// not reflect (DielectricLobe::noInternal) and reflection-only dielectric
-// lobes of the inside (a split reflection) are dropped.
+// wo and give the inside's lobes the inverse index), its dielectric lobes
+// have no Fresnel reflection, only total internal reflection
+// (DielectricLobe::noInternal), and reflection-only dielectric lobes of the
+// inside (a split reflection) are dropped.
 NOVA_INLINE void dropInternalReflection(ClosureList &cl, Vec3f) {
     bool inside = false;
     for (int i = 0; i < cl.count; ++i) {
