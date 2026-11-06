@@ -48,6 +48,7 @@ add_executable(nova_tests
     test_emitters.cpp
     test_scene_view.cpp
     test_holdouts.cpp
+    test_sky.cpp
 )
 target_link_libraries(nova_tests PRIVATE nova_core Catch2::Catch2WithMain)
 # The GPU backend's tests (docs/design/M10.md); they skip without a device.
@@ -87,7 +88,7 @@ endif()
 add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oiio.cpp test_hydra_materials.cpp
     test_hydra_textures.cpp test_hydra_normals.cpp test_hydra_bench.cpp test_hydra_karma.cpp test_hydra_graphs.cpp
     test_hydra_displacement.cpp test_hydra_vex.cpp test_ipr_latency.cpp test_hydra_volumes.cpp test_hydra_velocity.cpp
-    test_hydra_holdouts.cpp)
+    test_hydra_holdouts.cpp test_hydra_sky.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nova_hydra_tests PRIVATE hdNova_objects Catch2::Catch2WithMain
     Houdini::Dep::pxr_usd Houdini::Dep::pxr_usdGeom Houdini::Dep::pxr_usdShade Houdini::Dep::pxr_usdImaging)
@@ -175,6 +176,13 @@ if(EXISTS "${HFS}/bin/hython.exe")
                 -Stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" -Hfs "${HFS}"
                 "${CMAKE_CURRENT_BINARY_DIR}/houdini_vex_builder/$<CONFIG>")
     set_tests_properties(houdini_vex_builder PROPERTIES LABELS houdini TIMEOUT 600)
+    # The Karma sky LOPs (M11 P3) still author the scenes husk_karma_sky
+    # was measured with.
+    add_test(NAME houdini_karma_sky_lops
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/houdini/run_hython.ps1"
+                -Script "${CMAKE_CURRENT_SOURCE_DIR}/houdini/test_karma_sky_lops.py" -Hfs "${HFS}"
+                "${CMAKE_CURRENT_BINARY_DIR}/houdini_karma_sky_lops/$<CONFIG>")
+    set_tests_properties(houdini_karma_sky_lops PROPERTIES LABELS houdini TIMEOUT 600)
     # Volume data paths (M8.0): in-memory SOP volumes, .bgeo.sc, husk on a
     # USD-ROP-saved stage, Hydra in the cooking process.
     add_test(NAME houdini_volumes
@@ -245,11 +253,20 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_lights/$<CONFIG>")
     set_tests_properties(husk_lights PROPERTIES LABELS husk TIMEOUT 600)
+    # Karma's Shadow Catcher and Background Plate (docs/design/M11-P2.md):
+    # probes and the LOPs' scenes (husk/karma_nodes) against Karma's values.
     add_test(NAME husk_karma_nodes
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_nodes.py"
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_nodes/$<CONFIG>")
     set_tests_properties(husk_karma_nodes PROPERTIES LABELS husk TIMEOUT 900)
+    # Karma's sky dome (docs/design/M11-P3.md): scenes built by the Karma LOPs
+    # (husk/karma_sky), Karma's values in the script; CPU and Nova XPU.
+    add_test(NAME husk_karma_sky
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_sky.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_sky/$<CONFIG>")
+    set_tests_properties(husk_karma_sky PROPERTIES LABELS husk TIMEOUT 900)
     add_test(NAME husk_emitters
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_emitters.py"
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"

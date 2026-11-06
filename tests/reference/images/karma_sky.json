@@ -1,0 +1,25 @@
+{
+  "scene": "karma_sky",
+  "created": "2026-11-06",
+  "inputs": {
+    "scenes/karma_sky.usda": "9e54cd74fdd8e01a44a61185d9383d3b8b55d917",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 16384,
+  "image": "images/karma_sky.exr",
+  "sigma": "images/karma_sky.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.013347,
+    "flip_test_pair": 0.022362,
+    "relmse": 0.000139,
+    "global_z": [
+      -1.195,
+      -0.886,
+      -0.583,
+      0.0
+    ]
+  }
+}
