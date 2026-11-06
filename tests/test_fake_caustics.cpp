@@ -42,10 +42,13 @@ struct Setup {
     Scene scene;
     explicit Setup(bool fakeDefault) { scene.setDefaultFakeCaustics(fakeDefault); }
 
-    MeshId plane(float z, float x0, float x1, const SurfaceInputs &in, const RayLimitOverrides *o = nullptr) {
+    // A plane facing +Z (the shadow rays towards the sun hit its back), or
+    // -Z with `down` (they hit its front).
+    MeshId plane(float z, float x0, float x1, const SurfaceInputs &in, const RayLimitOverrides *o = nullptr,
+                 bool down = false) {
         MeshDesc m;
         m.points = {{x0, -4.0f, z}, {x1, -4.0f, z}, {x1, 4.0f, z}, {x0, 4.0f, z}};
-        m.indices = {0, 1, 2, 0, 2, 3};
+        m.indices = down ? std::vector<uint32_t>{0, 2, 1, 0, 3, 2} : std::vector<uint32_t>{0, 1, 2, 0, 2, 3};
         const MeshId id = scene.createMesh();
         scene.updateMesh(id, m);
         MaterialDesc d;
@@ -322,4 +325,76 @@ TEST_CASE("Fake caustics keep shadow links", "[render][causticsfake][linking]") 
         REQUIRE(s.scene.anyFakeCaustics() == fakeGlass);
         CHECK_THAT(s.shadowRatio().y, WithinAbs(1.0, 1e-4));
     }
+}
+
+// Karma's fake caustics (docs/design/M11-P1.md, measured with husk and glass
+// planes): per crossing 1 - F (Schlick, F0 from the index) for the
+// interface, and another 1 - F where the surface reflects on the side the
+// ray comes from: front faces, back faces only with internal reflection. The
+// shadow rays towards the sun hit the default plane's back face.
+TEST_CASE("Karma's fake-caustic factor", "[render][causticsfake][karma]") {
+    const double mu = kCos45;
+    const double t = 1.0 - (0.04 + 0.96 * std::pow(1.0 - mu, 5.0)); // Schlick, F0 0.04 at IOR 1.5
+    const auto ratio = [](RayLimits const &defaults, bool down, SurfaceInputs const &in = glass()) {
+        Setup s(false);
+        s.scene.setObjectDefaults(defaults);
+        s.ground();
+        s.sun();
+        s.plane(1.0f, 2.0f, 3.0f, in, nullptr, down);
+        return s.shadowRatio();
+    };
+    RayLimits karma;
+    karma.fakeCaustics = true;
+    karma.fakeStyle.karma = true;
+    karma.internalReflection = false;
+    CHECK_THAT(ratio(karma, false).y, WithinAbs(t, 1e-4));    // back face: the interface only
+    CHECK_THAT(ratio(karma, true).y, WithinAbs(t * t, 1e-4)); // front face: and the reflection
+    RayLimits internal = karma;
+    internal.internalReflection = true;
+    CHECK_THAT(ratio(internal, false).y, WithinAbs(t * t, 1e-4));
+    // Tints multiply per crossing, as in Nova's model.
+    const Spectrum tinted = ratio(karma, false, glass(0.0f, {1.0f, 0.5f, 0.25f}));
+    CHECK_THAT(tinted.z, WithinAbs(t * 0.25, 1e-4));
+}
+
+TEST_CASE("Karma's fake-caustic controls", "[render][causticsfake][karma]") {
+    const double mu = kCos45;
+    const double t = 1.0 - (0.04 + 0.96 * std::pow(1.0 - mu, 5.0));
+    const auto ratio = [](FakeCausticsStyle const &style, SurfaceInputs const &in = glass()) {
+        RayLimits d;
+        d.fakeCaustics = true;
+        d.fakeStyle = style;
+        d.internalReflection = false;
+        Setup s(false);
+        s.scene.setObjectDefaults(d);
+        s.ground();
+        s.sun();
+        s.plane(1.0f, 2.0f, 3.0f, in);
+        return s.shadowRatio().y;
+    };
+    FakeCausticsStyle base;
+    base.karma = true;
+    FakeCausticsStyle c = base; // the colour per crossing
+    c.color[0] = c.color[1] = c.color[2] = 0.5f;
+    CHECK_THAT(ratio(c), WithinAbs(0.5 * t, 1e-4));
+    FakeCausticsStyle o = base; // lerp(1, t, opacity)
+    o.opacity[0] = o.opacity[1] = o.opacity[2] = 0.5f;
+    CHECK_THAT(ratio(o), WithinAbs(0.5 + 0.5 * t, 1e-4));
+    FakeCausticsStyle d = base; // Schlick's bias of mu with 1 - d: d = 0.5 gives mu
+    d.fresnelDarken = 0.5f;
+    CHECK_THAT(ratio(d), WithinAbs(t * mu, 1e-4));
+    d.fresnelDarken = 0.25f;
+    CHECK_THAT(ratio(d), WithinAbs(t * mu / ((1.0 / 0.75 - 2.0) * (1.0 - mu) + 1.0), 1e-4));
+    d.fresnelDarken = 1.0f;
+    CHECK_THAT(ratio(d), WithinAbs(0.0, 1e-6));
+    FakeCausticsStyle n = c; // the colour alone, no Fresnel
+    n.bsdf = false;
+    CHECK_THAT(ratio(n), WithinAbs(0.5, 1e-4));
+    // Surfaces that do not transmit stay opaque whatever the controls.
+    n.opacity[0] = n.opacity[1] = n.opacity[2] = 0.5f;
+    CHECK_THAT(ratio(n, lambertDefaults(spectrum(0.5f))), WithinAbs(0.0, 1e-6));
+    // Nova's physical factor takes the controls too.
+    FakeCausticsStyle nova = c;
+    nova.karma = false;
+    CHECK_THAT(ratio(nova), WithinAbs(0.5 * (1.0 - fresnelDielectric(kCos45, 1.5f)), 1e-4));
 }

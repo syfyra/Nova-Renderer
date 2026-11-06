@@ -19,7 +19,7 @@
             size    1
             default { 64 }
             range   { 1 4096 }
-            help    "Samples per pixel."
+            help    "Samples per pixel. Unset: Karma's samples (Path Traced: pathtracedsamples; Variance and Distributed: samplesperpixel times varianceaa_maxsamples)."
             parmtag { "spare_category" "Sampling" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "int" }
@@ -38,7 +38,7 @@
                 "blackmanharris" "Blackman-Harris"
                 "point" "Point"
             }
-            help    "The pixel reconstruction filter."
+            help    "The pixel reconstruction filter. Unset: Karma's pixelfilter."
             parmtag { "spare_category" "Sampling" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "token" }
@@ -50,7 +50,7 @@
             size    1
             default { 1.0 }
             range   { 0 4 }
-            help    "Multiplies the filter's width (0: point sampling)."
+            help    "Multiplies the filter's width (0: point sampling). Unset: Karma's pixelfilterscale."
             parmtag { "spare_category" "Sampling" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "float" }
@@ -62,7 +62,19 @@
             size    1
             default { 10.0 }
             range   { 0 100 }
-            help    "Clamps indirect light per sample against fireflies (0: off)."
+            help    "Clamps indirect light per sample against fireflies (0: off). Unset (and Clamp Direct unset): Karma's colour limits (colorlimit for what the camera sees and the first hit gathers, colorlimitindirect for the rest, emission found by the first bounce counting as indirect)."
+            parmtag { "spare_category" "Sampling" }
+            parmtag { "uiscope" "viewport" }
+            parmtag { "usdvaluetype" "float" }
+        }
+        parm {
+            name    "xn__novaclampDirect_g0a"
+            label   "Clamp Direct"
+            type    float
+            size    1
+            default { 0.0 }
+            range   { 0 100 }
+            help    "Clamps per sample what the camera sees directly and the light the first hit gathers (0: off)."
             parmtag { "spare_category" "Sampling" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "float" }
@@ -74,7 +86,7 @@
             size    1
             default { 2 }
             range   { 0 3 }
-            help    "After an edit the viewport first renders one pixel per 4x4, then per 2x2 block, for a fast first image; those samples count towards the image. 0: full passes only."
+            help    "After an edit the viewport first renders one pixel per 4x4, then per 2x2 block, for a fast first image; those samples count towards the image. 0: full passes only. Unset: Karma's ipr_proxydepth."
             parmtag { "spare_category" "Sampling" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "int" }
@@ -103,7 +115,7 @@
             size    1
             default { 1.0 }
             range   { 0 64 }
-            help    "Diffuse bounces (fractions dither between the neighbouring integers). Past the limit, rays only collect light."
+            help    "Diffuse bounces (fractions dither between the neighbouring integers). Past the limit, rays only collect light. Unset: Karma's diffuselimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "float" }
@@ -115,7 +127,7 @@
             size    1
             default { 4.0 }
             range   { 0 64 }
-            help    "Glossy and mirror reflection bounces."
+            help    "Glossy and mirror reflection bounces. Unset: Karma's reflectlimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "float" }
@@ -127,7 +139,7 @@
             size    1
             default { 4.0 }
             range   { 0 64 }
-            help    "Refraction bounces."
+            help    "Refraction bounces. Unset: Karma's refractlimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "float" }
@@ -143,7 +155,7 @@
             type    toggle
             size    1
             default { 0 }
-            help    "Shows the viewport's image denoised by the NVIDIA OptiX denoiser."
+            help    "Shows the viewport's image denoised by the NVIDIA OptiX denoiser. Unset: Karma's viewport denoise toggle."
             parmtag { "spare_category" "Denoising" }
             parmtag { "uiscope" "viewport toolbar" }
             parmtag { "usdvaluetype" "bool" }
@@ -185,7 +197,7 @@
             size    1
             default { 1.0 }
             range   { 0.1 4 }
-            help    "Multiplies every object's displacement dicing quality."
+            help    "Multiplies every object's displacement dicing quality. Unset: Karma's dicingqualityscale."
             parmtag { "spare_category" "Geometry" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "float" }
@@ -202,7 +214,7 @@
             size    1
             default { 0.25 }
             range   { 0 4 }
-            help    "Texture footprint relative to the pixel's ray cone (0.25 as Karma; 0: the finest MIP level)."
+            help    "Texture footprint relative to the pixel's ray cone (0.25 as Karma; 0: the finest MIP level). Unset: a quarter of Karma's mtlx_imagewidth."
             parmtag { "spare_category" "Textures" }
             parmtag { "uiscope" "viewport" }
             parmtag { "usdvaluetype" "float" }

@@ -88,8 +88,10 @@ private:
     uint64_t _srcMotionHash = 0;
     // Authored face of every triangle of the built geometry (material slots).
     std::vector<int32_t> _triangleFaces;
-    // Shutter the motion was sampled with.
+    // Shutter the motion was sampled with; the one of the current sync
+    // (HdNovaObjectShutter) for the build helpers.
     HdNovaShutter _sampledShutter;
+    HdNovaShutter _shutter;
     unsigned _sampledMaxSteps = 0;
     // Displacement (M4.6): primvars:nova:dicingQuality, :dicingDepth,
     // :displacement, and the signature of what the scene has (0: undisplaced).

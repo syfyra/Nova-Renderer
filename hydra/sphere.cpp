@@ -180,7 +180,7 @@ void HdNovaSphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     _UpdateInstancer(sd, dirtyBits);
     HdInstancer::_SyncInstancerAndParents(sd->GetRenderIndex(), GetInstancerId());
 
-    const HdNovaShutter shutter = param->GetShutter();
+    const HdNovaShutter shutter = HdNovaObjectShutter(sd, id, *param); // Karma's per-object mblur
     const unsigned maxSteps = param->GetMaxMotionSteps();
     const bool newShutter = !(shutter == _sampledShutter) || maxSteps != _sampledMaxSteps;
     const bool geometryDirty =
@@ -317,6 +317,9 @@ void HdNovaSphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
             scene.setMeshInstanceAttributes(_meshId, std::move(instanceAttributes));
     }
     if (rebuild) { // DirtyPrimvar rebuilds
+        // Per-object ray limits and shading properties (Nova's, then Karma's
+        // constant primvars; docs/design/M11-P1.md).
+        scene.setMeshRayLimits(_meshId, HdNovaObjectOverrides(sd, id));
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),

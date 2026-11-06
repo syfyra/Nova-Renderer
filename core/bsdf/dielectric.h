@@ -31,6 +31,11 @@ struct DielectricLobe {
     Spectrum tintR;    // multiplies the reflection (e.g. specular_color)
     Spectrum tintT;    // multiplies the transmission (e.g. transmission_color)
     uint8_t mode;
+    // Karma's internalreflectenable off (dropInternalReflection sets it on
+    // the inside's lobes): the interface does not reflect and transmits
+    // without the Fresnel loss (total internal reflection: nothing).
+    // Aggregate initializers leave it 0.
+    uint8_t noInternal;
     ThinFilm film;          // optional film on the outside (film.active())
     const float *xyzToRgb;  // the film's color conversion
 
@@ -74,6 +79,9 @@ struct DielectricLobe {
         const bool reflect = wi.z > 0.0f;
         if (!(mode & (reflect ? kReflect : kTransmit)))
             return black;
+        const bool noReflection = noInternal != 0;
+        if (noReflection && reflect)
+            return black;
         const float etap = reflect ? 1.0f : e;
         Vec3f m = wo + wi * etap;
         if (dot(m, m) == 0.0f)
@@ -86,8 +94,8 @@ struct DielectricLobe {
             return black; // back-facing microfacet
         float cosT;
         const float F = fresnelDielectric(om, e, cosT);
-        const Spectrum Fs = fresnel(om, e, F);
-        const float pR = reflectProbability(Fs);
+        const Spectrum Fs = noReflection ? spectrum(F >= 1.0f ? 1.0f : 0.0f) : fresnel(om, e, F);
+        const float pR = noReflection ? 0.0f : reflectProbability(Fs);
         if (reflect) {
             pdf = ggx.pdfReflect(wo, m, bounded()) * pR;
             return tintR * Fs * (ggx.D(m) * ggx.vis(wo, wi) * wi.z);
@@ -123,8 +131,9 @@ struct DielectricLobe {
             return false;
         float cosT;
         const float F = fresnelDielectric(om, e, cosT);
-        const Spectrum Fs = fresnel(om, e, F);
-        const float pR = reflectProbability(Fs);
+        const bool noReflection = noInternal != 0;
+        const Spectrum Fs = noReflection ? spectrum(F >= 1.0f ? 1.0f : 0.0f) : fresnel(om, e, F);
+        const float pR = noReflection ? 0.0f : reflectProbability(Fs);
         Vec3f wi;
         if (uc < pR) {
             wi = reflect(w, m);

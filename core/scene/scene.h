@@ -48,6 +48,7 @@ struct MeshRecord {
     uint32_t cryptoObject = 0;   // the cryptomatte id of the object's name (0: none)
     std::vector<CryptoAttribute> cryptoAttributes; // string/int primvars for cryptomattes
     bool fakeCaustics = false;   // effective (commit()): shadow rays cross it with its transmittance
+    ObjectShading shading;       // effective (commit()): fake-caustic style, internal reflection, ...
     std::vector<uint16_t> triangleSlots;
     // Where each material's primvar reads come from on this mesh (commit()).
     struct MaterialBinding {
@@ -208,8 +209,11 @@ public:
                            std::vector<std::vector<std::string>> instanceCategories = {});
     // Emissive meshes as lights (M9 D14). No acceleration rebuild.
     void setMeshLightSource(MeshId id, const MeshLightSource &settings);
-    // The fake-caustics setting of objects without their own (applied at
-    // commit()).
+    // The shading-side object properties of objects without their own
+    // (fake caustics and their style, internal reflection, the roughness
+    // clamp of true caustics; the limits stay with RenderSettings::limits).
+    // Applied at commit(); setDefaultFakeCaustics sets the switch alone.
+    void setObjectDefaults(const RayLimits &defaults);
     void setDefaultFakeCaustics(bool on);
 
     LightId createLight();
@@ -401,7 +405,7 @@ private:
     OpacityFilter m_opacityFilter;
     bool m_anyFiltered = false;
     bool m_anyFakeCaustics = false;
-    bool m_defaultFakeCaustics = false;
+    RayLimits m_objectDefaults; // the shading-side fields (setObjectDefaults)
     void updateFilterFlags(bool &geometryChanged);
     void rebuildBindings();
 

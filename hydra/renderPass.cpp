@@ -108,9 +108,11 @@ HdNovaRenderPass::HdNovaRenderPass(HdRenderIndex *index, HdRprimCollection const
                                    HdNovaRenderDelegate *delegate)
     : HdRenderPass(index, collection), _delegate(delegate) {
     // The render settings' velocity blur before the first sync, so the
-    // prims resolve their motion once (docs/design/M8.md D19).
+    // prims resolve their motion once (docs/design/M8.md D19); likewise the
+    // other per-object defaults (docs/design/M11-P1.md).
     if (HdNovaVelocityModeSceneIndexRefPtr velocity = HdNovaVelocityModeSceneIndex::Find(index))
         velocity->SetDefaults(_delegate->GetVelocityDefaults());
+    _delegate->GetNovaRenderParam().SetObjectDefaults(_delegate->GetObjectDefaults());
 }
 
 HdNovaRenderPass::~HdNovaRenderPass() {
@@ -139,8 +141,9 @@ HdNovaRenderPass::View HdNovaRenderPass::_ComputeView(HdRenderPassStateSharedPtr
     // Thin lens from the camera (HdCamera reports lengths in world units).
     // focusOn is not set by USD, so it is not consulted (as in hdPrman).
     if (const HdCamera *cam = state->GetCamera()) {
-        const bool dof = !_delegate->GetRenderSetting<bool>(_tokens->disableDepthOfField, false) &&
-                         cam->GetFStop() > 0.0f && cam->GetFocusDistance() > 0.0f && cam->GetFocalLength() > 0.0f;
+        // USD's disableDepthOfField and Karma's karma:global:enable_dof.
+        const bool dof = _delegate->IsDepthOfFieldEnabled() && cam->GetFStop() > 0.0f &&
+                         cam->GetFocusDistance() > 0.0f && cam->GetFocalLength() > 0.0f;
         view.lensRadius = dof ? cam->GetFocalLength() / (2.0f * cam->GetFStop()) : 0.0f;
         view.focusDistance = dof ? cam->GetFocusDistance() : 0.0f;
     }
@@ -334,6 +337,21 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
             _bindings.clear();
             return;
         }
+    // The other per-object defaults of the render settings (Karma's curve
+    // and point styles, width scale, emission as light, dicing; docs/design/
+    // M11-P1.md): prims that used the old ones re-sync, render after it.
+    if (param.SetObjectDefaults(_delegate->GetObjectDefaults()))
+        if (HdRenderIndex *index = GetRenderIndex()) {
+            thread.StopRender();
+            const TfTokenVector types{HdPrimTypeTokens->mesh, HdPrimTypeTokens->basisCurves, HdPrimTypeTokens->points,
+                                      HdPrimTypeTokens->sphere, HdPrimTypeTokens->volume};
+            HdDataSourceLocatorSet locators;
+            locators.insert(HdPrimvarsSchema::GetDefaultLocator());
+            if (!HdNovaResyncSceneIndex::DirtyPrims(index->GetInstanceName(), types, locators))
+                index->GetChangeTracker().MarkAllRprimsDirty(HdChangeTracker::DirtyPrimvar);
+            _bindings.clear();
+            return;
+        }
 
     View view = _ComputeView(state, width, height);
     view.frameTime = shutter.FrameTime();
@@ -409,7 +427,9 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     // Interrupting the old render flags a reset; this restart covers it.
     _delegate->ConsumeNeedsReset();
 
-    scene.setDefaultFakeCaustics(settings.limits.fakeCaustics);
+    // The shading-side object defaults (fake caustics and their style,
+    // internal reflection, the roughness clamp of true caustics).
+    scene.setObjectDefaults(settings.limits);
     // Volume majorants of Time/Frame-driven shaders bound the rendered frame.
     scene.setShadeFrame(settings.frame, settings.fps);
     scene.commit();
@@ -463,7 +483,7 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     // The viewport (not husk): proxy passes for a fast first image and BVH
     // refits for deformations (docs/design/M7.md D6, D7).
     const bool viewport = _delegate->GetRenderSetting<bool>(_tokens->viewport, false);
-    renderer.setProxyDepth(viewport ? _delegate->GetRenderSetting<int>(HdNovaSettingsTokens->iprProxyDepth, 2) : 0);
+    renderer.setProxyDepth(viewport ? _delegate->GetIprProxyDepth() : 0);
     scene.setInteractive(viewport);
     renderer.reset();
 

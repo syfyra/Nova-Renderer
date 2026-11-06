@@ -18,6 +18,7 @@ add_library(hdNova_objects OBJECT
     field.cpp
     volumeDependencies.cpp
     primvarUtil.cpp
+    karmaSettings.cpp
     instancer.cpp
     camera.cpp
     light.cpp

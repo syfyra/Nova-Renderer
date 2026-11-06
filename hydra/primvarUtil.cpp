@@ -18,7 +18,11 @@
 #include <pxr/imaging/hd/sceneDelegate.h>
 #include <pxr/imaging/hd/tokens.h>
 
+#include <pxr/base/tf/stringUtils.h>
+
+#include <algorithm>
 #include <cmath>
+#include <optional>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -106,35 +110,128 @@ std::string HdNovaObjectLpeTag(HdSceneDelegate *sd, SdfPath const &id) {
     return {};
 }
 
-nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &id) {
+nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &id, HdNovaObjectDefaults const &defaults) {
     static const TfToken nova("nova:object:lightSource"), karma("karma:object:treat_as_lightsource"),
         diffuse("karma:object:lightsource_diffusescale"), specular("karma:object:lightsource_specularscale"),
         quality("karma:object:lightsource_samplingquality");
     nova::MeshLightSource s;
+    // The render settings' Karma values first; the prim's own replace them.
+    if (defaults.lightSource >= 0)
+        s.mode = defaults.lightSource;
+    if (defaults.lightDiffuse >= 0.0f)
+        s.diffuse = defaults.lightDiffuse;
+    if (defaults.lightSpecular >= 0.0f)
+        s.specular = defaults.lightSpecular;
+    if (defaults.lightQuality >= 0.0f)
+        s.samplingQuality = defaults.lightQuality;
     bool own = false;
     for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant)) {
         if (d.name != nova && d.name != karma && d.name != diffuse && d.name != specular && d.name != quality)
             continue;
+        const VtValue value = sd->Get(id, d.name);
+        if (d.name == nova || d.name == karma) {
+            const int mode = HdNovaMenuIndex(value, {"No", "Yes", "Auto"});
+            if (mode < 0)
+                continue;
+            if (d.name == nova) {
+                s.mode = mode;
+                own = true;
+            } else if (!own) {
+                s.mode = mode;
+            }
+            continue;
+        }
         int width = 0;
         std::vector<float> v;
-        if (!HdNovaPrimvarToFloats(sd->Get(id, d.name), &width, &v) || v.size() != 1 || !std::isfinite(v[0]))
+        if (!HdNovaPrimvarToFloats(value, &width, &v) || v.size() != 1 || !std::isfinite(v[0]))
             continue;
-        if (d.name == nova) {
-            s.mode = int(std::lround(v[0]));
-            own = true;
-        } else if (d.name == karma) {
-            if (!own)
-                s.mode = int(std::lround(v[0]));
-        } else if (d.name == diffuse) {
+        if (d.name == diffuse)
             s.diffuse = v[0];
-        } else if (d.name == specular) {
+        else if (d.name == specular)
             s.specular = v[0];
-        } else {
+        else
             s.samplingQuality = v[0];
-        }
     }
     s.mode = s.mode < 0 ? 0 : s.mode;
     return s;
+}
+
+VtValue HdNovaConstantPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name) {
+    for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant))
+        if (d.name == name)
+            return sd->Get(id, name);
+    return VtValue();
+}
+
+nova::RayLimitOverrides HdNovaObjectOverrides(HdSceneDelegate *sd, SdfPath const &id) {
+    static const TfToken novaLimits[nova::kLimitClasses] = {
+        TfToken("nova:object:diffuseLimit"), TfToken("nova:object:reflectLimit"), TfToken("nova:object:refractLimit"),
+        TfToken("nova:object:sssLimit"), TfToken("nova:object:volumeLimit")};
+    static const TfToken karmaLimits[nova::kLimitClasses] = {
+        TfToken("karma:object:diffuselimit"), TfToken("karma:object:reflectlimit"),
+        TfToken("karma:object:refractlimit"), TfToken("karma:object:ssslimit"), TfToken("karma:object:volumelimit")};
+    static const TfToken thinWall("nova:object:thinWallAtRefractLimit"),
+        karmaThinWall("karma:object:thinwallatrefractlimit"), fake("nova:object:fakeCaustics"),
+        caustics("karma:object:causticsenable"), fakeBsdf("karma:object:fakecausticsbsdfenable"),
+        fakeColor("karma:object:fakecausticscolor"), fakeOpacity("karma:object:fakecausticsopacity"),
+        fakeDarken("karma:object:fakecausticsfresneldarken"), internal("nova:object:internalReflection"),
+        karmaInternal("karma:object:internalreflectenable"), clamp("nova:object:causticsRoughnessClamp"),
+        karmaClamp("karma:object:causticsroughnessclamp");
+    // One pass over the constant primvars; values fetched on demand.
+    std::vector<TfToken> names;
+    for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant))
+        if (TfStringStartsWith(d.name.GetString(), "nova:object:") || TfStringStartsWith(d.name.GetString(), "karma:object:"))
+            names.push_back(d.name);
+    const auto value = [&](TfToken const &name) {
+        return std::find(names.begin(), names.end(), name) != names.end() ? sd->Get(id, name) : VtValue();
+    };
+    const auto number = [&](TfToken const &nova, TfToken const &karma) -> std::optional<double> {
+        if (const auto v = HdNovaNumber(value(nova)))
+            return v;
+        return HdNovaNumber(value(karma));
+    };
+    const auto flag = [&](TfToken const &nova, TfToken const &karma) -> std::optional<bool> {
+        if (const auto v = HdNovaFlag(value(nova)))
+            return v;
+        return HdNovaFlag(value(karma));
+    };
+    nova::RayLimitOverrides o;
+    if (names.empty())
+        return o;
+    for (int k = 0; k < nova::kLimitClasses; ++k)
+        if (const auto v = number(novaLimits[k], karmaLimits[k]))
+            o.limit[k] = float(std::max(*v, 0.0));
+    if (const auto v = flag(thinWall, karmaThinWall))
+        o.thinWallAtRefractLimit = *v ? 1 : 0;
+    if (const auto v = HdNovaFlag(value(fake))) {
+        o.fakeCaustics = *v ? 1 : 0;
+        o.fakeKarma = 0;
+    } else if (const auto k = HdNovaFlag(value(caustics))) {
+        o.fakeCaustics = *k ? 0 : 1;
+        o.fakeKarma = 1;
+    }
+    if (const auto v = HdNovaFlag(value(fakeBsdf)))
+        o.fakeBsdf = *v ? 1 : 0;
+    const auto color = [&](TfToken const &name, float out[3], float hi) {
+        const VtValue v = value(name);
+        int width = 0;
+        std::vector<float> c;
+        if (!HdNovaPrimvarToFloats(v, &width, &c) || c.empty())
+            return;
+        for (int i = 0; i < 3; ++i) {
+            const float x = c[size_t(width >= 3 ? i : 0)];
+            out[i] = std::isfinite(x) ? std::clamp(x, 0.0f, hi) : 1.0f;
+        }
+    };
+    color(fakeColor, o.fakeColor, 1e30f);
+    color(fakeOpacity, o.fakeOpacity, 1.0f);
+    if (const auto v = HdNovaNumber(value(fakeDarken)))
+        o.fakeDarken = float(std::clamp(*v, 0.0, 1.0));
+    if (const auto v = flag(internal, karmaInternal))
+        o.internalReflection = *v ? 1 : 0;
+    if (const auto v = number(clamp, karmaClamp))
+        o.causticsRoughnessClamp = float(std::clamp(*v, 0.0, 1.0));
+    return o;
 }
 
 bool HdNovaIsGeometryPrimvar(TfToken const &name) {

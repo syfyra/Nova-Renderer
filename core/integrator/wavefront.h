@@ -194,6 +194,7 @@ struct WaveQueues {
     std::vector<float> limitDither;
     std::vector<uint8_t> lightOnly;
     std::vector<uint8_t> afterDiffuse; // a diffuse or SSS event happened (fake caustics)
+    std::vector<float> pathAlpha;      // the roughest glossy event so far (GGX alpha; constrainRoughness)
     // The last scattering vertex, as its light sample saw it (the light
     // tree's selection probabilities for MIS of BSDF samples, M9 D11):
     // position, normal and receiver kind (Receiver).

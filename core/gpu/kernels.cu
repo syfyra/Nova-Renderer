@@ -32,6 +32,19 @@ namespace {
 
 __device__ __forceinline__ uint32_t threadIndex() { return blockIdx.x * blockDim.x + threadIdx.x; }
 
+// The firefly clamps at a depth (the CPU's ShadeContext, docs/design/
+// M11-P1.md): lights reached by rays, emission of other objects, light
+// samples.
+__device__ __forceinline__ float clampLightAt(const GpuSettings &st, uint32_t depth) {
+    return depth > 1 ? st.clampIndirect : st.clampDirect;
+}
+__device__ __forceinline__ float clampEmissionAt(const GpuSettings &st, uint32_t depth) {
+    return depth > 1 || (depth == 1 && st.clampEmissionIndirect) ? st.clampIndirect : st.clampDirect;
+}
+__device__ __forceinline__ float clampNeeAt(const GpuSettings &st, uint32_t depth) {
+    return depth > 0 ? st.clampIndirect : st.clampDirect;
+}
+
 // A NaN/Inf contribution counts as black (addRadiance in wavefront.cpp).
 __device__ __forceinline__ void addRadiance(const GpuWave &w, uint32_t p, const Spectrum &c) {
     if (isFinite(c))
@@ -393,7 +406,7 @@ __device__ void equiangularSample(const ShadeArgs &a, uint32_t k, const MediumRa
             lpePartsAdd(lpe, lpeParts, lpeLightStep(lpe, scattered, li), contribution, beta * fUnit * ls.Li * scale);
     }
     if (!isBlack(contribution) || (state && lpe.unit && lpeParts.size() > 0)) {
-        const float clampNee = a.depth > 0 ? st.clampIndirect : 0.0f;
+        const float clampNee = clampNeeAt(st, a.depth);
         const float seed = a.rays.filterSeed[k] + 0.75f;
         const uint32_t r = pushRay(w.shadow, x, ls.wi, shadowRayLength(ls.distance, sc.tolerance), p, ray.time,
                                    seed - std::floor(seed), RayClass::Shadow);
@@ -440,7 +453,7 @@ __device__ void pushShadowDomeRay(const ShadeArgs &a, uint32_t p, const PathPmf 
     }
     if (isBlack(contribution) && !(state && lpe.unit && parts.size() > 0))
         return;
-    const float clampNee = a.depth > 0 ? a.settings.clampIndirect : 0.0f;
+    const float clampNee = clampNeeAt(a.settings, a.depth);
     const uint32_t r = pushRay(w.shadow, o, wi, kInf, p, time, seed, RayClass::Shadow);
     w.shadowCategory[r] = sc.lights[li].shadowCategory;
     w.shadowSlot[r] = 3;
@@ -495,6 +508,19 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         surfaceInputs(st, a.depth, mesh, m, material, hit, dir, time, a.rays.rayType[k], footX, footY, inputs);
         buildSurfaceClosure(inputs, hit, wo, ctx, cl);
     }
+    // The object's shading properties (docs/design/M11-P1.md): no reflection
+    // inside refracting surfaces, glossy roughness at least the path's
+    // (constrainRoughness) or, on true-caustic paths after a diffuse event,
+    // the caustics clamp.
+    const ObjectShading &shading = mesh.shading;
+    if (!shading.internalReflection)
+        dropInternalReflection(cl, wo);
+    {
+        float minAlpha = st.constrainRoughness ? w.pathAlpha[p] : 0.0f;
+        if (w.afterDiffuse[p] && !shading.fakeCaustics && shading.causticsRoughnessClamp > 0.0f)
+            minAlpha = nova::fmax(minAlpha, sqr(nova::fmin(shading.causticsRoughnessClamp, 1.0f)));
+        clampLobeRoughness(cl, minAlpha);
+    }
 
     const GpuScene &sc = a.scene;
     // Fake caustics after a diffuse event (M4 3.3): glossy lobes are skipped,
@@ -507,8 +533,7 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     // triangles treated as lights and (light-only rays) at fake-caustic
     // objects (the gather).
     const bool lightsOnly = w.lightOnly[p] || (a.depth > 0 && a.depth >= st.maxDepth);
-    const float clampEscape = a.depth > 1 ? st.clampIndirect : 0.0f;
-    const float clampNee = a.depth > 0 ? st.clampIndirect : 0.0f;
+    const float clampNee = clampNeeAt(st, a.depth);
     // Light path expressions (lpe_path.h): the path's state, the object's tag.
     const LpeView &lpe = sc.lpe;
     GpuFilm film = a.film;
@@ -532,7 +557,8 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                                        : 0.0f;
             Le *= lightMultiplier(light, w.diffuseShare[p]) * bsdfSampleWeight(strategy, bsdfPdf, lightPdf);
         }
-        const Spectrum contribution = clampContribution(w.beta[p] * Le, clampEscape);
+        const Spectrum contribution = clampContribution(
+            w.beta[p] * Le, emitter != kInvalidId ? clampLightAt(st, a.depth) : clampEmissionAt(st, a.depth));
         addRadiance(w, p, contribution);
         // A treated emitter reached past the camera is MIS-weighted against
         // its light samples, whose weight-1 parts already feed unoccluded;
@@ -548,7 +574,7 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     if (lightsOnly && !(fake && w.lightOnly[p] && a.depth < st.maxDepth))
         return;
     if (fake) {
-        fakeT = closureTransmittance(cl, wo, tables);
+        fakeT = fakeCausticFactor(cl, wo, shading, tables);
         if (w.lightOnly[p]) {
             // A light-only ray: through, still gathering lights only.
             if (!isBlack(fakeT)) {
@@ -666,6 +692,8 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                            (dot(wo, hit.Ng) > 0.0f ? s.transmit : !s.transmit);
     if (s.rayClass == RayClass::Diffuse || s.rayClass == RayClass::Sss)
         w.afterDiffuse[p] = 1;
+    if (st.constrainRoughness && s.lobe >= 0)
+        w.pathAlpha[p] = nova::fmax(w.pathAlpha[p], glossyAlpha(cl.lobe[s.lobe]));
     // Ray limits: within the limit of the event's class a full ray; past it
     // a light-only ray, or for refraction with thin walls a straight
     // pass-through up to twice the limit (Karma).
@@ -819,6 +847,7 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
     w.limitDither[slot] = sampler.get1D(stream::kLimit);
     w.lightOnly[slot] = 0;
     w.afterDiffuse[slot] = 0;
+    w.pathAlpha[slot] = 0.0f;
     // No MIS vertex yet (path.h, kPrevSetDelta): device memory is not
     // cleared, and the slot's earlier path must not leak in.
     w.prevP[slot] = ray.org;
@@ -964,13 +993,13 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
     }
     // The emission collected: volumes as O events, volume lights as L events
     // (seen from the camera they count for every output).
-    const float clampEscape = a.depth > 1 ? st.clampIndirect : 0.0f;
+    const float clampEmission = clampEmissionAt(st, a.depth), clampLight = clampLightAt(st, a.depth);
     const LpeView &lpe = sc.lpe;
     GpuFilm film = a.film;
     const uint32_t pixel = w.pixel[p];
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
     if (!isBlack(gather.objectSum)) {
-        const Spectrum contribution = clampContribution(w.beta[p] * gather.objectSum, clampEscape);
+        const Spectrum contribution = clampContribution(w.beta[p] * gather.objectSum, clampEmission);
         addRadiance(w, p, contribution);
         if (state)
             lpeDepositAll(lpe, film, pixel, lpeStep(lpe, state, lpe::TypeObject, lpe::ScatterNone, 0, 0), contribution);
@@ -978,7 +1007,7 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
     const EmissionGather *gathers[2] = {&gather, &lightGather};
     for (const EmissionGather *g : gathers)
         for (int s = 0; s < g->lightCount; ++s) {
-            const Spectrum contribution = clampContribution(w.beta[p] * g->lightSum[s], clampEscape);
+            const Spectrum contribution = clampContribution(w.beta[p] * g->lightSum[s], clampLight);
             addRadiance(w, p, contribution);
             if (!state)
                 continue;
@@ -1041,7 +1070,8 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             uint32_t light = 0;
             if (cameraAreaLight(sc.lights, sc.lightCount, a.rays.org[k], dir, event ? w.volumeT[k] : tHit, surface,
                                 extent, Le, light)) {
-                const Spectrum contribution = betaIn * Le * atten.ofLight(light);
+                const Spectrum contribution =
+                    clampContribution(betaIn * Le * atten.ofLight(light), clampLightAt(a.settings, a.depth));
                 addRadiance(w, p, contribution);
                 if (state)
                     lpeDepositAll(lpe, film, pixel, lpeLightStep(lpe, state, light), contribution);
@@ -1080,7 +1110,7 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
                                                                             lpeLightStep(lpe, state, i), beta * Li);
                                                           })
                                       : cameraEnvironment(sc.lights, sc.lightCount, dir, visible);
-            addRadiance(w, p, beta * Le);
+            addRadiance(w, p, clampContribution(beta * Le, clampLightAt(a.settings, a.depth)));
             w.alpha[p] += visible ? 1.0f : media ? volumeAlpha() : 0.0f;
             return;
         }
@@ -1094,7 +1124,7 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
         // and, on escape, the lights at infinity.
         // With light path expressions each light's share is a part of its
         // own (its light event); the parts take the clamp of the sum.
-        const float clampEscape = a.depth > 1 ? a.settings.clampIndirect : 0.0f;
+        const float clampEscape = clampLightAt(a.settings, a.depth);
         const PathPmf pmf = pathPmf(sc, w, p);
         GpuLpeParts parts;
         const auto addPart = [&](uint32_t i, const Spectrum &Li) {
@@ -1197,7 +1227,7 @@ extern "C" __global__ void novaWalkExit(const ShadeArgs a) {
     const uint32_t pixel = w.pixel[p];
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
     const uint32_t receiverSet = mesh.receiverSet(instance);
-    const float clampNee = a.depth > 0 ? st.clampIndirect : 0.0f;
+    const float clampNee = clampNeeAt(st, a.depth);
 
     // Next-event estimation with the exit's Lambert lobe.
     const GpuLightChoice choice = chooseLight(sc, st, w, p, time, sampler, origin, ng, Receiver::OneSided, receiverSet,
@@ -1301,7 +1331,7 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     const lpe::State scattered = state ? lpeStep(lpe, state, lpe::TypeVolume, lpe::ScatterNone, tag, 0) : state;
     if (scattered && lpe.albedo && lpe.albedoAfter[scattered])
         lpeDeposit(lpe, film, pixel, lpe.program.step(scattered, lpe.albedoSymbol), w.beta[p]);
-    const float clampNee = a.depth > 0 ? st.clampIndirect : 0.0f;
+    const float clampNee = clampNeeAt(st, a.depth);
 
     // Next-event estimation (no surface: the shadow ray starts at x).
     {
@@ -1548,7 +1578,7 @@ extern "C" __global__ void novaFakeStep(const ShadeArgs a) {
         ClosureList cl;
         buildSurfaceClosure(inputs, hit, -dir, ctx, cl);
         Spectrum T = w.fakeT[i];
-        T *= closureTransmittance(cl, -dir, tables);
+        T *= fakeCausticFactor(cl, -dir, mesh.shading, tables);
         w.fakeT[i] = T;
         if (isBlack(T))
             return;

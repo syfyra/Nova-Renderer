@@ -31,7 +31,7 @@
             size    1
             default { 1.0 }
             range   { 0 64 }
-            help    "Diffuse bounces (fractions dither between the neighbouring integers). Past the limit, rays only collect light."
+            help    "Diffuse bounces (fractions dither between the neighbouring integers). Past the limit, rays only collect light. Unset: Karma's diffuselimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "float" }
@@ -56,7 +56,7 @@
             size    1
             default { 4.0 }
             range   { 0 64 }
-            help    "Glossy and mirror reflection bounces."
+            help    "Glossy and mirror reflection bounces. Unset: Karma's reflectlimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "float" }
@@ -81,7 +81,7 @@
             size    1
             default { 4.0 }
             range   { 0 64 }
-            help    "Refraction bounces."
+            help    "Refraction bounces. Unset: Karma's refractlimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "float" }
@@ -106,7 +106,7 @@
             size    1
             default { 1.0 }
             range   { 0 64 }
-            help    "Subsurface and translucency bounces."
+            help    "Subsurface and translucency bounces. Unset: Karma's ssslimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "float" }
@@ -131,7 +131,7 @@
             size    1
             default { 0.0 }
             range   { 0 64 }
-            help    "Volume scattering events."
+            help    "Volume scattering events. Unset: Karma's volumelimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "float" }
@@ -155,7 +155,7 @@
             type    toggle
             size    1
             default { 1 }
-            help    "Past the refraction limit (up to twice it), refractions continue straight on instead of stopping."
+            help    "Past the refraction limit (up to twice it), refractions continue straight on instead of stopping. Unset: Karma's thinwallatrefractlimit."
             parmtag { "spare_category" "Limits" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "bool" }
@@ -184,11 +184,60 @@
             type    toggle
             size    1
             default { 0 }
-            help    "Shadows and diffuse rays pass through this object's transmission (transparent shadows) instead of needing caustic paths."
+            help    "Shadows and diffuse rays pass through this object's transmission (transparent shadows) instead of needing caustic paths. Unset: Karma's causticsenable inverted, with Karma's shadow factor and its fake-caustics controls; Karma's render settings fake caustics by default."
             parmtag { "spare_category" "Shading" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "bool" }
             disablewhen "{ xn__primvarsnovaobjectfakeCaustics_control_02beg == block } { xn__primvarsnovaobjectfakeCaustics_control_02beg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectcausticsRoughnessClamp_control_bkceg"
+            label   "Caustics Roughness Clamp"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectcausticsRoughnessClamp_95beg"
+            label   "Caustics Roughness Clamp"
+            type    float
+            size    1
+            default { 0.0 }
+            range   { 0 1 }
+            help    "The least roughness of glossy and refracting surfaces seen after a diffuse bounce (true caustics only): softer, less noisy caustics. Unset: Karma's causticsroughnessclamp (0.2 with Karma's render settings)."
+            parmtag { "spare_category" "Shading" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "float" }
+            disablewhen "{ xn__primvarsnovaobjectcausticsRoughnessClamp_control_bkceg == block } { xn__primvarsnovaobjectcausticsRoughnessClamp_control_bkceg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectinternalReflection_control_sdceg"
+            label   "Internal Reflection"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectinternalReflection_rzbeg"
+            label   "Internal Reflection"
+            type    toggle
+            size    1
+            default { 1 }
+            help    "Refracting surfaces reflect on their inside too. Off: light inside a solid dielectric leaves it without Fresnel loss and is never reflected back in (total internal reflection ends the path). Unset: Karma's internalreflectenable (off with Karma's render settings)."
+            parmtag { "spare_category" "Shading" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "bool" }
+            disablewhen "{ xn__primvarsnovaobjectinternalReflection_control_sdceg == block } { xn__primvarsnovaobjectinternalReflection_control_sdceg == none }"
         }
     }
     groupcollapsible {
@@ -455,7 +504,7 @@
             size    1
             default { 0.5 }
             range   { 0.05 4 }
-            help    "Displacement micropolygons per pixel edge (0.5: 2-pixel micropolygons, Karma's default)."
+            help    "Displacement micropolygons per pixel edge (0.5: 2-pixel micropolygons, Karma's default). Unset: Karma's dicingquality."
             parmtag { "spare_category" "Dicing" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "float" }
@@ -480,7 +529,7 @@
             size    1
             default { -1 }
             range   { -1 10 }
-            help    "A fixed 2^depth segments per edge instead of the camera's rate (-1: off)."
+            help    "A fixed 2^depth segments per edge instead of the camera's rate (-1: off). Unset: Karma's dicingdepthmin and dicingdepthmax when they agree."
             parmtag { "spare_category" "Dicing" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "int" }
@@ -504,7 +553,7 @@
             type    toggle
             size    1
             default { 1 }
-            help    "Applies the material's displacement."
+            help    "Applies the material's displacement. Unset: Karma's truedisplace (off for Disable Displacement Shader)."
             parmtag { "spare_category" "Dicing" }
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "bool" }

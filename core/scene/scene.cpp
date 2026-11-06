@@ -165,7 +165,8 @@ void Scene::updateFilterFlags(bool &geometryChanged) {
             for (MaterialId m : rec.materialSlots)
                 want |= material(m).hasOpacity;
         }
-        rec.fakeCaustics = rec.rayLimits.fakeCaustics >= 0 ? rec.rayLimits.fakeCaustics != 0 : m_defaultFakeCaustics;
+        rec.shading = resolveObjectShading(m_objectDefaults, rec.rayLimits);
+        rec.fakeCaustics = rec.shading.fakeCaustics;
         want |= rec.fakeCaustics || m_shadowLinking;
         m_anyFakeCaustics |= rec.fakeCaustics;
         if (want != rec.filtered) {
@@ -376,11 +377,19 @@ void Scene::setMeshLpeTag(MeshId id, const std::string &tag) {
     ++m_version;
 }
 
+void Scene::setObjectDefaults(const RayLimits &defaults) {
+    std::lock_guard lock(m_mutex);
+    if (m_objectDefaults == defaults)
+        return;
+    m_objectDefaults = defaults;
+    ++m_version;
+}
+
 void Scene::setDefaultFakeCaustics(bool on) {
     std::lock_guard lock(m_mutex);
-    if (m_defaultFakeCaustics == on)
+    if (m_objectDefaults.fakeCaustics == on)
         return;
-    m_defaultFakeCaustics = on;
+    m_objectDefaults.fakeCaustics = on;
     ++m_version;
 }
 

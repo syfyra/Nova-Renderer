@@ -587,6 +587,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
         g.bindings = put(bindings);
         g.shadowMasks = put(rec.shadowMasks);
         g.fakeCaustics = uint8_t(rec.fakeCaustics);
+        g.shading = rec.shading;
         g.emitterOf = put(rec.emitterOf);
         g.emitterBase = rec.emitterBase;
         g.emitterStride = rec.emitterStride;
@@ -867,6 +868,7 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.limitDither, paths);
     field(w.lightOnly, paths);
     field(w.afterDiffuse, paths);
+    field(w.pathAlpha, paths);
     field(w.coneWidth, paths);
     field(w.coneSpread, paths);
     field(w.prevP, paths);
@@ -1122,6 +1124,9 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     gs.maxDepth = settings.maxDepth;
     gs.rrStartDepth = settings.rrStartDepth;
     gs.clampIndirect = settings.clampIndirect;
+    gs.clampDirect = settings.clampDirect;
+    gs.clampEmissionIndirect = uint8_t(settings.clampEmissionIndirect);
+    gs.constrainRoughness = uint8_t(settings.constrainRoughness);
     gs.lightStrategy = settings.lightStrategy;
     gs.limits = settings.limits;
     gs.globals = ShadeGlobals{settings.frame, settings.fps};

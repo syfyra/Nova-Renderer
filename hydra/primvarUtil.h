@@ -29,14 +29,31 @@ std::string HdNovaObjectLpeTag(HdSceneDelegate *sd, SdfPath const &id);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
+#include "karmaSettings.h"
+
 #include "core/scene/mesh.h"
+#include "core/scene/ray_limits.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
 
 // Emissive meshes as lights (docs/design/M9.md D14): the constant primvars
 // nova:object:lightSource (else karma:object:treat_as_lightsource; 0 no, 1
 // yes, 2 auto) and karma:object:lightsource_diffusescale, _specularscale and
-// _samplingquality.
-nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &id);
+// _samplingquality, else the render settings' Karma values (`defaults`,
+// docs/design/M11-P1.md).
+nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &id,
+                                            HdNovaObjectDefaults const &defaults = HdNovaObjectDefaults{});
+
+// A prim's per-object ray limits and shading properties (constant
+// primvars): Nova's names first (nova:object:*Limit, thinWallAtRefractLimit,
+// fakeCaustics, internalReflection, causticsRoughnessClamp), then Karma's
+// (karma:object:*limit, thinwallatrefractlimit, causticsenable inverted with
+// Karma's fake-caustic factor, the fakecaustics* controls,
+// internalreflectenable, causticsroughnessclamp); unset fields fall back to
+// the render settings (docs/design/M11-P1.md).
+nova::RayLimitOverrides HdNovaObjectOverrides(HdSceneDelegate *sd, SdfPath const &id);
+
+// A constant primvar's value (empty if the prim has none of that name).
+VtValue HdNovaConstantPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name);
 
 PXR_NAMESPACE_CLOSE_SCOPE
