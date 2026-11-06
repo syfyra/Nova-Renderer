@@ -125,6 +125,8 @@ struct ShaderBounds {
             return Interval::point(time);
         case Global::Frame:
             return Interval::point(frame);
+        case Global::Pndc: // volumes see no camera (0); no bound claimed
+            return Interval::unbounded();
         default: // directions (normals, I, tangents): unit vectors
             return {-1.0f, 1.0f};
         }

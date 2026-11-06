@@ -35,6 +35,7 @@ TF_DEFINE_PRIVATE_TOKENS(_tokens,
     ((novaEquiangular, "inputs:nova:light:equiangular"))
     ((samplingMode, "inputs:karma:light:samplingmode"))
     ((novaSamplingMode, "inputs:nova:light:samplingMode"))
+    ((illumBackground, "inputs:karma:light:illumbackground"))
     ((legacyCategory, "inputs:karma:light:category"))
     ((legacyShadowSet, "inputs:karma:light:shadowtraceset"))
     ((flipNone, "None"))
@@ -152,6 +153,9 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     // Equiangular sampling in volumes (M9 D17): Nova's, else Karma's (off).
     desc.equiangular = lightParam<bool>(sd, id, _tokens->novaEquiangular,
                                         lightParam<bool>(sd, id, _tokens->equiangular, false));
+    // Background holdouts (docs/design/M11-P2.md): the light lights them and
+    // its shadows stay out of the holdout shadow outputs (Karma's, off).
+    desc.illumBackground = lightParam<bool>(sd, id, _tokens->illumBackground, false);
     // Karma's per-light sampling mode (D18): Uniform (1, "uniform") keeps the
     // light out of the tree; Auto (0) and Light Tree (2) put it in.
     for (TfToken const &key : {_tokens->novaSamplingMode, _tokens->samplingMode}) {

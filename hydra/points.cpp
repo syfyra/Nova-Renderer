@@ -247,6 +247,7 @@ void HdNovaPoints::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     if (rebuild) { // DirtyPrimvar rebuilds
         scene.setMeshRayLimits(_meshId, rayLimitsOf(sd, id));
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
+        scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (M6 D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
                             HdNovaCryptoAttributes(sd, id, names));

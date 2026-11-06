@@ -81,8 +81,8 @@ NOVA_FORCEINLINE void lpeAddTo(Spectrum &sum, const Spectrum &v) {
 }
 
 // Adds a contribution that ends in state s to the outputs that take it
-// (NaN/Inf as black, as in addRadiance). unoccluded;, shadow; and holdout;
-// outputs are not fed by these sums.
+// (NaN/Inf as black, as in addRadiance). unoccluded; and shadow; outputs
+// are not fed by these sums.
 template <class Film>
 NOVA_FORCEINLINE void lpeDeposit(const LpeView &t, Film &film, uint32_t pixel, lpe::State s, const Spectrum &v) {
     const uint32_t begin = t.plainBegin[s], end = t.plainBegin[s + 1];

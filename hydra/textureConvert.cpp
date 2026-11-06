@@ -159,6 +159,14 @@ std::string lowerExtension(std::string const &path) {
     return OIIO::Strutil::lower(utf8(fs::u8path(path).extension()));
 }
 
+// Houdini's own image formats, which OIIO cannot read: .rat and .pic
+// (Karma's Background Plate uses a .pic, docs/design/M11-P2.md). They are
+// read through imaketx (HdNovaReadableTexture).
+bool houdiniImage(std::string const &path) {
+    const std::string ext = lowerExtension(path);
+    return ext == ".rat" || ext == ".pic";
+}
+
 // The directory of Houdini's tools (imaketx): $HFS/bin, else the directory of
 // the OpenImageIO library this process uses.
 std::string houdiniBin() {
@@ -446,8 +454,12 @@ std::string HdNovaLocalizeTexture(std::string const &path, HdNovaTextureOptions 
 std::string HdNovaReadableTexture(std::string const &path, HdNovaTextureOptions const &options, bool stored,
                                   std::string &error) {
     const std::string local = HdNovaLocalizeTexture(path, options, error);
-    if (local.empty() || lowerExtension(local) != ".rat")
+    if (local.empty() || !houdiniImage(local))
         return local;
+    // Karma reads a .pic with its stored values, undecoded (measured: an
+    // 8-bit plate renders as its codes / 255).
+    if (lowerExtension(local) == ".pic")
+        stored = true;
     SourceFile f;
     f.path = local;
     if (!stat(f)) {
@@ -498,9 +510,12 @@ HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &path, std::string 
     // The first file decides the color space and the layout for the set.
     // .rat files (no OIIO reader) are read through the EXRs imaketx makes of
     // them, and their color space is decided like any file's, by the .rat's
-    // name and with its stored color space as the metadata (as Karma).
-    const bool rat = lowerExtension(files.front().path) == ".rat";
-    const bool stored = rat && HdNovaTextureColorSpaceIsNamed(path, colorSpaceHint);
+    // name and with its stored color space as the metadata (as Karma); .pic
+    // files likewise, with their stored values (HdNovaReadableTexture,
+    // HdNovaTextureColorSpace).
+    const bool rat = houdiniImage(files.front().path);
+    const bool stored = rat && (lowerExtension(files.front().path) == ".pic" ||
+                                HdNovaTextureColorSpaceIsNamed(path, colorSpaceHint));
     const std::string first =
         rat ? HdNovaReadableTexture(files.front().path, options, stored, r.error) : files.front().path;
     if (first.empty())

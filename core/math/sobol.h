@@ -189,6 +189,10 @@ NOVA_INLINE constexpr uint32_t equiangular(uint32_t depth) { return kEquiangular
 // shadow ray (docs/design/M9.md D15, core/integrator/path.h), 1D per depth.
 constexpr uint32_t kShadowDomeBase = 0x80000u;
 NOVA_INLINE constexpr uint32_t shadowDome(uint32_t depth) { return kShadowDomeBase + depth; }
+// A pre-lit background holdout's light candidates (docs/design/M11-P2.md,
+// core/integrator/holdout.h): an Rng seeded with this stream id per depth.
+constexpr uint32_t kPrelitBase = 0x90000u;
+NOVA_INLINE constexpr uint32_t prelit(uint32_t depth) { return kPrelitBase + depth; }
 } // namespace stream
 
 } // namespace nova

@@ -320,7 +320,17 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
             switch (kind) {
             case Kind::Beauty: {
                 const nova::Spectrum c = film.colorSum[src] * inv;
-                const float v[4] = {c.x, c.y, c.z, film.alphaSum[src] * inv};
+                float alpha = film.alphaSum[src] * inv;
+                if (source.catcherOutput >= 0 && uint32_t(source.catcherSlot) < film.lpeShadowOutputs) {
+                    // Karma's shadow catcher filter (denoise.h): the holdout
+                    // shadow where the beauty is transparent.
+                    const nova::Spectrum u = film.lpe(uint32_t(source.catcherOutput))[src];
+                    const nova::Spectrum l = film.lpeLitSum(uint32_t(source.catcherSlot))[src];
+                    const float all = u.x + u.y + u.z, lit = l.x + l.y + l.z;
+                    const float shadow = all > 0.0f ? std::clamp(1.0f - lit / all, 0.0f, 1.0f) : 0.0f;
+                    alpha += (1.0f - alpha) * shadow * source.catcherAlpha;
+                }
+                const float v[4] = {c.x, c.y, c.z, alpha};
                 _WritePixel(i, v, 4, component, componentCount);
                 break;
             }

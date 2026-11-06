@@ -16,6 +16,24 @@ namespace nova {
 struct ShadeGlobals {
     float frame = 1.0f;
     float fps = 24.0f;
+    // The render camera for NDC positions (Global::Pndc; hasCamera 0: none,
+    // the position is 0): world to clip space (row vectors, divided by w),
+    // the eye and the unit view direction (depth).
+    uint32_t hasCamera = 0;
+    float worldToClip[4][4] = {};
+    Vec3f eye{0.0f, 0.0f, 0.0f}, forward{0.0f, 0.0f, -1.0f};
+
+    // A world point in NDC space: x, y in [0, 1] over the image, z its depth.
+    NOVA_INLINE Vec3f ndc(Vec3f p) const {
+        if (!hasCamera)
+            return {0.0f, 0.0f, 0.0f};
+        const auto &m = worldToClip;
+        const float x = p.x * m[0][0] + p.y * m[1][0] + p.z * m[2][0] + m[3][0];
+        const float y = p.x * m[0][1] + p.y * m[1][1] + p.z * m[2][1] + m[3][1];
+        const float w = p.x * m[0][3] + p.y * m[1][3] + p.z * m[2][3] + m[3][3];
+        const float iw = w != 0.0f ? 1.0f / w : 1.0f;
+        return {0.5f * (x * iw + 1.0f), 0.5f * (y * iw + 1.0f), dot(p - eye, forward)};
+    }
 };
 
 namespace material_lane {
@@ -155,6 +173,9 @@ NOVA_INLINE void globalValue(shading::Global g, const LaneHit &lane, const Shade
         break;
     case Global::Backface:
         s = dot(lane.dir, hit.Ng) > 0.0f ? 1.0f : 0.0f;
+        break;
+    case Global::Pndc:
+        v = globals.ndc(hit.P);
         break;
     default:
         break;

@@ -15,6 +15,7 @@
 
 #include "core/gpu/device_shading.h"
 #include "core/gpu/kernel_types.h"
+#include "core/integrator/holdout.h"
 #include "core/integrator/path.h"
 #include "core/math/frame.h"
 #include "core/math/sampling.h"
@@ -32,9 +33,10 @@ namespace {
 
 __device__ __forceinline__ uint32_t threadIndex() { return blockIdx.x * blockDim.x + threadIdx.x; }
 
-// A NaN/Inf contribution counts as black (addRadiance in wavefront.cpp).
+// A NaN/Inf contribution counts as black, a holdout path's light is not in
+// the beauty (addRadiance in wavefront.cpp).
 __device__ __forceinline__ void addRadiance(const GpuWave &w, uint32_t p, const Spectrum &c) {
-    if (isFinite(c))
+    if (isFinite(c) && !w.holdout[p])
         w.radiance[p] += c;
 }
 
@@ -450,6 +452,128 @@ __device__ void pushShadowDomeRay(const ShadeArgs &a, uint32_t p, const PathPmf 
         attachParts(w, r, parts, clampScale(contribution, clampNee));
 }
 
+// A background holdout seen by a ray other than the camera's (shadePrelit,
+// core/integrator/holdout.h): its diffuse albedo, emitted in the fraction of
+// the light that reaches it (an O event that the shadow ray of a resampled
+// light sample decides, kind 0), and the illumbackground lights' light as
+// any object receives it (weight 1, kind 2: the walk exits' run, which this
+// path does not use at this depth); the path ends.
+__device__ void shadePrelit(const ShadeArgs &a, uint32_t k, const SurfaceHit &hit, const ClosureList &cl, Vec3f wo,
+                            Vec3f ng, Vec3f origin, lpe::State state, uint32_t tag) {
+    const GpuWave &w = a.wave;
+    const GpuScene &sc = a.scene;
+    const GpuSettings &st = a.settings;
+    const uint32_t p = a.rays.path[k];
+    const float time = a.rays.time[k];
+    const LpeView &lpe = sc.lpe;
+    GpuFilm film = a.film;
+    const GpuMesh &mesh = sc.meshes[hit.mesh];
+    const uint32_t set = mesh.receiverSet(hit.instance);
+    const float seed = shadowRaySeed(a.rays.filterSeed[k]);
+    const float clampEscape = a.depth > 1 ? st.clampIndirect : 0.0f;
+    const float clampNee = a.depth > 0 ? st.clampIndirect : 0.0f;
+    const Spectrum albedo = diffuseAlbedo(cl);
+    if (!isBlack(albedo)) {
+        Rng rng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], stream::prelit(a.depth));
+        const PathPmf pmf{sc, origin, ng, Receiver::OneSided, set};
+        const LightStrategy strategy = st.lightStrategy;
+        const PrelitPick pick = prelitPick(rng, [&](Rng &r, int kind, PrelitCandidate &out) -> float {
+            const Vec3f u{r.next(), r.next(), r.next()};
+            if (kind == 0) { // a light sample
+                float selectPdf = 0.0f;
+                const uint32_t li = sc.useTree ? sc.tree.sample(u.z, origin, ng, Receiver::OneSided, set, selectPdf)
+                                               : sc.lightSampler.sample(u.z, selectPdf);
+                if (li == kInvalidId || !sc.links.links(li, set) || !(selectPdf > 0.0f))
+                    return 0.0f;
+                const LightData &light = sc.lights[li];
+                if (light.type == LightType::Volume)
+                    return 0.0f;
+                const LightSample ls = sampleLight(light, origin, {u.x, u.y});
+                if (!(ls.pdf > 0.0f) || dot(ls.wi, ng) <= 0.0f)
+                    return 0.0f;
+                const Spectrum Li = light.type == LightType::Triangle ? ls.Li * light.emission : ls.Li;
+                const float lightPdf = selectPdf * ls.pdf;
+                const bool infinite = light.type == LightType::Dome || (light.type == LightType::Distant && !light.delta);
+                const float mis = infinite ? lightSampleWeight(strategy, lightPdf, cosineHemispherePdf(dot(ls.wi, ng)),
+                                                               ls.delta)
+                                           : 1.0f;
+                out = {ls.wi, ls.distance, light.shadowCategory, light.illumBackground};
+                return luminance(evalClosure(cl, wo, ls.wi).fcosDiffuse * Li) * light.diffuse * mis / lightPdf;
+            }
+            // A direction towards the lights at infinity (constant domes: only so).
+            const Vec3f d = Frame::fromNormal(ng).toWorld(sampleCosineHemisphere({u.x, u.y}));
+            const float pdf = cosineHemispherePdf(dot(d, ng));
+            if (!(pdf > 0.0f))
+                return 0.0f;
+            Spectrum L{0.0f, 0.0f, 0.0f}, illum{0.0f, 0.0f, 0.0f};
+            escapedRadiance(sc.lights, pmf, sc.lightCount, d, pdf, strategy, 1.0f, [&](uint32_t i, const Spectrum &Li) {
+                (sc.lights[i].illumBackground ? illum : L) += Li;
+            });
+            // Only illumbackground domes there: they count as reaching it.
+            out = {d, kInf, uint16_t(0xFFFFu), isBlack(L)};
+            return luminance(evalClosure(cl, wo, d).fcosDiffuse * (L + illum)) / pdf;
+        });
+        const Spectrum value = clampContribution(w.beta[p] * albedo, clampEscape);
+        const lpe::State emitted = state ? lpeStep(lpe, state, lpe::TypeObject, lpe::ScatterNone, tag, 0) : state;
+        if (pick.found && pick.ray.visible) { // an illumbackground light: no shadow
+            addRadiance(w, p, value);
+            if (emitted)
+                lpeDepositAll(lpe, film, w.pixel[p], emitted, value);
+        } else if (pick.found) {
+            GpuLpeParts parts;
+            if (emitted)
+                lpePartsAdd(lpe, parts, emitted, value, value);
+            const uint32_t i = pushRay(w.shadow, origin, pick.ray.wi, shadowRayLength(pick.ray.distance, sc.tolerance),
+                                       p, time, seed, RayClass::Shadow);
+            w.shadow.rayType[i] |= kRayFromBackground;
+            w.shadowCategory[i] = pick.ray.category;
+            w.shadowSlot[i] = 0;
+            w.shadowContribution[i] = value;
+            w.shadowEmitter[i] = kInvalidId;
+            if (w.partBegin)
+                attachParts(w, i, parts, 1.0f);
+        }
+    }
+    if (!sc.illumBackground)
+        return;
+    // The illumbackground lights, as an ordinary light sample would.
+    const Sampler sampler{w.pixelSeed[p], w.sampleIndex[p]};
+    const GpuLightChoice choice = chooseLight(sc, st, w, p, time, sampler, origin, ng, Receiver::OneSided, set,
+                                              a.depth, stream::bounce(a.depth, stream::kLight));
+    if (choice.light == kInvalidId || !(choice.ls.pdf > 0.0f) || !sc.lights[choice.light].illumBackground)
+        return;
+    const LightData &light = sc.lights[choice.light];
+    const LightSample &ls = choice.ls;
+    if (dot(ls.wi, ng) < 0.0f)
+        return;
+    const ClosureEval e = evalClosure(cl, wo, ls.wi);
+    const Spectrum f = e.fcosDiffuse * light.diffuse + (e.fcos - e.fcosDiffuse) * light.specular;
+    if (isBlack(f))
+        return;
+    const float lightPdf = choice.selectPdf * ls.pdf;
+    const Spectrum contribution = w.beta[p] * f * ls.Li * (1.0f / lightPdf);
+    GpuLpeParts parts;
+    if (state)
+        lpeLightSampleParts(lpe, parts, state, tag, cl, nullptr, 0, light, choice.light, false,
+                            dot(wo, hit.Ng) > 0.0f, f, w.beta[p] * ls.Li * (1.0f / lightPdf), 1.0f);
+    const uint32_t i = pushRay(w.shadow, origin, ls.wi, shadowRayLength(ls.distance, sc.tolerance), p, time, seed,
+                               RayClass::Shadow);
+    w.shadow.rayType[i] |= kRayFromBackground;
+    w.shadowCategory[i] = light.shadowCategory;
+    w.shadowSlot[i] = 2;
+    if (light.type == LightType::Triangle) { // the emission waits for the ray's end
+        w.shadowContribution[i] = contribution;
+        w.shadowEmitter[i] = choice.light;
+        w.shadowBary[i] = ls.bary;
+        w.shadowClamp[i] = clampNee;
+    } else {
+        w.shadowContribution[i] = clampContribution(contribution, clampNee);
+        w.shadowEmitter[i] = kInvalidId;
+    }
+    if (w.partBegin)
+        attachParts(w, i, parts, light.type == LightType::Triangle ? 1.0f : clampScale(contribution, clampNee));
+}
+
 // Pass C for one surface hit (shadeHit).
 __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     const GpuWave &w = a.wave;
@@ -547,6 +671,15 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     }
     if (lightsOnly && !(fake && w.lightOnly[p] && a.depth < st.maxDepth))
         return;
+    // Background holdouts (core/integrator/holdout.h): pre-lit for every ray
+    // but the camera's; seen from the camera, their light samples' shadow
+    // rays leave a background point.
+    const bool background = sc.anyHoldouts && mesh.holdout == uint8_t(HoldoutMode::Background);
+    if (background && a.depth > 0 && !w.lightOnly[p]) {
+        shadePrelit(a, k, hit, cl, wo, ng, leave(ng), state, tag);
+        return;
+    }
+    const bool backgroundPoint = background && a.depth == 0;
     if (fake) {
         fakeT = closureTransmittance(cl, wo, tables);
         if (w.lightOnly[p]) {
@@ -598,10 +731,16 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                     // MIS weight 1, and the shadow ray is traced for them even
                     // where the weight is 0.
                     GpuLpeParts parts;
-                    if (state && (weight > 0.0f || lpe.unit))
+                    if (state && (weight > 0.0f || lpe.unit)) {
                         lpeLightSampleParts(lpe, parts, state, tag, cl, lobeF, lobeMask, light, li,
                                             dot(ls.wi, ng) < 0.0f, dot(wo, hit.Ng) > 0.0f, f,
                                             w.beta[p] * ls.Li * (1.0f / lightPdf), weight);
+                        // At a background point the illumbackground lights
+                        // stay out of the unoccluded; and shadow; sums.
+                        if (backgroundPoint && light.illumBackground)
+                            for (uint32_t j = 0; j < parts.size(); ++j)
+                                parts.unitValue[j] = spectrum(0.0f);
+                    }
                     if ((weight > 0.0f && !isBlack(contribution)) || (state && lpe.unit && parts.size() > 0)) {
                         Vec3f o = origin, d = ls.wi;
                         float dist = ls.distance;
@@ -611,6 +750,8 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                         }
                         const uint32_t i = pushRay(w.shadow, o, d, shadowRayLength(dist, sc.tolerance), p, time,
                                                    shadowSeed, RayClass::Shadow);
+                        if (backgroundPoint)
+                            w.shadow.rayType[i] |= kRayFromBackground;
                         w.shadowCategory[i] = light.shadowCategory;
                         w.shadowSlot[i] = 0;
                         if (light.type == LightType::Triangle) { // the emission waits for the ray's end
@@ -819,6 +960,7 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
     w.limitDither[slot] = sampler.get1D(stream::kLimit);
     w.lightOnly[slot] = 0;
     w.afterDiffuse[slot] = 0;
+    w.holdout[slot] = 0;
     // No MIS vertex yet (path.h, kPrevSetDelta): device memory is not
     // cleared, and the slot's earlier path must not leak in.
     w.prevP[slot] = ray.org;
@@ -1084,10 +1226,23 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             w.alpha[p] += visible ? 1.0f : media ? volumeAlpha() : 0.0f;
             return;
         }
-        w.alpha[p] += 1.0f; // surfaces are opaque to alpha (transmission included)
         if (a.settings.crypto) {
             w.cryptoMesh[p] = w.hitMesh[k];
             w.cryptoPrim[p] = w.hitPrim[k];
+        }
+        const uint8_t holdout = sc.anyHoldouts ? sc.meshes[w.hitMesh[k]].holdout : uint8_t(0);
+        if (holdout) {
+            // A holdout (core/integrator/holdout.h): transparent to alpha but
+            // for the volumes in front, its light to holdout; outputs.
+            w.alpha[p] += media ? volumeAlpha() : 0.0f;
+            w.holdout[p] = holdout;
+            if (state)
+                w.lpeState[p] = lpeHoldoutState(lpe.program, state);
+            const bool shading = (w.lpeState && lpe.program.holdoutStart != 0) || a.settings.ao;
+            if (!shading)
+                return; // nothing takes its light
+        } else {
+            w.alpha[p] += 1.0f; // surfaces are opaque to alpha (transmission included)
         }
     } else {
         // Rays scattered by a surface collect the area lights they crossed
@@ -1100,8 +1255,14 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
         const auto addPart = [&](uint32_t i, const Spectrum &Li) {
             lpePartsAdd(lpe, parts, lpeLightStep(lpe, state, i), Li);
         };
+        // The lights end where the ray ends as a shadow ray when shadow
+        // visibility differs from the ray's (intersectRays).
+        const bool lightMiss = w.lightMesh ? w.lightMesh[k] == kInvalidId : miss;
+        const float lightHitT = w.lightMesh ? (lightMiss ? tHit : w.lightHitT[k]) : tHit;
         if (sc.hasAreaLights) {
-            const float tEnd = event && !split ? w.volumeT[k] : miss ? tHit : lightSearchLimit(tHit, sc.tolerance);
+            const float tEnd = event && !split ? w.volumeT[k]
+                               : lightMiss     ? (w.lightMesh ? kInf : tHit)
+                                               : lightSearchLimit(lightHitT, sc.tolerance);
             const LightTreeView *tree = sc.useTree ? &sc.tree : nullptr;
             // The lights' densities from the MIS vertex (prevP), which a
             // fake-caustic pass-through leaves behind the ray.
@@ -1119,7 +1280,7 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
                     lpeDepositParts(lpe, film, parts, pixel, betaIn * scale);
             }
         }
-        if (miss && (split || !event)) {
+        if (lightMiss && (split || !event)) {
             const Spectrum beta = split ? betaIn * w.lightT[k] : w.beta[p];
             Spectrum Le;
             if (state) {
@@ -1508,8 +1669,9 @@ extern "C" __global__ void novaFakeStart(const ShadeArgs a) {
     if (w.occluded[i])
         return;
     w.fakeLeft[i] = w.shadow.tMax[i];
-    pushRay(a.next, w.shadow.org[i], w.shadow.dir[i], w.shadow.tMax[i], i, w.shadow.time[i], w.shadow.filterSeed[i],
-            RayClass::Shadow);
+    const uint32_t r = pushRay(a.next, w.shadow.org[i], w.shadow.dir[i], w.shadow.tMax[i], i, w.shadow.time[i],
+                               w.shadow.filterSeed[i], RayClass::Shadow);
+    a.next.rayType[r] |= w.shadow.rayType[i] & kRayFromBackground; // the hit filter's flag (holdout.h)
 }
 
 // One crossing (at most 8): the closest surface along each ray ends it
@@ -1560,7 +1722,8 @@ extern "C" __global__ void novaFakeStep(const ShadeArgs a) {
     if (!(left > 0.0f))
         return;
     w.fakeLeft[i] = left;
-    pushRay(a.next, next, dir, left, i, time, a.rays.filterSeed[j], RayClass::Shadow);
+    const uint32_t r = pushRay(a.next, next, dir, left, i, time, a.rays.filterSeed[j], RayClass::Shadow);
+    a.next.rayType[r] |= w.shadow.rayType[i] & kRayFromBackground;
 }
 
 // The ambient occlusion AOV's rays (traceAoRays): unoccluded ones count.

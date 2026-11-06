@@ -18,7 +18,11 @@
 #include <pxr/imaging/hd/sceneDelegate.h>
 #include <pxr/imaging/hd/tokens.h>
 
+#include "diagnostics.h"
+
 #include <cmath>
+#include <mutex>
+#include <set>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -135,6 +139,80 @@ nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &
     }
     s.mode = s.mode < 0 ? 0 : s.mode;
     return s;
+}
+
+namespace {
+
+// A string or token value (single-element string arrays too); false otherwise.
+bool textOf(VtValue const &v, std::string &text) {
+    if (v.IsHolding<std::string>())
+        text = v.UncheckedGet<std::string>();
+    else if (v.IsHolding<TfToken>())
+        text = v.UncheckedGet<TfToken>().GetString();
+    else if (v.IsHolding<VtArray<std::string>>() && v.UncheckedGet<VtArray<std::string>>().size() == 1)
+        text = v.UncheckedGet<VtArray<std::string>>()[0];
+    else if (v.IsHolding<VtArray<TfToken>>() && v.UncheckedGet<VtArray<TfToken>>().size() == 1)
+        text = v.UncheckedGet<VtArray<TfToken>>()[0].GetString();
+    else
+        return false;
+    return true;
+}
+
+// Once per distinct message and process.
+void warnOnce(std::string const &message) {
+    static std::mutex mutex;
+    static std::set<std::string> warned;
+    std::lock_guard lock(mutex);
+    if (warned.insert(message).second)
+        HD_NOVA_WARN("%s", message.c_str());
+}
+
+} // namespace
+
+int HdNovaRenderVisibilityValue(VtValue const &value, std::string const &where) {
+    std::string text;
+    if (value.IsEmpty() || !textOf(value, text)) {
+        if (!value.IsEmpty())
+            warnOnce(where + ": karma:object:rendervisibility is not a string; it is ignored");
+        return -1;
+    }
+    uint8_t mask = nova::kVisibleAll;
+    std::string error;
+    if (!nova::parseRenderVisibility(text, mask, &error)) {
+        warnOnce(where + ": karma:object:rendervisibility \"" + text + "\" (" + error + ") is ignored");
+        return -1;
+    }
+    return mask;
+}
+
+int HdNovaHoldoutModeValue(VtValue const &value, std::string const &where) {
+    if (value.IsEmpty())
+        return -1;
+    std::string text;
+    if (!textOf(value, text)) {
+        int width = 0;
+        std::vector<float> v;
+        if (HdNovaPrimvarToFloats(value, &width, &v) && v.size() == 1 && std::isfinite(v[0]))
+            text = std::to_string(std::lround(v[0]));
+    }
+    nova::HoldoutMode mode;
+    if (!nova::parseHoldoutMode(text, mode)) {
+        warnOnce(where + ": karma:object:holdoutmode \"" + text + "\" is not None, Matte or Background; it is ignored");
+        return -1;
+    }
+    return int(mode);
+}
+
+nova::ObjectVisibility HdNovaObjectVisibility(HdSceneDelegate *sd, SdfPath const &id) {
+    static const TfToken visibility("karma:object:rendervisibility"), holdout("karma:object:holdoutmode");
+    nova::ObjectVisibility o;
+    for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant)) {
+        if (d.name == visibility)
+            o.mask = int16_t(HdNovaRenderVisibilityValue(sd->Get(id, d.name), id.GetString()));
+        else if (d.name == holdout)
+            o.holdout = int8_t(HdNovaHoldoutModeValue(sd->Get(id, d.name), id.GetString()));
+    }
+    return o;
 }
 
 bool HdNovaIsGeometryPrimvar(TfToken const &name) {

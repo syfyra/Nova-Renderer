@@ -23,6 +23,10 @@ enum Type : uint8_t {
     TypeObject,     // O, emission of an object that is not a light
     TypeBackground, // B, a ray that left the scene
     TypeAlbedo,     // A, the albedo of the preceding scattering event
+    // Internal (not in the expression syntax): a holdout path, entered before
+    // the camera event (docs/design/M11-P2.md). holdout; outputs start with
+    // it, no other expression accepts it.
+    TypeHoldout,
     kTypeCount
 };
 
@@ -39,7 +43,7 @@ enum Scatter : uint8_t {
 enum OutputFlag : uint8_t {
     OutputUnoccluded = 1, // unoccluded;  light before shadowing
     OutputShadow = 2,     // shadow;      the occluded fraction
-    OutputHoldout = 4,    // holdout;     (not rendered yet)
+    OutputHoldout = 4,    // holdout;     light of paths whose camera ray hit a holdout
     OutputInvert = 8,     // !            1 - value
 };
 
@@ -56,6 +60,9 @@ struct Program {
     const uint16_t *outs = nullptr;       // output ids per state
     const uint8_t *outputFlags = nullptr; // per output
     State start = 0;                      // after the camera event
+    // A path whose camera ray hit a holdout continues from here (after the
+    // holdout and camera events; 0 without holdout; outputs).
+    State holdoutStart = 0;
 
     NOVA_INLINE uint32_t symbol(Type type, Scatter scatter, uint32_t tag, uint32_t label) const {
         return ((uint32_t(type) * kScatterCount + scatter) * tagCount + tag) * labelCount + label;

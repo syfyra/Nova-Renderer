@@ -56,6 +56,7 @@ struct LightDesc {
     float samplingQuality = 1.0f; // karma:light:samplingquality: multiplies the light's selection weight (M9 D18)
     bool equiangular = false;     // karma:light:equiangular: equiangular distance sampling in volumes (M9 D17)
     bool outsideTree = false;     // karma:light:samplingmode Uniform: chosen with the lights at infinity (M9 D18)
+    bool illumBackground = false; // karma:light:illumbackground: lights background holdouts (M11 P2)
     // Light linking (M9 D15): the category of the objects the light lights,
     // and of those that shadow it (empty: every object; UsdLux collections
     // through HdsiLightLinkingSceneIndex).

@@ -5,6 +5,7 @@
 
 #include "core/scene/mesh.h"
 #include "core/scene/ray_limits.h"
+#include "core/scene/visibility.h"
 
 #include <pxr/imaging/hd/mesh.h>
 #include <pxr/imaging/hd/meshTopology.h>
@@ -75,6 +76,9 @@ private:
     // (nova:object:lightSource) and lightsource_* (constant).
     nova::MeshLightSource _lightSource;
     nova::MeshLightSource _appliedLightSource;
+    // Ray visibility and holdout mode (M11 P2): karma:object:rendervisibility
+    // and holdoutmode (constant).
+    nova::ObjectVisibility _visibility;
     int _builtSubdivLevel = -1;    // level of the geometry in the scene
     int _builtSubdivRate = -1;     // tessellation rate it was built with (0: control mesh)
     bool _implicitSurface = false; // converted from a UsdGeom implicit prim (sphere, ...)

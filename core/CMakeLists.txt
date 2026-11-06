@@ -8,6 +8,7 @@ add_library(nova_core STATIC
     math/distribution.cpp
     scene/scene.cpp
     scene/material.cpp
+    scene/visibility.cpp
     shading/ir.cpp
     shading/compiler.cpp
     texture/memory_sampler.cpp

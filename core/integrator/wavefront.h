@@ -13,6 +13,7 @@
 #include "core/film/lpe.h"
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_eval.h"
+#include "core/integrator/material_lane.h"
 #include "core/integrator/settings.h"
 #include "core/integrator/volume_media.h"
 #include "core/math/spectrum.h"
@@ -84,12 +85,14 @@ struct ShadowQueue {
     uint32_t emitterCount = 0;
 
     void reserve(uint32_t capacity);
+    // `flags`: the hit filter's ray flags (kRayFromBackground, core/scene/visibility.h).
     void push(Vec3f o, Vec3f d, float t, uint32_t pathSlot, Spectrum c, float rayTime, float seed,
-              uint16_t category = 0xFFFFu) {
+              uint16_t category = 0xFFFFu, uint8_t flags = 0) {
         contribution[rays.size] = c;
         shadowCategory[rays.size] = category;
         emitter[rays.size] = kInvalidId;
         rays.push(o, d, t, pathSlot, rayTime, seed, RayClass::Shadow);
+        rays.rayType[rays.size - 1] |= flags;
     }
     // The last ray pushed goes to emissive triangle `light`.
     void markEmitter(uint32_t light, Vec2f bary, float clamp) {
@@ -122,7 +125,8 @@ struct LpeTables {
     std::vector<int32_t> shadowSlot;
     // Per state its outputs by kind, [begin[s], begin[s + 1]): the plain
     // sums (D6), the sums of weight-1 light before shadowing (unoccluded; and
-    // shadow;, D7) and shadow;'s lit slots. holdout; outputs are in none.
+    // shadow;, D7) and shadow;'s lit slots; holdout; outputs by their other
+    // flags (only holdout paths reach their states).
     std::vector<uint32_t> plainBegin, unitBegin, litBegin;
     std::vector<uint16_t> plainOuts, unitOuts, litSlots;
 
@@ -194,6 +198,9 @@ struct WaveQueues {
     std::vector<float> limitDither;
     std::vector<uint8_t> lightOnly;
     std::vector<uint8_t> afterDiffuse; // a diffuse or SSS event happened (fake caustics)
+    // The camera ray hit a holdout (HoldoutMode; docs/design/M11-P2.md): the
+    // path's light goes to holdout; outputs only, not to the beauty.
+    std::vector<uint8_t> holdout;
     // The last scattering vertex, as its light sample saw it (the light
     // tree's selection probabilities for MIS of BSDF samples, M9 D11):
     // position, normal and receiver kind (Receiver).
@@ -212,6 +219,13 @@ struct WaveQueues {
     std::vector<uint32_t> hitPrim;
     std::vector<Vec2f> hitUv;
     std::vector<uint32_t> hitInstance;
+    // Where scattered rays find their lights when shadow visibility differs
+    // from theirs (Scene::shadowVisibilityDiffers): the closest hit of the
+    // same rays as shadow rays (lightQuery set for this depth).
+    bool lightQuery = false;
+    std::vector<float> lightHitT;
+    std::vector<uint32_t> lightHitMesh, lightHitPrim, lightHitInstance;
+    std::vector<Vec2f> lightHitUv;
 
     // At most three light samples per path and bounce: at the hit (or the
     // volume event), at the exit of a subsurface walk that starts there, and
@@ -308,5 +322,9 @@ uint64_t renderFirstHits(const Scene &scene, const Camera &camera, const RenderS
 // One sample's cryptomatte ids at a camera hit (mesh, primitive) into the
 // film's planes (the GPU gathers the hits, the host accumulates, D9).
 void accumulateCrypto(const Scene &scene, Film &film, uint32_t pixel, MeshId mesh, uint32_t prim);
+
+// The shading globals of a render: its frame and fps, and the camera for
+// NDC positions (Global::Pndc, Karma's space:ndc).
+ShadeGlobals shadeGlobals(const RenderSettings &settings, const Camera &camera);
 
 } // namespace nova
