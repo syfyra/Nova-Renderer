@@ -748,6 +748,10 @@ bool GpuRenderer::setScene(const Scene &scene) {
         const Distribution1DView cells = rec.lightCells.view();
         m.lightCells.func = put(cells.func, cells.count).ptr;
         m.lightCells.cdf = put(cells.cdf, cells.count ? size_t(cells.count) + 1 : 0).ptr;
+        if (const MediumShell *shell = rec.desc.shell.get()) { // a medium bounded by a surface (M11-P5)
+            m.shell.triangles = put(shell->triangles).ptr;
+            m.shell.nodes = put(shell->nodes).ptr;
+        }
         g.medium = m;
         g.indexToObject = rec.indexToObject;
         g.objectToWorld = rec.objectToWorld;
@@ -788,6 +792,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
             for (const std::array<int32_t, 4> &b : rec.bindings)
                 fieldBindings.insert(fieldBindings.end(), b.begin(), b.end());
             g.bindings = put(fieldBindings).ptr;
+            g.constants = put(rec.constantValues).ptr;
             g.defaults = put(&mat.volume, 1).ptr;
             texSlots.clear();
             for (const TexSampler &s : mat.samplers)

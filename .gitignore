@@ -22,3 +22,6 @@ __pycache__/
 backup/
 # Agent worktrees
 .claude/worktrees/
+
+# Fog Box noise volumes, written by tests/husk/fogbox_scenes.py at test time
+tests/husk/fogbox/*.bgeo.sc

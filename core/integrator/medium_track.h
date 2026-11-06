@@ -27,6 +27,7 @@
 #include "core/scene/motion.h"
 #include "core/volume/majorant.h"
 #include "core/volume/phase.h"
+#include "core/volume/shell.h"
 #include "core/volume/volume_point.h"
 
 #include <cmath>
@@ -39,9 +40,10 @@ using VolumeId = uint32_t;
 // A volume's data the trackers read (VolumeRecord's): its world box over
 // the shutter, majorant cells (with the emission floor; without it, for
 // rays that collect no emission, null: the same), the light it is (kInvalidId:
-// none) with its cells' distribution and cell volume, and the reference
-// field's object-to-index map. The layout stays where it is: the DDAs keep
-// pointing at it.
+// none) with its cells' distribution and cell volume, the reference
+// field's object-to-index map, and the shell that bounds it (docs/design/
+// M11-P5.md; kind None: the fields' domain). The layout stays where it is:
+// the DDAs keep pointing at it.
 struct MediumVolume {
     Vec3f lower{1.0f, 1.0f, 1.0f}, upper{-1.0f, -1.0f, -1.0f};
     const MajorantLayout *layout = nullptr;
@@ -51,6 +53,7 @@ struct MediumVolume {
     Distribution1DView lightCells;
     float cellVolume = 0.0f;
     Affine3f objectToIndex;
+    ShellView shell;
 };
 
 // A volume a ray crosses: [t0, t1) and the ray in the volume's reference
@@ -180,6 +183,26 @@ NOVA_INLINE void swapValues(T &a, T &b) {
 }
 } // namespace medium_detail
 
+// Adds span s to the list, by entry distance (insertion).
+template <class Spans>
+NOVA_INLINE void insertSpan(Spans &spans, const VolumeSpan &s) {
+    spans.push_back(s);
+    for (size_t k = spans.size() - 1; k > 0 && spans[k - 1].t0 > spans[k].t0; --k)
+        medium_detail::swapValues(spans[k - 1], spans[k]);
+}
+
+// The spans of a volume bounded by a shell (docs/design/M11-P5.md) within
+// the box span s: the shell's inside along the ray (shellIntervals).
+template <class Spans>
+NOVA_INLINE void shellSpans(const ShellView &shell, const VolumeSpan &s, Spans &spans) {
+    shellIntervals(shell, s.oObject, s.dObject, s.t0, s.t1, [&](float a, float b) {
+        VolumeSpan part = s;
+        part.t0 = a;
+        part.t1 = b;
+        insertSpan(spans, part);
+    });
+}
+
 // The volumes a ray (unit direction) crosses before tEnd at shutter time
 // `time`, by entry distance.
 template <class Media, class Spans>
@@ -216,10 +239,10 @@ NOVA_INLINE void volumeSpans(const Media &media, Vec3f o, Vec3f d, float tEnd, f
         s.dObject = worldToObject.vector(d);
         s.oIndex = rec.objectToIndex.point(s.oObject);
         s.dIndex = rec.objectToIndex.vector(s.dObject);
-        // By entry distance (insertion).
-        spans.push_back(s);
-        for (size_t k = spans.size() - 1; k > 0 && spans[k - 1].t0 > spans[k].t0; --k)
-            medium_detail::swapValues(spans[k - 1], spans[k]);
+        if (rec.shell.kind != ShellKind::None)
+            shellSpans(rec.shell, s, spans);
+        else
+            insertSpan(spans, s);
     }
 }
 
@@ -374,6 +397,10 @@ NOVA_INLINE int mediumAt(Media &media, const MediumRay &ray, float t, MediumPart
             x.z > rec.upper.z)
             continue;
         const Affine3f worldToObject = inverseAffine(media.volumeToWorld(id, ray.time));
+        // A shell's medium where the ray's spans have it (the same rule).
+        if (rec.shell.kind != ShellKind::None &&
+            !shellInsideAt(rec.shell, worldToObject.point(ray.o), worldToObject.vector(ray.d), t))
+            continue;
         const VolumePoint p = media.evaluate(id, worldToObject.point(x), x, ray.d, ray.time, ray.rayType, ray.depth);
         extinction += p.extinction();
         if (!isBlack(p.scattering) && n < max)

@@ -1206,6 +1206,9 @@ LightSample sampleVolumeLight(const ShadeContext &c, WaveQueues &q, uint32_t p, 
     const Vec3f index{float(l.lo[0]) + (float(cx) + (x * float(cells.count) - float(cell))) * k,
                       float(l.lo[1]) + (float(cy) + u.y) * k, float(l.lo[2]) + (float(cz) + uz) * k};
     const Vec3f object = rec.indexToObject.point(index);
+    // A shell's cells reach past it; there is no medium outside (M11-P5).
+    if (rec.desc.shell && !shellContains(rec.desc.shell->view(), object))
+        return ls;
     const Vec3f world = c.scene.volumeToWorld(light.volume, time).point(object);
     const Vec3f d = world - origin;
     const float r2 = dot(d, d);

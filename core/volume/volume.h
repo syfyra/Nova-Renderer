@@ -6,6 +6,7 @@
 
 #include "core/scene/material.h"
 #include "core/volume/grid.h"
+#include "core/volume/shell.h"
 
 #include <cstdint>
 #include <string>
@@ -14,6 +15,13 @@
 namespace nova {
 
 using VolumeId = uint32_t;
+
+// A constant primvar of a medium bounded by a surface (docs/design/M11-P5.md):
+// what a volume shader's read of `name` gives there when no field has it.
+struct VolumeConstant {
+    std::string name;
+    std::vector<float> values; // 1 to 4
+};
 
 struct VolumeField {
     std::string name;      // the binding name (relationship name without "field:", e.g. "vel_x")
@@ -45,6 +53,13 @@ struct VolumeDesc {
     // from the fields' time, times Karma's volumevblurscale).
     std::string velocity;
     float velocityTime[2] = {0.0f, 0.0f};
+    // A medium bounded by a surface (docs/design/M11-P5.md: Karma's uniform
+    // volumes, the Karma Fog Box): the volume fills the inside of this shell
+    // (object space) instead of its fields' domain; it has no fields, its
+    // shader's reads take `constants`, else their fallbacks. Without a
+    // volume material: white, density 1 (Karma, measured).
+    MediumShellPtr shell;
+    std::vector<VolumeConstant> constants;
 
     // The field a material reads as `name` (D5): a binding name or field
     // name; null if there is none with a grid.
