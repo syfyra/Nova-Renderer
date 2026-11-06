@@ -23,9 +23,4 @@ protected:
                                              const HdContainerDataSourceHandle &inputArgs) override;
 };
 
-// The arguments of the HdsiLightLinkingSceneIndex Nova appends (docs/design/
-// M9.md D15): the light, light filter (docs/design/M11-P4.md) and geometry
-// prim types whose collections and categories it handles.
-HdContainerDataSourceHandle HdNovaLightLinkingArgs();
-
 PXR_NAMESPACE_CLOSE_SCOPE

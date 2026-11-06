@@ -152,7 +152,9 @@ TEST_CASE("Blocker profiles match Karma's", "[lights][filters]") {
     }
 }
 
-TEST_CASE("Filters of a light multiply; filterLink selects receivers", "[lights][filters]") {
+// Link categories are the core's mechanism for filterLink; Hydra sets none, as
+// Karma ignores filterLink (docs/design/M11-P4.md F6).
+TEST_CASE("Filters of a light multiply; link categories select receivers", "[lights][filters]") {
     LightFilterDesc a = blocker(BlockerShape::Sphere), b = blocker(BlockerShape::Sphere);
     a.radius = b.radius = 1.0f;
     a.intensity = b.intensity = 0.5f;
@@ -204,7 +206,7 @@ TEST_CASE("Lights resolve their filters by key", "[lights][filters]") {
     // A blocker that only darkens leaves the selection weights alone.
     CHECK(scene.lightSampler().pmf[0] == scene.lightSampler().pmf[1]);
 
-    SECTION("filterLink: only the linked objects' receiver set") {
+    SECTION("a link category: only the linked objects' receiver set (not used by Hydra, F6)") {
         d.link = "groupA";
         scene.setLightFilter("/blk", d);
         scene.commit();

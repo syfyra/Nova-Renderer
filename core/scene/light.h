@@ -92,7 +92,7 @@ struct LightFilterDesc {
     Spectrum tint{1.0f, 1.0f, 1.0f}; // ... times the tint
     bool invert = false;        // the factor applies outside the shape instead
     Mat4 spaceFromWorld = Mat4::identity(); // world -> the shape's space (row vectors, like LightDesc::transform)
-    std::string link;           // filterLink category (empty: every object)
+    std::string link;           // link category (empty: every object; Hydra sets none, M11-P4 F6)
 };
 
 // The integrator's record of a filter (light_filter.h).

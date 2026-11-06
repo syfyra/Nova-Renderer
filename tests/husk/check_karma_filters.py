@@ -26,11 +26,8 @@ unfiltered base, compared with Karma CPU's (measured once with isolated husk,
 - the filter prim's visibility is ignored;
 - filterLink: Karma ignores it (every object is blocked, measured with
   explicit includes, expandPrims, the LOP's collection pattern, a path
-  expression and includeRoot with excludes). Nova applies it as UsdLux
-  defines (docs/design/M11-P4.md, a stated deviation): the empty collection
-  the LOP authors by default acts on everything, as in Karma; one that names
-  sphere A blocks A only. Those rows compare with Nova's own expectation and
-  print Karma's for information.
+  expression and includeRoot with excludes), and so does Nova: the LOP's
+  empty collection and one that names sphere A both block everything.
 
 Needs numpy and OpenImageIO, so run it with Houdini's Python:
 $HFS/python313/python.exe -I check_karma_filters.py --hfs ... --stage ... --out ...
@@ -99,11 +96,11 @@ CHECKS = [
     ("sph_space", "base_sun", [(0, 0, 0.2, 0, 0.0, None), (1.5, 0, 0.1, 0, 1.0, None)]),
     # The filter prim made invisible still blocks.
     ("filt_invisible", "base_sun", [(0, 0, 0.2, 0, 0.0, None)]),
-    # filterLink: the LOP's empty collection acts on everything; one that
-    # names sphere A (Karma ignores it).
+    # filterLink is ignored: the LOP's empty collection, and one that names
+    # sphere A, both block every object.
     ("link_default", "link_base", [(-2, 2.5, 0.1, 0, 0.0, None), (2, 2.5, 0.1, 0, 0.0, None),
                                    (0, -2, 0.2, 0, 0.0, None)]),
-    ("link_A", "link_base", [(-2, 2.5, 0.1, 0, 0.0, 0.0), (2, 2.5, 0.1, 0, 0.0, 1.0), (0, -2, 0.2, 0, 0.0, 1.0)]),
+    ("link_A", "link_base", [(-2, 2.5, 0.1, 0, 0.0, None), (2, 2.5, 0.1, 0, 0.0, None), (0, -2, 0.2, 0, 0.0, None)]),
 ]
 
 

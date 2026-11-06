@@ -7,8 +7,6 @@
 
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/vec3f.h>
-#include <pxr/imaging/hd/collectionSchema.h>
-#include <pxr/imaging/hd/collectionsSchema.h>
 #include <pxr/imaging/hd/light.h>
 #include <pxr/imaging/hd/material.h>
 #include <pxr/imaging/hd/renderIndex.h>
@@ -135,20 +133,6 @@ GfMatrix4d spaceFromWorld(HdSceneDelegate *sd, SdfPath const &id, GfMatrix4d con
     return GfMatrix4d(1.0);
 }
 
-// Whether the filter's filterLink collection names nothing: includeRoot off
-// and nothing included, what the Karma LOP authors by default. UsdLux would
-// filter no object; Karma (which ignores filterLink) filters every one, and
-// so does Nova for this case.
-bool emptyFilterLink(HdSceneDelegate *sd, SdfPath const &id) {
-    const HdSceneIndexBaseRefPtr scene = sd->GetRenderIndex().GetTerminalSceneIndex();
-    if (!scene)
-        return false;
-    const HdCollectionSchema collection =
-        HdCollectionsSchema::GetFromParent(scene->GetPrim(id).dataSource).GetCollection(HdTokens->filterLink);
-    const HdPathExpressionDataSourceHandle expression = collection.GetMembershipExpression();
-    return expression && expression->GetTypedValue(0.0f).IsEmpty();
-}
-
 } // namespace
 
 HdNovaLightFilter::HdNovaLightFilter(SdfPath const &id) : HdSprim(id) {}
@@ -210,19 +194,11 @@ void HdNovaLightFilter::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
     const std::string space = spaceValue.IsEmpty() ? id.GetString() : params.text(spaceValue);
     desc.spaceFromWorld = toNova(spaceFromWorld(sd, id, xf, space));
 
-    // filterLink: the category HdsiLightLinkingSceneIndex gives the filter's
-    // collection (empty: every object). Karma ignores filterLink (measured);
-    // Nova applies it (docs/design/M11-P4.md F6), except for an empty
-    // collection, which acts on every object as in Karma.
-    if (!emptyFilterLink(sd, id)) {
-        for (TfToken const &key : {HdTokens->lightFilterLink, HdTokens->filterLink}) {
-            const VtValue link = sd->GetLightParamValue(id, key);
-            if (link.IsHolding<TfToken>()) {
-                desc.link = link.UncheckedGet<TfToken>().GetString();
-                break;
-            }
-        }
-    }
+    // filterLink: ignored, as Karma 22.0.466 ignores it (measured; docs/design/
+    // M11-P4.md F6): the filter acts on every object (desc.link stays empty).
+    // The core supports a category; honouring UsdLux's collection would add
+    // lightFilter to the light-linking scene index's filter types and set
+    // desc.link from the category it gives (HdTokens->lightFilterLink).
 
     scene.setLightFilter(id.GetString(), desc);
     _inScene = true;

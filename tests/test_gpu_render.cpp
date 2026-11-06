@@ -328,7 +328,8 @@ TEST_CASE("XPU lights: tree, emissive meshes, linking", "[gpu][render][lights]")
 // CPU: a box with rounded corners and a soft tinted edge and an inverted
 // sphere on an area light (light samples and BSDF rays), a blocker on a dome
 // (BSDF rays only), one on a camera-visible light around part of the camera
-// plane, and one limited by filterLink to a ball; with the light tree and by
+// plane, and one limited to a ball by a link category (the core's mechanism,
+// which Hydra leaves unused as Karma ignores filterLink); with the light tree and by
 // power, and light path expressions with weight-1 parts.
 TEST_CASE("XPU light filters", "[gpu][render][lights][filters]") {
     std::string why;

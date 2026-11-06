@@ -1,12 +1,11 @@
 // docs/design/M11-P4.md: Hydra's lightFilter sprim. A stage with Karma's
 // blocker written as a generic UsdLux LightFilter with its shader id (the
 // typed KarmaBlockerLightFilter needs Karma's schema plugin; husk covers it,
-// tests/husk/check_karma_filters.py), Nova's light-linking scene index
-// appended as for the renderer: the filter's inputs, transform, space and
-// filterLink reach the scene, lights list their filters in order, edits and
-// removals follow, other filter kinds are left out.
+// tests/husk/check_karma_filters.py): the filter's inputs, transform and space
+// reach the scene, lights list their filters in order, edits and removals
+// follow, other filter kinds are left out, and filterLink is ignored as Karma
+// ignores it, even where a light-linking scene index gives it a category.
 
-#include "hydra/implicitSurfaceSceneIndexPlugin.h"
 #include "hydra/renderDelegate.h"
 #include "hydra/renderParam.h"
 
@@ -14,6 +13,7 @@
 #include "core/scene/scene.h"
 
 #include <pxr/base/gf/vec3f.h>
+#include <pxr/imaging/hd/retainedDataSource.h>
 #include <pxr/imaging/hd/engine.h>
 #include <pxr/imaging/hd/renderIndex.h>
 #include <pxr/imaging/hd/renderPass.h>
@@ -56,7 +56,19 @@ private:
     TfTokenVector _tags{HdRenderTagTokens->geometry, HdRenderTagTokens->render};
 };
 
-// A stage through UsdImaging's scene indices and Nova's light-linking scene
+// pxr's light-linking scene index with light filters among its types: it
+// gives filterLink collections categories, which Nova must not apply.
+HdContainerDataSourceHandle linkingWithFilters() {
+    VtArray<TfToken> lights{HdPrimTypeTokens->distantLight, HdPrimTypeTokens->sphereLight};
+    VtArray<TfToken> filters{HdPrimTypeTokens->lightFilter};
+    VtArray<TfToken> geometry{HdPrimTypeTokens->mesh};
+    using Tokens = HdRetainedTypedSampledDataSource<VtArray<TfToken>>;
+    return HdRetainedContainerDataSource::New(HdsiLightLinkingSceneIndexTokens->lightPrimTypes, Tokens::New(lights),
+                                              HdsiLightLinkingSceneIndexTokens->lightFilterPrimTypes, Tokens::New(filters),
+                                              HdsiLightLinkingSceneIndexTokens->geometryPrimTypes, Tokens::New(geometry));
+}
+
+// A stage through UsdImaging's scene indices and that light-linking scene
 // index into a Nova render index.
 struct Driver {
     UsdStageRefPtr stage;
@@ -75,7 +87,7 @@ struct Driver {
         UsdImagingCreateSceneIndicesInfo info;
         info.addDrawModeSceneIndex = false;
         sceneIndices = UsdImagingCreateSceneIndices(info);
-        index->InsertSceneIndex(HdsiLightLinkingSceneIndex::New(sceneIndices.finalSceneIndex, HdNovaLightLinkingArgs()),
+        index->InsertSceneIndex(HdsiLightLinkingSceneIndex::New(sceneIndices.finalSceneIndex, linkingWithFilters()),
                                 SdfPath::AbsoluteRootPath(), false);
         // The stage after the chain exists, as in husk: the light-linking
         // scene index sees the prims arrive.
@@ -213,13 +225,14 @@ TEST_CASE("Blocker light filters reach the scene", "[hydra][filters]") {
     CHECK_THAT(q2.x, WithinAbs(0.0, 1e-6));
     CHECK_THAT(q2.z, WithinAbs(0.0, 1e-6));
 
-    // filterLink: the first blocker acts on a only; the second's empty
-    // collection (the Karma LOP's default) on every object.
-    const uint64_t a = d.categories("a"), b = d.categories("b");
-    CHECK(blk.link != nova::kLinksEveryone);
-    CHECK((blk.link & a) != 0);
-    CHECK((blk.link & b) == 0);
+    // filterLink: ignored as Karma ignores it. The scene index gives the
+    // first blocker's collection (naming a) a category and a that category;
+    // the filters still act on every object, and the scene has no linking.
+    CHECK(blk.link == nova::kLinksEveryone);
     CHECK(sun().filters[1].link == nova::kLinksEveryone);
+    CHECK(d.categories("a") == 0);
+    CHECK(d.categories("b") == 0);
+    CHECK(scene.lightLinks().light == nullptr);
 
     SECTION("edits follow") {
         d.set("/blk.inputs:intensity", VtValue(0.5f));

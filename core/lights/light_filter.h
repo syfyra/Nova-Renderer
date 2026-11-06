@@ -54,8 +54,10 @@ struct LightFilterData {
     float falloff = 0.0f;
     uint32_t invert = 0;
     Spectrum blocked{0.0f, 0.0f, 0.0f}; // the factor inside: intensity 2^exposure tint
-    // filterLink (docs/design/M9.md D15): the category of the objects the
-    // filter acts on, as a light-link bit (kLinksEveryone: every object).
+    // A link category (docs/design/M9.md D15), the mechanism UsdLux's filterLink
+    // would use: the objects the filter acts on, as a light-link bit
+    // (kLinksEveryone: every object). Hydra leaves it at every object, as Karma
+    // ignores filterLink (docs/design/M11-P4.md F6).
     uint64_t link = ~uint64_t(0);
 
     NOVA_INLINE Vec3f toSpace(Vec3f p) const { return x * p.x + y * p.y + z * p.z + t; }
