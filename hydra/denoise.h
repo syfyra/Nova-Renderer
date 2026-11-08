@@ -39,6 +39,21 @@ struct HdNovaDenoiseConfig {
 // are vars named <name>_denoise in the list). Disabled without a denoise entry.
 HdNovaDenoiseRequest HdNovaParseKarmaImageFilter(std::string const &json);
 
+// The "background" entry of Karma's image filters (docs/design/M11-P2.md):
+// the Karma Render Settings LOP's "Add Holdout Shadows To Beauty" authors
+// [["background", {"destination": "C", "foreground": "C", "shadows":
+// "holdout_shadow", "shadowcatcherenable": true, "shadowcatcheralpha": a}]]:
+// the destination's alpha takes the shadow AOV times a where the beauty is
+// transparent (measured: alpha + (1 - alpha) a shadow, colour unchanged).
+// The Background Plate's slap comp (backgroundfile, extras) is `plate`.
+struct HdNovaBackgroundFilter {
+    bool shadowCatcher = false;
+    std::string destination = "C", shadows;
+    float alpha = 1.0f;
+    bool plate = false; // a background image to composite (not applied by Nova)
+};
+HdNovaBackgroundFilter HdNovaParseKarmaBackgroundFilter(std::string const &json);
+
 // Splits Nova's nova:denoiseAovs ("C diffuse", commas allowed).
 std::vector<std::string> HdNovaSplitAovNames(std::string const &names);
 

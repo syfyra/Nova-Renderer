@@ -57,3 +57,22 @@ nova::RayLimitOverrides HdNovaObjectOverrides(HdSceneDelegate *sd, SdfPath const
 VtValue HdNovaConstantPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name);
 
 PXR_NAMESPACE_CLOSE_SCOPE
+
+#include "core/scene/visibility.h"
+
+PXR_NAMESPACE_OPEN_SCOPE
+
+// Ray visibility and holdouts (docs/design/M11-P2.md): Karma's constant
+// primvars karma:object:rendervisibility (an expression over ray types) and
+// karma:object:holdoutmode (0/1/2 or None/Matte/Background); unset fields
+// fall back to the render settings. A value that does not parse warns once
+// and stays unset.
+nova::ObjectVisibility HdNovaObjectVisibility(HdSceneDelegate *sd, SdfPath const &id);
+
+// The same two properties as values (a render setting's, or a primvar's):
+// the mask or mode, or -1 if `value` is empty or does not parse (`where`
+// names it in the warning).
+int HdNovaRenderVisibilityValue(VtValue const &value, std::string const &where);
+int HdNovaHoldoutModeValue(VtValue const &value, std::string const &where);
+
+PXR_NAMESPACE_CLOSE_SCOPE

@@ -11,6 +11,7 @@
 #include "core/scene/mesh.h"
 #include "core/scene/ray_limits.h"
 #include "core/scene/ray.h"
+#include "core/scene/visibility.h"
 #include "core/volume/majorant.h"
 #include "core/volume/volume.h"
 
@@ -50,6 +51,12 @@ struct MeshRecord {
     std::vector<CryptoAttribute> cryptoAttributes; // string/int primvars for cryptomattes
     bool fakeCaustics = false;   // effective (commit()): shadow rays cross it with its transmittance
     ObjectShading shading;       // effective (commit()): fake-caustic style, internal reflection, ...
+    // Ray visibility and holdouts (core/scene/visibility.h): the object's own
+    // settings and the effective ones (commit(): unset fields take the
+    // render settings'); a partial mask makes the mesh filtered.
+    ObjectVisibility visibilitySettings;
+    uint8_t visibility = kVisibleAll;
+    HoldoutMode holdout = HoldoutMode::None;
     std::vector<uint16_t> triangleSlots;
     // Where each material's primvar reads come from on this mesh (commit()).
     struct MaterialBinding {
@@ -218,6 +225,27 @@ public:
     // Applied at commit(); setDefaultFakeCaustics sets the switch alone.
     void setObjectDefaults(const RayLimits &defaults);
     void setDefaultFakeCaustics(bool on);
+    // Ray visibility and holdout mode of an object (core/scene/visibility.h;
+    // unset fields: the defaults below). No acceleration rebuild; a change
+    // of the mask may switch the mesh's hit filter.
+    void setMeshVisibility(MeshId id, const ObjectVisibility &visibility);
+    // The render settings' visibility and holdout mode, for objects without
+    // their own (applied at commit()). Unset fields: visible to all, none.
+    void setDefaultVisibility(const ObjectVisibility &visibility);
+    // Karma's bgoccludeshadow (render setting): a background-holdout point
+    // whose shadow ray another background holdout occludes keeps its light
+    // (off: background holdouts never shadow background points).
+    void setBackgroundOccludesShadows(bool on);
+    bool backgroundOccludesShadows() const { return m_bgOccludeShadow; }
+    // Some mesh is a holdout, some a background holdout (after commit()).
+    bool anyHoldouts() const { return m_anyHoldouts; }
+    bool anyBackground() const { return m_anyBackground; }
+    // Some mesh is visible to shadow rays but not to a scattered ray class,
+    // or the reverse. Karma tests the light a scattered ray reaches with
+    // shadow visibility (measured, docs/design/M11-P2.md): the integrator
+    // then finds the lights along scattered rays with a shadow-class query
+    // of their own.
+    bool shadowVisibilityDiffers() const { return m_shadowVisibilityDiffers; }
 
     LightId createLight();
     void updateLight(LightId id, const LightDesc &desc);
@@ -414,6 +442,9 @@ private:
     bool m_anyFiltered = false;
     bool m_anyFakeCaustics = false;
     RayLimits m_objectDefaults; // the shading-side fields (setObjectDefaults)
+    ObjectVisibility m_defaultVisibility;
+    bool m_anyHoldouts = false, m_anyBackground = false, m_bgOccludeShadow = false;
+    bool m_shadowVisibilityDiffers = false;
     void updateFilterFlags(bool &geometryChanged);
     void rebuildBindings();
 

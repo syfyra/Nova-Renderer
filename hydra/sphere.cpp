@@ -356,6 +356,7 @@ void HdNovaSphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         // constant primvars; docs/design/M11-P1.md).
         scene.setMeshRayLimits(_meshId, HdNovaObjectOverrides(sd, id));
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
+        scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
                             HdNovaCryptoAttributes(sd, id, names));

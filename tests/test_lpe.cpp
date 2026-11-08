@@ -87,7 +87,7 @@ TEST_CASE("The automaton agrees with a backtracking matcher on random paths", "[
     std::vector<std::string> exprs = kKarma;
     for (const char *e : {"C[^D]*L", "C(D|G){2}L", "CD?G+L", "C.*", "C<[RT][DG]>{1,3}L", "C'metal'.*L",
                           "C<.[^G]>.*[LO]", "C<R.'metal''coat'>L", "C(<RD>|<TG>)+<L.[^'key']>", "C.{2,}O",
-                          "CB", "C<TG>*B", "C[<RD><RG>]L", "C<[^R]D>L"})
+                          "CB", "C<TG>*B", "C[<RD><RG>]L", "C<[^R]D>L", "holdouts;CD.+L", "holdouts;C<RD>L"})
         exprs.push_back(e);
     const Compiled c = compile(exprs);
     REQUIRE(c.ok());
@@ -102,6 +102,10 @@ TEST_CASE("The automaton agrees with a backtracking matcher on random paths", "[
     auto pick = [&](auto const &v) { return v[std::uniform_int_distribution<size_t>(0, v.size() - 1)(rng)]; };
     for (int trial = 0; trial < 4000; ++trial) {
         std::vector<Event> path{ev(TypeCamera)};
+        // Paths whose camera ray hit a holdout start with the holdout event
+        // (M11 P2): only holdout; expressions take them.
+        if (std::uniform_int_distribution<int>(0, 3)(rng) == 0)
+            path.insert(path.begin(), ev(TypeHoldout));
         const int bounces = std::uniform_int_distribution<int>(0, 5)(rng);
         for (int b = 0; b < bounces; ++b) {
             const int kind = std::uniform_int_distribution<int>(0, 4)(rng);
@@ -124,7 +128,7 @@ TEST_CASE("The automaton agrees with a backtracking matcher on random paths", "[
             if (expected != (got.count(uint16_t(e)) != 0)) {
                 std::string text;
                 for (Event const &x : path)
-                    text += std::string(1, "CRTVLOBA"[x.type]) + std::string(1, "DGSsx"[x.scatter]) + "'" + x.tag +
+                    text += std::string(1, "CRTVLOBAH"[x.type]) + std::string(1, "DGSsx"[x.scatter]) + "'" + x.tag +
                             "''" + x.label + "' ";
                 INFO(exprs[e] << " on " << text);
                 CHECK(expected == (got.count(uint16_t(e)) != 0));

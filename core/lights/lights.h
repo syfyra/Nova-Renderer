@@ -127,6 +127,10 @@ struct LightData {
     // illuminates has a selection weight above 0), a dome's BSDF samples are
     // shadow rays of their own (core/integrator/path.h).
     uint16_t shadowCategory = 0xFFFFu;
+    // Karma's illumbackground (docs/design/M11-P2.md): the light lights
+    // background holdouts as it lights other objects, and its shadows are
+    // left out of the holdout shadow outputs.
+    bool illumBackground = false;
     NOVA_INLINE bool shadowLinked() const { return shadowCategory != 0xFFFFu; }
     NOVA_INLINE bool neeOnly() const { return shadowLinked() && type != LightType::Dome; }
     // Light filters (docs/design/M11-P4.md): the light's filters in order

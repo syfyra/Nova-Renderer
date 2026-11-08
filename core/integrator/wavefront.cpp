@@ -11,6 +11,7 @@
 #include "core/integrator/wavefront.h"
 
 #include "core/bsdf/surface.h"
+#include "core/integrator/holdout.h"
 #include "core/integrator/material_eval.h"
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/path.h"
@@ -81,6 +82,7 @@ void WaveQueues::reserve(uint32_t paths) {
         lightOnly.resize(paths);
         afterDiffuse.resize(paths);
         pathAlpha.resize(paths);
+        holdout.resize(paths);
         prevP.resize(paths);
         prevN.resize(paths);
         prevReceiver.resize(paths);
@@ -91,6 +93,11 @@ void WaveQueues::reserve(uint32_t paths) {
         hitPrim.resize(paths);
         hitUv.resize(paths);
         hitInstance.resize(paths);
+        lightHitT.resize(paths);
+        lightHitMesh.resize(paths);
+        lightHitPrim.resize(paths);
+        lightHitInstance.resize(paths);
+        lightHitUv.resize(paths);
         mediumT.resize(paths);
         crossingBegin.resize(paths);
         crossingCount.resize(paths);
@@ -120,9 +127,10 @@ namespace {
 
 // Adds a contribution to the path's radiance. A NaN/Inf contribution counts
 // as black instead of poisoning the pixel; checked per contribution, so the
-// light path expressions' parts (lpeDeposit) sum to the beauty.
+// light path expressions' parts (lpeDeposit) sum to the beauty. A holdout
+// path's light is not in the beauty (core/integrator/holdout.h).
 void addRadiance(WaveQueues &q, uint32_t p, const Spectrum &c) {
-    if (isFinite(c))
+    if (isFinite(c) && !q.holdout[p])
         q.radiance[p] += c;
 }
 
@@ -180,10 +188,23 @@ void lpeAttachParts(WaveQueues &q, float scale) {
 }
 
 
-// Closest hits for the current ray queue.
+// Closest hits for the current ray queue. Scattered rays in a scene whose
+// shadow visibility differs from theirs also find where they would end as
+// shadow rays: the lights they reach are tested as Karma tests them
+// (Scene::shadowVisibilityDiffers).
 void intersectRays(const Scene &scene, WaveQueues &q, uint32_t depth, const ShadeGlobals &globals) {
     HitBatch hits{q.hitT.data(), q.hitMesh.data(), q.hitPrim.data(), q.hitUv.data(), q.hitInstance.data()};
     scene.accel().intersect(q.rays.batch(depth, &globals), hits);
+    q.lightQuery = depth > 0 && scene.shadowVisibilityDiffers();
+    if (!q.lightQuery)
+        return;
+    thread_local std::vector<uint8_t> shadowClass;
+    shadowClass.assign(q.rays.size, uint8_t(RayClass::Shadow));
+    RayBatch batch = q.rays.batch(depth, &globals);
+    batch.rayType = shadowClass.data();
+    HitBatch light{q.lightHitT.data(), q.lightHitMesh.data(), q.lightHitPrim.data(), q.lightHitUv.data(),
+                   q.lightHitInstance.data()};
+    scene.accel().intersect(batch, light);
 }
 
 // Runs an external (VEX) material for prepared lanes: the shader's
@@ -514,6 +535,7 @@ void generateCameraRays(const Camera &camera, const PixelFilter &filter, uint32_
             q.lightOnly[slot] = 0;
             q.afterDiffuse[slot] = 0;
             q.pathAlpha[slot] = 0.0f;
+            q.holdout[slot] = 0;
             // No MIS vertex yet (path.h, kPrevSetDelta): the queues are reused
             // across tiles, so the slot's earlier path must not leak in.
             q.prevP[slot] = ray.org;
@@ -567,6 +589,12 @@ struct ShadeContext {
     const LpeView *lpe; // null: no light path expressions
     Film &film;
     UtilityPlane *ao;     // the ambient occlusion AOV (null: none)
+    // Holdouts (core/integrator/holdout.h): whether a holdout path's light
+    // reaches any output (else it ends at its camera hit), and whether some
+    // light has illumbackground.
+    bool holdoutShading;
+    bool illumBackground;
+    const ShadeGlobals &globals; // the render's frame and camera (surface shading)
 };
 
 // The light path expression variants of the light and closure queries stay
@@ -706,7 +734,8 @@ void cryptoAccumulate(const Scene &scene, Film &film, uint32_t pixel, MeshId mes
 // continuation's lights get a ratio-tracked transmittance of their own
 // (lightT, over the whole segment).
 void pushShadowRay(const ShadeContext &c, WaveQueues &q, Vec3f o, Vec3f d, float t, uint32_t p,
-                   const Spectrum &contribution, float time, float seed, uint32_t li, const LightSample &ls);
+                   const Spectrum &contribution, float time, float seed, uint32_t li, const LightSample &ls,
+                   uint8_t flags = 0);
 
 // The ray of ray slot k as its free flight sees the volumes (traceMedia).
 MediumRay flightRay(const ShadeContext &c, const WaveQueues &q, uint32_t k) {
@@ -1079,9 +1108,22 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 film.alphaSum[q.pixel[p]] += visible ? 1.0f : q.media ? volumeAlpha() : 0.0f;
                 continue;
             }
-            film.alphaSum[q.pixel[p]] += 1.0f; // surfaces are opaque to alpha (transmission included)
             if (!film.crypto.empty())
                 cryptoAccumulate(c.scene, film, q.pixel[p], q.hitMesh[k], q.hitPrim[k]);
+            const HoldoutMode holdout =
+                c.scene.anyHoldouts() ? c.scene.meshRecord(q.hitMesh[k]).holdout : HoldoutMode::None;
+            if (holdout != HoldoutMode::None) {
+                // A holdout (core/integrator/holdout.h): transparent to alpha
+                // but for the volumes in front, its light to holdout; outputs.
+                film.alphaSum[q.pixel[p]] += q.media ? volumeAlpha() : 0.0f;
+                q.holdout[p] = uint8_t(holdout);
+                if (lpe)
+                    q.lpeState[p] = lpeHoldoutState(lpe->program, q.lpeState[p]);
+                if (!c.holdoutShading)
+                    continue; // nothing takes its light
+            } else {
+                film.alphaSum[q.pixel[p]] += 1.0f; // surfaces are opaque to alpha (transmission included)
+            }
         } else {
             // Rays scattered by a surface collect the area lights they crossed
             // and, on escape, the lights at infinity. Lights on the surface hit
@@ -1091,12 +1133,16 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
             // The lights' densities are measured from the MIS vertex (prevP),
             // which a fake-caustic pass-through leaves behind the ray.
             const bool split = q.media && q.lightSplit;
+            // The lights end where the ray ends as a shadow ray when shadow
+            // visibility differs from the ray's (intersectRays).
+            const bool lightMiss = q.lightQuery ? q.lightHitMesh[k] == kInvalidId : miss;
+            const float lightHitT = q.lightQuery ? q.lightHitT[k] : q.hitT[k];
             // Where the ray gathers lights, for their filters (M11-P4).
             const LightFilterSite site = pathFilterSite(c, q, k, p);
             if (hasAreaLights) {
                 const float tEnd = event && !split ? q.volumeT[k]
-                                   : miss          ? q.rays.tMax[k]
-                                                   : lightSearchLimit(q.hitT[k], c.tolerance);
+                                   : lightMiss     ? q.rays.tMax[k]
+                                                   : lightSearchLimit(lightHitT, c.tolerance);
                 const Spectrum Le =
                     state ? areaLightsAlongRayLpe(c, q, p, state, q.rays.org[k], dir, tEnd, site, atten)
                           : areaLightsAlongRay(c.lights, pathPmf(c, q, p), c.lightCount, c.lightTree, q.rays.org[k], dir,
@@ -1110,7 +1156,7 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                         lpeDepositParts(*lpe, film, q, q.pixel[p], betaIn * scale);
                 }
             }
-            if (miss && (split || !event)) {
+            if (lightMiss && (split || !event)) {
                 const Spectrum beta = split ? betaIn * q.lightT[k] : q.beta[p];
                 if (state)
                     lpeDeposit(*lpe, film, q.pixel[p], lpe->program.step(state, lpe->backgroundSymbol), beta);
@@ -1331,18 +1377,118 @@ NOVA_NOINLINE void lpeLightSampleParts(const LpeView &t, WaveQueues &q, lpe::Sta
 // (M9 D14) the contribution lacks the emission, which traceShadowRays
 // evaluates where an unoccluded ray ends; the clamp waits for it.
 void pushShadowRay(const ShadeContext &c, WaveQueues &q, Vec3f o, Vec3f d, float t, uint32_t p,
-                   const Spectrum &contribution, float time, float seed, uint32_t li, const LightSample &ls) {
+                   const Spectrum &contribution, float time, float seed, uint32_t li, const LightSample &ls,
+                   uint8_t flags) {
     const LightData &light = c.lights[li];
     if (light.type == LightType::Triangle) {
-        q.shadows.push(o, d, t, p, contribution, time, seed, light.shadowCategory);
+        q.shadows.push(o, d, t, p, contribution, time, seed, light.shadowCategory, flags);
         q.shadows.markEmitter(li, ls.bary, c.clampNee);
         if (c.lpe)
             lpeAttachParts(q, 1.0f);
         return;
     }
-    q.shadows.push(o, d, t, p, clampContribution(contribution, c.clampNee), time, seed, light.shadowCategory);
+    q.shadows.push(o, d, t, p, clampContribution(contribution, c.clampNee), time, seed, light.shadowCategory, flags);
     if (c.lpe)
         lpeAttachParts(q, clampScale(contribution, c.clampNee));
+}
+
+// A background holdout seen by a ray other than the camera's
+// (core/integrator/holdout.h): its diffuse albedo, emitted in the fraction of
+// the light that reaches it (an O event that the shadow ray of a resampled
+// light sample decides; none without a light), and the illumbackground
+// lights' light as any object receives it (next-event estimation of weight
+// 1: the path ends here).
+void shadePrelit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit &hit, const ClosureList &cl,
+                 Vec3f wo, Vec3f ng, Vec3f origin, lpe::State state, uint32_t tag) {
+    const uint32_t p = q.rays.path[k];
+    const float time = q.rays.time[k];
+    const LpeView *lpe = c.lpe;
+    const uint32_t set = c.scene.receiverSet(hit.mesh, q.hitInstance[k]);
+    const float seed = shadowRaySeed(q.rays.filterSeed[k]);
+    const Spectrum albedo = diffuseAlbedo(cl);
+    if (!isBlack(albedo)) {
+        Rng rng = Rng::make(q.pixelSeed[p], q.sampleIndex[p], stream::prelit(c.depth));
+        const PathLightPmf pmf{c, origin, ng, Receiver::OneSided, set};
+        const LightStrategy strategy = c.settings.lightStrategy;
+        const LightFilterSite site{origin, c.links.categories(set)}; // light filters (M11 P4)
+        const PrelitPick pick = prelitPick(rng, [&](Rng &r, int kind, PrelitCandidate &out) -> float {
+            const Vec3f u{r.next(), r.next(), r.next()};
+            if (kind == 0) { // a light sample
+                float selectPdf = 0.0f;
+                const uint32_t li = c.lightTree ? c.lightTree->sample(u.z, origin, ng, Receiver::OneSided, set, selectPdf)
+                                                : c.lightSampler.sample(u.z, selectPdf);
+                if (li == kInvalidId || !c.links.links(li, set) || !(selectPdf > 0.0f))
+                    return 0.0f;
+                const LightData &light = c.lights[li];
+                if (light.type == LightType::Volume)
+                    return 0.0f;
+                const LightSample ls = sampleLight(light, origin, {u.x, u.y}, c.links.categories(set));
+                if (!(ls.pdf > 0.0f) || dot(ls.wi, ng) <= 0.0f)
+                    return 0.0f;
+                const Spectrum Li = light.type == LightType::Triangle ? ls.Li * light.emission : ls.Li;
+                const float lightPdf = selectPdf * ls.pdf;
+                // MIS against the directions for the lights at infinity.
+                const bool infinite = light.type == LightType::Dome || (light.type == LightType::Distant && !light.delta);
+                const float w = infinite ? lightSampleWeight(strategy, lightPdf, cosineHemispherePdf(dot(ls.wi, ng)),
+                                                             ls.delta)
+                                         : 1.0f;
+                out = {ls.wi, ls.distance, light.shadowCategory, light.illumBackground};
+                return luminance(evalClosure(cl, wo, ls.wi).fcosDiffuse * Li) * light.diffuse * w / lightPdf;
+            }
+            // A direction towards the lights at infinity (constant domes: only so).
+            const Vec3f d = Frame::fromNormal(ng).toWorld(sampleCosineHemisphere({u.x, u.y}));
+            const float pdf = cosineHemispherePdf(dot(d, ng));
+            if (!(pdf > 0.0f))
+                return 0.0f;
+            Spectrum L{0.0f, 0.0f, 0.0f}, illum{0.0f, 0.0f, 0.0f};
+            escapedRadiance(c.lights, pmf, c.lightCount, d, site, pdf, strategy, 1.0f, [&](uint32_t i, const Spectrum &Li) {
+                (c.lights[i].illumBackground ? illum : L) += Li;
+            });
+            // Only illumbackground domes there: they count as reaching it.
+            out = {d, kInf, uint16_t(0xFFFFu), isBlack(L)};
+            return luminance(evalClosure(cl, wo, d).fcosDiffuse * (L + illum)) / pdf;
+        });
+        const Spectrum value = clampContribution(q.beta[p] * albedo, c.clampEmission);
+        const lpe::State emitted = state ? lpeStep(*lpe, state, lpe::TypeObject, lpe::ScatterNone, tag, 0) : state;
+        if (pick.found && pick.ray.visible) { // an illumbackground light: no shadow
+            addRadiance(q, p, value);
+            if (emitted)
+                lpeDepositAll(*lpe, c.film, q.pixel[p], emitted, value);
+        } else if (pick.found) {
+            if (lpe)
+                lpePartsClear(q);
+            if (emitted)
+                lpePartsAdd(*lpe, q, emitted, value, value);
+            q.shadows.push(origin, pick.ray.wi, shadowRayLength(pick.ray.distance, c.tolerance), p, value, time, seed,
+                           pick.ray.category, kRayFromBackground);
+            if (lpe)
+                lpeAttachParts(q, 1.0f);
+        }
+    }
+    if (!c.illumBackground)
+        return;
+    // The illumbackground lights, as an ordinary light sample would.
+    const Sampler sampler{q.pixelSeed[p], q.sampleIndex[p]};
+    const LightChoice choice = chooseLight(c, q, p, time, sampler, origin, ng, Receiver::OneSided, set, true);
+    if (choice.light == kInvalidId || !(choice.ls.pdf > 0.0f) || !c.lights[choice.light].illumBackground)
+        return;
+    const LightData &light = c.lights[choice.light];
+    const LightSample &ls = choice.ls;
+    if (dot(ls.wi, ng) < 0.0f)
+        return;
+    const ClosureEval e = evalClosure(cl, wo, ls.wi);
+    const Spectrum f = e.fcosDiffuse * light.diffuse + (e.fcos - e.fcosDiffuse) * light.specular;
+    if (isBlack(f))
+        return;
+    const float lightPdf = choice.selectPdf * ls.pdf;
+    const Spectrum contribution = q.beta[p] * f * ls.Li * (1.0f / lightPdf);
+    if (lpe)
+        lpePartsClear(q);
+    if (state)
+        lpeLightSampleParts(*lpe, q, state, tag, cl, nullptr, 0, light, choice.light, false, dot(wo, hit.Ng) > 0.0f,
+                            f, q.beta[p] * ls.Li * (1.0f / lightPdf), 1.0f);
+    pushShadowRay(c, q, origin, ls.wi, shadowRayLength(ls.distance, c.tolerance), p, contribution, time, seed,
+                  choice.light, ls, kRayFromBackground);
 }
 
 // A shadow-linked dome's BSDF sample (path.h, M9 D15): a shadow ray of its
@@ -1492,6 +1638,16 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
         if (lightsOnly && !(fake && q.lightOnly[p] && c.depth < c.settings.maxDepth))
             return;
 
+        // Background holdouts (core/integrator/holdout.h): pre-lit for every
+        // ray but the camera's; seen from the camera, their light samples'
+        // shadow rays leave a background point.
+        const HoldoutMode holdout = c.scene.anyHoldouts() ? c.scene.meshRecord(hit.mesh).holdout : HoldoutMode::None;
+        if (holdout == HoldoutMode::Background && c.depth > 0 && !q.lightOnly[p]) {
+            shadePrelit(c, q, k, hit, cl, wo, ng, leave(ng), state, tag);
+            return;
+        }
+        const bool backgroundPoint = holdout == HoldoutMode::Background && c.depth == 0;
+
         if (fake) {
             fakeT = fakeCausticFactor(cl, wo, shading, *c.closures.tables);
             if (q.lightOnly[p]) {
@@ -1555,15 +1711,22 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                         lpePartsClear(q);
                     // With unoccluded; or shadow; outputs the parts also carry
                     // MIS weight 1, and the shadow ray is traced for them even
-                    // where the weight is 0.
-                    if (state && (weight > 0.0f || lpe->unit))
+                    // where the weight is 0. At a background point the
+                    // illumbackground lights stay out of those (holdout.h).
+                    if (state && (weight > 0.0f || lpe->unit)) {
                         lpeLightSampleParts(*lpe, q, state, tag, cl, lobeF, lobeMask, light, li,
                                             dot(ls.wi, ng) < 0.0f, dot(wo, hit.Ng) > 0.0f, f,
                                             q.beta[p] * ls.Li * (1.0f / lightPdf), weight);
+                        // At a background point the illumbackground lights
+                        // stay out of the unoccluded; and shadow; sums.
+                        if (backgroundPoint && light.illumBackground)
+                            std::fill(q.lpePartUnit.begin(), q.lpePartUnit.end(), spectrum(0.0f));
+                    }
+                    const uint8_t flags = backgroundPoint ? kRayFromBackground : uint8_t(0);
                     if ((weight > 0.0f && !isBlack(contribution)) || (lpe && lpe->unit && !q.lpePartState.empty())) {
                         if (dot(ls.wi, ng) >= 0.0f) {
                             pushShadowRay(c, q, origin, ls.wi, shadowRayLength(ls.distance, c.tolerance), p,
-                                          contribution, time, shadowSeed, li, ls);
+                                          contribution, time, shadowSeed, li, ls, flags);
                         } else {
                             // Transmitted light: the shadow ray starts below the
                             // surface, towards the same point on the light.
@@ -1571,7 +1734,7 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                             float dist = ls.distance;
                             const Vec3f d = transmittedShadowRay(origin, below, ls.wi, dist);
                             pushShadowRay(c, q, below, d, shadowRayLength(dist, c.tolerance), p, contribution, time,
-                                          shadowSeed, li, ls);
+                                          shadowSeed, li, ls, flags);
                         }
                     }
                 }
@@ -1748,7 +1911,7 @@ void shadeHits(const ShadeContext &c, WaveQueues &q) {
     float texRnd[kShadeChunk];
     Vec3f queryRnd[kShadeChunk];
     const float filterWidth = c.settings.textureFilterWidth;
-    const ShadeGlobals globals{c.settings.frame, c.settings.fps};
+    const ShadeGlobals &globals = c.globals;
     const SceneShadingQueries queries(c.scene, c.depth, &globals);
     for (uint32_t i = 0; i < q.shadeCount;) {
         const MaterialId material = q.shadeOrderMaterial[i];
@@ -2024,8 +2187,12 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
 }
 
 void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t depth, Film &film, WaveQueues &q,
-                   const ClosureContext &closures, const LpeView *lpe, UtilityPlane *ao) {
+                   const ClosureContext &closures, const LpeView *lpe, UtilityPlane *ao, const ShadeGlobals &globals) {
     const LightTreeView tree = scene.lightTree();
+    bool illumBackground = false;
+    if (scene.anyBackground())
+        for (uint32_t i = 0; i < scene.analyticLightCount(); ++i)
+            illumBackground |= scene.lights()[i].illumBackground;
     const ShadeContext c{scene,
                          settings,
                          closures,
@@ -2044,7 +2211,10 @@ void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t 
                          depth > 0 ? settings.clampIndirect : settings.clampDirect,
                          lpe,
                          film,
-                         ao};
+                         ao,
+                         (lpe && lpe->program.holdoutStart != 0) || ao,
+                         illumBackground,
+                         globals};
     // The light samples of this depth (traceMedia's equiangular ones first).
     q.shadows.rays.size = 0;
     q.shadows.emitterCount = 0;
@@ -2072,16 +2242,19 @@ void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t 
 // stepped over. Returns the rays traced in `rays`.
 Spectrum fakeCausticTransmittance(const Scene &scene, const ClosureContext &ctx, const RenderSettings &settings,
                                   uint32_t depth, Vec3f org, Vec3f dir, float tMax, float time, float seed,
-                                  uint16_t category, MaterialEvalScratch &scratch, uint32_t &rays) {
+                                  uint16_t category, MaterialEvalScratch &scratch, uint32_t &rays,
+                                  uint8_t flags = 0) {
     Spectrum T = spectrum(1.0f);
     const uint8_t type = uint8_t(RayClass::Shadow);
+    // The hit filter sees the shadow ray's flags (background points, holdout.h).
+    const uint8_t filterType = uint8_t(type | flags);
     const ShadeGlobals globals{settings.frame, settings.fps};
     for (int crossing = 0; crossing < 8; ++crossing) {
         float t = 0.0f;
         uint32_t mesh = kInvalidId, prim = 0, instance = 0;
         Vec2f uv{0.0f, 0.0f};
         HitBatch hits{&t, &mesh, &prim, &uv, &instance};
-        RayBatch ray{&org, &dir, &tMax, 1, &time, &seed, &type, depth};
+        RayBatch ray{&org, &dir, &tMax, 1, &time, &seed, &filterType, depth};
         ray.globals = &globals;
         scene.accel().intersect(ray, hits);
         ++rays;
@@ -2170,6 +2343,38 @@ void emitterShadowRadiance(const Scene &scene, const RenderSettings &settings, c
     }
 }
 
+// Karma's bgoccludeshadow (core/integrator/holdout.h): a shadow ray from a
+// background point that a background holdout occludes keeps its light (the
+// plate shows that shadow already): unoccluded, and marked
+// kRayBackgroundLit so that fake-caustic objects (phase 2) do not shadow it
+// either. Every such ray is probed, since phase 1 skips fake-caustic
+// blockers. Returns the rays traced.
+uint32_t probeBackgroundOccluders(const Scene &scene, ShadowQueue &s, uint32_t depth, const ShadeGlobals &globals) {
+    thread_local RayQueue probe;
+    thread_local std::vector<uint32_t> index;
+    thread_local std::vector<uint8_t> hit;
+    probe.reserve(s.rays.size);
+    index.clear();
+    for (uint32_t i = 0; i < s.rays.size; ++i) {
+        if (!(s.rays.rayType[i] & kRayFromBackground))
+            continue;
+        probe.push(s.rays.org[i], s.rays.dir[i], s.rays.tMax[i], i, s.rays.time[i], s.rays.filterSeed[i],
+                   RayClass::Shadow);
+        probe.rayType[probe.size - 1] |= kRayProbeBackground;
+        index.push_back(i);
+    }
+    if (probe.size == 0)
+        return 0;
+    hit.resize(probe.size);
+    scene.accel().occluded(probe.batch(depth, &globals), hit.data());
+    for (uint32_t j = 0; j < probe.size; ++j)
+        if (hit[j]) {
+            s.occluded[index[j]] = 0;
+            s.rays.rayType[index[j]] |= kRayBackgroundLit;
+        }
+    return probe.size;
+}
+
 // Stage 4: occlusion tests for the light samples; unoccluded ones add their
 // radiance.
 uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, const ClosureContext &ctx, uint32_t depth,
@@ -2184,6 +2389,8 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
         batch.shadowCategory = s.shadowCategory.data(); // D15: only a light's shadow set blocks it
     scene.accel().occluded(batch, s.occluded.data());
     uint32_t rays = s.rays.size;
+    if (scene.backgroundOccludesShadows() && scene.anyBackground())
+        rays += probeBackgroundOccluders(scene, s, depth, globals);
     const bool fake = scene.anyFakeCaustics();
     const bool media = !scene.activeVolumes().empty();
     const bool unit = lpe && lpe->unit;
@@ -2197,11 +2404,12 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
         Spectrum T = spectrum(1.0f);
         if (!blocked) {
             Spectrum c = s.contribution[i];
-            if (fake) {
+            if (fake && !(s.rays.rayType[i] & kRayBackgroundLit)) {
                 T = fakeCausticTransmittance(scene, ctx, settings, depth, s.rays.org[i], s.rays.dir[i],
                                              s.rays.tMax[i], s.rays.time[i], s.rays.filterSeed[i],
                                              scene.shadowLinking() ? s.shadowCategory[i] : uint16_t(0xFFFFu),
-                                             q.materialScratch, rays);
+                                             q.materialScratch, rays,
+                                             uint8_t(s.rays.rayType[i] & kRayFromBackground));
                 c *= T;
             }
             if (media && (!isBlack(c) || unit)) {
@@ -2270,7 +2478,7 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
     q.reserve(paths);
     uint64_t rays = 0;
     const ClosureContext ctx{&bsdfTables(), kXyzToRec709Grey};
-    const ShadeGlobals globals{settings.frame, settings.fps};
+    const ShadeGlobals globals = shadeGlobals(settings, camera);
     // First-hit AOVs for the pixels without a sample yet.
     q.firstHitPixels.clear();
     forEachPixel(tile, pixels, pixelCount, film.width, [&](int x, int y, uint32_t) {
@@ -2294,8 +2502,10 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
     for (uint32_t depth = 0; depth <= settings.maxDepth && q.rays.size > 0; ++depth) {
         rays += q.rays.size;
         intersectRays(scene, q, depth, globals);
+        if (q.lightQuery)
+            rays += q.rays.size;
         q.aoRays.size = 0;
-        shadeSurfaces(scene, settings, depth, film, q, ctx, lpe, ao);
+        shadeSurfaces(scene, settings, depth, film, q, ctx, lpe, ao, globals);
         rays += q.walkRays;
         q.walkRays = 0;
         rays += traceShadowRays(scene, settings, ctx, depth, q, film, lpe);
@@ -2331,12 +2541,24 @@ uint64_t renderFirstHits(const Scene &scene, const Camera &camera, const RenderS
     if (q.firstHitPixels.empty())
         return 0;
     renderFirstHitAovs(scene, camera, tile, q.firstHitPixels.data(), uint32_t(q.firstHitPixels.size()), film.width, film,
-                       q, ctx, settings.textureFilterWidth, ShadeGlobals{settings.frame, settings.fps});
+                       q, ctx, settings.textureFilterWidth, shadeGlobals(settings, camera));
     return q.firstHitPixels.size();
 }
 
 void accumulateCrypto(const Scene &scene, Film &film, uint32_t pixel, MeshId mesh, uint32_t prim) {
     cryptoAccumulate(scene, film, pixel, mesh, prim);
+}
+
+ShadeGlobals shadeGlobals(const RenderSettings &settings, const Camera &camera) {
+    ShadeGlobals g{settings.frame, settings.fps};
+    const Mat4 clip = camera.worldToView * inverse(camera.ndcToView);
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            g.worldToClip[i][j] = float(clip.m[i][j]);
+    g.eye = camera.viewToWorld.transformAffine({0.0f, 0.0f, 0.0f});
+    g.forward = normalize(camera.viewToWorld.transformDir({0.0f, 0.0f, -1.0f}));
+    g.hasCamera = 1;
+    return g;
 }
 
 void subsurfaceWalkStats(uint64_t &walks, uint64_t &capped) {

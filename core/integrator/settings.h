@@ -3,6 +3,7 @@
 #include "core/film/filter.h"
 #include "core/lights/light_strategy.h"
 #include "core/scene/ray_limits.h"
+#include "core/scene/visibility.h"
 
 #include <cstdint>
 #include <memory>
@@ -34,6 +35,11 @@ struct RenderSettings {
     float oracleThreshold = 0.01f;
     uint32_t maxDepth = 6;        // lit scattering events per path (1 = direct light only); a cap with limits
     RayLimits limits;             // per-ray-type limits, the objects' defaults (core: none)
+    // Ray visibility and holdout mode of objects without their own, and
+    // whether background holdouts occlude shadows of background points
+    // (docs/design/M11-P2.md; the host applies them to the scene).
+    ObjectVisibility objectVisibility;
+    bool backgroundOccludesShadows = false;
     uint32_t rrStartDepth = 3;    // Russian roulette starts at this depth
     float clampIndirect = 10.0f;  // firefly clamp for indirect light (0 = off)
     // Karma's colour limits (docs/design/M11-P1.md, measured): clampDirect

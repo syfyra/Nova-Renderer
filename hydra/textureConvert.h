@@ -88,8 +88,10 @@ std::string HdNovaLocalizeTexture(std::string const &path, HdNovaTextureOptions 
 // color space being its metadata (measured): so the EXR holds what imaketx
 // decodes (8-bit sRGB data linearized, tagged with the stored space, e.g.
 // lin_rec709), or with `stored` (for HdNovaTextureColorSpaceIsNamed) the
-// stored values unchanged. Empty (with `error`) when it cannot be read or
-// converted.
+// stored values unchanged. A Houdini `.pic` image is converted the same way,
+// always with its stored values (Karma reads them undecoded, measured; its
+// color space is then none, HdNovaTextureColorSpace). Empty (with `error`)
+// when it cannot be read or converted.
 std::string HdNovaReadableTexture(std::string const &path, HdNovaTextureOptions const &options, bool stored,
                                   std::string &error);
 

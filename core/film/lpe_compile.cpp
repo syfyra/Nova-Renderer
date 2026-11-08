@@ -316,8 +316,11 @@ bool slotAccepts(Slot const &slot, std::string const &value) {
     return slot.negated ? !in : in;
 }
 
-// `.` and negations at the type position never match A or B (D4).
+// `.` and negations at the type position never match A or B (D4), nor the
+// internal holdout event (no expression names it).
 bool specAccepts(Spec const &spec, Type type, Scatter scatter, std::string const &tag, std::string const &label) {
+    if (type == TypeHoldout)
+        return false;
     const std::string t(1, kTypeSymbols[type]);
     const Slot &ts = spec.slot[PosType];
     if ((ts.any || ts.negated) && (type == TypeAlbedo || type == TypeBackground))
@@ -336,7 +339,7 @@ bool nodeAccepts(Node const &n, Type type, Scatter scatter, std::string const &t
                 return true;
         return false;
     case Node::NoneOf:
-        if (type == TypeAlbedo || type == TypeBackground)
+        if (type == TypeAlbedo || type == TypeBackground || type == TypeHoldout)
             return false;
         for (Spec const &s : n.specs)
             if (specAccepts(s, type, scatter, tag, label))
@@ -502,9 +505,16 @@ std::set<size_t> ends(Node const &n, std::vector<Event> const &ev, size_t i) {
 bool matches(std::string const &text, std::vector<Event> const &events, std::string *error) {
     try {
         std::string t = text;
-        stripPrefixes(t);
+        const uint8_t flags = stripPrefixes(t);
         auto root = Parser(t).parse();
-        return ends(*root, events, 0).count(events.size()) != 0;
+        // holdout; expressions take the paths that start with the holdout
+        // event, the others never (compile()).
+        const bool holdoutPath = !events.empty() && events[0].type == TypeHoldout;
+        if (holdoutPath != ((flags & OutputHoldout) != 0))
+            return false;
+        const size_t first = holdoutPath ? 1 : 0;
+        const std::vector<Event> rest(events.begin() + std::ptrdiff_t(first), events.end());
+        return ends(*root, rest, 0).count(rest.size()) != 0;
     } catch (ParseError const &e) {
         if (error)
             *error = e.what();
@@ -524,6 +534,7 @@ Program Compiled::program() const {
     p.outs = outs.data();
     p.outputFlags = outputFlags.data();
     p.start = start;
+    p.holdoutStart = holdoutStart;
     return p;
 }
 
@@ -561,8 +572,13 @@ State Compiled::run(std::vector<Event> const &events) const {
     if (!ok() || events.empty())
         return 0;
     const Program p = program();
-    State s = start; // after the camera event
-    for (size_t i = 1; i < events.size() && s != 0; ++i)
+    // After the camera event, or for a holdout path (the holdout event first)
+    // after both.
+    const bool holdout = events[0].type == TypeHoldout;
+    if (holdout && events.size() < 2)
+        return 0;
+    State s = holdout ? holdoutStart : start;
+    for (size_t i = holdout ? 2 : 1; i < events.size() && s != 0; ++i)
         s = p.step(s, p.symbol(events[i].type, events[i].scatter, tagId(events[i].tag), labelId(events[i].label)));
     return s;
 }
@@ -595,17 +611,30 @@ Compiled compile(std::vector<std::string> const &expressions, Limits const &limi
     const uint32_t symbols = uint32_t(kTypeCount) * kScatterCount * T * Lb;
 
     // The NFA of all expressions, accept states tagged with their output.
+    // holdout; outputs take the internal holdout event first (a predicate of
+    // its own past the parsed ones); paths of holdouts start with it.
     Nfa nfa;
     const int start = nfa.add();
     bool any = false;
+    int holdoutPred = -1;
     for (size_t e = 0; e < roots.size(); ++e) {
         if (!roots[e])
             continue;
         auto [s, end] = nfa.build(*roots[e]);
-        nfa.eps[size_t(start)].push_back(s);
+        if (out.outputFlags[e] & OutputHoldout) {
+            if (holdoutPred < 0)
+                holdoutPred = int(singles.size());
+            const int a = nfa.add(), b = nfa.add();
+            nfa.moves[size_t(a)].push_back({holdoutPred, b});
+            nfa.eps[size_t(b)].push_back(s);
+            nfa.eps[size_t(start)].push_back(a);
+        } else {
+            nfa.eps[size_t(start)].push_back(s);
+        }
         nfa.accept[size_t(end)] = int(e);
         any = true;
     }
+    const size_t predicates = singles.size() + (holdoutPred >= 0 ? 1 : 0);
     if (!any)
         return out; // nothing compiled (ok() is false)
 
@@ -618,9 +647,11 @@ Compiled compile(std::vector<std::string> const &expressions, Limits const &limi
             const uint32_t label = sym % Lb, tag = (sym / Lb) % T, ts = sym / (Lb * T);
             const Type type = Type(ts / kScatterCount);
             const Scatter scatter = Scatter(ts % kScatterCount);
-            std::vector<char> sig(singles.size());
+            std::vector<char> sig(predicates);
             for (size_t p = 0; p < singles.size(); ++p)
                 sig[p] = nodeAccepts(*singles[p], type, scatter, out.tags[tag], out.labels[label]) ? 1 : 0;
+            if (holdoutPred >= 0)
+                sig[size_t(holdoutPred)] = type == TypeHoldout ? 1 : 0;
             auto [it, inserted] = bySignature.emplace(sig, uint32_t(classAccepts.size()));
             if (inserted)
                 classAccepts.push_back(sig);
@@ -751,7 +782,9 @@ Compiled compile(std::vector<std::string> const &expressions, Limits const &limi
     }
     out.outBegin[count] = uint32_t(out.outs.size());
     const Program p = out.program();
-    out.start = p.step(State(renum[part[initial]]), p.symbol(TypeCamera, ScatterNone, 0, 0));
+    const uint32_t camera = p.symbol(TypeCamera, ScatterNone, 0, 0);
+    out.start = p.step(State(renum[part[initial]]), camera);
+    out.holdoutStart = p.step(p.step(State(renum[part[initial]]), p.symbol(TypeHoldout, ScatterNone, 0, 0)), camera);
     return out;
 }
 

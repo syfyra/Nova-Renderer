@@ -430,6 +430,9 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     // The shading-side object defaults (fake caustics and their style,
     // internal reflection, the roughness clamp of true caustics).
     scene.setObjectDefaults(settings.limits);
+    // Ray visibility and holdouts of objects without their own (M11 P2).
+    scene.setDefaultVisibility(settings.objectVisibility);
+    scene.setBackgroundOccludesShadows(settings.backgroundOccludesShadows);
     // Volume majorants of Time/Frame-driven shaders bound the rendered frame.
     scene.setShadeFrame(settings.frame, settings.fps);
     scene.commit();

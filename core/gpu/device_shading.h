@@ -114,9 +114,20 @@ NOVA_INLINE float hitOpacity(const ShadeGlobals &globals, uint32_t depth, const 
 // (ray, surface).
 NOVA_INLINE bool acceptHit(const GpuScene &sc, const ShadeGlobals &globals, uint32_t depth, uint32_t meshId,
                            uint32_t prim, uint32_t instance, Vec2f uv, float t, Vec3f org, Vec3f dir, float time,
-                           float seed, uint8_t rayType, bool occlusion, uint16_t category) {
+                           float seed, uint8_t rayType, bool occlusion, uint16_t category, uint8_t rayFlags = 0) {
     const GpuMesh &mesh = sc.meshes[meshId];
-    if (occlusion && mesh.fakeCaustics)
+    // Ray visibility; shadow rays from background points (Scene::OpacityFilter).
+    if (!visibleTo(mesh.visibility, rayType))
+        return false;
+    if (rayFlags & kRayProbeBackground) {
+        if (mesh.holdout != uint8_t(HoldoutMode::Background))
+            return false;
+    } else if ((rayFlags & kRayFromBackground) && mesh.holdout == uint8_t(HoldoutMode::Background)) {
+        return false;
+    }
+    // The bgoccludeshadow probe sees background holdouts whatever their
+    // caustics (Scene::OpacityFilter).
+    if (occlusion && mesh.fakeCaustics && !(rayFlags & kRayProbeBackground))
         return false;
     if (occlusion && category != 0xFFFFu && category >= 7 && !mesh.castsShadow(instance, category))
         return false;

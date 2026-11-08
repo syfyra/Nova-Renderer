@@ -20,6 +20,7 @@
 #include "core/scene/camera.h"
 #include "core/scene/ray_limits.h"
 #include "core/scene/scene_view.h"
+#include "core/scene/visibility.h"
 #include "core/shading/program.h"
 
 #include <cstdint>
@@ -50,6 +51,9 @@ struct GpuMesh {
     Span<uint64_t> shadowMasks; // per instance: the shadow-link categories it is in
     uint8_t fakeCaustics = 0;   // shadow rays cross it with its transmittance (M4 3.3)
     ObjectShading shading;      // MeshRecord::shading (fake-caustic style, internal reflection, ...)
+    // Ray visibility mask and holdout mode (MeshRecord's, M11 P2).
+    uint8_t visibility = kVisibleAll;
+    uint8_t holdout = 0; // HoldoutMode
 
     // Scene::emitterLight and Scene::receiverSet.
     NOVA_INLINE uint32_t emitterLight(uint32_t instance, uint32_t prim) const {
@@ -175,6 +179,10 @@ struct GpuScene {
     float tolerance = 0.0f;
     uint8_t hasAreaLights = 0, hasVisibleAreaLights = 0;
     uint8_t anyFiltered = 0; // some mesh is filtered: rays carry opacity seeds (Scene::anyFiltered)
+    // Holdouts (core/integrator/holdout.h): some mesh is a holdout; some light
+    // has illumbackground and some mesh is a background holdout.
+    uint8_t anyHoldouts = 0, illumBackground = 0;
+    uint8_t shadowVisibilityDiffers = 0; // Scene::shadowVisibilityDiffers
     // Light path expressions (null program.next: none), set per pass.
     LpeView lpe;
     // Volumes (per VolumeId) and the active ones; whether some depend on the
@@ -276,6 +284,7 @@ struct GpuWave {
     uint8_t *lightOnly = nullptr;
     uint8_t *afterDiffuse = nullptr;
     float *pathAlpha = nullptr; // the roughest glossy event so far (GGX alpha; constrainRoughness)
+    uint8_t *holdout = nullptr; // the camera ray hit a holdout (HoldoutMode, core/integrator/holdout.h)
     float *coneWidth = nullptr; // the ray cone at the current ray's origin (core/texture/ray_cone.h)
     float *coneSpread = nullptr;
     // The last scattering vertex as its light sample saw it (MIS of BSDF
@@ -290,6 +299,13 @@ struct GpuWave {
     uint32_t *hitPrim = nullptr;
     Vec2f *hitUv = nullptr;
     uint32_t *hitInstance = nullptr;
+    // The same rays' closest hits as shadow rays, where they find their
+    // lights (WaveQueues::lightQuery; lightMesh null: none this depth).
+    uint32_t *lightMesh = nullptr;
+    float *lightHitT = nullptr;
+    uint32_t *lightPrim = nullptr;
+    Vec2f *lightUv = nullptr;
+    uint32_t *lightInstance = nullptr;
     // Light samples of the current depth (ShadowQueue).
     GpuRays shadow;
     Spectrum *shadowContribution = nullptr;
