@@ -31,6 +31,12 @@ struct DielectricLobe {
     Spectrum tintR;    // multiplies the reflection (e.g. specular_color)
     Spectrum tintT;    // multiplies the transmission (e.g. transmission_color)
     uint8_t mode;
+    // Karma's internalreflectenable off (dropInternalReflection sets it on
+    // the inside's lobes): no Fresnel reflection, the interface transmits
+    // without the Fresnel loss; total internal reflection stays (rough glass
+    // keeps its energy, as in Karma's references). Aggregate initializers
+    // leave it 0.
+    uint8_t noInternal;
     ThinFilm film;          // optional film on the outside (film.active())
     const float *xyzToRgb;  // the film's color conversion
 
@@ -74,6 +80,7 @@ struct DielectricLobe {
         const bool reflect = wi.z > 0.0f;
         if (!(mode & (reflect ? kReflect : kTransmit)))
             return black;
+        const bool noReflection = noInternal != 0;
         const float etap = reflect ? 1.0f : e;
         Vec3f m = wo + wi * etap;
         if (dot(m, m) == 0.0f)
@@ -86,7 +93,7 @@ struct DielectricLobe {
             return black; // back-facing microfacet
         float cosT;
         const float F = fresnelDielectric(om, e, cosT);
-        const Spectrum Fs = fresnel(om, e, F);
+        const Spectrum Fs = noReflection ? spectrum(F >= 1.0f ? 1.0f : 0.0f) : fresnel(om, e, F);
         const float pR = reflectProbability(Fs);
         if (reflect) {
             pdf = ggx.pdfReflect(wo, m, bounded()) * pR;
@@ -123,7 +130,8 @@ struct DielectricLobe {
             return false;
         float cosT;
         const float F = fresnelDielectric(om, e, cosT);
-        const Spectrum Fs = fresnel(om, e, F);
+        const bool noReflection = noInternal != 0;
+        const Spectrum Fs = noReflection ? spectrum(F >= 1.0f ? 1.0f : 0.0f) : fresnel(om, e, F);
         const float pR = reflectProbability(Fs);
         Vec3f wi;
         if (uc < pR) {

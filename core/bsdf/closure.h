@@ -26,6 +26,7 @@
 #include "core/bsdf/sheen.h"
 #include "core/bsdf/subsurface.h"
 #include "core/math/frame.h"
+#include "core/scene/ray_limits.h"
 
 namespace nova {
 
@@ -413,6 +414,165 @@ NOVA_INLINE Spectrum closureTransmittance(const ClosureList &cl, Vec3f wo, const
         }
     }
     return T;
+}
+
+// Karma's fake-caustic transmittance (measured, docs/design/M11-P1.md): per
+// transmissive lobe 1 - F with Schlick's F at wo's angle, a second 1 - F
+// where the surface reflects on wo's side (outside; inside only with
+// internal reflection), the lobe's weight and transmission tint; roughness
+// and the energy compensation of rough lobes ignored. Thin walls reflect on
+// both sides.
+NOVA_INLINE Spectrum karmaTransmittance(const ClosureList &cl, Vec3f wo, bool internalReflection,
+                                        const BsdfTables &tables) {
+    Spectrum T{0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < cl.count; ++i) {
+        const Lobe &l = cl.lobe[i];
+        const Vec3f woL = cl.frame[l.frame].toLocal(wo);
+        const float mu = nova::fmin(std::fabs(woL.z), 1.0f);
+        const float m5 = sqr(sqr(1.0f - mu)) * (1.0f - mu);
+        if (l.type == LobeType::Dielectric && (l.dielectric.mode & DielectricLobe::kTransmit)) {
+            // The frames face wo; the inside's lobe has the inverse index.
+            const bool outside = l.dielectric.eta >= 1.0f;
+            const float e = outside ? l.dielectric.eta : 1.0f / l.dielectric.eta;
+            const float F0 = sqr((e - 1.0f) / (e + 1.0f));
+            const float t = 1.0f - (F0 + (1.0f - F0) * m5);
+            const bool reflects = outside || internalReflection;
+            const GgxDistribution &g = l.dielectric.ggx;
+            const float uncompensate = g.smooth() || l.dielectric.mode != DielectricLobe::kBoth
+                                           ? 1.0f
+                                           : dielectricAlbedoRT(tables, l.dielectric.eta, lutRough(g.ax, g.ay), mu);
+            T += l.weight * l.dielectric.tintT * (t * (reflects ? t : 1.0f) * uncompensate);
+        } else if (l.type == LobeType::ThinDielectric) {
+            const float F0 = sqr((l.thin.eta - 1.0f) / (l.thin.eta + 1.0f));
+            const float t = 1.0f - (F0 + (1.0f - F0) * m5);
+            const GgxDistribution &g = l.thin.ggxR;
+            const float e = g.smooth() ? 1.0f : thinDielectricAlbedo(tables, l.thin.eta, lutRough(g.ax, g.ay), mu);
+            T += l.weight * l.thin.tintT * (t * t * e);
+        }
+    }
+    return T;
+}
+
+// Schlick's bias, Karma's fakecausticsfresneldarken d (measured per
+// crossing: mu / ((1 / (1 - d) - 2) (1 - mu) + 1); d = 0.5 gives mu, 1
+// blocks the light).
+NOVA_INLINE float fakeCausticDarken(float mu, float d) {
+    if (!(d > 0.0f))
+        return 1.0f;
+    if (d >= 1.0f)
+        return 0.0f;
+    return mu / ((1.0f / (1.0f - d) - 2.0f) * (1.0f - mu) + 1.0f);
+}
+
+// What a fake-caustic surface passes per crossing (docs/design/M4.md 3.3,
+// docs/design/M11-P1.md): Nova's physical transmittance or Karma's, or with
+// Karma's BSDF switch off the colour alone (surfaces that transmit at all);
+// tinted by Karma's colour, darkened towards grazing angles, faded towards 1
+// by its opacity.
+NOVA_INLINE Spectrum fakeCausticFactor(const ClosureList &cl, Vec3f wo, const ObjectShading &s,
+                                       const BsdfTables &tables) {
+    const FakeCausticsStyle &f = s.fake;
+    const Spectrum color{f.color[0], f.color[1], f.color[2]};
+    Spectrum t;
+    if (!f.bsdf) {
+        bool transmits = false;
+        for (int i = 0; i < cl.count; ++i)
+            transmits |= (cl.lobe[i].type == LobeType::Dielectric &&
+                          (cl.lobe[i].dielectric.mode & DielectricLobe::kTransmit)) ||
+                         cl.lobe[i].type == LobeType::ThinDielectric;
+        if (!transmits)
+            return spectrum(0.0f); // opaque whatever the controls
+        t = color;
+    } else {
+        t = (f.karma ? karmaTransmittance(cl, wo, s.internalReflection, tables) : closureTransmittance(cl, wo, tables)) *
+            color;
+        if (isBlack(t) && f.color[0] > 0.0f && f.color[1] > 0.0f && f.color[2] > 0.0f)
+            return t; // opaque (no transmission) whatever the opacity
+    }
+    if (f.fresnelDarken > 0.0f)
+        t *= fakeCausticDarken(nova::fmin(std::fabs(dot(wo, cl.ng)), 1.0f), f.fresnelDarken);
+    const Spectrum o{f.opacity[0], f.opacity[1], f.opacity[2]};
+    return spectrum(1.0f) - o + t * o;
+}
+
+// Karma's internalreflectenable off (docs/design/M11-P1.md): seen from the
+// inside of a refracting interface (the surface models face the frames to
+// wo and give the inside's lobes the inverse index), its dielectric lobes
+// have no Fresnel reflection, only total internal reflection
+// (DielectricLobe::noInternal), and reflection-only dielectric lobes of the
+// inside (a split reflection) are dropped.
+NOVA_INLINE void dropInternalReflection(ClosureList &cl, Vec3f) {
+    bool inside = false;
+    for (int i = 0; i < cl.count; ++i) {
+        Lobe &l = cl.lobe[i];
+        if (l.type == LobeType::Dielectric && (l.dielectric.mode & DielectricLobe::kTransmit) &&
+            l.dielectric.eta < 1.0f) {
+            l.dielectric.noInternal = 1;
+            inside = true;
+        }
+    }
+    if (!inside)
+        return;
+    int n = 0;
+    for (int i = 0; i < cl.count; ++i) {
+        const Lobe &l = cl.lobe[i];
+        if (!(l.type == LobeType::Dielectric && l.dielectric.mode == DielectricLobe::kReflect && l.dielectric.eta < 1.0f))
+            cl.lobe[n++] = l;
+    }
+    if (n != cl.count) {
+        cl.count = uint8_t(n);
+        cl.finalize();
+    }
+}
+
+// The GGX alpha of a glossy lobe (0: not glossy).
+NOVA_INLINE float glossyAlpha(const Lobe &l) {
+    switch (l.type) {
+    case LobeType::Conductor:
+        return nova::fmax(l.conductor.ggx.ax, l.conductor.ggx.ay);
+    case LobeType::Dielectric:
+        return nova::fmax(l.dielectric.ggx.ax, l.dielectric.ggx.ay);
+    case LobeType::ThinDielectric:
+        return nova::fmax(l.thin.ggxR.ax, l.thin.ggxR.ay);
+    default:
+        return 0.0f;
+    }
+}
+
+// Raises the GGX alpha of the glossy lobes to at least `alpha` (Karma's
+// constrainmaxrough and causticsroughnessclamp, docs/design/M11-P1.md);
+// lobes that stop being smooth take part in light sampling. The weights
+// keep the compensation of their own roughness.
+NOVA_INLINE void clampLobeRoughness(ClosureList &cl, float alpha) {
+    if (!(alpha > kMinAlpha))
+        return;
+    bool changed = false;
+    const auto raise = [&](GgxDistribution &g) {
+        if (g.ax < alpha || g.ay < alpha) {
+            g = GgxDistribution::make(nova::fmax(g.ax, alpha), nova::fmax(g.ay, alpha));
+            changed = true;
+        }
+    };
+    for (int i = 0; i < cl.count; ++i) {
+        Lobe &l = cl.lobe[i];
+        if (l.type == LobeType::Conductor) {
+            raise(l.conductor.ggx);
+        } else if (l.type == LobeType::Dielectric) {
+            raise(l.dielectric.ggx);
+        } else if (l.type == LobeType::ThinDielectric) {
+            const GgxDistribution before = l.thin.ggxR;
+            raise(l.thin.ggxR);
+            if (l.thin.ggxR.ax != before.ax || l.thin.ggxR.ay != before.ay)
+                l.thin.ggxT = GgxDistribution::make(ThinDielectricLobe::transmissionAlpha(l.thin.ggxR.ax, l.thin.eta),
+                                                    ThinDielectricLobe::transmissionAlpha(l.thin.ggxR.ay, l.thin.eta));
+        }
+    }
+    if (!changed)
+        return;
+    cl.nonDeltaMask = 0;
+    for (int i = 0; i < cl.count; ++i)
+        if (!cl.lobe[i].delta())
+            cl.nonDeltaMask |= uint16_t(1u << i);
 }
 
 // The closure without its non-diffuse lobes (fake caustics after a diffuse

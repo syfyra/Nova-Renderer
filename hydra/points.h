@@ -6,6 +6,7 @@
 // and the primvars per point. Instances, motion, materials and the
 // per-object settings as for meshes.
 
+#include "karmaSettings.h"
 #include "motion.h"
 
 #include "core/scene/mesh.h"
@@ -32,8 +33,9 @@ protected:
 
 private:
     // The point mesh at the shutter's steps; false if there is nothing to render.
+    // `defaults`: the render settings' Karma style and width scale.
     bool _Build(HdSceneDelegate *sceneDelegate, HdNovaShutter const &shutter, unsigned maxSteps,
-                nova::MeshDesc &desc) const;
+                HdNovaObjectDefaults const &defaults, nova::MeshDesc &desc) const;
 
     nova::MeshId _meshId = nova::kInvalidId;
     HdNovaShutter _sampledShutter;

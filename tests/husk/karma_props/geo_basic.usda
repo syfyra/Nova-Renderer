@@ -1,0 +1,119 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    timeCodesPerSecond = 24
+)
+
+# The everyday scene of tests/husk/check_karma_props.py: grey ground and
+# wall, three exact spheres (one-point Points prims) under a point light, a
+# row of small points, a row of linear curves and a sphere moving along x
+# over the camera's shutter (-0.25, 0.25) around frame 0 (husk renders frame
+# 0 of these files).
+def Xform "World"
+{
+    def Mesh "ground" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-20, 0, 20), (20, 0, 20), (20, 0, -20), (-20, 0, -20)]
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (interpolation = "vertex")
+        float3[] extent = [(-20, 0, -20), (20, 0, 20)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </Looks/grey>
+    }
+    def Mesh "wall" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-6, 0, -2.5), (6, 0, -2.5), (6, 4, -2.5), (-6, 4, -2.5)]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (interpolation = "vertex")
+        float3[] extent = [(-6, 0, -2.5), (6, 4, -2.5)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </Looks/grey>
+    }
+    def Points "balls" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        point3f[] points = [(-1.3, 0.5, 0), (0, 0.5, -0.6), (1.3, 0.5, 0)]
+        float[] widths = [1, 1, 1] (interpolation = "vertex")
+        float3[] extent = [(-1.8, 0, -1.1), (1.8, 1, 0.5)]
+        rel material:binding = </Looks/grey>
+    }
+    def Points "dots" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        point3f[] points = [(-1.6, 0.1, 1.5), (-1.2, 0.1, 1.5), (-0.8, 0.1, 1.5), (-0.4, 0.1, 1.5), (0, 0.1, 1.5), (0.4, 0.1, 1.5), (0.8, 0.1, 1.5), (1.2, 0.1, 1.5), (1.6, 0.1, 1.5)]
+        float[] widths = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2] (interpolation = "vertex")
+        float3[] extent = [(-1.7, 0, 1.4), (1.7, 0.2, 1.6)]
+        rel material:binding = </Looks/grey>
+    }
+    def BasisCurves "strands" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        uniform token type = "linear"
+        int[] curveVertexCounts = [2, 2, 2, 2, 2, 2, 2]
+        point3f[] points = [(-1.5, 1.3, 1), (-1.5, 2.1, 1), (-1, 1.3, 1), (-1, 2.1, 1), (-0.5, 1.3, 1), (-0.5, 2.1, 1), (0, 1.3, 1), (0, 2.1, 1), (0.5, 1.3, 1), (0.5, 2.1, 1), (1, 1.3, 1), (1, 2.1, 1), (1.5, 1.3, 1), (1.5, 2.1, 1)]
+        float[] widths = [0.12] (interpolation = "constant")
+        float3[] extent = [(-1.6, 1.2, 0.9), (1.6, 2.2, 1.1)]
+        rel material:binding = </Looks/grey>
+    }
+    def Points "mover" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        point3f[] points = [(0, 0, 0)]
+        float[] widths = [0.5] (interpolation = "vertex")
+        float3[] extent = [(-0.25, -0.25, -0.25), (0.25, 0.25, 0.25)]
+        rel material:binding = </Looks/white>
+        double3 xformOp:translate.timeSamples = {
+            -0.25: (2.0, 0.25, 1.2),
+            0: (2.5, 0.25, 1.2),
+            0.25: (3.0, 0.25, 1.2),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Camera "cam"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 21.6
+        float2 clippingRange = (0.01, 10000)
+        double shutter:open = -0.25
+        double shutter:close = 0.25
+        double3 xformOp:translate = (0, 1.4, 5.2)
+        float3 xformOp:rotateXYZ = (-10, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def SphereLight "point"
+    {
+        float inputs:intensity = 12
+        bool inputs:normalize = 1
+        bool treatAsPoint = 1
+        float inputs:radius = 0.5
+        double3 xformOp:translate = (-0.8, 2.6, 1.4)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Looks"
+{
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </Looks/grey/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.6, 0.6, 0.6)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+    def Material "white"
+    {
+        token outputs:mtlx:surface.connect = </Looks/white/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.9, 0.9, 0.9)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+}

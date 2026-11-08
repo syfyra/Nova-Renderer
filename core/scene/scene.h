@@ -50,6 +50,7 @@ struct MeshRecord {
     uint32_t cryptoObject = 0;   // the cryptomatte id of the object's name (0: none)
     std::vector<CryptoAttribute> cryptoAttributes; // string/int primvars for cryptomattes
     bool fakeCaustics = false;   // effective (commit()): shadow rays cross it with its transmittance
+    ObjectShading shading;       // effective (commit()): fake-caustic style, internal reflection, ...
     // Ray visibility and holdouts (core/scene/visibility.h): the object's own
     // settings and the effective ones (commit(): unset fields take the
     // render settings'); a partial mask makes the mesh filtered.
@@ -224,8 +225,11 @@ public:
                            std::vector<std::vector<std::string>> instanceCategories = {});
     // Emissive meshes as lights (M9 D14). No acceleration rebuild.
     void setMeshLightSource(MeshId id, const MeshLightSource &settings);
-    // The fake-caustics setting of objects without their own (applied at
-    // commit()).
+    // The shading-side object properties of objects without their own
+    // (fake caustics and their style, internal reflection, the roughness
+    // clamp of true caustics; the limits stay with RenderSettings::limits).
+    // Applied at commit(); setDefaultFakeCaustics sets the switch alone.
+    void setObjectDefaults(const RayLimits &defaults);
     void setDefaultFakeCaustics(bool on);
     // Ray visibility and holdout mode of an object (core/scene/visibility.h;
     // unset fields: the defaults below). No acceleration rebuild; a change
@@ -452,7 +456,7 @@ private:
     OpacityFilter m_opacityFilter;
     bool m_anyFiltered = false;
     bool m_anyFakeCaustics = false;
-    bool m_defaultFakeCaustics = false;
+    RayLimits m_objectDefaults; // the shading-side fields (setObjectDefaults)
     ObjectVisibility m_defaultVisibility;
     bool m_anyHoldouts = false, m_anyBackground = false, m_bgOccludeShadow = false;
     bool m_shadowVisibilityDiffers = false;

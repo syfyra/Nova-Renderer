@@ -34,7 +34,7 @@
                 size    1
                 default { 64 }
                 range   { 1 4096 }
-                help    "Samples per pixel."
+                help    "Samples per pixel. Unset: Karma's samples (Path Traced: pathtracedsamples; Variance and Distributed: samplesperpixel times varianceaa_maxsamples)."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "int" }
@@ -66,7 +66,7 @@
                     "blackmanharris" "Blackman-Harris"
                     "point" "Point"
                 }
-                help    "The pixel reconstruction filter."
+                help    "The pixel reconstruction filter. Unset: Karma's pixelfilter."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "token" }
@@ -91,7 +91,7 @@
                 size    1
                 default { 1.0 }
                 range   { 0 4 }
-                help    "Multiplies the filter's width (0: point sampling)."
+                help    "Multiplies the filter's width (0: point sampling). Unset: Karma's pixelfilterscale."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -116,7 +116,7 @@
                 size    1
                 default { 0 }
                 range   { 0 1000 }
-                help    "Varies the sample pattern between renders of the same frame."
+                help    "Varies the sample pattern between renders of the same frame. Unset: Karma's randomseed."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "int" }
@@ -141,11 +141,36 @@
                 size    1
                 default { 10.0 }
                 range   { 0 100 }
-                help    "Clamps indirect light per sample against fireflies (0: off)."
+                help    "Clamps indirect light per sample against fireflies (0: off). Unset (and Clamp Direct unset): Karma's colour limits (colorlimit for what the camera sees and the first hit gathers, colorlimitindirect for the rest, emission found by the first bounce counting as indirect)."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
                 disablewhen "{ xn__novaclampIndirect_control_qhb == block } { xn__novaclampIndirect_control_qhb == none }"
+            }
+            parm {
+                name    "xn__novaclampDirect_control_heb"
+                label   "Clamp Direct"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaclampDirect_g0a"
+                label   "Clamp Direct"
+                type    float
+                size    1
+                default { 0.0 }
+                range   { 0 100 }
+                help    "Clamps per sample what the camera sees directly and the light the first hit gathers (0: off)."
+                parmtag { "spare_category" "Sampling" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaclampDirect_control_heb == block } { xn__novaclampDirect_control_heb == none }"
             }
             parm {
                 name    "xn__novapixelOracle_control_heb"
@@ -169,7 +194,7 @@
                     "uniform" "Uniform"
                     "variance" "Variance"
                 }
-                help    "Uniform renders Samples in every pixel. Variance stops each pixel once its noise is below the Noise Threshold (adaptive sampling); Samples is then the maximum."
+                help    "Uniform renders Samples in every pixel. Variance stops each pixel once its noise is below the Noise Threshold (adaptive sampling); Samples is then the maximum. Unset: with Karma's samples, Karma's pixel oracle (always Variance in Karma's Variance mode)."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "token" }
@@ -194,7 +219,7 @@
                 size    1
                 default { -1 }
                 range   { -1 1024 }
-                help    "Samples every pixel gets before the variance oracle may stop it (rounded up to a power of two). -1: max(16, square root of Samples)."
+                help    "Samples every pixel gets before the variance oracle may stop it (rounded up to a power of two). -1: max(16, square root of Samples). Unset: with Karma's samples, from Karma's minrays and varianceaa_minsamples."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "int" }
@@ -219,7 +244,7 @@
                 size    1
                 default { 0.01 }
                 range   { 0.001 0.1 }
-                help    "The variance oracle's noise level: smaller values render more samples (0.01 is about the quality of 90 uniform samples on a Cornell box)."
+                help    "The variance oracle's noise level: smaller values render more samples (0.01 is about the quality of 90 uniform samples on a Cornell box). Unset: with Karma's samples, Karma's variance threshold."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -244,7 +269,7 @@
                 size    1
                 default { 2 }
                 range   { 0 3 }
-                help    "After an edit the viewport first renders one pixel per 4x4, then per 2x2 block, for a fast first image; those samples count towards the image. 0: full passes only."
+                help    "After an edit the viewport first renders one pixel per 4x4, then per 2x2 block, for a fast first image; those samples count towards the image. 0: full passes only. Unset: Karma's ipr_proxydepth."
                 parmtag { "spare_category" "Sampling" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "int" }
@@ -343,6 +368,35 @@
             }
         }
         groupcollapsible {
+            name    "nova_shading"
+            label   "Shading"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novaconstrainRoughness_control_vpb"
+                label   "Constrain by Maximum Roughness"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaconstrainRoughness_ucb"
+                label   "Constrain by Maximum Roughness"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "Glossy surfaces along a path are at least as rough as the roughest glossy bounce before them (fewer fireflies from sharp reflections seen in blurry ones). Unset: Karma's constrainmaxrough (on with Karma's render settings)."
+                parmtag { "spare_category" "Shading" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaconstrainRoughness_control_vpb == block } { xn__novaconstrainRoughness_control_vpb == none }"
+            }
+        }
+        groupcollapsible {
             name    "nova_motion_blur"
             label   "Motion Blur"
             grouptag { "group_default" "1" }
@@ -394,7 +448,7 @@
                 type    toggle
                 size    1
                 default { 0 }
-                help    "Denoises the final frame with the NVIDIA OptiX denoiser (husk, nova_cli): the AOVs of Denoised AOVs, in place. The Karma Render Settings LOP's Denoiser works too."
+                help    "Denoises the final frame with the NVIDIA OptiX denoiser (husk, nova_cli): the AOVs of Denoised AOVs, in place. The Karma Render Settings LOP's Denoiser works too. Unset: the denoiser of Karma's image filters."
                 parmtag { "spare_category" "Denoising" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }
@@ -442,7 +496,7 @@
                 type    toggle
                 size    1
                 default { 0 }
-                help    "Shows the viewport's image denoised by the NVIDIA OptiX denoiser."
+                help    "Shows the viewport's image denoised by the NVIDIA OptiX denoiser. Unset: Karma's viewport denoise toggle."
                 parmtag { "spare_category" "Denoising" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }
@@ -547,7 +601,7 @@
                 size    1
                 default { 1.0 }
                 range   { 0.1 4 }
-                help    "Multiplies every object's displacement dicing quality."
+                help    "Multiplies every object's displacement dicing quality. Unset: Karma's dicingqualityscale."
                 parmtag { "spare_category" "Geometry" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -572,7 +626,7 @@
                 size    1
                 default { 0.1 }
                 range   { 0.01 1 }
-                help    "Dicing quality of displaced objects outside the camera's view."
+                help    "Dicing quality of displaced objects outside the camera's view. Unset: Karma's offscreenquality."
                 parmtag { "spare_category" "Geometry" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -650,7 +704,7 @@
                 size    1
                 default { 0.0 }
                 range   { 0 1 }
-                help    "Extra blur of every texture lookup."
+                help    "Extra blur of every texture lookup. Unset: Karma's mtlx_imageblur."
                 parmtag { "spare_category" "Textures" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -675,7 +729,7 @@
                 size    1
                 default { 0.25 }
                 range   { 0 4 }
-                help    "Texture footprint relative to the pixel's ray cone (0.25 as Karma; 0: the finest MIP level)."
+                help    "Texture footprint relative to the pixel's ray cone (0.25 as Karma; 0: the finest MIP level). Unset: a quarter of Karma's mtlx_imagewidth."
                 parmtag { "spare_category" "Textures" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -699,7 +753,7 @@
                 type    toggle
                 size    1
                 default { 0 }
-                help    "Stops the render when a texture file cannot be read."
+                help    "Stops the render when a texture file cannot be read. Unset: Karma's abortmissingtexture."
                 parmtag { "spare_category" "Textures" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }
@@ -817,7 +871,7 @@
                 size    1
                 default { 1.0 }
                 range   { 0 64 }
-                help    "Diffuse bounces (fractions dither between the neighbouring integers). Past the limit, rays only collect light."
+                help    "Diffuse bounces (fractions dither between the neighbouring integers). Past the limit, rays only collect light. Unset: Karma's diffuselimit."
                 parmtag { "spare_category" "Limits" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -842,7 +896,7 @@
                 size    1
                 default { 4.0 }
                 range   { 0 64 }
-                help    "Glossy and mirror reflection bounces."
+                help    "Glossy and mirror reflection bounces. Unset: Karma's reflectlimit."
                 parmtag { "spare_category" "Limits" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -867,7 +921,7 @@
                 size    1
                 default { 4.0 }
                 range   { 0 64 }
-                help    "Refraction bounces."
+                help    "Refraction bounces. Unset: Karma's refractlimit."
                 parmtag { "spare_category" "Limits" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -892,7 +946,7 @@
                 size    1
                 default { 1.0 }
                 range   { 0 64 }
-                help    "Subsurface and translucency bounces."
+                help    "Subsurface and translucency bounces. Unset: Karma's ssslimit."
                 parmtag { "spare_category" "Limits" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -917,7 +971,7 @@
                 size    1
                 default { 0.0 }
                 range   { 0 64 }
-                help    "Volume scattering events."
+                help    "Volume scattering events. Unset: Karma's volumelimit."
                 parmtag { "spare_category" "Limits" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
@@ -941,7 +995,7 @@
                 type    toggle
                 size    1
                 default { 1 }
-                help    "Past the refraction limit (up to twice it), refractions continue straight on instead of stopping."
+                help    "Past the refraction limit (up to twice it), refractions continue straight on instead of stopping. Unset: Karma's thinwallatrefractlimit."
                 parmtag { "spare_category" "Limits" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }
@@ -970,11 +1024,60 @@
                 type    toggle
                 size    1
                 default { 0 }
-                help    "Shadows and diffuse rays pass through this object's transmission (transparent shadows) instead of needing caustic paths."
+                help    "Shadows and diffuse rays pass through this object's transmission (transparent shadows) instead of needing caustic paths. Unset: Karma's causticsenable inverted, with Karma's shadow factor and its fake-caustics controls; Karma's render settings fake caustics by default."
                 parmtag { "spare_category" "Shading" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }
                 disablewhen "{ xn__novaobjectfakeCaustics_control_vpbg == block } { xn__novaobjectfakeCaustics_control_vpbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectcausticsRoughnessClamp_control_55bg"
+                label   "Caustics Roughness Clamp"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectcausticsRoughnessClamp_4sbg"
+                label   "Caustics Roughness Clamp"
+                type    float
+                size    1
+                default { 0.0 }
+                range   { 0 1 }
+                help    "The least roughness of glossy and refracting surfaces seen after a diffuse bounce (true caustics only): softer, less noisy caustics. Unset: Karma's causticsroughnessclamp (0.2 with Karma's render settings)."
+                parmtag { "spare_category" "Shading" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaobjectcausticsRoughnessClamp_control_55bg == block } { xn__novaobjectcausticsRoughnessClamp_control_55bg == none }"
+            }
+            parm {
+                name    "xn__novaobjectinternalReflection_control_nzbg"
+                label   "Internal Reflection"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectinternalReflection_mmbg"
+                label   "Internal Reflection"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Refracting surfaces reflect on their inside too. Off: light inside a solid dielectric leaves it without Fresnel loss and only total internal reflection sends it back in. Unset: Karma's internalreflectenable (off with Karma's render settings)."
+                parmtag { "spare_category" "Shading" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaobjectinternalReflection_control_nzbg == block } { xn__novaobjectinternalReflection_control_nzbg == none }"
             }
         }
     }

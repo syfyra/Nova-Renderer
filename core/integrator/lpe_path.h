@@ -244,14 +244,14 @@ NOVA_INLINE void lpeUnoccludedEnvironment(const LpeView &t, const LightData *lig
             continue;
         if (light.filterCount > 0)
             Le *= lightFilters(light, site);
-        Le *= lightMultiplier(light, diffuseShare);
+        const float m = lightMultiplier(light, diffuseShare);
         if (wholeBeta) {
-            lpeDepositBackgroundUnit(t, film, pixel, lpeLightStep(t, state, i), beta * Le, spectrum(0.0f),
+            lpeDepositBackgroundUnit(t, film, pixel, lpeLightStep(t, state, i), beta * Le * m, spectrum(0.0f),
                                      !light.illumBackground);
             if (!light.illumBackground)
-                lpeDepositHoldoutTotal(t, film, pixel, *wholeBeta * Le);
+                lpeDepositHoldoutTotal(t, film, pixel, *wholeBeta * Le * m);
         } else {
-            lpeDepositUnit(t, film, pixel, lpeLightStep(t, state, i), beta * Le, true, false);
+            lpeDepositUnit(t, film, pixel, lpeLightStep(t, state, i), beta * Le * m, true, false);
         }
     }
 }

@@ -206,6 +206,7 @@ struct WaveQueues {
     std::vector<float> limitDither;
     std::vector<uint8_t> lightOnly;
     std::vector<uint8_t> afterDiffuse; // a diffuse or SSS event happened (fake caustics)
+    std::vector<float> pathAlpha;      // the roughest glossy event so far (GGX alpha; constrainRoughness)
     // The camera ray hit a holdout (HoldoutMode; docs/design/M11-P2.md): the
     // path's light goes to holdout; outputs only, not to the beauty.
     std::vector<uint8_t> holdout;
