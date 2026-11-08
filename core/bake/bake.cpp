@@ -572,7 +572,7 @@ uint64_t Baker::generate(const Scene &scene, const Camera &camera, const PixelFi
             break;
         case BakeCage::Topology:
         case BakeCage::Uv: {
-            Vec3f c;
+            Vec3f c{0.0f, 0.0f, 0.0f};
             bool have = false;
             if (bs.cageMode == BakeCage::Topology && m_cagePoints.size() == m_low.tris.size() * 3) {
                 const Vec3f *cp = &m_cagePoints[size_t(p.tri) * 3];
@@ -880,7 +880,7 @@ uint64_t Baker::accumulate(const Scene &scene, const RenderSettings &settings, c
         }
         intersect();
         std::vector<Vec3f> sum(n, Vec3f{0.0f, 0.0f, 0.0f});
-        std::vector<float> own(n, 0.0f), other(n, 0.0f);
+        std::vector<float> wOwn(n, 0.0f), wOther(n, 0.0f);
         for (size_t r = 0; r < s.owner.size(); ++r) {
             if (s.mesh[r] == kInvalidId)
                 continue;
@@ -911,15 +911,15 @@ uint64_t Baker::accumulate(const Scene &scene, const RenderSettings &settings, c
             // 0.03 in the normal (1 - (d / r)^2: up to 0.056).
             const float w = std::sqrt(1.0f - d2) / pdf;
             sum[s.owner[r]] += hn * w;
-            (changed ? other : own)[s.owner[r]] += w;
+            (changed ? wOther : wOwn)[s.owner[r]] += w;
         }
         for (size_t i = 0; i < n; ++i) {
             if (!s.samples[i].hit)
                 continue;
             if (edge) {
-                s.values[i * kOut + 4] = own[i] > 0.0f ? other[i] / own[i] : (other[i] > 0.0f ? 1.0f : 0.0f);
+                s.values[i * kOut + 4] = wOwn[i] > 0.0f ? wOther[i] / wOwn[i] : (wOther[i] > 0.0f ? 1.0f : 0.0f);
             } else {
-                const Vec3f nn = other[i] > 0.0f ? normalizeOr(sum[i], s.samples[i].shade.N) : s.samples[i].shade.N;
+                const Vec3f nn = wOther[i] > 0.0f ? normalizeOr(sum[i], s.samples[i].shade.N) : s.samples[i].shade.N;
                 s.values[i * kOut + 5] = nn.x;
                 s.values[i * kOut + 6] = nn.y;
                 s.values[i * kOut + 7] = nn.z;
