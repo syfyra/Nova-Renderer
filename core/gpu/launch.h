@@ -82,10 +82,12 @@ struct TraceParams {
     // which every surface blocks.
     uint32_t skipFakeCaustics = 1;
     // Occlusion rays: Karma's bgoccludeshadow probe (core/integrator/holdout.h):
-    // the occluded rays from background points (rayType's kRayFromBackground)
-    // are traced again against background holdouts alone; a hit clears
-    // `occluded`. Every mesh is filtered while it may run.
+    // the rays from background points (rayType's kRayFromBackground) are
+    // traced again against background holdouts alone; a hit clears
+    // `occluded` and sets kRayBackgroundLit in `backgroundLit` (the same
+    // rays' rayType, writable). Every mesh is filtered while it may run.
     uint32_t probeBackground = 0;
+    uint8_t *backgroundLit = nullptr;
     // Closest hits as shadow rays (the hit filter's class; where scattered
     // rays find their lights, Scene::shadowVisibilityDiffers), the distance
     // into hitT instead of tMax.

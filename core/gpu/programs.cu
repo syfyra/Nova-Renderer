@@ -92,15 +92,19 @@ extern "C" __global__ void __raygen__occluded() {
     const unsigned c = params.category ? params.category[i] : 0xFFFFu;
     const unsigned mask = c < 7 ? 1u << c : 0x80u;
     if (params.probeBackground) {
-        // Karma's bgoccludeshadow (core/integrator/holdout.h): an occluded
-        // ray from a background point that a background holdout occludes
-        // keeps its light; the any-hit filter sees only those.
-        if (!params.occluded[i] || !params.rayType || !(params.rayType[i] & nova::kRayFromBackground))
+        // Karma's bgoccludeshadow (core/integrator/holdout.h): a ray from a
+        // background point that a background holdout occludes keeps its
+        // light, unoccluded and untinted by fake-caustic objects
+        // (kRayBackgroundLit); the any-hit filter sees only those holdouts.
+        // Every such ray is probed: phase 1 skips fake-caustic blockers.
+        if (!params.rayType || !(params.rayType[i] & nova::kRayFromBackground))
             return;
         optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), params.tMin, params.tMax[i], rayTime(i),
                       0xFFu, OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT, 0, 1, 0);
-        if (optixHitObjectIsHit())
+        if (optixHitObjectIsHit()) {
             params.occluded[i] = 0;
+            params.backgroundLit[i] |= nova::kRayBackgroundLit;
+        }
         return;
     }
     // Filtered meshes' any-hit decides (their instances allow it).

@@ -129,29 +129,36 @@ float velocityBlurOf(HdSceneDelegate *sd, SdfPath const &id, float fps) {
     return (s >= 0.0f ? s : 1.0f) / (fps > 0.0f ? fps : 24.0f);
 }
 
-VolumeLightSettings volumeLightOf(HdSceneDelegate *sd, SdfPath const &id) {
+VolumeLightSettings volumeLightOf(HdSceneDelegate *sd, SdfPath const &id, HdNovaObjectDefaults const &defaults) {
     // Nova's light source setting (meshes and volumes, M9 D14), its M8 name,
-    // else Karma's.
+    // else Karma's, else the render settings' Karma values
+    // (docs/design/M11-P1.md).
     static const TfToken nova("nova:object:lightSource"), legacy("nova:object:volumeLight"),
         karma("karma:object:treat_as_lightsource"), diffuse("karma:object:lightsource_diffusescale"),
         specular("karma:object:lightsource_specularscale");
     VolumeLightSettings s;
-    float own = constantFloat(sd, id, nova);
-    if (!(own >= 0.0f))
-        own = constantFloat(sd, id, legacy);
-    s.light = (own >= 0.0f ? own : constantFloat(sd, id, karma)) >= 0.5f;
+    int mode = -1;
+    for (TfToken const &name : {nova, legacy, karma}) {
+        mode = HdNovaMenuIndex(HdNovaConstantPrimvar(sd, id, name), {"No", "Yes", "Auto"});
+        if (mode >= 0)
+            break;
+    }
+    if (mode < 0)
+        mode = defaults.lightSource;
+    s.light = mode >= 1;
     const float d = constantFloat(sd, id, diffuse), sp = constantFloat(sd, id, specular);
-    s.diffuse = d >= 0.0f ? d : 1.0f;
-    s.specular = sp >= 0.0f ? sp : 1.0f;
+    s.diffuse = d >= 0.0f ? d : defaults.lightDiffuse >= 0.0f ? defaults.lightDiffuse : 1.0f;
+    s.specular = sp >= 0.0f ? sp : defaults.lightSpecular >= 0.0f ? defaults.lightSpecular : 1.0f;
     return s;
 }
 
 } // namespace
 
-void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc) {
+void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc,
+                                HdNovaObjectDefaults const &defaults) {
     desc.volumeLimit = volumeLimitOf(sd, id);
     desc.lpeTag = HdNovaObjectLpeTag(sd, id);
-    const VolumeLightSettings light = volumeLightOf(sd, id);
+    const VolumeLightSettings light = volumeLightOf(sd, id, defaults);
     desc.light = light.light;
     desc.lightDiffuse = light.diffuse;
     desc.lightSpecular = light.specular;
@@ -199,7 +206,8 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         blurDirty = blur != _velocityBlur;
         _velocityBlur = blur;
     }
-    const HdNovaShutter shutterNow = param->GetShutter();
+    // The frame alone with Karma's per-object motion blur off.
+    const HdNovaShutter shutterNow = HdNovaObjectShutter(sd, id, *param);
     const bool velocityBlur = _velocityBlur > 0.0f && shutterNow.IsBlurred();
     if (velocityBlur) {
         needed.push_back("vel");
@@ -216,7 +224,7 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         versions[i] = fieldPrims[i] ? fieldPrims[i]->GetVersion() : 0;
     }
 
-    const HdNovaShutter shutter = param->GetShutter();
+    const HdNovaShutter shutter = shutterNow;
     const unsigned maxSteps = param->GetMaxMotionSteps();
     const bool newShutter = !(shutter == _sampledShutter) || maxSteps != _sampledMaxSteps;
     const bool transformDirty = first || newShutter || (bits & HdChangeTracker::DirtyTransform);
@@ -226,7 +234,7 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     if (first || (bits & HdChangeTracker::DirtyPrimvar)) {
         const float limit = volumeLimitOf(sd, id);
         std::string tag = HdNovaObjectLpeTag(sd, id);
-        const VolumeLightSettings light = volumeLightOf(sd, id);
+        const VolumeLightSettings light = volumeLightOf(sd, id, param->GetObjectDefaults());
         settingsDirty |= limit != _volumeLimit || tag != _lpeTag || light.light != _light ||
                          light.diffuse != _lightDiffuse || light.specular != _lightSpecular;
         if (!_warnedFilter && otherVolumeFilter(sd, id)) {

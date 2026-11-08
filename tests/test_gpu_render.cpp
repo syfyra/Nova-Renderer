@@ -123,9 +123,9 @@ struct Render {
 };
 
 Render render(const Scene &scene, const Camera &camera, int width, int height, uint32_t spp, RenderDevice device,
-              uint32_t maxDepth = 6, bool lightTree = false) {
+              uint32_t maxDepth = 6, bool lightTree = false, const RenderSettings &base = RenderSettings{}) {
     Renderer renderer;
-    RenderSettings settings;
+    RenderSettings settings = base;
     settings.device = device;
     settings.maxSamples = spp;
     settings.maxDepth = maxDepth;
@@ -1233,6 +1233,97 @@ TEST_CASE("XPU fake caustics", "[gpu][render][caustics]") {
     INFO("pixels within 1e-3: " << close << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
     CHECK(close >= 0.85);
     CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.01 * cpuMean));
+}
+
+// Karma's shading defaults (docs/design/M11-P1.md) on both devices: Karma's
+// fake-caustic factor with its controls, no internal reflection, roughness
+// constrained along paths, the roughness clamp of true caustics, Karma's
+// colour limits. A rough metal ground, a glass ball (fake caustics, Karma's
+// style), a second glass ball with true caustics, a mirror and an emissive
+// quad that is not a light, under a rect light.
+TEST_CASE("XPU Karma's shading defaults", "[gpu][render][caustics][karma]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    MaterialDesc rough;
+    rough.inputs = standardSurfaceDefaults();
+    rough.inputs.set(surface_field::metalness, 1.0f);
+    rough.inputs.set(surface_field::specularRoughness, 0.35f);
+    const MaterialId roughId = scene.createMaterial();
+    scene.updateMaterial(roughId, rough);
+    const MeshId groundId = scene.createMesh();
+    scene.updateMesh(groundId, makeQuad(3.0f));
+    scene.setMeshMaterials(groundId, {roughId});
+    MaterialDesc glass;
+    glass.inputs = standardSurfaceDefaults();
+    glass.inputs.set(surface_field::transmissionWeight, 1.0f);
+    glass.inputs.set(surface_field::specularRoughness, 0.0f);
+    glass.inputs.set(surface_field::transmissionColor, Spectrum{0.9f, 0.7f, 0.5f});
+    const MaterialId glassId = scene.createMaterial();
+    scene.updateMaterial(glassId, glass);
+    MaterialDesc mirror;
+    mirror.inputs = standardSurfaceDefaults();
+    mirror.inputs.set(surface_field::metalness, 1.0f);
+    mirror.inputs.set(surface_field::specularRoughness, 0.0f);
+    const MaterialId mirrorId = scene.createMaterial();
+    scene.updateMaterial(mirrorId, mirror);
+    MaterialDesc glow;
+    glow.inputs = standardSurfaceDefaults();
+    glow.inputs.set(surface_field::baseWeight, 0.0f);
+    glow.inputs.set(surface_field::specularWeight, 0.0f);
+    glow.inputs.set(surface_field::emissionWeight, 1.0f);
+    glow.inputs.set(surface_field::emissionColor, spectrum(30.0f));
+    const MaterialId glowId = scene.createMaterial();
+    scene.updateMaterial(glowId, glow);
+    const auto add = [&](MeshDesc m, Vec3f at, MaterialId mat) {
+        m.transform = translation(at);
+        const MeshId id = scene.createMesh();
+        scene.updateMesh(id, m);
+        scene.setMeshMaterials(id, {mat});
+        return id;
+    };
+    add(makeSphere(0.45f, 48, 24), {0.6f, 0.1f, 0.9f}, glassId);
+    const MeshId trueGlass = add(makeSphere(0.35f, 48, 24), {-0.7f, 0.6f, 0.7f}, glassId);
+    add(makeSphere(0.3f, 48, 24), {-0.5f, -0.8f, 0.6f}, mirrorId);
+    add(makeQuad(0.25f), {0.8f, -0.9f, 0.3f}, glowId);
+    RayLimitOverrides caustics; // true caustics with the clamp
+    caustics.fakeCaustics = 0;
+    scene.setMeshRayLimits(trueGlass, caustics);
+    LightDesc rect;
+    rect.type = LightType::Rect;
+    rect.width = rect.height = 1.0f;
+    rect.intensity = 6.0f;
+    rect.transform = translation({0.0f, 0.0f, 3.0f});
+    scene.updateLight(scene.createLight(), rect);
+    RayLimits defaults;
+    defaults.fakeCaustics = true;
+    defaults.fakeStyle.karma = true;
+    defaults.fakeStyle.color[1] = 0.8f;
+    defaults.fakeStyle.opacity[2] = 0.7f;
+    defaults.fakeStyle.fresnelDarken = 0.3f;
+    defaults.internalReflection = false;
+    defaults.causticsRoughnessClamp = 0.2f;
+    scene.setObjectDefaults(defaults);
+    scene.commit();
+    REQUIRE(scene.anyFakeCaustics());
+    RenderSettings base;
+    base.constrainRoughness = true;
+    base.clampDirect = 20.0f;
+    base.clampIndirect = 4.0f;
+    base.clampEmissionIndirect = true;
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 2.4f, 48, 48);
+    const Render cpu = render(scene, camera, 48, 48, 64, RenderDevice::Cpu, 6, true, base);
+    const Render gpu = render(scene, camera, 48, 48, 64, RenderDevice::Xpu, 6, true, base);
+    REQUIRE(gpu.gpu);
+    const double close = closePixels(cpu.film, gpu.film), cpuMean = luminanceMean(cpu.film),
+                 gpuMean = luminanceMean(gpu.film);
+    INFO("pixels within 1e-3: " << close << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
+    CHECK(close >= 0.8);
+    CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.01 * cpuMean));
+    // The settings change the image (the test exercises them).
+    const Render plain = render(scene, camera, 48, 48, 64, RenderDevice::Cpu, 6, true);
+    CHECK(std::fabs(luminanceMean(plain.film) - cpuMean) > 0.002 * cpuMean);
 }
 
 // Ambient occlusion has no fake-caustics phase (M6 D9): an opaque roof

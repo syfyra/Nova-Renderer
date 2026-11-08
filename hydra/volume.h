@@ -6,6 +6,7 @@
 // the majorants. The Volume LOP authors no extent, so bounds come from the
 // grids. Transforms are sampled over the shutter as for meshes.
 
+#include "karmaSettings.h"
 #include "motion.h"
 
 #include "core/volume/volume.h"
@@ -21,8 +22,10 @@ PXR_NAMESPACE_OPEN_SCOPE
 // A volume's per-object settings from its constant primvars (volumes and
 // media bounded by surfaces, docs/design/M11-P5.md): the Volume ray limit
 // (nova:object:volumeLimit, else karma:object:volumelimit), the LPE tag and
-// the light source settings (D13).
-void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc);
+// the light source settings (D13; `defaults`: the render settings' Karma
+// values, docs/design/M11-P1.md).
+void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc,
+                                HdNovaObjectDefaults const &defaults = HdNovaObjectDefaults{});
 
 class HdNovaVolume final : public HdVolume {
 public:
