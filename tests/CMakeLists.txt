@@ -37,6 +37,7 @@ add_executable(nova_tests
     test_crypto.cpp
     test_ray_limits.cpp
     test_fake_caustics.cpp
+    test_karma_shading.cpp
     test_volume.cpp
     test_volume_shader.cpp
     test_volume_render.cpp
@@ -93,7 +94,7 @@ add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oi
     test_hydra_displacement.cpp test_hydra_vex.cpp test_ipr_latency.cpp test_hydra_volumes.cpp test_hydra_velocity.cpp
     test_hydra_holdouts.cpp
     test_hydra_filters.cpp
-    test_hydra_sky.cpp test_hydra_medium.cpp)
+    test_hydra_sky.cpp test_hydra_medium.cpp test_hydra_karma_settings.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nova_hydra_tests PRIVATE hdNova_objects Catch2::Catch2WithMain
     Houdini::Dep::pxr_usd Houdini::Dep::pxr_usdGeom Houdini::Dep::pxr_usdShade Houdini::Dep::pxr_usdImaging)
@@ -306,6 +307,12 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_emitters/$<CONFIG>")
     set_tests_properties(husk_emitters PROPERTIES LABELS husk TIMEOUT 600)
+    # Karma's render settings in Nova (docs/design/M11-P1.md).
+    add_test(NAME husk_karma_props
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_props.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_props/$<CONFIG>")
+    set_tests_properties(husk_karma_props PROPERTIES LABELS husk TIMEOUT 900)
     add_test(NAME husk_subdiv
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_subdiv.py"
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" --scenes "${CMAKE_CURRENT_SOURCE_DIR}/scenes"

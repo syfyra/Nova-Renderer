@@ -596,13 +596,15 @@ for name, light, dscale, limit in (('firelight0_vl0', 0, 1, 0), ('firelight1_vl0
     if len(means) == 2:
         # Karma's single scattering from the volume light is about 4.5 %
         # above Nova's at volume limit 0 (Nova's light, phase and MIS
-        # estimates agree; at limit 4 both agree within 0.3 %); values below
-        # 0.002 (the smoke without the light) compare absolutely.
+        # estimates agree; at limit 4 both agree within 0.3 %), 6.2 % since
+        # Nova renders with Karma's box filter of these settings (M11 P1;
+        # with Nova's own Gaussian 4.6 %); values below 0.002 (the smoke
+        # without the light) compare absolutely.
         for region in FIRE_REGIONS:
             k, n = means['karma'][region], means['nova'][region]
             worst = max(abs(n[c] - k[c]) / max(abs(k[c]), 1e-3) for c in range(3))
             absolute = max(abs(n[c] - k[c]) for c in range(3))
-            check(worst < 0.06 or absolute < 5e-4, '%s %s: Nova %s vs Karma %s (max rel. deviation %.4f)'
+            check(worst < 0.07 or absolute < 5e-4, '%s %s: Nova %s vs Karma %s (max rel. deviation %.4f)'
                   % (name, region, [round(v, 5) for v in n], [round(v, 5) for v in k], worst))
 
 print('%d failure(s)' % len(FAILURES))

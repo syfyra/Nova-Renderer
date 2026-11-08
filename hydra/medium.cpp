@@ -94,7 +94,7 @@ void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath c
     desc.visible = visible;
     desc.userId = primId;
     desc.shell = _shell;
-    HdNovaVolumeObjectSettings(sd, id, desc);
+    HdNovaVolumeObjectSettings(sd, id, desc, param.GetObjectDefaults());
     desc.constants = constantsOf(sd, id, material.IsEmpty() ? std::vector<std::string>{} : registry.GetVolumeFields(material));
     std::vector<GfMatrix4d> sampled;
     const bool first = _volumeId == nova::kInvalidId;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "crypto.h"
+#include "karmaSettings.h"
 #include "motion.h"
 #include "textureCache.h"
 #include "textureSystem.h"
@@ -167,6 +168,25 @@ public:
         return out;
     }
 
+    // The render settings' per-object defaults (Karma's karma:object:*,
+    // docs/design/M11-P1.md). Prims read them during sync (in parallel);
+    // the delegate sets them between syncs. Returns whether they changed
+    // after a prim used them: then the render pass re-syncs the prims.
+    HdNovaObjectDefaults GetObjectDefaults() const {
+        std::lock_guard lock(_defaultsMutex);
+        _defaultsUsed = true;
+        return _objectDefaults;
+    }
+    bool SetObjectDefaults(HdNovaObjectDefaults const &d) {
+        std::lock_guard lock(_defaultsMutex);
+        if (d == _objectDefaults)
+            return false;
+        _objectDefaults = d;
+        const bool used = _defaultsUsed;
+        _defaultsUsed = false;
+        return used;
+    }
+
 private:
     nova::Scene *_scene;
     HdRenderThread *_thread;
@@ -190,7 +210,18 @@ private:
     std::atomic<bool> _frameChanged{false};
     mutable std::mutex _meshPathMutex;
     std::map<SdfPath, nova::MeshId> _meshPaths;
+    mutable std::mutex _defaultsMutex;
+    HdNovaObjectDefaults _objectDefaults;
+    mutable bool _defaultsUsed = false;
 };
+
+class HdSceneDelegate;
+
+// The shutter a prim samples its motion over: the render's, or the frame
+// alone where Karma's per-object motion blur is off (karma:object:mblur on
+// the prim, else the render settings' value; measured: the object renders
+// as with motion blur disabled, docs/design/M11-P1.md).
+HdNovaShutter HdNovaObjectShutter(HdSceneDelegate *sd, SdfPath const &id, HdNovaRenderParam const &param);
 
 // Whether a displacement depends on the frame: its program reads the Time or
 // Frame globals; a VEX displacement may read Time, which the bridge does not

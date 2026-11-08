@@ -35,28 +35,26 @@ float constantPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &nam
 }
 
 // A per-object setting (docs/design/M9.md D1, D2): the prim's constant
-// primvar (Nova's name first, then Karma's), else the render settings'
-// value of Karma's name, else `fallback`.
+// primvar (Nova's name first, then Karma's), else `fallback` (the render
+// settings' Karma value, docs/design/M11-P1.md, or the default).
 float objectSetting(HdSceneDelegate *sd, SdfPath const &id, TfToken const &nova, TfToken const &karma, float fallback) {
     const float unset = -1e30f;
     float v = constantPrimvar(sd, id, nova, unset);
     if (v == unset)
         v = constantPrimvar(sd, id, karma, unset);
-    if (v != unset)
-        return v;
-    const VtValue s = sd->GetRenderIndex().GetRenderDelegate()->GetRenderSetting(karma);
-    const VtValue f = VtValue::Cast<float>(s);
-    return f.IsHolding<float>() && std::isfinite(f.UncheckedGet<float>()) ? f.UncheckedGet<float>() : fallback;
+    return v != unset ? v : fallback;
 }
 
-nova::RayLimitOverrides rayLimitsOf(HdSceneDelegate *sd, SdfPath const &id) {
-    static const TfToken names[nova::kLimitClasses] = {
-        TfToken("nova:object:diffuseLimit"), TfToken("nova:object:reflectLimit"), TfToken("nova:object:refractLimit"),
-        TfToken("nova:object:sssLimit"), TfToken("nova:object:volumeLimit")};
-    nova::RayLimitOverrides o;
-    for (int k = 0; k < nova::kLimitClasses; ++k)
-        o.limit[k] = std::max(constantPrimvar(sd, id, names[k], -1.0f), -1.0f);
-    return o;
+// The point style menu (Karma's karma:object:point_style): an index or, as
+// Karma's nodes may author it, a label.
+int pointStyleOf(HdSceneDelegate *sd, SdfPath const &id, int fallback) {
+    static const TfToken nova("nova:object:pointStyle"), karma("karma:object:point_style");
+    for (TfToken const &name : {nova, karma}) {
+        const int style = HdNovaMenuIndex(HdNovaConstantPrimvar(sd, id, name), {"Discs", "Spheres", "Oriented Discs"});
+        if (style >= 0)
+            return style;
+    }
+    return fallback;
 }
 
 } // namespace
@@ -77,7 +75,7 @@ void HdNovaPoints::_InitRepr(TfToken const &reprToken, HdDirtyBits *) {
 }
 
 bool HdNovaPoints::_Build(HdSceneDelegate *sd, HdNovaShutter const &shutter, unsigned maxSteps,
-                          nova::MeshDesc &desc) const {
+                          HdNovaObjectDefaults const &defaults, nova::MeshDesc &desc) const {
     const SdfPath &id = GetId();
     std::vector<VtVec3fArray> steps;
     if (!HdNovaSampleVec3fArray(sd, id, HdTokens->points, shutter, maxSteps, &steps) || steps.empty() ||
@@ -96,7 +94,9 @@ bool HdNovaPoints::_Build(HdSceneDelegate *sd, HdNovaShutter const &shutter, uns
 
     // Widths (diameters, D1): constant or per point; USD's fallback width 1.
     static const TfToken novaWidthScale("nova:object:widthScale"), karmaWidthScale("karma:object:width_scale");
-    const float widthScale = std::max(objectSetting(sd, id, novaWidthScale, karmaWidthScale, 1.0f), 0.0f);
+    const float widthScale = std::max(
+        objectSetting(sd, id, novaWidthScale, karmaWidthScale, defaults.widthScale >= 0.0f ? defaults.widthScale : 1.0f),
+        0.0f);
     desc.pointRadius.assign(n, 0.5f * widthScale);
     for (int i = 0; i < HdInterpolationCount; ++i)
         for (const HdPrimvarDescriptor &pv : sd->GetPrimvarDescriptors(id, HdInterpolation(i)))
@@ -116,8 +116,7 @@ bool HdNovaPoints::_Build(HdSceneDelegate *sd, HdNovaShutter const &shutter, uns
 
     // Karma's karma:object:point_style: 0 discs facing the ray, 1 spheres
     // (the default), 2 discs facing the normals.
-    static const TfToken novaStyle("nova:object:pointStyle"), karmaStyle("karma:object:point_style");
-    const int style = int(std::lround(objectSetting(sd, id, novaStyle, karmaStyle, 1.0f)));
+    const int style = pointStyleOf(sd, id, defaults.pointStyle >= 0 ? defaults.pointStyle : 1);
     desc.pointStyle = style == 0 ? nova::PointStyle::Disc : nova::PointStyle::Sphere;
     if (style == 2) {
         const VtValue v = sd->Get(id, HdTokens->normals);
@@ -171,7 +170,7 @@ void HdNovaPoints::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     _UpdateInstancer(sd, dirtyBits);
     HdInstancer::_SyncInstancerAndParents(sd->GetRenderIndex(), GetInstancerId());
 
-    const HdNovaShutter shutter = param->GetShutter();
+    const HdNovaShutter shutter = HdNovaObjectShutter(sd, id, *param); // Karma's per-object mblur
     const unsigned maxSteps = param->GetMaxMotionSteps();
     const bool newShutter = !(shutter == _sampledShutter) || maxSteps != _sampledMaxSteps;
     const bool rebuild = first || newShutter ||
@@ -198,7 +197,7 @@ void HdNovaPoints::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     nova::MeshDesc desc;
     bool built = false;
     if (rebuild) {
-        built = _Build(sd, shutter, maxSteps, desc);
+        built = _Build(sd, shutter, maxSteps, param->GetObjectDefaults(), desc);
         desc.transform = toNova(sd->GetTransform(id));
         desc.visible = IsVisible();
         desc.userId = GetPrimId();
@@ -245,7 +244,7 @@ void HdNovaPoints::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
             scene.setMeshInstanceAttributes(_meshId, std::move(instanceAttributes));
     }
     if (rebuild) { // DirtyPrimvar rebuilds
-        scene.setMeshRayLimits(_meshId, rayLimitsOf(sd, id));
+        scene.setMeshRayLimits(_meshId, HdNovaObjectOverrides(sd, id));
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
         scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (M6 D10)

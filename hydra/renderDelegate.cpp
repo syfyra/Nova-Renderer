@@ -20,15 +20,20 @@
 
 #include "core/film/lpe_compile.h"
 
+#include <pxr/base/gf/vec3d.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/gf/vec4f.h>
+#include <pxr/base/js/json.h>
+#include <pxr/base/tf/staticTokens.h>
 #include <pxr/base/work/threadLimits.h>
 #include <pxr/imaging/hd/camera.h>
 #include <pxr/imaging/hd/instancer.h>
 #include <pxr/imaging/hd/tokens.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <optional>
 #include <set>
 #include <string>
 #include <thread>
@@ -91,6 +96,14 @@ HdNovaRenderDelegate::HdNovaRenderDelegate(HdRenderSettingsMap const &settingsMa
 }
 
 void HdNovaRenderDelegate::_Initialize() {
+    // What the host handed to the constructor is authored; the descriptors'
+    // defaults filled in below are not (docs/design/M11-P1.md).
+    {
+        std::lock_guard lock(_authoredMutex);
+        for (auto const &[key, value] : _settingsMap)
+            if (!value.IsEmpty())
+                _authored.insert(key);
+    }
     // Labels and defaults as in houdini/tools/nova_settings.json, the table of
     // Nova's Solaris UI (tests/houdini/test_solaris_ui.py checks the defaults).
     const nova::RenderSettings defaults;
@@ -106,7 +119,11 @@ void HdNovaRenderDelegate::_Initialize() {
         {"Volume Limit", HdNovaSettingsTokens->volumeLimit, VtValue(0.0f)},
         {"Thin Walls at the Refraction Limit", HdNovaSettingsTokens->thinWallAtRefractLimit, VtValue(true)},
         {"Fake Caustics", HdNovaSettingsTokens->fakeCaustics, VtValue(false)},
+        {"Internal Reflection", HdNovaSettingsTokens->internalReflection, VtValue(true)},
+        {"Caustics Roughness Clamp", HdNovaSettingsTokens->causticsRoughnessClamp, VtValue(0.0f)},
+        {"Constrain Roughness", HdNovaSettingsTokens->constrainRoughness, VtValue(false)},
         {"Clamp Indirect", HdNovaSettingsTokens->clampIndirect, VtValue(defaults.clampIndirect)},
+        {"Clamp Direct", HdNovaSettingsTokens->clampDirect, VtValue(defaults.clampDirect)},
         {"Seed", HdNovaSettingsTokens->seed, VtValue(int(defaults.seed))},
         // The device (docs/design/M10.md D1): the plugin's by default.
         {"Device", HdNovaSettingsTokens->device,
@@ -386,8 +403,9 @@ HdNovaDenoiseConfig HdNovaRenderDelegate::GetDenoiseConfig() const {
                : v.IsHolding<TfToken>()   ? v.UncheckedGet<TfToken>().GetString()
                                           : std::string();
     };
-    if (GetRenderSetting<bool>(HdNovaSettingsTokens->denoise, false)) {
-        config.final.enabled = true;
+    // Nova's switch when authored, else Karma's denoiser (docs/design/M11-P1.md).
+    if (IsSettingAuthored(HdNovaSettingsTokens->denoise)) {
+        config.final.enabled = HdNovaFlag(GetRenderSetting(HdNovaSettingsTokens->denoise)).value_or(false);
         const VtValue aovs = GetRenderSetting(HdNovaSettingsTokens->denoiseAovs);
         config.final.aovs = HdNovaSplitAovNames(aovs.IsEmpty() ? std::string("C") : text(HdNovaSettingsTokens->denoiseAovs));
     } else {
@@ -400,7 +418,12 @@ HdNovaDenoiseConfig HdNovaRenderDelegate::GetDenoiseConfig() const {
         }
     }
     config.viewport = GetRenderSetting<bool>(HdNovaSettingsTokens->houdiniViewport, false);
-    config.viewportDenoise = GetRenderSetting<bool>(HdNovaSettingsTokens->viewportDenoise, false);
+    // Karma's viewport toggle stands in for Nova's.
+    static const TfToken karmaViewportDenoise("karma:hydra:denoise");
+    config.viewportDenoise =
+        HdNovaFlag(IsSettingAuthored(HdNovaSettingsTokens->viewportDenoise) ? GetRenderSetting(HdNovaSettingsTokens->viewportDenoise)
+                                                                            : GetAuthoredSetting(karmaViewportDenoise))
+            .value_or(false);
     config.startPasses = std::max(1, GetRenderSetting<int>(HdNovaSettingsTokens->denoiseStartPasses, 4));
     return config;
 }
@@ -600,42 +623,197 @@ void HdNovaRenderDelegate::_RenderLoop() {
 // Settings / stats
 // ---------------------------------------------------------------------------
 
+bool HdNovaRenderDelegate::IsSettingAuthored(TfToken const &key) const {
+    std::lock_guard lock(_authoredMutex);
+    return _authored.count(key) != 0;
+}
+
+VtValue HdNovaRenderDelegate::GetAuthoredSetting(TfToken const &key) const {
+    return IsSettingAuthored(key) ? GetRenderSetting(key) : VtValue();
+}
+
+bool HdNovaRenderDelegate::HasKarmaSettings() const {
+    std::lock_guard lock(_authoredMutex);
+    for (TfToken const &key : _authored)
+        if (TfStringStartsWith(key.GetString(), "karma:global:"))
+            return true;
+    return false;
+}
+
+namespace {
+
+// Karma's names (docs/research/m11/karma-properties.md).
+TF_DEFINE_PRIVATE_TOKENS(_karma,
+    ((convergenceMode, "karma:global:convergence_mode"))
+    ((samplesPerPixel, "karma:global:samplesperpixel"))
+    ((pathTracedSamples, "karma:global:pathtracedsamples"))
+    ((percentOfSamples, "karma:global:percentofsamples"))
+    ((pixelOracle, "karma:global:pixeloracle"))
+    ((varianceMin, "karma:object:varianceaa_minsamples"))
+    ((varianceMax, "karma:object:varianceaa_maxsamples"))
+    ((varianceThreshold, "karma:object:varianceaa_thresh"))
+    ((randomSeed, "karma:global:randomseed"))
+    ((pixelFilter, "karma:global:pixelfilter"))
+    ((pixelFilterScale, "karma:global:pixelfilterscale"))
+    ((lightSamplingMode, "karma:global:light_sampling_mode"))
+    ((colorLimit, "karma:global:colorlimit"))
+    ((colorLimitIndirect, "karma:global:colorlimitindirect"))
+    ((colorLimitLinked, "karma:global:colorlimitindlinked"))
+    ((constrainMaxRough, "karma:global:constrainmaxrough"))
+    ((thinWall, "karma:object:thinwallatrefractlimit"))
+    ((causticsEnable, "karma:object:causticsenable"))
+    ((causticsClamp, "karma:object:causticsroughnessclamp"))
+    ((fakeBsdf, "karma:object:fakecausticsbsdfenable"))
+    ((fakeColor, "karma:object:fakecausticscolor"))
+    ((fakeOpacity, "karma:object:fakecausticsopacity"))
+    ((fakeDarken, "karma:object:fakecausticsfresneldarken"))
+    ((internalReflect, "karma:object:internalreflectenable"))
+    ((imageWidth, "karma:global:mtlx_imagewidth"))
+    ((imageBlur, "karma:global:mtlx_imageblur"))
+    ((abortMissing, "karma:global:abortmissingtexture"))
+    ((dicingScale, "karma:global:dicingqualityscale"))
+    ((offscreen, "karma:global:offscreenquality"))
+    ((proxyDepth, "karma:global:ipr_proxydepth"))
+    ((enableDof, "karma:global:enable_dof"))
+    ((curveStyle, "karma:object:curve_style"))
+    ((pointStyle, "karma:object:point_style"))
+    ((widthScale, "karma:object:width_scale"))
+    ((lightSource, "karma:object:treat_as_lightsource"))
+    ((lightDiffuse, "karma:object:lightsource_diffusescale"))
+    ((lightSpecular, "karma:object:lightsource_specularscale"))
+    ((lightQuality, "karma:object:lightsource_samplingquality"))
+    ((dicingQuality, "karma:object:dicingquality"))
+    ((dicingDepthMin, "karma:object:dicingdepthmin"))
+    ((dicingDepthMax, "karma:object:dicingdepthmax"))
+    ((trueDisplace, "karma:object:truedisplace"))
+    ((motionBlur, "karma:object:mblur"))
+);
+
+// A colour from a setting or primvar value (float3/color3f, double3, one
+// number for all three).
+std::optional<std::array<float, 3>> color3(VtValue const &v) {
+    if (v.IsHolding<GfVec3f>()) {
+        const GfVec3f c = v.UncheckedGet<GfVec3f>();
+        return std::array<float, 3>{c[0], c[1], c[2]};
+    }
+    if (v.IsHolding<GfVec3d>()) {
+        const GfVec3d c = v.UncheckedGet<GfVec3d>();
+        return std::array<float, 3>{float(c[0]), float(c[1]), float(c[2])};
+    }
+    if (v.IsHolding<VtArray<GfVec3f>>() && v.UncheckedGet<VtArray<GfVec3f>>().size() == 1) {
+        const GfVec3f c = v.UncheckedGet<VtArray<GfVec3f>>()[0];
+        return std::array<float, 3>{c[0], c[1], c[2]};
+    }
+    if (const std::optional<double> n = HdNovaNumber(v))
+        return std::array<float, 3>{float(*n), float(*n), float(*n)};
+    return std::nullopt;
+}
+
+// Karma's colour limit as a Nova clamp: Karma clamps to the value itself (0
+// renders black), Nova reads 0 as off.
+float karmaLimit(double v) { return v > 0.0 ? float(std::min(v, 1e30)) : 1e-30f; }
+
+} // namespace
+
 nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
     nova::RenderSettings s;
-    s.maxSamples = uint32_t(std::max(1, GetRenderSetting<int>(HdNovaSettingsTokens->samples, int(s.maxSamples))));
-    // A Karma Texture Baker's primary samples while Nova's stay at their
-    // default (M11 P8): the LOP always authors them (9).
-    if (IsBaking() && s.maxSamples == nova::RenderSettings{}.maxSamples) {
-        const VtValue spp = VtValue::Cast<int>(GetRenderSetting(TfToken("karma:global:samplesperpixel")));
-        if (spp.IsHolding<int>())
-            s.maxSamples = uint32_t(std::max(1, spp.UncheckedGet<int>()));
+    const bool karmaScene = HasKarmaSettings();
+    // Nova's value when authored, else Karma's when authored, else the
+    // fallback (Nova's default; for properties without a Nova default in
+    // Karma scenes Karma's) - docs/design/M11-P1.md.
+    const auto own = [this](TfToken const &nova) { return GetAuthoredSetting(nova); };
+    const auto karma = [this](TfToken const &key) { return GetAuthoredSetting(key); };
+    const auto number = [&](TfToken const &nova, TfToken const &k, double fallback) {
+        if (const auto v = HdNovaNumber(own(nova)))
+            return *v;
+        if (const auto v = HdNovaNumber(karma(k)))
+            return *v;
+        return fallback;
+    };
+    const auto flag = [&](TfToken const &nova, TfToken const &k, bool fallback) {
+        if (const auto v = HdNovaFlag(own(nova)))
+            return *v;
+        if (const auto v = HdNovaFlag(karma(k)))
+            return *v;
+        return fallback;
+    };
+
+    // Samples (docs/design/M11-P1.md 2): Nova's, else Karma's by its
+    // convergence mode: Path Traced renders pathtracedsamples paths; in
+    // Variance and Distributed modes every primary sample sends up to
+    // varianceaa_maxsamples secondary rays, which Nova's one-path-per-sample
+    // wavefront takes as primary x secondary samples, with the pixel oracle
+    // ending pixels whose noise is low (Variance: always adaptive).
+    const int convergence = HdNovaMenuIndex(karma(_karma->convergenceMode), {"Path Traced", "Distributed", "Variance"});
+    const bool karmaSampling = !IsSettingAuthored(HdNovaSettingsTokens->samples) &&
+                               (karmaScene || convergence >= 0 || IsSettingAuthored(_karma->samplesPerPixel) ||
+                                IsSettingAuthored(_karma->pathTracedSamples));
+    const int mode = convergence >= 0 ? convergence : 2; // Karma's default: Variance
+    const HdNovaKarmaOracle oracle = HdNovaParseKarmaPixelOracle(HdNovaText(karma(_karma->pixelOracle)));
+    const double primary = HdNovaNumber(karma(_karma->samplesPerPixel)).value_or(9.0);
+    const double secondaryMin = std::max(1.0, HdNovaNumber(karma(_karma->varianceMin)).value_or(1.0));
+    const double secondaryMax = std::max(1.0, HdNovaNumber(karma(_karma->varianceMax)).value_or(9.0));
+    if (karmaSampling) {
+        double samples = mode == 0 ? HdNovaNumber(karma(_karma->pathTracedSamples)).value_or(128.0)
+                                   : std::max(1.0, primary) * secondaryMax;
+        samples *= std::clamp(HdNovaNumber(karma(_karma->percentOfSamples)).value_or(100.0), 1.0, 100.0) / 100.0;
+        s.maxSamples = uint32_t(std::clamp(std::lround(samples), 1l, 1l << 20));
+    } else {
+        s.maxSamples = uint32_t(std::max(1, GetRenderSetting<int>(HdNovaSettingsTokens->samples, int(s.maxSamples))));
+    }
+    // A texture bake (M11 P8): Karma's baker takes its primary samples
+    // (samplesperpixel, 9 from the LOP) as the texel samples; the secondary
+    // ones only serve shading.
+    if (IsBaking() && !IsSettingAuthored(HdNovaSettingsTokens->samples)) {
+        s.maxSamples = uint32_t(std::clamp(std::lround(primary), 1l, 1l << 20));
     }
     s.maxDepth = uint32_t(std::max(1, GetRenderSetting<int>(HdNovaSettingsTokens->maxDepth, 64)));
     {
         const TfToken limits[nova::kLimitClasses] = {HdNovaSettingsTokens->diffuseLimit, HdNovaSettingsTokens->reflectLimit,
                                                      HdNovaSettingsTokens->refractLimit, HdNovaSettingsTokens->sssLimit,
                                                      HdNovaSettingsTokens->volumeLimit};
-        const float defaults[nova::kLimitClasses] = {1.0f, 4.0f, 4.0f, 1.0f, 0.0f};
-        for (int k = 0; k < nova::kLimitClasses; ++k) {
-            const float v = VtValue::Cast<float>(GetRenderSetting(limits[k])).GetWithDefault(defaults[k]);
-            s.limits.limit[k] = std::isfinite(v) ? std::max(v, 0.0f) : defaults[k];
-        }
-        // Karma's limits stand in for Nova's while those are at their
-        // defaults (docs/design/M8.md D16, M9): pyro and groom setups author
-        // them on the render settings.
+        // Nova's defaults are Karma's (docs/design/M4.md D13). Karma's limits
+        // stand in for Nova's unless those are authored (pyro, groom and
+        // Karma setups author them on the render settings).
         static const TfToken karmaLimits[nova::kLimitClasses] = {
             TfToken("karma:object:diffuselimit"), TfToken("karma:object:reflectlimit"),
             TfToken("karma:object:refractlimit"), TfToken("karma:object:ssslimit"), TfToken("karma:object:volumelimit")};
+        const float defaults[nova::kLimitClasses] = {1.0f, 4.0f, 4.0f, 1.0f, 0.0f};
         for (int k = 0; k < nova::kLimitClasses; ++k) {
-            const float karma = VtValue::Cast<float>(GetRenderSetting(karmaLimits[k])).GetWithDefault(-1.0f);
-            if (s.limits.limit[k] == defaults[k] && std::isfinite(karma) && karma >= 0.0f)
-                s.limits.limit[k] = karma;
+            const double v = number(limits[k], karmaLimits[k], defaults[k]);
+            s.limits.limit[k] = std::isfinite(v) && v >= 0.0 ? float(v) : defaults[k];
         }
-        s.limits.thinWallAtRefractLimit =
-            VtValue::Cast<bool>(GetRenderSetting(HdNovaSettingsTokens->thinWallAtRefractLimit)).GetWithDefault(true);
-        s.limits.fakeCaustics =
-            VtValue::Cast<bool>(GetRenderSetting(HdNovaSettingsTokens->fakeCaustics)).GetWithDefault(false);
+        s.limits.thinWallAtRefractLimit = flag(HdNovaSettingsTokens->thinWallAtRefractLimit, _karma->thinWall, true);
+        // Fake caustics: Nova's switch (Nova's physical factor), else
+        // Karma's causticsenable inverted (Karma's factor; off by default in
+        // Karma scenes, which then fake their caustics).
+        if (const auto v = HdNovaFlag(own(HdNovaSettingsTokens->fakeCaustics))) {
+            s.limits.fakeCaustics = *v;
+        } else if (const auto k = HdNovaFlag(karma(_karma->causticsEnable))) {
+            s.limits.fakeCaustics = !*k;
+            s.limits.fakeStyle.karma = true;
+        } else if (karmaScene) {
+            s.limits.fakeCaustics = true;
+            s.limits.fakeStyle.karma = true;
+        }
+        if (const auto v = HdNovaFlag(karma(_karma->fakeBsdf)))
+            s.limits.fakeStyle.bsdf = *v;
+        if (const auto c = color3(karma(_karma->fakeColor)))
+            for (int i = 0; i < 3; ++i)
+                s.limits.fakeStyle.color[i] = std::max((*c)[i], 0.0f);
+        if (const auto c = color3(karma(_karma->fakeOpacity)))
+            for (int i = 0; i < 3; ++i)
+                s.limits.fakeStyle.opacity[i] = std::clamp((*c)[i], 0.0f, 1.0f);
+        if (const auto v = HdNovaNumber(karma(_karma->fakeDarken)))
+            s.limits.fakeStyle.fresnelDarken = float(std::clamp(*v, 0.0, 1.0));
+        // Karma's defaults differ from Nova's: no internal reflection, a 0.2
+        // roughness clamp on true caustics, constrained roughness.
+        s.limits.internalReflection = flag(HdNovaSettingsTokens->internalReflection, _karma->internalReflect, !karmaScene);
+        s.limits.causticsRoughnessClamp = float(
+            std::clamp(number(HdNovaSettingsTokens->causticsRoughnessClamp, _karma->causticsClamp, karmaScene ? 0.2 : 0.0),
+                       0.0, 1.0));
     }
+    s.constrainRoughness = flag(HdNovaSettingsTokens->constrainRoughness, _karma->constrainMaxRough, karmaScene);
     // Ray visibility and holdouts of objects without their own (M11 P2):
     // Karma's object defaults on the render settings (the holdout mode as its
     // menu label there), and whether background holdouts occlude shadows.
@@ -647,22 +825,17 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
         s.backgroundOccludesShadows = VtValue::Cast<bool>(GetRenderSetting(bgOcclude)).GetWithDefault(false);
     }
     // Light selection (docs/design/M9.md D11, D18): the light tree, unless
-    // Nova's light sampling mode asks for Uniform ("uniform" or 0), or while
-    // it is at its default, Karma's light_sampling_mode.
-    s.lightTree = true;
-    for (const TfToken &key : {HdNovaSettingsTokens->lightSamplingMode, TfToken("karma:global:light_sampling_mode")}) {
-        const VtValue mode = GetRenderSetting(key);
+    // the light sampling mode asks for Uniform ("uniform" or 0): Nova's when
+    // authored, else Karma's light_sampling_mode.
+    {
+        VtValue mode = own(HdNovaSettingsTokens->lightSamplingMode);
         if (mode.IsEmpty())
-            continue;
-        const std::string text = mode.IsHolding<TfToken>()     ? mode.UncheckedGet<TfToken>().GetString()
-                                 : mode.IsHolding<std::string>() ? mode.UncheckedGet<std::string>()
-                                                                 : std::string();
+            mode = karma(_karma->lightSamplingMode);
+        const std::string text = HdNovaText(mode);
         if (!text.empty())
             s.lightTree = TfStringToLower(text).find("uniform") == std::string::npos;
         else
-            s.lightTree = VtValue::Cast<int>(mode).GetWithDefault(1) != 0;
-        if (!s.lightTree)
-            break;
+            s.lightTree = HdNovaNumber(mode).value_or(1.0) != 0.0;
     }
     // The device (docs/design/M10.md D1): "xpu" renders on the GPU, the CPU
     // being its fallback; "cpu" on the CPU; otherwise the plugin's.
@@ -674,12 +847,34 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
         s.device = text == "xpu" ? nova::RenderDevice::Xpu : text == "cpu" ? nova::RenderDevice::Cpu : _device;
     }
     s.gpuTextureBudget = uint32_t(std::max(0, GetRenderSetting<int>(HdNovaSettingsTokens->gpuTextureBudget, 0)));
-    s.clampIndirect = std::max(0.0f, GetRenderSetting<float>(HdNovaSettingsTokens->clampIndirect, s.clampIndirect));
-    s.seed = uint32_t(GetRenderSetting<int>(HdNovaSettingsTokens->seed, int(s.seed)));
+    // Colour limits (docs/design/M11-P1.md 3): Nova's clamps when either is
+    // authored; else Karma's colorlimit for what the camera sees and the
+    // first hit gathers, colorlimitindirect (colorlimit when linked) for the
+    // rest, emission found by the first bounce counting as indirect
+    // (measured). Karma's registry defaults (20) in Karma scenes.
+    if (IsSettingAuthored(HdNovaSettingsTokens->clampIndirect) || IsSettingAuthored(HdNovaSettingsTokens->clampDirect) ||
+        !(karmaScene || IsSettingAuthored(_karma->colorLimit) || IsSettingAuthored(_karma->colorLimitIndirect))) {
+        s.clampIndirect = std::max(0.0f, GetRenderSetting<float>(HdNovaSettingsTokens->clampIndirect, s.clampIndirect));
+        s.clampDirect = std::max(0.0f, GetRenderSetting<float>(HdNovaSettingsTokens->clampDirect, s.clampDirect));
+    } else {
+        const double direct = HdNovaNumber(karma(_karma->colorLimit)).value_or(20.0);
+        const bool linked = HdNovaFlag(karma(_karma->colorLimitLinked)).value_or(true);
+        const double indirect = linked ? direct : HdNovaNumber(karma(_karma->colorLimitIndirect)).value_or(20.0);
+        s.clampDirect = karmaLimit(direct);
+        s.clampIndirect = karmaLimit(indirect);
+        s.clampEmissionIndirect = true;
+    }
+    s.seed = uint32_t(std::lround(number(HdNovaSettingsTokens->seed, _karma->randomSeed, double(s.seed))));
 
     // USD render settings deliver the filter name as a token or a string.
-    // The names and sizes follow Karma's karma:global:pixelfilter.
-    const VtValue filter = GetRenderSetting(HdNovaSettingsTokens->pixelFilter);
+    // The names and sizes follow Karma's karma:global:pixelfilter, which
+    // stands in for Nova's when that is not authored.
+    VtValue filter = own(HdNovaSettingsTokens->pixelFilter);
+    if (filter.IsEmpty()) {
+        const std::string karmaFilter = HdNovaKarmaFilterName(HdNovaText(karma(_karma->pixelFilter)));
+        if (!karmaFilter.empty())
+            filter = VtValue(TfToken(karmaFilter));
+    }
     const TfToken name = filter.IsHolding<TfToken>()       ? filter.UncheckedGet<TfToken>()
                          : filter.IsHolding<std::string>() ? TfToken(filter.UncheckedGet<std::string>())
                                                            : HdNovaSettingsTokens->gauss;
@@ -699,7 +894,8 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
         HD_NOVA_WARN("unknown pixel filter '%s', using gauss", name.GetText());
         _unknownPixelFilter = name;
     }
-    const float scale = GetRenderSetting<float>(HdNovaSettingsTokens->pixelFilterScale, s.pixelFilterScale);
+    const float scale =
+        float(number(HdNovaSettingsTokens->pixelFilterScale, _karma->pixelFilterScale, s.pixelFilterScale));
     s.pixelFilterScale = std::isfinite(scale) ? std::clamp(scale, 0.0f, 16.0f) : s.pixelFilterScale;
 
     // Debugging aid: sample direct light with one strategy only.
@@ -715,15 +911,182 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
     s.textureFilterWidth = GetTextureOptions().filterWidth;
 
     // Adaptive sampling (docs/design/M7.md D4).
-    const VtValue oracle = GetRenderSetting(HdNovaSettingsTokens->pixelOracle);
-    const std::string oracleName = oracle.IsHolding<TfToken>()       ? oracle.UncheckedGet<TfToken>().GetString()
-                                   : oracle.IsHolding<std::string>() ? oracle.UncheckedGet<std::string>()
-                                                                     : std::string();
+    // Nova's settings when authored, else with Karma's sample counts Karma's
+    // pixel oracle (Variance mode always adapts: its secondary samples
+    // stop at varianceaa_thresh), docs/design/M11-P1.md 2.
+    const std::string oracleName = HdNovaText(GetRenderSetting(HdNovaSettingsTokens->pixelOracle));
     s.adaptive = oracleName == HdNovaSettingsTokens->variance.GetString();
-    const int minSamples = GetRenderSetting<int>(HdNovaSettingsTokens->oracleMinSamples, -1);
-    s.oracleMinSamples = minSamples > 0 ? uint32_t(minSamples) : 0u;
+    int minSamples = GetRenderSetting<int>(HdNovaSettingsTokens->oracleMinSamples, -1);
     s.oracleThreshold = std::max(0.0f, GetRenderSetting<float>(HdNovaSettingsTokens->oracleThreshold, s.oracleThreshold));
+    if (karmaSampling && !IsSettingAuthored(HdNovaSettingsTokens->pixelOracle)) {
+        const bool variance = mode == 2 || (oracle.valid ? oracle.variance : true);
+        s.adaptive = variance;
+        if (!IsSettingAuthored(HdNovaSettingsTokens->oracleThreshold)) {
+            const double secondary = HdNovaNumber(karma(_karma->varianceThreshold)).value_or(0.01);
+            s.oracleThreshold =
+                float(std::max(0.0, (oracle.valid && oracle.variance) || mode != 2 ? double(oracle.threshold) : secondary));
+        }
+        if (!IsSettingAuthored(HdNovaSettingsTokens->oracleMinSamples)) {
+            if (mode == 2 && !(oracle.valid && oracle.variance))
+                minSamples = int(std::lround(std::max(1.0, primary) * secondaryMin)); // uniform primaries
+            else if (oracle.minRays > 0)
+                minSamples = int(std::lround(oracle.minRays * (mode == 0 ? 1.0 : secondaryMin)));
+            else
+                minSamples = -1;
+        }
+    }
+    s.oracleMinSamples = minSamples > 0 ? uint32_t(minSamples) : 0u;
+    if (IsBaking())
+        s.adaptive = false; // bakes take every texel sample (M11 P8)
+    _WarnUnsupportedKarmaSettings();
     return s;
+}
+
+HdNovaObjectDefaults HdNovaRenderDelegate::GetObjectDefaults() const {
+    HdNovaObjectDefaults d;
+    const auto karma = [this](TfToken const &key) { return GetAuthoredSetting(key); };
+    const auto number = [&](TfToken const &key, float fallback) {
+        const auto v = HdNovaNumber(karma(key));
+        return v ? float(*v) : fallback;
+    };
+    d.curveStyle =
+        HdNovaMenuIndex(karma(_karma->curveStyle), {"Flat Ribbons", "Rounded Curves", "Oriented Ribbons", "USD Default Behaviour"});
+    d.pointStyle = HdNovaMenuIndex(karma(_karma->pointStyle), {"Discs", "Spheres", "Oriented Discs"});
+    d.widthScale = std::max(number(_karma->widthScale, -1.0f), -1.0f);
+    d.lightSource = HdNovaMenuIndex(karma(_karma->lightSource), {"No", "Yes", "Auto"});
+    d.lightDiffuse = number(_karma->lightDiffuse, -1.0f);
+    d.lightSpecular = number(_karma->lightSpecular, -1.0f);
+    d.lightQuality = number(_karma->lightQuality, -1.0f);
+    const float quality = number(_karma->dicingQuality, -1.0f);
+    d.dicingQuality = quality > 0.0f ? quality : -1.0f;
+    // A fixed dicing depth when the minimum and maximum agree (Nova's
+    // nova:dicingDepth); different ones warn (_WarnUnsupportedKarmaSettings).
+    const auto dmin = HdNovaNumber(karma(_karma->dicingDepthMin)), dmax = HdNovaNumber(karma(_karma->dicingDepthMax));
+    if (dmin && dmax && std::lround(*dmin) == std::lround(*dmax))
+        d.dicingDepth = int(std::clamp(std::lround(*dmin), -1l, 10l));
+    const int trueDisplace = HdNovaMenuIndex(karma(_karma->trueDisplace),
+                                             {"Displacement as Bump", "True Displacement", "Disable Displacement Shader",
+                                              "Bump Added to Displacement"});
+    d.displacement = trueDisplace < 0 ? -1 : trueDisplace == 2 ? 0 : 1;
+    if (const auto v = HdNovaFlag(karma(_karma->motionBlur)))
+        d.motionBlur = *v ? 1 : 0;
+    return d;
+}
+
+bool HdNovaRenderDelegate::IsDepthOfFieldEnabled() const {
+    static const TfToken disable("disableDepthOfField");
+    return !HdNovaFlag(GetRenderSetting(disable)).value_or(false) &&
+           HdNovaFlag(GetAuthoredSetting(_karma->enableDof)).value_or(true);
+}
+
+void HdNovaRenderDelegate::_WarnUnsupportedKarmaSettings() const {
+    // Karma Render Settings properties that change the image and that Nova
+    // does not honour yet: each warns once per delegate (one stage render)
+    // when its value differs from the one Nova's image matches.
+    // Performance-only and noise-only properties stay silent; holdouts and
+    // ray visibility are honoured (docs/design/M11-P2.md).
+    struct Check {
+        const char *key;
+        const char *what;
+        bool (*differs)(VtValue const &);
+    };
+    static const auto on = [](VtValue const &v) { return HdNovaFlag(v).value_or(false); };
+    static const auto off = [](VtValue const &v) { return !HdNovaFlag(v).value_or(true); };
+    static const auto text = [](VtValue const &v) { return !TfStringTrim(HdNovaText(v)).empty(); };
+    static const Check checks[] = {
+        {"karma:global:outline_enable", "outlines", on},
+        {"karma:global:guiding_enable", "path guiding", on},
+        {"karma:global:disable_lighting", "the headlight look-dev mode (disable lighting)", on},
+        {"karma:global:override_lighting", "the lighting override",
+         [](VtValue const &v) {
+             return HdNovaMenuIndex(v, {"Off", "Emissive Objects", "Headlight", "Dome Light"}) > 0;
+         }},
+        {"karma:global:image_blur", "image blur off (camera rays at shutter open)", off},
+        {"karma:global:samplefilter", "sample filters", text},
+        {"karma:global:globalaovmaterial", "the global AOV material", text},
+        {"karma:global:dicingcamera", "the dicing camera", text},
+        {"karma:global:overrideobject", "object properties overriding the prims'", text},
+        {"karma:global:raybias", "the ray bias",
+         [](VtValue const &v) { return std::fabs(HdNovaNumber(v).value_or(0.001) - 0.001) > 1e-6; }},
+        {"karma:global:diffusecomponents", "custom diffuse component labels",
+         [](VtValue const &v) { return TfStringTrim(HdNovaText(v)) != "diffuse"; }},
+        {"karma:global:refractcomponents", "custom refraction component labels",
+         [](VtValue const &v) { return TfStringTrim(HdNovaText(v)) != "refract"; }},
+        {"karma:global:ssscomponents", "custom SSS component labels",
+         [](VtValue const &v) { return TfStringTrim(HdNovaText(v)) != "sss"; }},
+        {"karma:global:volumecomponents", "custom volume component labels",
+         [](VtValue const &v) { return TfStringTrim(HdNovaText(v)) != "volume"; }},
+        {"karma:object:blurstyle", "linear motion blur",
+         [](VtValue const &v) { return HdNovaMenuIndex(v, {"Linear Blur", "Rotation Blur"}) == 0; }},
+        {"karma:object:samplesfromstage", "motion samples not taken from the stage (xformsamples, geosamples)", off},
+        {"karma:object:cull_backface", "backface culling",
+         [](VtValue const &v) { return HdNovaMenuIndex(v, {"Off", "Cull Backface", "Cull Frontface"}) > 0; }},
+        {"karma:object:curve_basis", "a forced curve basis",
+         [](VtValue const &v) {
+             return HdNovaMenuIndex(v, {"Geometry Default", "Force Linear", "Force Bezier", "Force B-Spline",
+                                        "Force Catmull-Rom"}) > 0;
+         }},
+        {"karma:object:truedisplace", "displacement as bump",
+         [](VtValue const &v) { return TfStringToLower(HdNovaText(v)).find("bump") != std::string::npos ||
+                                       HdNovaNumber(v).value_or(1.0) == 0.0 || HdNovaNumber(v).value_or(1.0) == 3.0; }},
+        {"karma:object:dicingpredisplace", "dicing with a trial displacement", on},
+        {"karma:object:dicingzimportance", "the dicing z importance",
+         [](VtValue const &v) { return std::fabs(HdNovaNumber(v).value_or(1.0) - 1.0) > 1e-6; }},
+        {"karma:object:limitcolor", "the ray limit colour",
+         [](VtValue const &v) {
+             const auto c = color3(v);
+             return c && ((*c)[0] != 0.0f || (*c)[1] != 0.0f || (*c)[2] != 0.0f);
+         }},
+        {"karma:object:dielectricpriority", "nested dielectrics",
+         [](VtValue const &v) { return HdNovaNumber(v).value_or(0.0) != 0.0; }},
+        {"karma:object:isportal", "light portals", on},
+        {"karma:object:bumpshadowterminator", "the bump shadow terminator",
+         [](VtValue const &v) { return HdNovaNumber(v).value_or(0.0) != 0.0; }},
+        {"karma:object:smoothp", "smoothed shadow positions off", off},
+        {"karma:object:cuspangle", "the cusp angle of generated normals",
+         [](VtValue const &v) { return std::fabs(HdNovaNumber(v).value_or(60.0) - 60.0) > 1e-6; }},
+        {"karma:object:stencilmap", "stencil maps", text},
+        // Not volumesteprate: Nova's tracking is unbiased by design (M8 D16);
+        // finer rates converge to its image, the coarse default differs.
+    };
+    std::vector<std::string> messages;
+    for (const Check &c : checks) {
+        const VtValue v = GetAuthoredSetting(TfToken(c.key));
+        if (v.IsEmpty() || !c.differs(v))
+            continue;
+        std::lock_guard lock(_warnMutex);
+        if (_warnedKarma.insert(c.key).second)
+            messages.push_back(TfStringPrintf("%s (%s)", c.what, c.key));
+    }
+    // Karma's image filters other than its denoiser (which Nova runs).
+    {
+        const std::string filters = HdNovaText(GetAuthoredSetting(HdNovaSettingsTokens->karmaImageFilter));
+        JsParseError error;
+        const JsValue v = filters.empty() ? JsValue() : JsParseString(filters, &error);
+        if (v.IsArray())
+            for (const JsValue &entry : v.GetJsArray()) {
+                const std::string name = entry.IsArray() && !entry.GetJsArray().empty() && entry.GetJsArray()[0].IsString()
+                                             ? entry.GetJsArray()[0].GetString()
+                                             : entry.IsString() ? entry.GetString() : std::string();
+                if (name.empty() || name == "denoise")
+                    continue;
+                std::lock_guard lock(_warnMutex);
+                if (_warnedKarma.insert("imagefilter:" + name).second)
+                    messages.push_back(TfStringPrintf("the image filter '%s' (karma:global:imagefilter)", name.c_str()));
+            }
+    }
+    // Different minimum and maximum dicing depths (Nova dices at one depth).
+    {
+        const auto dmin = HdNovaNumber(GetAuthoredSetting(_karma->dicingDepthMin));
+        const auto dmax = HdNovaNumber(GetAuthoredSetting(_karma->dicingDepthMax));
+        if ((dmin || dmax) && !(dmin && dmax && std::lround(*dmin) == std::lround(*dmax))) {
+            std::lock_guard lock(_warnMutex);
+            if (_warnedKarma.insert("dicingdepth").second)
+                messages.push_back("dicing depths with a range (karma:object:dicingdepthmin/max)");
+        }
+    }
+    for (std::string const &m : messages)
+        HD_NOVA_WARN("Karma render setting not supported, the image differs from Karma's: %s", m.c_str());
 }
 
 void HdNovaRenderDelegate::_FrameAndFps(float &frame, float &fps) const {
@@ -745,6 +1108,14 @@ void HdNovaRenderDelegate::_FrameAndFps(float &frame, float &fps) const {
 
 void HdNovaRenderDelegate::SetRenderSetting(TfToken const &key, VtValue const &value) {
     HdRenderDelegate::SetRenderSetting(key, value);
+    TF_DEBUG(HDNOVA_SETTINGS).Msg("[Nova] setting %s = %s\n", key.GetText(), TfStringify(value).c_str());
+    {
+        std::lock_guard lock(_authoredMutex);
+        if (value.IsEmpty())
+            _authored.erase(key);
+        else
+            _authored.insert(key);
+    }
     // Displacement evaluates the Time and Frame globals at sync, which runs
     // before the render pass reads the settings: meshes rebuilt in the next
     // sync (animated points) displace at the new frame. The render pass
@@ -792,14 +1163,29 @@ uint64_t HdNovaRenderDelegate::GetSubdivMaxTriangles() const {
     return uint64_t(std::max(1, GetRenderSetting<int>(HdNovaSettingsTokens->subdivMaxTriangles, 8000000)));
 }
 
+// Nova's number when authored, else Karma's (times karmaScale), else the
+// fallback (docs/design/M11-P1.md).
+double HdNovaRenderDelegate::_NumberSetting(TfToken const &nova, TfToken const &karma, double fallback,
+                                           double karmaScale) const {
+    if (const auto v = HdNovaNumber(GetAuthoredSetting(nova)))
+        return *v;
+    if (const auto v = HdNovaNumber(GetAuthoredSetting(karma)))
+        return *v * karmaScale;
+    return fallback;
+}
+
 float HdNovaRenderDelegate::GetDicingQualityScale() const {
-    const float q = GetRenderSetting<float>(HdNovaSettingsTokens->dicingQualityScale, 1.0f);
+    const float q = float(_NumberSetting(HdNovaSettingsTokens->dicingQualityScale, _karma->dicingScale, 1.0));
     return std::isfinite(q) ? std::clamp(q, 1e-3f, 64.0f) : 1.0f;
 }
 
 float HdNovaRenderDelegate::GetOffscreenQuality() const {
-    const float q = GetRenderSetting<float>(HdNovaSettingsTokens->offscreenQuality, 0.1f);
+    const float q = float(_NumberSetting(HdNovaSettingsTokens->offscreenQuality, _karma->offscreen, 0.1));
     return std::isfinite(q) ? std::clamp(q, 1e-3f, 1.0f) : 0.1f;
+}
+
+int HdNovaRenderDelegate::GetIprProxyDepth() const {
+    return std::clamp(int(std::lround(_NumberSetting(HdNovaSettingsTokens->iprProxyDepth, _karma->proxyDepth, 2.0))), 0, 3);
 }
 
 HdNovaTextureOptions HdNovaRenderDelegate::GetTextureOptions() const {
@@ -809,12 +1195,16 @@ HdNovaTextureOptions HdNovaRenderDelegate::GetTextureOptions() const {
     o.cacheDir = dir.IsHolding<std::string>() ? dir.UncheckedGet<std::string>()
                  : dir.IsHolding<TfToken>()   ? dir.UncheckedGet<TfToken>().GetString()
                                               : std::string();
-    const float blur = GetRenderSetting<float>(HdNovaSettingsTokens->textureBlur, 0.0f);
+    // Karma's mtlx_imageblur and mtlx_imagewidth stand in (Nova's width 0.25
+    // is Karma's 1, docs/design/M3.md M3.9).
+    const float blur = float(_NumberSetting(HdNovaSettingsTokens->textureBlur, _karma->imageBlur, 0.0));
     o.blur = std::isfinite(blur) ? std::clamp(blur, 0.0f, 1.0f) : 0.0f;
-    const float width = GetRenderSetting<float>(HdNovaSettingsTokens->textureFilterWidth, 0.25f);
+    const float width = float(_NumberSetting(HdNovaSettingsTokens->textureFilterWidth, _karma->imageWidth, 0.25, 0.25));
     o.filterWidth = std::isfinite(width) ? std::clamp(width, 0.0f, 16.0f) : 0.25f;
-    o.abortOnMissing =
-        VtValue::Cast<bool>(GetRenderSetting(HdNovaSettingsTokens->abortOnMissingTexture)).GetWithDefault(false);
+    o.abortOnMissing = HdNovaFlag(IsSettingAuthored(HdNovaSettingsTokens->abortOnMissingTexture)
+                                      ? GetRenderSetting(HdNovaSettingsTokens->abortOnMissingTexture)
+                                      : GetAuthoredSetting(_karma->abortMissing))
+                           .value_or(false);
     o.stats = std::clamp(GetRenderSetting<int>(HdNovaSettingsTokens->textureStats, 0), 0, 5);
     return o;
 }
