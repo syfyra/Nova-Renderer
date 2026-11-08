@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <set>
 #include <vector>
@@ -146,6 +147,26 @@ public:
     }
     bool TakeFrameChanged() { return _frameChanged.exchange(false); }
 
+    // The scene meshes of the mesh rprims by path (texture baking names its
+    // meshes by path, docs/design/M11-P8.md). Meshes sync in parallel: locked.
+    void NoteMeshPath(SdfPath const &path, nova::MeshId id) {
+        std::lock_guard lock(_meshPathMutex);
+        _meshPaths[path] = id;
+    }
+    void ForgetMeshPath(SdfPath const &path) {
+        std::lock_guard lock(_meshPathMutex);
+        _meshPaths.erase(path);
+    }
+    // The meshes at `root` or below it, in path order.
+    std::vector<nova::MeshId> MeshesUnder(SdfPath const &root) const {
+        std::lock_guard lock(_meshPathMutex);
+        std::vector<nova::MeshId> out;
+        for (auto const &[path, id] : _meshPaths)
+            if (path.HasPrefix(root))
+                out.push_back(id);
+        return out;
+    }
+
 private:
     nova::Scene *_scene;
     HdRenderThread *_thread;
@@ -167,6 +188,8 @@ private:
     std::set<SdfPath> _displacedMeshes, _waitingMeshes, _timeMeshes;
     float _frame = 1.0f, _fps = 24.0f;
     std::atomic<bool> _frameChanged{false};
+    mutable std::mutex _meshPathMutex;
+    std::map<SdfPath, nova::MeshId> _meshPaths;
 };
 
 // Whether a displacement depends on the frame: its program reads the Time or

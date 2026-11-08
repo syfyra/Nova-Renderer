@@ -907,6 +907,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         if (_meshId != nova::kInvalidId) {
             param->AcquireSceneForEdit().removeMesh(_meshId);
             _meshId = nova::kInvalidId;
+            param->ForgetMeshPath(id);
         }
         param->ForgetDisplacedMesh(id);
         param->GetMaterials().BindMesh(id, {GetMaterialId()}); // material edits re-sync it
@@ -1052,14 +1053,17 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
             desc.visible = IsVisible();
             desc.userId = GetPrimId();
             desc.triangleFaces = _triangleFaces; // the face-index AOV (Karma's ray:primid)
+            desc.leftHanded = _topology.GetOrientation() == HdTokens->leftHanded; // MikkTSpace signs (M11 P8)
         }
     }
     _sampledShutter = shutter;
     _sampledMaxSteps = maxSteps;
 
     nova::Scene &scene = param->AcquireSceneForEdit();
-    if (first)
+    if (first) {
         _meshId = scene.createMesh();
+        param->NoteMeshPath(id, _meshId); // texture baking finds meshes by path
+    }
     if (geometryDirty)
         scene.updateMesh(_meshId, std::move(desc));
     if (instancesDirty) {
@@ -1121,6 +1125,7 @@ void HdNovaMesh::Finalize(HdRenderParam *renderParam) {
     if (_meshId != nova::kInvalidId) {
         param->AcquireSceneForEdit().removeMesh(_meshId);
         _meshId = nova::kInvalidId;
+        param->ForgetMeshPath(GetId());
     }
     _medium.Remove(*param);
 }
