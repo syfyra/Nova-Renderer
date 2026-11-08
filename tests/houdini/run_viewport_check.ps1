@@ -43,6 +43,9 @@
 # -Only sky: a Karma Physical Sky LOP over a plane in Nova CPU, its solar
 # altitude and turbidity edited live, then Karma and Nova XPU (70_sky_nova ...
 # 73_sky_xpu_edit; log.json has the sky and ground means of each).
+# -Only karmasettings: the scene under a Karma Render Settings LOP in Nova
+# CPU (80_karma_settings); stdout.txt lists the render settings Nova
+# receives (TF_DEBUG HDNOVA_SETTINGS).
 #
 # -Prefs <dir> gives the instance its own preference directory (created if
 # needed; no user packages then). The first start in a new one takes a few
@@ -81,7 +84,7 @@ if ($Prefs) {
 }
 $env:NOVA_VIEWPORT_CHECK = $Out
 $env:NOVA_VIEWPORT_CHECK_ONLY = $Only
-$env:TF_DEBUG = 'HDNOVA_MATERIAL HDNOVA_AOV'
+$env:TF_DEBUG = 'HDNOVA_MATERIAL HDNOVA_AOV HDNOVA_SETTINGS'
 $p = Start-Process -FilePath (Join-Path $Hfs 'bin\houdini.exe') -ArgumentList '-foreground' -PassThru `
     -RedirectStandardOutput (Join-Path $Out 'stdout.txt') -RedirectStandardError (Join-Path $Out 'stderr.txt')
 $timedOut = -not $p.WaitForExit($TimeoutSeconds * 1000)

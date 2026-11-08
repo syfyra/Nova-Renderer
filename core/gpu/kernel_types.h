@@ -50,6 +50,7 @@ struct GpuMesh {
     Span<uint32_t> receiverSets; // per instance (empty: set 0)
     Span<uint64_t> shadowMasks; // per instance: the shadow-link categories it is in
     uint8_t fakeCaustics = 0;   // shadow rays cross it with its transmittance (M4 3.3)
+    ObjectShading shading;      // MeshRecord::shading (fake-caustic style, internal reflection, ...)
     // Ray visibility mask and holdout mode (MeshRecord's, M11 P2).
     uint8_t visibility = kVisibleAll;
     uint8_t holdout = 0; // HoldoutMode
@@ -210,6 +211,9 @@ struct GpuSettings {
     uint32_t maxDepth = 6;
     uint32_t rrStartDepth = 3;
     float clampIndirect = 0.0f;
+    float clampDirect = 0.0f;           // RenderSettings::clampDirect (M11-P1)
+    uint8_t clampEmissionIndirect = 0;  // RenderSettings::clampEmissionIndirect
+    uint8_t constrainRoughness = 0;     // RenderSettings::constrainRoughness
     LightStrategy lightStrategy = LightStrategy::MIS;
     RayLimits limits;
     ShadeGlobals globals; // frame and fps (MaterialX time)
@@ -282,6 +286,7 @@ struct GpuWave {
     float *limitDither = nullptr;
     uint8_t *lightOnly = nullptr;
     uint8_t *afterDiffuse = nullptr;
+    float *pathAlpha = nullptr; // the roughest glossy event so far (GGX alpha; constrainRoughness)
     uint8_t *holdout = nullptr; // the camera ray hit a holdout (HoldoutMode, core/integrator/holdout.h)
     float *coneWidth = nullptr; // the ray cone at the current ray's origin (core/texture/ray_cone.h)
     float *coneSpread = nullptr;

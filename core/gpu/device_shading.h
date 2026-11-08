@@ -125,7 +125,9 @@ NOVA_INLINE bool acceptHit(const GpuScene &sc, const ShadeGlobals &globals, uint
     } else if ((rayFlags & kRayFromBackground) && mesh.holdout == uint8_t(HoldoutMode::Background)) {
         return false;
     }
-    if (occlusion && mesh.fakeCaustics)
+    // The bgoccludeshadow probe sees background holdouts whatever their
+    // caustics (Scene::OpacityFilter).
+    if (occlusion && mesh.fakeCaustics && !(rayFlags & kRayProbeBackground))
         return false;
     if (occlusion && category != 0xFFFFu && category >= 7 && !mesh.castsShadow(instance, category))
         return false;

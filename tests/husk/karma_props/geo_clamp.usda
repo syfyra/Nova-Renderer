@@ -1,0 +1,118 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Colour limits for tests/husk/check_karma_props.py: what Karma clamps. An
+# orthographic camera looks down on a grey floor with: a tilted emissive
+# quad (radiance 20) the camera sees directly and which lights the floor to
+# its right (emission found by BSDF rays: direct light from geometry); a
+# small bright sphere light (light samples: direct light from a light); a
+# short wall next to the light, behind which the floor gets only light
+# bounced off a long far wall (indirect light).
+def Xform "World"
+{
+    def Mesh "floor" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-6, 0, 6), (6, 0, 6), (6, 0, -6), (-6, 0, -6)]
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (interpolation = "vertex")
+        float3[] extent = [(-6, 0, -6), (6, 0, 6)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </Looks/grey>
+    }
+    def Mesh "emitter" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        # Faces up and to +x (45 degrees).
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-3.5, 0.9, 0.5), (-2.8, 0.2, 0.5), (-2.8, 0.2, -0.5), (-3.5, 0.9, -0.5)]
+        normal3f[] normals = [(0.7071068, 0.7071068, 0), (0.7071068, 0.7071068, 0), (0.7071068, 0.7071068, 0), (0.7071068, 0.7071068, 0)] (interpolation = "vertex")
+        float3[] extent = [(-3.5, 0.2, -0.5), (-2.8, 0.9, 0.5)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </Looks/emissive>
+    }
+    def Mesh "wall" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        # Shadows the floor behind it (x > 2.2, |z| < 0.5) from the light.
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(2.2, 0, 0.5), (2.2, 0, -0.5), (2.2, 1.5, -0.5), (2.2, 1.5, 0.5)]
+        normal3f[] normals = [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 0, 0)] (interpolation = "vertex")
+        float3[] extent = [(2.2, 0, -0.5), (2.2, 1.5, 0.5)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/white>
+    }
+    def Mesh "farwall" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(4.5, 0, 6), (4.5, 0, -6), (4.5, 3, -6), (4.5, 3, 6)]
+        normal3f[] normals = [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 0, 0)] (interpolation = "vertex")
+        float3[] extent = [(4.5, 0, -6), (4.5, 3, 6)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        rel material:binding = </Looks/white>
+    }
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 100
+        float verticalAperture = 50
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 10, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+    def SphereLight "key"
+    {
+        float inputs:intensity = 100
+        float inputs:radius = 0.05
+        bool inputs:normalize = 1
+        double3 xformOp:translate = (1.5, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Looks"
+{
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </Looks/grey/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+    def Material "white"
+    {
+        token outputs:mtlx:surface.connect = </Looks/white/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.8, 0.8, 0.8)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+    def Material "emissive"
+    {
+        token outputs:mtlx:surface.connect = </Looks/emissive/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:emission = 1
+            color3f inputs:emission_color = (20, 20, 20)
+            token outputs:out
+        }
+    }
+}

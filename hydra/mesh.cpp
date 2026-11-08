@@ -40,6 +40,7 @@ TF_REGISTRY_FUNCTION(TfDebug) {
     TF_DEBUG_ENVIRONMENT_SYMBOL(HDNOVA_AOV, "Nova: the AOV bindings the host asks for and what they resolve to");
     TF_DEBUG_ENVIRONMENT_SYMBOL(HDNOVA_VOLUME, "Nova: volume fields loaded and volumes built");
     TF_DEBUG_ENVIRONMENT_SYMBOL(HDNOVA_SSS, "Nova: subsurface walks run and killed at the segment cap");
+    TF_DEBUG_ENVIRONMENT_SYMBOL(HDNOVA_SETTINGS, "Nova: the render settings the host sets");
 }
 
 TF_DEFINE_PRIVATE_TOKENS(_meshTokens, ((subdivLevel, "nova:subdivLevel"))((diffuseLimit, "nova:object:diffuseLimit"))
@@ -424,13 +425,13 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
 
     // Positions at uniform shutter steps (one step if they do not move).
     std::vector<VtVec3fArray> pointSteps;
-    const bool sampled = HdNovaSampleVec3fArray(sd, id, HdTokens->points, param.GetShutter(),
+    const bool sampled = HdNovaSampleVec3fArray(sd, id, HdTokens->points, _shutter,
                                                 param.GetMaxMotionSteps(), &pointSteps);
     // Over a blurred shutter _GeometryUnchanged() also compares the motion.
     _srcMotionHash = 0;
-    if (param.GetShutter().IsBlurred()) {
+    if (_shutter.IsBlurred()) {
         std::vector<VtVec3fArray> normalSteps;
-        HdNovaSampleVec3fArray(sd, id, HdTokens->normals, param.GetShutter(), param.GetMaxMotionSteps(),
+        HdNovaSampleVec3fArray(sd, id, HdTokens->normals, _shutter, param.GetMaxMotionSteps(),
                                &normalSteps);
         _srcMotionHash = motionHash(pointSteps, normalSteps);
     }
@@ -454,7 +455,7 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
     // control mesh below is the hull and the fallback.
     if (subdivLevel > 0 && _BuildSubdivMesh(sd, pointSteps, subdivLevel, subdivRate, desc))
         return true;
-    const HdNovaShutter shutter = param.GetShutter();
+    const HdNovaShutter shutter = _shutter;
     const unsigned maxSteps = param.GetMaxMotionSteps();
 
     // Triangulation follows the topology's orientation, so the triangle
@@ -652,7 +653,7 @@ bool HdNovaMesh::_BuildDisplacedMesh(HdSceneDelegate *sd, HdNovaRenderParam &par
     // the triangle budget.
     const nova::DicingView view = param.GetDicingView();
     std::vector<GfMatrix4d> xfSteps;
-    HdNovaSampleTransform(sd, id, param.GetShutter(), param.GetMaxMotionSteps(), &xfSteps);
+    HdNovaSampleTransform(sd, id, _shutter, param.GetMaxMotionSteps(), &xfSteps);
     const GfMatrix4d xf = xfSteps.empty() ? sd->GetTransform(id) : xfSteps.front(); // shutter open (Karma)
     std::vector<nova::Vec3f> world(pointSteps[0].size());
     nova::Vec3f lo{1e30f, 1e30f, 1e30f}, hi{-1e30f, -1e30f, -1e30f};
@@ -838,48 +839,42 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
             if (v.IsHolding<int>())
                 _primSubdivLevel = v.UncheckedGet<int>();
         }
-        // Per-object ray limits (constant primvars; Karma's pattern).
-        _rayLimits = nova::RayLimitOverrides{};
-        const TfToken limits[nova::kLimitClasses] = {_meshTokens->diffuseLimit, _meshTokens->reflectLimit,
-                                                     _meshTokens->refractLimit, _meshTokens->sssLimit,
-                                                     _meshTokens->volumeLimit};
-        for (int k = 0; k < nova::kLimitClasses; ++k)
-            if (findPrimvar(sd, id, limits[k], interp) && interp == HdInterpolationConstant) {
-                const VtValue v = VtValue::Cast<float>(sd->Get(id, limits[k]));
-                if (v.IsHolding<float>() && std::isfinite(v.UncheckedGet<float>()))
-                    _rayLimits.limit[k] = std::max(v.UncheckedGet<float>(), 0.0f);
-            }
-        if (findPrimvar(sd, id, _meshTokens->thinWallAtRefractLimit, interp) && interp == HdInterpolationConstant) {
-            const VtValue v = VtValue::Cast<bool>(sd->Get(id, _meshTokens->thinWallAtRefractLimit));
-            if (v.IsHolding<bool>())
-                _rayLimits.thinWallAtRefractLimit = v.UncheckedGet<bool>() ? 1 : 0;
-        }
-        if (findPrimvar(sd, id, _meshTokens->fakeCaustics, interp) && interp == HdInterpolationConstant) {
-            const VtValue v = VtValue::Cast<bool>(sd->Get(id, _meshTokens->fakeCaustics));
-            if (v.IsHolding<bool>())
-                _rayLimits.fakeCaustics = v.UncheckedGet<bool>() ? 1 : 0;
-        }
+        // Per-object ray limits and shading properties (constant primvars;
+        // Karma's pattern, Karma's names as fallbacks: docs/design/M11-P1.md).
+        _rayLimits = HdNovaObjectOverrides(sd, id);
+        const HdNovaObjectDefaults defaults = param->GetObjectDefaults();
         _lpeTag = HdNovaObjectLpeTag(sd, id); // light path expressions
-        _lightSource = HdNovaMeshLightSource(sd, id); // emissive meshes as lights (M9 D14)
+        _lightSource = HdNovaMeshLightSource(sd, id, defaults); // emissive meshes as lights (M9 D14)
         _visibility = HdNovaObjectVisibility(sd, id); // ray visibility and holdouts (M11 P2)
-        // Displacement dicing (M4.6).
-        _dicingQuality = 0.5f;
-        _dicingDepth = -1;
-        _displacementEnabled = true;
-        if (findPrimvar(sd, id, _meshTokens->dicingQuality, interp) && interp == HdInterpolationConstant) {
-            const VtValue v = VtValue::Cast<float>(sd->Get(id, _meshTokens->dicingQuality));
-            if (v.IsHolding<float>() && std::isfinite(v.UncheckedGet<float>()) && v.UncheckedGet<float>() > 0.0f)
-                _dicingQuality = v.UncheckedGet<float>();
+        // Displacement dicing (M4.6): Nova's primvars, Karma's
+        // (dicingquality, dicingdepthmin = max, truedisplace), the render
+        // settings' Karma values.
+        static const TfToken karmaQuality("karma:object:dicingquality"), karmaDepthMin("karma:object:dicingdepthmin"),
+            karmaDepthMax("karma:object:dicingdepthmax"), karmaDisplace("karma:object:truedisplace");
+        _dicingQuality = defaults.dicingQuality > 0.0f ? defaults.dicingQuality : 0.5f;
+        _dicingDepth = defaults.dicingDepth >= -1 ? defaults.dicingDepth : -1;
+        _displacementEnabled = defaults.displacement != 0;
+        std::optional<double> quality = HdNovaNumber(HdNovaConstantPrimvar(sd, id, _meshTokens->dicingQuality));
+        if (!quality)
+            quality = HdNovaNumber(HdNovaConstantPrimvar(sd, id, karmaQuality));
+        if (quality && *quality > 0.0)
+            _dicingQuality = float(*quality);
+        if (const auto depth = HdNovaNumber(HdNovaConstantPrimvar(sd, id, _meshTokens->dicingDepth))) {
+            _dicingDepth = int(std::lround(*depth));
+        } else {
+            const auto dmin = HdNovaNumber(HdNovaConstantPrimvar(sd, id, karmaDepthMin));
+            const auto dmax = HdNovaNumber(HdNovaConstantPrimvar(sd, id, karmaDepthMax));
+            if (dmin && dmax && std::lround(*dmin) == std::lround(*dmax))
+                _dicingDepth = int(std::clamp(std::lround(*dmin), -1l, 10l));
         }
-        if (findPrimvar(sd, id, _meshTokens->dicingDepth, interp) && interp == HdInterpolationConstant) {
-            const VtValue v = VtValue::Cast<int>(sd->Get(id, _meshTokens->dicingDepth));
-            if (v.IsHolding<int>())
-                _dicingDepth = v.UncheckedGet<int>();
-        }
-        if (findPrimvar(sd, id, _meshTokens->displacement, interp) && interp == HdInterpolationConstant) {
-            const VtValue v = VtValue::Cast<bool>(sd->Get(id, _meshTokens->displacement));
-            if (v.IsHolding<bool>())
-                _displacementEnabled = v.UncheckedGet<bool>();
+        if (const auto on = HdNovaFlag(HdNovaConstantPrimvar(sd, id, _meshTokens->displacement))) {
+            _displacementEnabled = *on;
+        } else {
+            const int mode = HdNovaMenuIndex(HdNovaConstantPrimvar(sd, id, karmaDisplace),
+                                             {"Displacement as Bump", "True Displacement", "Disable Displacement Shader",
+                                              "Bump Added to Displacement"});
+            if (mode >= 0)
+                _displacementEnabled = mode != 2;
         }
     }
     const bool limitsDirty = first || !(_rayLimits == _appliedRayLimits);
@@ -894,10 +889,12 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     // (locked per instancer, a no-op when clean) before reading from it.
     HdInstancer::_SyncInstancerAndParents(sd->GetRenderIndex(), GetInstancerId());
 
-    // Motion is sampled over the render camera's shutter; a new shutter
-    // resamples everything (the render pass dirties the prims for it).
-    const HdNovaShutter shutter = param->GetShutter();
+    // Motion is sampled over the render camera's shutter (the frame alone
+    // with Karma's per-object motion blur off); a new shutter resamples
+    // everything (the render pass dirties the prims for it).
+    const HdNovaShutter shutter = HdNovaObjectShutter(sd, id, *param);
     const unsigned maxSteps = param->GetMaxMotionSteps();
+    _shutter = shutter; // the build helpers' (_BuildMesh)
     const bool newShutter = !(shutter == _sampledShutter) || maxSteps != _sampledMaxSteps;
 
     // A medium bounded by the mesh (docs/design/M11-P5.md): its inside is a
@@ -989,9 +986,12 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     if (geometryDirty && !first && !newShutter && !subdivChanged && !topologyChanged && !displacementChanged &&
         _GeometryUnchanged(sd, shutter, maxSteps))
         geometryDirty = false;
+    // A new shutter resamples the transforms too (Karma's per-object motion
+    // blur arrives as a primvar change).
     const bool instancesDirty =
-        first || (bits & (HdChangeTracker::DirtyTransform | HdChangeTracker::DirtyInstancer |
-                          HdChangeTracker::DirtyInstanceIndex));
+        first || newShutter ||
+        (bits & (HdChangeTracker::DirtyTransform | HdChangeTracker::DirtyInstancer |
+                 HdChangeTracker::DirtyInstanceIndex));
     const bool visibilityDirty = bits & HdChangeTracker::DirtyVisibility;
     const bool primIdDirty = bits & HdChangeTracker::DirtyPrimID;
     // A GeomSubset rebind arrives as topology dirtiness without a topology change.

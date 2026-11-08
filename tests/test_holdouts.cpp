@@ -441,18 +441,26 @@ TEST_CASE("Background holdouts do not shadow background points (bgoccludeshadow)
     };
     const std::vector<std::string> lpes = {"holdouts;shadow;CDL"};
     const Region both{0.6f, 1.6f, 0.15f}, wallOnly{1.6f, 1.6f, 0.15f}, ballOnly{-0.5f, 1.6f, 0.15f};
-    Ground off;
-    scene(off);
-    const Result a = render(off.scene, lpes);
-    CHECK_THAT(shadowValue(a, 0, both), WithinAbs(1.0, 1e-6));
-    CHECK_THAT(shadowValue(a, 0, wallOnly), WithinAbs(0.0, 1e-6));
-    CHECK_THAT(shadowValue(a, 0, ballOnly), WithinAbs(1.0, 1e-6));
-    Ground on;
-    scene(on);
-    const Result b = render(on.scene, lpes, RenderDevice::Cpu, 1, {}, true);
-    CHECK_THAT(shadowValue(b, 0, both), WithinAbs(0.0, 1e-6));
-    CHECK_THAT(shadowValue(b, 0, wallOnly), WithinAbs(0.0, 1e-6));
-    CHECK_THAT(shadowValue(b, 0, ballOnly), WithinAbs(1.0, 1e-6));
+    // Also with every object fake-caustic (Karma scenes' default,
+    // docs/design/M11-P1.md): the ball then shadows in phase 2 and the wall
+    // is skipped by phase 1, and the probe must see both cases.
+    for (bool fake : {false, true}) {
+        INFO("fake caustics " << fake);
+        Ground off;
+        scene(off);
+        off.scene.setDefaultFakeCaustics(fake);
+        const Result a = render(off.scene, lpes);
+        CHECK_THAT(shadowValue(a, 0, both), WithinAbs(1.0, 1e-6));
+        CHECK_THAT(shadowValue(a, 0, wallOnly), WithinAbs(0.0, 1e-6));
+        CHECK_THAT(shadowValue(a, 0, ballOnly), WithinAbs(1.0, 1e-6));
+        Ground on;
+        scene(on);
+        on.scene.setDefaultFakeCaustics(fake);
+        const Result b = render(on.scene, lpes, RenderDevice::Cpu, 1, {}, true);
+        CHECK_THAT(shadowValue(b, 0, both), WithinAbs(0.0, 1e-6));
+        CHECK_THAT(shadowValue(b, 0, wallOnly), WithinAbs(0.0, 1e-6));
+        CHECK_THAT(shadowValue(b, 0, ballOnly), WithinAbs(1.0, 1e-6));
+    }
 }
 
 TEST_CASE("XPU holdouts and ray visibility", "[gpu][render][holdout]") {
@@ -503,6 +511,15 @@ TEST_CASE("XPU holdouts and ray visibility", "[gpu][render][holdout]") {
     compare(
         "bgoccludeshadow",
         [](Ground &g) {
+            g.scene.setMeshVisibility(g.ground, holdout(HoldoutMode::Background));
+            const MeshId wall = addMesh(g.scene, quad({0.2f, 0.8f, 0.0f}, {1.8f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.5f}), g.grey);
+            g.scene.setMeshVisibility(wall, holdout(HoldoutMode::Background));
+        },
+        true);
+    compare(
+        "bgoccludeshadow, fake caustics",
+        [](Ground &g) {
+            g.scene.setDefaultFakeCaustics(true);
             g.scene.setMeshVisibility(g.ground, holdout(HoldoutMode::Background));
             const MeshId wall = addMesh(g.scene, quad({0.2f, 0.8f, 0.0f}, {1.8f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.5f}), g.grey);
             g.scene.setMeshVisibility(wall, holdout(HoldoutMode::Background));

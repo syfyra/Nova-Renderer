@@ -20,6 +20,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -68,6 +69,10 @@ PXR_NAMESPACE_OPEN_SCOPE
     ((volumeLimit, "nova:object:volumeLimit"))    \
     ((thinWallAtRefractLimit, "nova:object:thinWallAtRefractLimit")) \
     ((fakeCaustics, "nova:object:fakeCaustics"))  \
+    ((internalReflection, "nova:object:internalReflection")) \
+    ((causticsRoughnessClamp, "nova:object:causticsRoughnessClamp")) \
+    ((constrainRoughness, "nova:constrainRoughness")) \
+    ((clampDirect, "nova:clampDirect"))           \
     (mis)                                         \
     (light)                                       \
     (bsdf)                                        \
@@ -144,8 +149,26 @@ public:
     std::mutex &GetControlMutex() { return _controlMutex; }
     bool IsStoppedByHost() const { return _stoppedByHost; }
 
+    // Whether the host set a render setting (the settings map handed to the
+    // constructor or SetRenderSetting), as opposed to the descriptor's
+    // default Hydra fills in: Nova's settings win over Karma's only when
+    // authored (docs/design/M11-P1.md).
+    bool IsSettingAuthored(TfToken const &key) const;
+    // The setting's value if authored, else empty.
+    VtValue GetAuthoredSetting(TfToken const &key) const;
+    // The render settings come from Karma's render settings (some
+    // karma:global:* value is authored): Karma's own defaults stand in for
+    // the Karma properties that are not authored.
+    bool HasKarmaSettings() const;
+
     // Called by the render pass (Hydra's sync thread).
     nova::RenderSettings GetNovaSettings() const;
+    // Per-object properties of the render settings, the defaults of prims
+    // that author none (Karma's karma:object:* values, docs/design/M11-P1.md).
+    HdNovaObjectDefaults GetObjectDefaults() const;
+    // Depth of field allowed (USD's disableDepthOfField and Karma's
+    // karma:global:enable_dof).
+    bool IsDepthOfFieldEnabled() const;
     // Upper bound for motion steps per prim (nova:maxMotionSteps).
     unsigned GetMaxMotionSteps() const;
     // Velocity blur of objects that set nothing themselves (docs/design/M8.md
@@ -156,9 +179,13 @@ public:
     // and nova:subdivMaxTriangles (per mesh).
     int GetSubdivLevel() const;
     uint64_t GetSubdivMaxTriangles() const;
-    // Displacement dicing (M4.6): nova:dicingQualityScale, nova:offscreenQuality.
+    // Displacement dicing (M4.6): nova:dicingQualityScale, nova:offscreenQuality
+    // (Karma's dicingqualityscale and offscreenquality as fallbacks).
     float GetDicingQualityScale() const;
     float GetOffscreenQuality() const;
+    // The viewport's proxy passes (nova:iprProxyDepth, else Karma's
+    // ipr_proxydepth).
+    int GetIprProxyDepth() const;
     // Surface texture settings (nova:texture*, nova:abortOnMissingTexture).
     HdNovaTextureOptions GetTextureOptions() const;
     // The light path expression program of the bindings' LPE AOVs (null:
@@ -212,7 +239,18 @@ private:
     static std::atomic_int _counterResourceRegistry;
     static HdResourceRegistrySharedPtr _resourceRegistry;
 
+    // Karma render settings Nova does not honour and that change the image
+    // (once per delegate, i.e. per stage render; docs/design/M11-P1.md).
+    void _WarnUnsupportedKarmaSettings() const;
+    double _NumberSetting(TfToken const &nova, TfToken const &karma, double fallback, double karmaScale = 1.0) const;
+
     nova::RenderDevice _device; // the plugin's (nova:device's default)
+    // The keys the host set (IsSettingAuthored); SetRenderSetting runs on
+    // the main thread, the readers on Hydra's sync thread.
+    mutable std::mutex _authoredMutex;
+    std::unordered_set<TfToken, TfToken::HashFunctor> _authored;
+    mutable std::mutex _warnMutex;
+    mutable std::set<std::string> _warnedKarma; // karma properties warned about
     nova::Scene _scene;
     nova::Renderer _renderer;
     mutable HdRenderThread _renderThread; // IsRendering() is non-const

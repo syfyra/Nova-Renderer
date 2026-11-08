@@ -34,10 +34,13 @@ NOVA_INLINE bool visibleTo(uint8_t mask, uint8_t rayClass) { return ((mask >> ra
 // and, on shadow rays, flags for the hit filter: the ray leaves a
 // background-holdout point, so other background holdouts do not shadow it
 // (Karma's default), or it probes for background holdouts alone (Karma's
-// bgoccludeshadow: a point they occlude keeps its light).
+// bgoccludeshadow: a point they occlude keeps its light). The probe marks the
+// rays it found a background holdout on (kRayBackgroundLit): they keep their
+// light, neither occluded nor tinted by fake-caustic objects.
 constexpr uint8_t kRayClassBits = 0x0F;
 constexpr uint8_t kRayFromBackground = 0x80;
 constexpr uint8_t kRayProbeBackground = 0x40;
+constexpr uint8_t kRayBackgroundLit = 0x20;
 
 // Karma's holdout modes (primvars:karma:object:holdoutmode).
 enum class HoldoutMode : uint8_t {
