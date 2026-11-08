@@ -133,8 +133,10 @@ bool Scene::OpacityFilter::accept(const HitCandidate &c, const RayBatch &rays) c
     }
     // Fake caustics: shadow rays ignore the object here and multiply its
     // transmittance afterwards (docs/design/M4.md 3.3); ambient occlusion
-    // has no such phase, the object blocks it by its opacity.
-    if (c.occlusion && rays.skipFakeCaustics && mesh.fakeCaustics)
+    // has no such phase, the object blocks it by its opacity. The
+    // bgoccludeshadow probe sees background holdouts whatever their caustics
+    // (Karma scenes default to fake caustics, docs/design/M11-P1.md).
+    if (c.occlusion && rays.skipFakeCaustics && mesh.fakeCaustics && !(raw & kRayProbeBackground))
         return false;
     // Shadow linking (M9 D15): only the objects in the light's shadow set block it.
     if (c.occlusion && rays.shadowCategory && rays.shadowCategory[c.ray] != 0xFFFFu &&
@@ -205,7 +207,8 @@ void Scene::updateFilterFlags(bool &geometryChanged) {
             for (MaterialId m : rec.materialSlots)
                 want |= material(m).hasOpacity;
         }
-        rec.fakeCaustics = rec.rayLimits.fakeCaustics >= 0 ? rec.rayLimits.fakeCaustics != 0 : m_defaultFakeCaustics;
+        rec.shading = resolveObjectShading(m_objectDefaults, rec.rayLimits);
+        rec.fakeCaustics = rec.shading.fakeCaustics;
         want |= rec.fakeCaustics || m_shadowLinking;
         m_anyFakeCaustics |= rec.fakeCaustics;
         if (want != rec.filtered) {
@@ -416,11 +419,19 @@ void Scene::setMeshLpeTag(MeshId id, const std::string &tag) {
     ++m_version;
 }
 
+void Scene::setObjectDefaults(const RayLimits &defaults) {
+    std::lock_guard lock(m_mutex);
+    if (m_objectDefaults == defaults)
+        return;
+    m_objectDefaults = defaults;
+    ++m_version;
+}
+
 void Scene::setDefaultFakeCaustics(bool on) {
     std::lock_guard lock(m_mutex);
-    if (m_defaultFakeCaustics == on)
+    if (m_objectDefaults.fakeCaustics == on)
         return;
-    m_defaultFakeCaustics = on;
+    m_objectDefaults.fakeCaustics = on;
     ++m_version;
 }
 

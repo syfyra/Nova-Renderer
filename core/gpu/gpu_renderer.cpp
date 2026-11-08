@@ -587,6 +587,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
         g.bindings = put(bindings);
         g.shadowMasks = put(rec.shadowMasks);
         g.fakeCaustics = uint8_t(rec.fakeCaustics);
+        g.shading = rec.shading;
         g.visibility = rec.visibility;
         g.holdout = uint8_t(rec.holdout);
         g.emitterOf = put(rec.emitterOf);
@@ -892,6 +893,7 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.limitDither, paths);
     field(w.lightOnly, paths);
     field(w.afterDiffuse, paths);
+    field(w.pathAlpha, paths);
     field(w.holdout, paths);
     field(w.coneWidth, paths);
     field(w.coneSpread, paths);
@@ -1153,6 +1155,9 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     gs.maxDepth = settings.maxDepth;
     gs.rrStartDepth = settings.rrStartDepth;
     gs.clampIndirect = settings.clampIndirect;
+    gs.clampDirect = settings.clampDirect;
+    gs.clampEmissionIndirect = uint8_t(settings.clampEmissionIndirect);
+    gs.constrainRoughness = uint8_t(settings.constrainRoughness);
     gs.lightStrategy = settings.lightStrategy;
     gs.limits = settings.limits;
     gs.globals = shadeGlobals(settings, camera); // the frame, and the camera for NDC positions
@@ -1352,11 +1357,13 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             if (!m_accel.launch(Raygen::Occluded, occluded, shadows))
                 return false;
             if (m_scene->backgroundOccludesShadows() && m_scene->anyBackground() && shadows > 0) {
-                // Karma's bgoccludeshadow (holdout.h): the occluded rays from
-                // background points that a background holdout occludes.
+                // Karma's bgoccludeshadow (holdout.h): the rays from
+                // background points that a background holdout occludes keep
+                // their light (kRayBackgroundLit: fake caustics skip them).
                 TraceParams probe = occluded;
                 probe.category = nullptr;
                 probe.probeBackground = 1;
+                probe.backgroundLit = m_wave.shadow.rayType;
                 if (!m_accel.launch(Raygen::Occluded, probe, shadows))
                     return false;
                 rays += shadows;

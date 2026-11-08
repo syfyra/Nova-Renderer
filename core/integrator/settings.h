@@ -42,6 +42,17 @@ struct RenderSettings {
     bool backgroundOccludesShadows = false;
     uint32_t rrStartDepth = 3;    // Russian roulette starts at this depth
     float clampIndirect = 10.0f;  // firefly clamp for indirect light (0 = off)
+    // Karma's colour limits (docs/design/M11-P1.md, measured): clampDirect
+    // limits what the camera sees directly (emission, lights) and the light
+    // gathered at the first hit (light samples, BSDF rays reaching lights);
+    // with clampEmissionIndirect, emission of objects that are not lights
+    // found by the first hit's BSDF ray counts as indirect (Karma), else as
+    // direct. 0: off (Nova's default: no direct clamp).
+    float clampDirect = 0.0f;
+    bool clampEmissionIndirect = false;
+    // Karma's constrainmaxrough: a glossy lobe is at least as rough as the
+    // roughest glossy event before it on the path.
+    bool constrainRoughness = false;
     uint32_t seed = 0;
     PixelFilterType pixelFilter = PixelFilterType::Gaussian;
     float pixelFilterScale = 1.0f; // multiplies the filter's base size (0 = point sampling)

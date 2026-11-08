@@ -81,6 +81,7 @@ void WaveQueues::reserve(uint32_t paths) {
         limitDither.resize(paths);
         lightOnly.resize(paths);
         afterDiffuse.resize(paths);
+        pathAlpha.resize(paths);
         holdout.resize(paths);
         prevP.resize(paths);
         prevN.resize(paths);
@@ -533,6 +534,7 @@ void generateCameraRays(const Camera &camera, const PixelFilter &filter, uint32_
             q.limitDither[slot] = sampler.get1D(stream::kLimit);
             q.lightOnly[slot] = 0;
             q.afterDiffuse[slot] = 0;
+            q.pathAlpha[slot] = 0.0f;
             q.holdout[slot] = 0;
             // No MIS vertex yet (path.h, kPrevSetDelta): the queues are reused
             // across tiles, so the slot's earlier path must not leak in.
@@ -575,10 +577,14 @@ struct ShadeContext {
     uint32_t shadowDomeCount;
     float tolerance;
     uint32_t depth;
-    // The firefly clamp only applies to indirect light: rays that reach a
-    // light after two or more scattering events, light samples from the
-    // second event on.
-    float clampEscape;
+    // The firefly clamps (RenderSettings::clampIndirect, clampDirect; docs/
+    // design/M11-P1.md): lights reached by rays (and emitters treated as
+    // lights) take the indirect clamp after two or more scattering events,
+    // the direct one before; emission of other objects likewise, or with
+    // clampEmissionIndirect (Karma) already after one; light samples the
+    // indirect clamp from the second event on.
+    float clampLight;
+    float clampEmission;
     float clampNee;
     const LpeView *lpe; // null: no light path expressions
     Film &film;
@@ -1068,7 +1074,7 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
         // events (seen from the camera they count for every output).
         const lpe::State state = lpe ? q.lpeState[p] : lpe::State(0);
         if (!isBlack(gather.objectSum)) {
-            const Spectrum contribution = clampContribution(q.beta[p] * gather.objectSum, c.clampEscape);
+            const Spectrum contribution = clampContribution(q.beta[p] * gather.objectSum, c.clampEmission);
             addRadiance(q, p, contribution);
             if (state)
                 lpeDepositAll(*lpe, c.film, q.pixel[p], lpeStep(*lpe, state, lpe::TypeObject, lpe::ScatterNone, 0, 0),
@@ -1076,7 +1082,7 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
         }
         for (const EmissionGather *g : {&gather, &lightGather})
             for (int s = 0; s < g->lightCount; ++s) {
-                const Spectrum contribution = clampContribution(q.beta[p] * g->lightSum[s], c.clampEscape);
+                const Spectrum contribution = clampContribution(q.beta[p] * g->lightSum[s], c.clampLight);
                 addRadiance(q, p, contribution);
                 if (!state)
                     continue;
@@ -1166,7 +1172,7 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 if (cameraAreaLight(c.lights, c.lightCount, q.rays.org[k], dir,
                                     event ? q.volumeT[k] : miss ? q.rays.tMax[k] : q.hitT[k], surface, extent, Le,
                                     light)) {
-                    const Spectrum contribution = betaIn * Le * atten.ofLight(light);
+                    const Spectrum contribution = clampContribution(betaIn * Le * atten.ofLight(light), c.clampLight);
                     addRadiance(q, p, contribution);
                     if (state)
                         lpeDepositAll(*lpe, film, q.pixel[p], lpeLightStep(*lpe, state, light), contribution);
@@ -1201,7 +1207,7 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 const Spectrum beta = q.beta[p];
                 const Spectrum Le = state ? cameraEnvironmentLpe(c, q, p, state, q.rays.org[k], dir, visible)
                                           : cameraEnvironment(c.lights, c.lightCount, q.rays.org[k], dir, visible);
-                addRadiance(q, p, beta * Le);
+                addRadiance(q, p, clampContribution(beta * Le, c.clampLight));
                 film.alphaSum[q.pixel[p]] += visible ? 1.0f : q.media ? volumeAlpha() : 0.0f;
                 continue;
             }
@@ -1247,7 +1253,7 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                                                q.diffuseShare[p], NoLightSink{}, atten);
                 if (!isBlack(Le)) {
                     const Spectrum contribution = betaIn * Le;
-                    const float scale = clampScale(contribution, c.clampEscape);
+                    const float scale = clampScale(contribution, c.clampLight);
                     addRadiance(q, p, contribution * scale);
                     if (state)
                         lpeDepositParts(*lpe, film, q, q.pixel[p], betaIn * scale);
@@ -1261,7 +1267,7 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                                           : escapedRadiance(c.lights, pathPmf(c, q, p), c.lightCount, dir, site,
                                                             q.bsdfPdf[p], c.settings.lightStrategy, q.diffuseShare[p]);
                 const Spectrum contribution = beta * Le;
-                const float scale = clampScale(contribution, c.clampEscape);
+                const float scale = clampScale(contribution, c.clampLight);
                 addRadiance(q, p, contribution * scale);
                 if (state)
                     lpeDepositParts(*lpe, film, q, q.pixel[p], beta * scale);
@@ -1545,7 +1551,7 @@ void shadePrelit(const ShadeContext &c, WaveQueues &q, uint32_t k, const Surface
             out = {d, kInf, uint16_t(0xFFFFu), isBlack(L)};
             return luminance(evalClosure(cl, wo, d).fcosDiffuse * (L + illum)) / pdf;
         });
-        const Spectrum value = clampContribution(q.beta[p] * albedo, c.clampEscape);
+        const Spectrum value = clampContribution(q.beta[p] * albedo, c.clampEmission);
         const lpe::State emitted = state ? lpeStep(*lpe, state, lpe::TypeObject, lpe::ScatterNone, tag, 0) : state;
         if (pick.found && pick.ray.visible) { // an illumbackground light: no shadow
             addRadiance(q, p, value);
@@ -1672,13 +1678,26 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
         } else {
             buildSurfaceClosure(inputs, hit, wo, c.closures, cl);
         }
+        // The object's shading properties (docs/design/M11-P1.md): no
+        // reflection inside refracting surfaces, glossy roughness at least
+        // the path's (constrainRoughness) or, on true-caustic paths after a
+        // diffuse event, the caustics clamp.
+        const ObjectShading &shading = c.scene.meshRecord(hit.mesh).shading;
+        if (!ext) {
+            if (!shading.internalReflection)
+                dropInternalReflection(cl, wo);
+            float minAlpha = c.settings.constrainRoughness ? q.pathAlpha[p] : 0.0f;
+            if (q.afterDiffuse[p] && !shading.fakeCaustics && shading.causticsRoughnessClamp > 0.0f)
+                minAlpha = nova::fmax(minAlpha, sqr(nova::fmin(shading.causticsRoughnessClamp, 1.0f)));
+            clampLobeRoughness(cl, minAlpha);
+        }
         // Fake caustics after a diffuse event (docs/design/M4.md 3.3): glossy
         // lobes are skipped, transmission becomes a straight pass-through with
         // the shadow rays' transmittance, so NEE through the object and BSDF
         // paths through it weigh the same.
         Spectrum fakeT{0.0f, 0.0f, 0.0f};
         // (External closures have no transmittance: opaque to fake caustics, D13.)
-        const bool fake = !ext && q.afterDiffuse[p] && c.scene.meshRecord(hit.mesh).fakeCaustics;
+        const bool fake = !ext && q.afterDiffuse[p] && shading.fakeCaustics;
         const LpeView *lpe = c.lpe;
         const lpe::State state = lpe ? q.lpeState[p] : lpe::State(0);
         const uint32_t tag = state ? lpe->objectTag(hit.mesh, c.scene.materialIdOf(hit.mesh, hit.prim)) : 0u;
@@ -1705,7 +1724,8 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                                            : 0.0f;
                 Le *= lightMultiplier(light, q.diffuseShare[p]) * bsdfSampleWeight(strategy, bsdfPdf, lightPdf);
             }
-            const Spectrum contribution = clampContribution(q.beta[p] * Le, c.clampEscape);
+            const Spectrum contribution =
+                clampContribution(q.beta[p] * Le, emitter != kInvalidId ? c.clampLight : c.clampEmission);
             addRadiance(q, p, contribution);
             // A treated emitter reached past the camera is MIS-weighted
             // against its light samples, whose weight-1 parts already feed
@@ -1732,7 +1752,7 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
         const bool backgroundPoint = holdout == HoldoutMode::Background && c.depth == 0;
 
         if (fake) {
-            fakeT = closureTransmittance(cl, wo, *c.closures.tables);
+            fakeT = fakeCausticFactor(cl, wo, shading, *c.closures.tables);
             if (q.lightOnly[p]) {
                 // A light-only ray: through, still gathering lights only.
                 if (!isBlack(fakeT)) {
@@ -1860,6 +1880,8 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                                    (dot(wo, hit.Ng) > 0.0f ? s.transmit : !s.transmit);
             if (s.rayClass == RayClass::Diffuse || s.rayClass == RayClass::Sss)
                 q.afterDiffuse[p] = 1;
+            if (c.settings.constrainRoughness && s.lobe >= 0)
+                q.pathAlpha[p] = nova::fmax(q.pathAlpha[p], glossyAlpha(cl.lobe[s.lobe]));
             // Ray limits: within the limit of the event's class a full ray;
             // past it a light-only ray, or for refraction with thin walls a
             // straight pass-through up to twice the limit (Karma).
@@ -2290,8 +2312,10 @@ void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t 
                          uint32_t(scene.shadowLinkedDomes().size()),
                          scene.intersectionTolerance(),
                          depth,
-                         depth > 1 ? settings.clampIndirect : 0.0f,
-                         depth > 0 ? settings.clampIndirect : 0.0f,
+                         depth > 1 ? settings.clampIndirect : settings.clampDirect,
+                         depth > 1 || (depth == 1 && settings.clampEmissionIndirect) ? settings.clampIndirect
+                                                                                      : settings.clampDirect,
+                         depth > 0 ? settings.clampIndirect : settings.clampDirect,
                          lpe,
                          film,
                          ao,
@@ -2353,7 +2377,7 @@ Spectrum fakeCausticTransmittance(const Scene &scene, const ClosureContext &ctx,
                                   globals, HitTextureData{}, HitRayData{&type, depth});
             ClosureList cl;
             buildSurfaceClosure(*inputs, hit, -dir, ctx, cl);
-            T *= closureTransmittance(cl, -dir, *ctx.tables);
+            T *= fakeCausticFactor(cl, -dir, scene.meshRecord(mesh).shading, *ctx.tables);
             if (isBlack(T))
                 return T;
         }
@@ -2426,9 +2450,12 @@ void emitterShadowRadiance(const Scene &scene, const RenderSettings &settings, c
     }
 }
 
-// Karma's bgoccludeshadow (core/integrator/holdout.h): an occluded shadow ray
-// from a background point that a background holdout occludes counts as
-// unoccluded (the plate shows that shadow already). Returns the rays traced.
+// Karma's bgoccludeshadow (core/integrator/holdout.h): a shadow ray from a
+// background point that a background holdout occludes keeps its light (the
+// plate shows that shadow already): unoccluded, and marked
+// kRayBackgroundLit so that fake-caustic objects (phase 2) do not shadow it
+// either. Every such ray is probed, since phase 1 skips fake-caustic
+// blockers. Returns the rays traced.
 uint32_t probeBackgroundOccluders(const Scene &scene, ShadowQueue &s, uint32_t depth, const ShadeGlobals &globals) {
     thread_local RayQueue probe;
     thread_local std::vector<uint32_t> index;
@@ -2436,7 +2463,7 @@ uint32_t probeBackgroundOccluders(const Scene &scene, ShadowQueue &s, uint32_t d
     probe.reserve(s.rays.size);
     index.clear();
     for (uint32_t i = 0; i < s.rays.size; ++i) {
-        if (!s.occluded[i] || !(s.rays.rayType[i] & kRayFromBackground))
+        if (!(s.rays.rayType[i] & kRayFromBackground))
             continue;
         probe.push(s.rays.org[i], s.rays.dir[i], s.rays.tMax[i], i, s.rays.time[i], s.rays.filterSeed[i],
                    RayClass::Shadow);
@@ -2448,8 +2475,10 @@ uint32_t probeBackgroundOccluders(const Scene &scene, ShadowQueue &s, uint32_t d
     hit.resize(probe.size);
     scene.accel().occluded(probe.batch(depth, &globals), hit.data());
     for (uint32_t j = 0; j < probe.size; ++j)
-        if (hit[j])
+        if (hit[j]) {
             s.occluded[index[j]] = 0;
+            s.rays.rayType[index[j]] |= kRayBackgroundLit;
+        }
     return probe.size;
 }
 
@@ -2482,7 +2511,7 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
         Spectrum T = spectrum(1.0f);
         if (!blocked) {
             Spectrum c = s.contribution[i];
-            if (fake) {
+            if (fake && !(s.rays.rayType[i] & kRayBackgroundLit)) {
                 T = fakeCausticTransmittance(scene, ctx, settings, depth, s.rays.org[i], s.rays.dir[i],
                                              s.rays.tMax[i], s.rays.time[i], s.rays.filterSeed[i],
                                              scene.shadowLinking() ? s.shadowCategory[i] : uint16_t(0xFFFFu),

@@ -30,6 +30,7 @@ OUT = os.environ.get("NOVA_VIEWPORT_CHECK", "")
 # .rat HDRI in Nova CPU, Nova XPU and Karma (setup_dome).
 # =velocity velocity blur switched on and off live (setup_velocity).
 # =sky the Karma Physical Sky, edited live (setup_sky).
+# =karmasettings a Karma Render Settings LOP over the scene (setup_karmasettings).
 ONLY = os.environ.get("NOVA_VIEWPORT_CHECK_ONLY", "")
 SCENE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scenes", "basic.usda").replace("\\", "/")
 # "started" (absolute) tells this run's log from an earlier one in the same folder.
@@ -1243,6 +1244,38 @@ def step_velocity_karma():
     later(2, finish)
 
 
+def setup_karmasettings():
+    """Karma's render settings in Nova's viewport (docs/design/M11-P1.md):
+    tests/scenes/basic.usda under a Karma Render Settings LOP with the
+    curves' style and fake caustics at Karma's defaults; with TF_DEBUG
+    HDNOVA_SETTINGS (set by run_viewport_check.ps1) stdout.txt lists the
+    render settings the viewport hands to Nova, the display options among
+    them (whether Nova's settings count as authored in the viewport)."""
+    STATE["t0"] = time.time()
+    stage = hou.node("/stage")
+    sub = stage.createNode("sublayer", "basic")
+    sub.parm("filepath1").set(SCENE)
+    krs = stage.createNode("karmarendersettings", "karma")
+    krs.setInput(0, sub)
+    krs.parm("camera").set("/World/cam")
+    krs.setDisplayFlag(True)
+    v = viewer()
+    v.setPwd(stage)
+    try:
+        v.curViewport().setCamera("/World/cam")
+    except Exception:  # noqa: BLE001
+        pass
+    log("karma settings setup", errors=list(krs.errors()))
+    set_renderer("Nova CPU")
+    later(30, step_karmasettings)
+
+
+def step_karmasettings():
+    capture("80_karma_settings")
+    log("karma settings", mean=image_mean("80_karma_settings"))
+    later(2, finish)
+
+
 def finish():
     log("done")
     hou.exit(exit_code=0, suppress_save_prompt=True)
@@ -1253,5 +1286,6 @@ def start():
         return
     os.makedirs(OUT, exist_ok=True)
     modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble,
-             "icons": setup_icons, "dome": setup_dome, "velocity": setup_velocity, "sky": setup_sky}
+             "icons": setup_icons, "dome": setup_dome, "velocity": setup_velocity, "sky": setup_sky,
+             "karmasettings": setup_karmasettings}
     later(5, modes.get(ONLY, setup))
