@@ -129,6 +129,12 @@ struct LpeTables {
     // flags (only holdout paths reach their states).
     std::vector<uint32_t> plainBegin, unitBegin, litBegin;
     std::vector<uint16_t> plainOuts, unitOuts, litSlots;
+    // Per unitOuts entry: a shadow; output (not unoccluded;), whose sums
+    // background points treat apart (docs/design/M11-P2.md D14); the lit
+    // slot of their whole unoccluded light (0xFFFF: no holdout shadow;
+    // outputs).
+    std::vector<uint8_t> unitShadow;
+    uint16_t holdoutTotalSlot = 0xFFFF;
 
     uint32_t objectTag(MeshId mesh, MaterialId material) const {
         const uint16_t t = mesh < meshTag.size() ? meshTag[mesh] : 0;
@@ -157,6 +163,8 @@ struct LpeTables {
         v.plainOuts = spanOf(plainOuts);
         v.unitOuts = spanOf(unitOuts);
         v.litSlots = spanOf(litSlots);
+        v.unitShadow = spanOf(unitShadow);
+        v.holdoutTotalSlot = holdoutTotalSlot;
         return v;
     }
 };
@@ -266,6 +274,9 @@ struct WaveQueues {
     std::vector<VolumeId> volumeId;
     std::vector<PhaseFunction> volumePhase;
     std::vector<Spectrum> mediumAlpha;
+    // Camera rays with holdout volumes: the other volumes' opacity (flyMedia's
+    // alphaV, docs/design/M11-P2.md D15).
+    std::vector<Spectrum> mediumAlphaV;
     std::vector<uint32_t> volumeShade;
     uint32_t volumeShadeCount = 0;
     // Level-dependent volumes (traceMedia): the transmittance continuations

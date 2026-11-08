@@ -1,5 +1,6 @@
 #include "renderBuffer.h"
 
+#include "denoise.h"
 #include "diagnostics.h"
 #include "renderParam.h"
 
@@ -319,16 +320,52 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
             const float inv = 1.0f / float(film.count[src]);
             switch (kind) {
             case Kind::Beauty: {
-                const nova::Spectrum c = film.colorSum[src] * inv;
+                const nova::Spectrum c0 = film.colorSum[src] * inv;
                 float alpha = film.alphaSum[src] * inv;
                 if (source.catcherOutput >= 0 && uint32_t(source.catcherSlot) < film.lpeShadowOutputs) {
                     // Karma's shadow catcher filter (denoise.h): the holdout
                     // shadow where the beauty is transparent.
-                    const nova::Spectrum u = film.lpe(uint32_t(source.catcherOutput))[src];
-                    const nova::Spectrum l = film.lpeLitSum(uint32_t(source.catcherSlot))[src];
+                    nova::Spectrum u = film.lpe(uint32_t(source.catcherOutput))[src];
+                    nova::Spectrum l = film.lpeLitSum(uint32_t(source.catcherSlot))[src];
+                    if (source.catcherHoldoutSlot >= 0 && uint32_t(source.catcherHoldoutSlot) < film.lpeShadowOutputs) {
+                        const nova::Spectrum b = film.lpeLitSum(uint32_t(source.catcherHoldoutSlot))[src];
+                        u += b;
+                        l += b;
+                    }
                     const float all = u.x + u.y + u.z, lit = l.x + l.y + l.z;
                     const float shadow = all > 0.0f ? std::clamp(1.0f - lit / all, 0.0f, 1.0f) : 0.0f;
                     alpha += (1.0f - alpha) * shadow * source.catcherAlpha;
+                }
+                nova::Spectrum c = c0;
+                if (source.plate) {
+                    // Karma's background plate composite (denoise.h, D16):
+                    // C + (1 - alpha) (plate (1 - shadows) + extras), opaque.
+                    float plate[3];
+                    source.plate->lookup((float(x) + 0.5f) / float(film.width), (float(y) + 0.5f) / float(film.height),
+                                         plate, source.plateDecode);
+                    nova::Spectrum s{0.0f, 0.0f, 0.0f};
+                    if (source.plateShadowOutput >= 0 && uint32_t(source.plateShadowSlot) < film.lpeShadowOutputs) {
+                        nova::Spectrum u = film.lpe(uint32_t(source.plateShadowOutput))[src];
+                        nova::Spectrum l = film.lpeLitSum(uint32_t(source.plateShadowSlot))[src];
+                        if (source.plateHoldoutSlot >= 0 && uint32_t(source.plateHoldoutSlot) < film.lpeShadowOutputs) {
+                            const nova::Spectrum b = film.lpeLitSum(uint32_t(source.plateHoldoutSlot))[src];
+                            u += b;
+                            l += b;
+                        }
+                        const auto fraction = [](float lit, float all) {
+                            return all > 0.0f ? std::clamp(1.0f - lit / all, 0.0f, 1.0f) : 0.0f;
+                        };
+                        s = nova::Spectrum{fraction(l.x, u.x), fraction(l.y, u.y), fraction(l.z, u.z)};
+                    }
+                    nova::Spectrum extras{0.0f, 0.0f, 0.0f};
+                    for (int o : source.plateExtras)
+                        if (o >= 0 && uint32_t(o) < film.lpeOutputs)
+                            extras += film.lpe(uint32_t(o))[src] * inv;
+                    const float t = 1.0f - alpha;
+                    c = nova::Spectrum{c.x + t * (plate[0] * (1.0f - s.x) + extras.x),
+                                       c.y + t * (plate[1] * (1.0f - s.y) + extras.y),
+                                       c.z + t * (plate[2] * (1.0f - s.z) + extras.z)};
+                    alpha = 1.0f;
                 }
                 const float v[4] = {c.x, c.y, c.z, alpha};
                 _WritePixel(i, v, 4, component, componentCount);
@@ -338,9 +375,15 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
                 // Filtered like the beauty; 4 channels take the beauty's alpha.
                 nova::Spectrum c = film.lpe(uint32_t(source.output))[src] * inv;
                 if (source.shadowSlot >= 0 && uint32_t(source.shadowSlot) < film.lpeShadowOutputs) {
-                    // The occluded fraction (Karma's shadow AOVs).
-                    const nova::Spectrum u = film.lpe(uint32_t(source.output))[src];
-                    const nova::Spectrum l = film.lpeLitSum(uint32_t(source.shadowSlot))[src];
+                    // The occluded fraction (Karma's shadow AOVs); of holdout
+                    // paths over the background points' whole light too (D14).
+                    nova::Spectrum u = film.lpe(uint32_t(source.output))[src];
+                    nova::Spectrum l = film.lpeLitSum(uint32_t(source.shadowSlot))[src];
+                    if (source.holdoutSlot >= 0 && uint32_t(source.holdoutSlot) < film.lpeShadowOutputs) {
+                        const nova::Spectrum b = film.lpeLitSum(uint32_t(source.holdoutSlot))[src];
+                        u += b;
+                        l += b;
+                    }
                     const auto fraction = [](float lit, float all) { return all > 0.0f ? 1.0f - lit / all : 0.0f; };
                     c = nova::Spectrum{fraction(l.x, u.x), fraction(l.y, u.y), fraction(l.z, u.z)};
                 }

@@ -43,6 +43,9 @@
 # -Only sky: a Karma Physical Sky LOP over a plane in Nova CPU, its solar
 # altitude and turbidity edited live, then Karma and Nova XPU (70_sky_nova ...
 # 73_sky_xpu_edit; log.json has the sky and ground means of each).
+# -Only plate: the Background Plate 2.0's scene (tests/husk/karma_nodes) in
+# Karma, Nova CPU and Nova XPU, whose viewports composite the plate under the
+# holdouts (80_plate_karma ... 82_plate_xpu; log.json has region means).
 #
 # -Prefs <dir> gives the instance its own preference directory (created if
 # needed; no user packages then). The first start in a new one takes a few

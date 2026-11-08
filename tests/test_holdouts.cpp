@@ -10,6 +10,9 @@
 #include "core/integrator/renderer.h"
 #include "core/scene/scene.h"
 #include "core/scene/visibility.h"
+#include "core/shading/compiler.h"
+#include "core/volume/shader.h"
+#include "core/volume/shell.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -185,12 +188,16 @@ double alpha(const Result &r, Region g) {
 double lpeValue(const Result &r, uint32_t o, Region g) {
     return mean(r.film, g, [&](size_t i) { return double(r.film.lpe(o)[i].x) / r.film.count[i]; });
 }
-// A shadow; output's value, 1 - lit / unoccluded over the region.
+// A shadow; output's value, 1 - lit / unoccluded over the region (holdout
+// shadow; outputs with the background points' whole light in both, D14).
 double shadowValue(const Result &r, uint32_t o, Region g) {
     const int32_t slot = r.lpe->shadowSlot(o);
     REQUIRE(slot >= 0);
-    const double all = mean(r.film, g, [&](size_t i) { return double(r.film.lpe(o)[i].x); });
-    const double lit = mean(r.film, g, [&](size_t i) { return double(r.film.lpeLitSum(uint32_t(slot))[i].x); });
+    const int32_t total = r.lpe->holdoutShadow(o) ? r.lpe->holdoutTotalSlot() : -1;
+    const auto whole = [&](size_t i) { return total >= 0 ? double(r.film.lpeLitSum(uint32_t(total))[i].x) : 0.0; };
+    const double all = mean(r.film, g, [&](size_t i) { return double(r.film.lpe(o)[i].x) + whole(i); });
+    const double lit =
+        mean(r.film, g, [&](size_t i) { return double(r.film.lpeLitSum(uint32_t(slot))[i].x) + whole(i); });
     return all > 0.0 ? 1.0 - lit / all : 0.0;
 }
 
@@ -205,6 +212,52 @@ void domeOnly(Ground &g) {
     dome.type = LightType::Dome;
     dome.intensity = 1.0f;
     g.scene.updateLight(g.scene.createLight(), dome);
+}
+
+// A coated grey ground material: Standard Surface, base 0.5, specular 1,
+// roughness 0.3 (Karma's spec probes, docs/design/M11-P2.md D14).
+MaterialId coatedGrey(Scene &scene) {
+    const MaterialId id = scene.createMaterial();
+    MaterialDesc m;
+    m.inputs = standardSurfaceDefaults();
+    m.inputs.set(sf::baseColor, spectrum(0.5f));
+    m.inputs.set(sf::specularRoughness, 0.3f);
+    scene.updateMaterial(id, m);
+    return id;
+}
+
+// A medium in a box over the ground (D15): x in [-3.5, -1.5], y in [-3.5,
+// -1.5], z in [0.5, 1.5]; black (absorbing 1 per unit) or, without a
+// material, white of density 1. The camera sees the ground under it through
+// 1 unit (kUnder); the sun reaches kUnder through 0 to sqrt 2 of it (with
+// the region's y), kBoxShadow, beside it, through about 0.6 sqrt 2.
+const Region kUnder{-2.5f, -2.5f, 0.5f}, kBoxShadow{-2.5f, -0.6f, 0.1f};
+VolumeId addFog(Scene &scene, bool white) {
+    const Vec3f lo{-3.5f, -3.5f, 0.5f}, hi{-1.5f, -1.5f, 1.5f};
+    const std::vector<Vec3f> p = {{lo.x, lo.y, lo.z}, {hi.x, lo.y, lo.z}, {hi.x, hi.y, lo.z}, {lo.x, hi.y, lo.z},
+                                  {lo.x, lo.y, hi.z}, {hi.x, lo.y, hi.z}, {hi.x, hi.y, hi.z}, {lo.x, hi.y, hi.z}};
+    const uint32_t quads[6][4] = {{0, 3, 2, 1}, {0, 1, 5, 4}, {3, 7, 6, 2}, {0, 4, 7, 3}, {1, 2, 6, 5}, {4, 5, 6, 7}};
+    std::vector<uint32_t> idx;
+    for (const auto &q : quads)
+        idx.insert(idx.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+    VolumeDesc desc;
+    desc.name = "fog";
+    desc.shell = makeTriangleShell(p.data(), p.size(), idx.data(), idx.size() / 3);
+    if (!white) {
+        shading::IrGraph g;
+        shading::IrBuilder b(g);
+        const auto field = [](uint16_t f) { return uint16_t(volume_field::kBase + f); };
+        b.output(field(volume_field::scattering), 3, b.constant(0.0f, 0.0f, 0.0f));
+        b.output(field(volume_field::absorption), 3, b.constant(1.0f, 1.0f, 1.0f));
+        MaterialDesc m;
+        m.program = shading::compile(g).program;
+        desc.material = scene.createMaterial();
+        scene.updateMaterial(desc.material, m);
+    }
+    const VolumeId id = scene.createVolume();
+    scene.updateVolume(id, desc);
+    scene.updateVolumeMotion(id, {Mat4::identity()});
+    return id;
 }
 
 ObjectVisibility holdout(HoldoutMode m) { return {-1, int8_t(m)}; }
@@ -455,6 +508,127 @@ TEST_CASE("Background holdouts do not shadow background points (bgoccludeshadow)
     CHECK_THAT(shadowValue(b, 0, ballOnly), WithinAbs(1.0, 1e-6));
 }
 
+TEST_CASE("Background holdouts' shadow; outputs share the point's whole light (Karma)", "[holdout][render]") {
+    // A coated ground under the sun alone: in the umbra every lobe's light
+    // is blocked. Karma divides a background point's occluded light by its
+    // whole unoccluded light (D14): the diffuse and glossy shadows are their
+    // lobes' shares and add up to 1; a Matte point's are 1 each.
+    const std::vector<std::string> lpes = {"holdouts;shadow;C<RD>L", "holdouts;shadow;C<RG>L", "holdouts;shadow;C.L",
+                                           "holdouts;unoccluded;C.L"};
+    const auto build = [](Ground &g, HoldoutMode mode) {
+        g.scene.setMeshMaterials(g.ground, {coatedGrey(g.scene)});
+        g.scene.setMeshVisibility(g.ground, holdout(mode));
+    };
+    Ground bg;
+    build(bg, HoldoutMode::Background);
+    const Result b = render(bg.scene, lpes);
+    const double diffuse = shadowValue(b, 0, kShadow), glossy = shadowValue(b, 1, kShadow);
+    CHECK(diffuse > 0.8);
+    CHECK(diffuse < 1.0);
+    CHECK(glossy > 0.0);
+    CHECK_THAT(diffuse + glossy, WithinAbs(1.0, 1e-4));
+    CHECK_THAT(shadowValue(b, 2, kShadow), WithinAbs(1.0, 1e-5));
+    CHECK_THAT(shadowValue(b, 2, kOpen), WithinAbs(0.0, 1e-5));
+
+    SECTION("Matte holdouts keep each output's own light") {
+        Ground mg;
+        build(mg, HoldoutMode::Matte);
+        const Result m = render(mg.scene, lpes);
+        CHECK_THAT(shadowValue(m, 0, kShadow), WithinAbs(1.0, 1e-6));
+        CHECK_THAT(shadowValue(m, 1, kShadow), WithinAbs(1.0, 1e-6));
+    }
+    SECTION("illumbackground lights stay in unoccluded; outputs and out of shadow; outputs") {
+        Ground ig;
+        build(ig, HoldoutMode::Background);
+        LightDesc l = sun(normalize(Vec3f{0.0f, 1.0f, -1.0f}));
+        l.illumBackground = true;
+        ig.scene.updateLight(0, l);
+        const Result r = render(ig.scene, lpes);
+        CHECK_THAT(shadowValue(r, 2, kShadow), WithinAbs(0.0, 1e-6));
+        const double unoccluded = lpeValue(b, 3, kShadow);
+        CHECK(unoccluded > 0.8 * kLitGround);
+        CHECK_THAT(lpeValue(r, 3, kShadow), WithinAbs(unoccluded, 1e-6 + 1e-5 * unoccluded));
+    }
+}
+
+TEST_CASE("Volumes take ray visibility and holdout modes (Karma)", "[holdout][visibility][volume][render]") {
+    // The sun's transmittance over kUnder: the mean of e^-x for x uniform in
+    // [0, sqrt 2].
+    const double through = std::exp(-1.0), lightUnder = (1.0 - std::exp(-std::sqrt(2.0))) / std::sqrt(2.0),
+                 lightBeside = std::exp(-0.6 * std::sqrt(2.0));
+    const auto fogged = [](Ground &g, ObjectVisibility v, bool white = false) {
+        g.scene.setVolumeVisibility(addFog(g.scene, white), v);
+    };
+    Ground base;
+    fogged(base, {});
+    const Result b = render(base.scene, {"holdout;C.*[LO]"});
+    CHECK_THAT(color(b, kUnder), WithinAbs(kLitGround * lightUnder * through, 0.05 * kLitGround * through));
+    CHECK_THAT(alpha(b, kUnder), WithinAbs(1.0, 1e-6));
+    CHECK_THAT(color(b, kBoxShadow), WithinAbs(kLitGround * lightBeside, 0.05 * kLitGround * lightBeside));
+
+    for (HoldoutMode mode : {HoldoutMode::Matte, HoldoutMode::Background}) {
+        INFO("holdout mode " << int(mode));
+        // The camera sees what lies behind as before; the volume leaves
+        // alpha, and its shadow stays on the ground.
+        Ground g;
+        fogged(g, holdout(mode));
+        const Result r = render(g.scene, {"holdout;C.*[LO]"});
+        CHECK_THAT(color(r, kUnder), WithinAbs(color(b, kUnder), 0.05 * color(b, kUnder)));
+        CHECK_THAT(alpha(r, kUnder), WithinAbs(through, 0.03));
+        CHECK_THAT(color(r, kBoxShadow), WithinAbs(color(b, kBoxShadow), 0.03 * color(b, kBoxShadow)));
+        CHECK(alpha(r, kOpen) == 1.0);
+    }
+    SECTION("rendervisibility") {
+        Ground hidden, noShadow, none;
+        fogged(hidden, visible("-primary"));
+        fogged(noShadow, visible("-shadow"));
+        fogged(none, visible(""));
+        const Result h = render(hidden.scene, {}), s = render(noShadow.scene, {}), n = render(none.scene, {});
+        CHECK_THAT(color(h, kUnder), WithinAbs(kLitGround * lightUnder, 0.05 * kLitGround * lightUnder));
+        CHECK_THAT(alpha(h, kUnder), WithinAbs(1.0, 1e-6));
+        CHECK_THAT(color(s, kUnder), WithinAbs(kLitGround * through, 0.05 * kLitGround * through));
+        CHECK_THAT(color(s, kBoxShadow), WithinAbs(kLitGround, 0.02 * kLitGround));
+        CHECK_THAT(color(n, kUnder), WithinAbs(kLitGround, 0.02 * kLitGround));
+    }
+    SECTION("background volumes do not shadow background points") {
+        Ground bgFog, matteFog;
+        bgFog.scene.setMeshVisibility(bgFog.ground, holdout(HoldoutMode::Background));
+        matteFog.scene.setMeshVisibility(matteFog.ground, holdout(HoldoutMode::Background));
+        fogged(bgFog, holdout(HoldoutMode::Background));
+        fogged(matteFog, holdout(HoldoutMode::Matte));
+        const Result r = render(bgFog.scene, {"holdouts;shadow;C.L"}), m = render(matteFog.scene, {"holdouts;shadow;C.L"});
+        CHECK_THAT(shadowValue(r, 0, kBoxShadow), WithinAbs(0.0, 1e-6));
+        CHECK_THAT(shadowValue(m, 0, kBoxShadow), WithinAbs(1.0 - lightBeside, 0.05));
+    }
+    SECTION("a scattering holdout volume's light goes to holdout; outputs") {
+        // Karma: the camera ray's events in the volume are holdout paths
+        // (beauty + holdout; = the plain render's beauty for Matte); a
+        // Background volume's are lit without its own shadow, so brighter.
+        // Single scattering of the sun, isotropic (1 / 4 pi) at density 1
+        // over 1 unit: 2 / (4 pi) times the integral of e^-t over [0, 1],
+        // with the volume's own shadow (through the top: e^-sqrt2 t, where
+        // the sun leaves through the top, y >= -2.5) 0.0601, without it
+        // 0.1006.
+        const Region top{-2.5f, -2.2f, 0.25f};
+        const std::vector<std::string> lpes = {"holdout;C.*[LO]", "C.*V.*[LO]"};
+        Ground plain, matte, back;
+        fogged(plain, {}, true);
+        fogged(matte, holdout(HoldoutMode::Matte), true);
+        fogged(back, holdout(HoldoutMode::Background), true);
+        const Result p = render(plain.scene, lpes);
+        const Result m = render(matte.scene, lpes);
+        const Result k = render(back.scene, lpes);
+        const double shadowed = kSun / (4.0 * kPi) * (1.0 - std::exp(-1.0 - std::sqrt(2.0))) / (1.0 + std::sqrt(2.0));
+        const double free = kSun / (4.0 * kPi) * (1.0 - std::exp(-1.0));
+        CHECK_THAT(lpeValue(p, 1, top), WithinAbs(shadowed, 0.05 * shadowed));
+        CHECK_THAT(lpeValue(m, 0, top), WithinAbs(shadowed, 0.05 * shadowed));
+        CHECK(lpeValue(m, 1, top) < 0.01 * shadowed);
+        CHECK_THAT(color(m, kUnder) + lpeValue(m, 0, kUnder), WithinAbs(color(p, kUnder), 0.03 * color(p, kUnder)));
+        CHECK_THAT(lpeValue(k, 0, top), WithinAbs(free, 0.05 * free));
+        CHECK_THAT(alpha(m, kUnder), WithinAbs(through, 0.03));
+    }
+}
+
 TEST_CASE("XPU holdouts and ray visibility", "[gpu][render][holdout]") {
     {
         Ground probe;
@@ -527,4 +701,61 @@ TEST_CASE("XPU holdouts and ray visibility", "[gpu][render][holdout]") {
             CHECK_THAT(lpeValue(g, 4, region), WithinAbs(lpeValue(c, 4, region), 0.01 * lpeValue(c, 4, region) + 1e-5));
         }
     }
+
+    // Background points' shadow; outputs over their whole light, and
+    // illumbackground lights in unoccluded; outputs (D14).
+    const std::vector<std::string> coatLpes = {"holdouts;shadow;C<RD>L", "holdouts;shadow;C<RG>L",
+                                               "holdouts;unoccluded;C.L"};
+    for (bool illum : {false, true}) {
+        INFO("coated background ground, illumbackground " << illum);
+        Ground gc, gg;
+        for (Ground *g : {&gc, &gg}) {
+            g->scene.setMeshMaterials(g->ground, {coatedGrey(g->scene)});
+            g->scene.setMeshVisibility(g->ground, holdout(HoldoutMode::Background));
+            domeOnly(*g);
+            LightDesc l = sun(normalize(Vec3f{0.0f, 1.0f, -1.0f}));
+            l.illumBackground = illum;
+            g->scene.updateLight(g->scene.createLight(), l);
+        }
+        const Result c = render(gc.scene, coatLpes, RenderDevice::Cpu, 2);
+        const Result g = render(gg.scene, coatLpes, RenderDevice::Xpu, 2);
+        REQUIRE(g.gpu);
+        for (const Region region : {kShadow, kOpen}) {
+            for (uint32_t o : {0u, 1u})
+                CHECK_THAT(shadowValue(g, o, region), WithinAbs(shadowValue(c, o, region), 2e-3));
+            CHECK_THAT(lpeValue(g, 2, region), WithinAbs(lpeValue(c, 2, region), 0.01 * lpeValue(c, 2, region) + 1e-5));
+        }
+    }
+
+    // Volumes: ray visibility and holdouts (D15). Paths through media part
+    // ways at floating-point differences: region means within the noise.
+    const std::vector<std::string> fogLpes = {"holdout;C.*[LO]", "holdouts;shadow;C.L"};
+    const auto compareFog = [&](const char *what, auto &&build) {
+        INFO(what);
+        Ground cpuScene, gpuScene;
+        build(cpuScene);
+        build(gpuScene);
+        const Result c = render(cpuScene.scene, fogLpes, RenderDevice::Cpu, 2);
+        const Result g = render(gpuScene.scene, fogLpes, RenderDevice::Xpu, 2);
+        REQUIRE(g.gpu);
+        for (const Region region : {kUnder, kBoxShadow, kOpen}) {
+            CHECK_THAT(color(g, region), WithinAbs(color(c, region), 0.04 * color(c, region) + 1e-3));
+            CHECK_THAT(alpha(g, region), WithinAbs(alpha(c, region), 0.03));
+            CHECK_THAT(lpeValue(g, 0, region), WithinAbs(lpeValue(c, 0, region), 0.04 * lpeValue(c, 0, region) + 1e-3));
+            CHECK_THAT(shadowValue(g, 1, region), WithinAbs(shadowValue(c, 1, region), 0.03));
+        }
+    };
+    for (bool white : {false, true}) {
+        compareFog(white ? "white matte fog" : "black matte fog", [white](Ground &g) {
+            g.scene.setVolumeVisibility(addFog(g.scene, white), holdout(HoldoutMode::Matte));
+        });
+        compareFog(white ? "white background fog over a background ground" : "black background fog, background ground",
+                   [white](Ground &g) {
+                       g.scene.setMeshVisibility(g.ground, holdout(HoldoutMode::Background));
+                       g.scene.setVolumeVisibility(addFog(g.scene, white), holdout(HoldoutMode::Background));
+                   });
+    }
+    compareFog("fog without shadows", [](Ground &g) { g.scene.setVolumeVisibility(addFog(g.scene, true), visible("-shadow")); });
+    compareFog("fog hidden from the camera",
+               [](Ground &g) { g.scene.setVolumeVisibility(addFog(g.scene, true), visible("-primary")); });
 }

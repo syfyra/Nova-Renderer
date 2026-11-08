@@ -39,6 +39,8 @@ struct LpeView {
     bool unit = false;
     Span<uint32_t> plainBegin, unitBegin, litBegin;
     Span<uint16_t> plainOuts, unitOuts, litSlots;
+    Span<uint8_t> unitShadow;           // per unitOuts entry: a shadow; output
+    uint16_t holdoutTotalSlot = 0xFFFF; // background points' whole light (lit slot), 0xFFFF: none
 
     NOVA_INLINE uint32_t objectTag(uint32_t mesh, uint32_t material) const {
         const uint16_t t = mesh < meshTag.size() ? meshTag[mesh] : 0;
@@ -105,6 +107,34 @@ NOVA_FORCEINLINE void lpeDepositUnit(const LpeView &t, Film &film, uint32_t pixe
         lpeAddTo(film.lpe(t.unitOuts[i])[pixel], v);
     for (uint32_t i = lb; i < le; ++i)
         lpeAddTo(film.lpeLitSum(t.litSlots[i])[pixel], v);
+}
+
+// Weight-1 light at a background point (a camera hit on a Background
+// holdout, docs/design/M11-P2.md D14). Karma divides the occluded light of
+// a shadow; output there by the point's whole unoccluded light (all lobes,
+// the lights that do not illuminate the background) instead of the
+// output's own: unoccluded; outputs take `unoccluded` as anywhere, shadow;
+// outputs (with `shadow`; not for illumbackground lights) their occluded
+// part as a negative lit sum, and lpeDepositHoldoutTotal() the whole light,
+// which the resolve adds to both sums of holdout shadow; outputs.
+template <class Film>
+NOVA_FORCEINLINE void lpeDepositBackgroundUnit(const LpeView &t, Film &film, uint32_t pixel, lpe::State s,
+                                               const Spectrum &unoccluded, const Spectrum &lit, bool shadow) {
+    if (!isFinite(unoccluded) || !isFinite(lit))
+        return;
+    for (uint32_t i = t.unitBegin[s], end = t.unitBegin[s + 1]; i < end; ++i)
+        if (!t.unitShadow[i])
+            lpeAddTo(film.lpe(t.unitOuts[i])[pixel], unoccluded);
+    if (shadow)
+        for (uint32_t i = t.litBegin[s], end = t.litBegin[s + 1]; i < end; ++i)
+            lpeAddTo(film.lpeLitSum(t.litSlots[i])[pixel], lit - unoccluded);
+}
+
+// A background point's whole unoccluded light of weight 1 (D14).
+template <class Film>
+NOVA_FORCEINLINE void lpeDepositHoldoutTotal(const LpeView &t, Film &film, uint32_t pixel, const Spectrum &v) {
+    if (t.holdoutTotalSlot != 0xFFFF && isFinite(v))
+        lpeAddTo(film.lpeLitSum(t.holdoutTotalSlot)[pixel], v);
 }
 
 // Light that no shadow ray decides (camera-visible lights, emission seen by
@@ -193,11 +223,14 @@ NOVA_INLINE void lpeAlbedoEvents(const LpeView &t, Film &film, uint32_t pixel, l
 // its weight-1 parts (path.h). Lights whose illumination is off (sampling
 // quality 0, docs/design/M9.md D18) give nothing. The lights' filters act at
 // `site`, where the continuation gathers them (gatherSite()).
+// At a background point (`wholeBeta`: the continuation's weight over all
+// lobes) the light goes in as lpeDepositBackgroundUnit() and the whole
+// light to the holdout total (D14).
 template <class Film>
 NOVA_INLINE void lpeUnoccludedEnvironment(const LpeView &t, const LightData *lights, uint32_t lightCount,
                                           const float *pmf, Film &film, uint32_t pixel, lpe::State state, Vec3f dir,
                                           const LightFilterSite &site, float diffuseShare, const Spectrum &beta,
-                                          bool nonDelta) {
+                                          bool nonDelta, const Spectrum *wholeBeta = nullptr) {
     for (uint32_t i = 0; i < lightCount; ++i) {
         const LightData &light = lights[i];
         if (pmf[i] > 0.0f || !light.illuminates() || (nonDelta && light.shadowLinked()))
@@ -211,8 +244,15 @@ NOVA_INLINE void lpeUnoccludedEnvironment(const LpeView &t, const LightData *lig
             continue;
         if (light.filterCount > 0)
             Le *= lightFilters(light, site);
-        lpeDepositUnit(t, film, pixel, lpeLightStep(t, state, i), beta * Le * lightMultiplier(light, diffuseShare),
-                       true, false);
+        Le *= lightMultiplier(light, diffuseShare);
+        if (wholeBeta) {
+            lpeDepositBackgroundUnit(t, film, pixel, lpeLightStep(t, state, i), beta * Le, spectrum(0.0f),
+                                     !light.illumBackground);
+            if (!light.illumBackground)
+                lpeDepositHoldoutTotal(t, film, pixel, *wholeBeta * Le);
+        } else {
+            lpeDepositUnit(t, film, pixel, lpeLightStep(t, state, i), beta * Le, true, false);
+        }
     }
 }
 

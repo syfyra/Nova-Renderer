@@ -24,6 +24,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <string>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -198,10 +199,86 @@ TEST_CASE("Karma's background image filter: the shadow catcher's alpha", "[hydra
     // The Background Plate's IPR filter: one filter, a plate to composite.
     const HdNovaBackgroundFilter ipr = HdNovaParseKarmaBackgroundFilter(
         R"(["background", {"destination": "C", "foreground": "C", "shadows": "holdout_shadows", )"
-        R"("backgroundfile": "plate.pic", "extras": "holdout_diffuse"}])");
+        R"("backgroundfile": "plate.pic", "backgroundscale": [2.0, 0.5], "backgroundtranslate": [0.25, 0], )"
+        R"("extras": "holdout_diffuse"}])");
     CHECK(ipr.plate);
     CHECK_FALSE(ipr.shadowCatcher);
+    CHECK(ipr.plateFile == "plate.pic");
+    CHECK(ipr.scale[0] == 2.0f);
+    CHECK(ipr.scale[1] == 0.5f);
+    CHECK(ipr.translate[0] == 0.25f);
+    CHECK(ipr.translate[1] == 0.0f);
+    REQUIRE(ipr.extras.size() == 1);
+    CHECK(ipr.extras[0] == "holdout_diffuse");
     CHECK_FALSE(HdNovaParseKarmaBackgroundFilter(R"([["denoise", {}]])").shadowCatcher);
+}
+
+TEST_CASE("The background plate sits on the frame as the Background Plate's shader places it", "[hydra][holdout]") {
+    // A 2 x 2 plate, rows top-down: texel (column, row) holds 10 row + column.
+    HdNovaPlate plate;
+    plate.width = plate.height = 2;
+    for (int r = 0; r < 2; ++r)
+        for (int c = 0; c < 2; ++c)
+            for (int k = 0; k < 3; ++k)
+                plate.rgb.push_back(float(10 * r + c));
+    float v[3];
+    plate.lookup(0.25f, 0.75f, v); // NDC y up: the top-left texel
+    CHECK(v[0] == 0.0f);
+    plate.lookup(0.75f, 0.25f, v); // bottom right
+    CHECK(v[0] == 11.0f);
+    // Scaled 2 about the centre: NDC 0.6 reads 0.55.
+    plate.scale[0] = plate.scale[1] = 2.0f;
+    plate.lookup(0.6f, 0.6f, v);
+    CHECK(v[0] == 1.0f); // u 0.55, v 0.55: the top row's right texel
+    // Scaled 0.5: NDC 0.9, 0.1 reads 1.3, -0.3, off the plate: black.
+    plate.scale[0] = plate.scale[1] = 0.5f;
+    plate.lookup(0.9f, 0.1f, v);
+    CHECK(v[0] == 0.0f);
+    // Translated: (ndc - 0.5 - t) / s + 0.5.
+    plate.scale[0] = plate.scale[1] = 1.0f;
+    plate.translate[0] = 0.5f;
+    plate.lookup(0.75f, 0.25f, v); // u 0.25, v 0.25: the bottom row's left texel
+    CHECK(v[0] == 10.0f);
+    plate.lookup(0.25f, 0.25f, v); // u -0.25: black
+    CHECK(v[0] == 0.0f);
+    // The viewport's composite takes the stored values as sRGB.
+    HdNovaPlate grey;
+    grey.width = grey.height = 1;
+    grey.rgb = {0.5f, 0.5f, 0.5f};
+    grey.lookup(0.5f, 0.5f, v, true);
+    CHECK(std::fabs(v[0] - 0.21404f) < 1e-4f);
+    grey.lookup(0.5f, 0.5f, v);
+    CHECK(v[0] == 0.5f);
+}
+
+TEST_CASE("Volumes and media read Karma's rendervisibility and holdoutmode", "[hydra][holdout][volume]") {
+    Driver d(R"(
+def Sphere "fog"
+{
+    double radius = 1
+    bool primvars:karma:object:volumeuniform = 1 (interpolation = "constant")
+    int primvars:karma:object:holdoutmode = 1 (interpolation = "constant")
+    string primvars:karma:object:rendervisibility = "-shadow" (interpolation = "constant")
+}
+)");
+    bool found = false;
+    for (uint32_t v = 0; v < d.scene().volumeCount(); ++v) {
+        const nova::VolumeRecord &rec = d.scene().volumeRecord(v);
+        if (!rec.alive)
+            continue;
+        found = true;
+        CHECK(rec.holdout == nova::HoldoutMode::Matte);
+        CHECK(rec.visibility == (nova::kVisibleAll & ~nova::kVisibleShadow));
+    }
+    REQUIRE(found);
+    CHECK(d.scene().anyHoldoutVolume());
+    CHECK(d.scene().volumeShadowVisibilityDiffers());
+    // An edit reaches the scene.
+    d.stage->GetPrimAtPath(SdfPath("/fog")).GetAttribute(TfToken("primvars:karma:object:holdoutmode")).Set(2);
+    d.sync();
+    for (uint32_t v = 0; v < d.scene().volumeCount(); ++v)
+        if (d.scene().volumeRecord(v).alive)
+            CHECK(d.scene().volumeRecord(v).holdout == nova::HoldoutMode::Background);
 }
 
 TEST_CASE("Lights read Karma's illumbackground", "[hydra][holdout]") {

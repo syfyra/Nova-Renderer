@@ -106,6 +106,8 @@ void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath c
         _volumeId = scene.createVolume();
     desc.material = registry.Acquire(material, scene);
     scene.updateVolume(_volumeId, std::move(desc));
+    // Ray visibility and holdouts (docs/design/M11-P2.md D15), as a surface's.
+    scene.setVolumeVisibility(_volumeId, HdNovaObjectVisibility(sd, id));
     if (!sampled.empty()) {
         std::vector<nova::Mat4> steps;
         for (GfMatrix4d const &m : sampled)

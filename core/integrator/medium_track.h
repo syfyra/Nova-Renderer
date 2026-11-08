@@ -25,6 +25,7 @@
 #include "core/math/distribution.h"
 #include "core/math/rng.h"
 #include "core/scene/motion.h"
+#include "core/scene/visibility.h"
 #include "core/volume/majorant.h"
 #include "core/volume/phase.h"
 #include "core/volume/shell.h"
@@ -43,7 +44,8 @@ using VolumeId = uint32_t;
 // none) with its cells' distribution and cell volume, the reference
 // field's object-to-index map, and the shell that bounds it (docs/design/
 // M11-P5.md; kind None: the fields' domain). The layout stays where it is:
-// the DDAs keep pointing at it.
+// the DDAs keep pointing at it. Its ray visibility and holdout mode
+// (core/scene/visibility.h, docs/design/M11-P2.md D15).
 struct MediumVolume {
     Vec3f lower{1.0f, 1.0f, 1.0f}, upper{-1.0f, -1.0f, -1.0f};
     const MajorantLayout *layout = nullptr;
@@ -54,6 +56,8 @@ struct MediumVolume {
     float cellVolume = 0.0f;
     Affine3f objectToIndex;
     ShellView shell;
+    uint8_t visibility = kVisibleAll;
+    uint8_t holdout = 0; // HoldoutMode
 };
 
 // A volume a ray crosses: [t0, t1) and the ray in the volume's reference
@@ -70,7 +74,28 @@ struct MediumRay {
     float time = 0.0f;
     uint8_t rayType = 0; // what the shader sees as the ray class (shadow for transmittance queries)
     uint32_t depth = 0;
+    // The ray class whose visibility bit selects the volumes (0xFF: rayType's;
+    // lights gathered along a scattered ray see them as shadow rays do, D15).
+    uint8_t visibleClass = 0xFF;
+    // A shadow ray from a background point: background holdout volumes do
+    // not shadow it (Karma, as background holdout surfaces).
+    bool fromBackground = false;
 };
+
+// Volume ray visibility and holdouts (docs/design/M11-P2.md D15): whether
+// ray `r` sees volume v at all, and whether v only absorbs for it (a
+// background holdout seen by a ray other than the camera's: no scattering,
+// no emission).
+NOVA_INLINE uint8_t mediumRayClass(const MediumRay &r) {
+    return r.visibleClass != 0xFF ? r.visibleClass : uint8_t(r.rayType & kRayClassBits);
+}
+NOVA_INLINE bool mediumSees(const MediumVolume &v, const MediumRay &r) {
+    return visibleTo(v.visibility, mediumRayClass(r)) &&
+           !(r.fromBackground && v.holdout == uint8_t(HoldoutMode::Background));
+}
+NOVA_INLINE bool mediumAbsorbsOnly(const MediumVolume &v, const MediumRay &r) {
+    return v.holdout == uint8_t(HoldoutMode::Background) && (r.rayType & kRayClassBits) != 0; // not RayClass::Camera
+}
 
 // The emission a ray collects at its tentative collisions (radiance per
 // unit throughput): that of volumes that are not lights (an O event; Karma:
@@ -101,10 +126,14 @@ struct EmissionGather {
         return tree ? tree->pmf(li, prevP, prevN, prevReceiver, prevSet) : tablePmf[li];
     }
     NOVA_INLINE bool linksLight(uint32_t li) const { return links.links(li, prevSet); }
+    // Camera rays: the emission of holdout volumes apart (holdoutSum), for
+    // holdout; outputs only (D15).
+    bool holdouts = false;
     // Out: the sums; per light up to kSlots lights (further ones add to
     // the last slot).
     static constexpr int kSlots = 4;
     Spectrum objectSum{0.0f, 0.0f, 0.0f};
+    Spectrum holdoutSum{0.0f, 0.0f, 0.0f};
     int lightCount = 0;
     uint32_t lightIndex[kSlots] = {};
     Spectrum lightSum[kSlots];
@@ -204,13 +233,16 @@ NOVA_INLINE void shellSpans(const ShellView &shell, const VolumeSpan &s, Spans &
 }
 
 // The volumes a ray (unit direction) crosses before tEnd at shutter time
-// `time`, by entry distance.
+// `time`, by entry distance; with `ray`, those it sees (mediumSees).
 template <class Media, class Spans>
-NOVA_INLINE void volumeSpans(const Media &media, Vec3f o, Vec3f d, float tEnd, float time, Spans &spans) {
+NOVA_INLINE void volumeSpans(const Media &media, Vec3f o, Vec3f d, float tEnd, float time, Spans &spans,
+                             const MediumRay *ray = nullptr) {
     spans.clear();
     for (uint32_t i = 0; i < media.activeCount(); ++i) {
         const VolumeId id = media.active(i);
         const MediumVolume rec = media.volume(id);
+        if (ray && !mediumSees(rec, *ray))
+            continue;
         // The world box over the shutter first (slab test).
         float t0 = 0.0f, t1 = tEnd;
         const float oo[3] = {o.x, o.y, o.z}, dd[3] = {d.x, d.y, d.z};
@@ -257,7 +289,7 @@ public:
     NOVA_INLINE MediaWalker(Media &media, Spans &spans, Actives &active, const MediumRay &ray,
                             const EmissionGather *gather)
         : m_media(media), m_ray(ray), m_gather(gather), m_spans(spans), m_active(active) {
-        volumeSpans(media, ray.o, ray.d, ray.tEnd, ray.time, m_spans);
+        volumeSpans(media, ray.o, ray.d, ray.tEnd, ray.time, m_spans, &ray);
         m_active.clear();
     }
 
@@ -319,8 +351,8 @@ private:
         v.vol = m_media.volume(s.id);
         if (!v.dda.init(*v.vol.layout, s.oIndex, s.dIndex, s.t0, s.t1) || !v.dda.next(v.cell, v.a, v.b))
             return;
-        const bool collects =
-            m_gather && (v.vol.lightIndex != 0xFFFFFFFFu ? m_gather->lights : m_gather->objects);
+        const bool collects = m_gather && !mediumAbsorbsOnly(v.vol, m_ray) &&
+                              (v.vol.lightIndex != 0xFFFFFFFFu ? m_gather->lights : m_gather->objects);
         v.majorant = collects || !v.vol.extinctionMajorant ? v.vol.majorant : v.vol.extinctionMajorant;
         m_active.push_back(v);
     }
@@ -342,7 +374,7 @@ NOVA_INLINE void gatherEmission(EmissionGather &g, const MediumVolume &rec, size
         return;
     if (rec.lightIndex == 0xFFFFFFFFu) {
         if (g.objects)
-            g.objectSum += w * emission * inv;
+            (g.holdouts && rec.holdout ? g.holdoutSum : g.objectSum) += w * emission * inv;
         return;
     }
     if (!g.lights)
@@ -394,7 +426,7 @@ NOVA_INLINE int mediumAt(Media &media, const MediumRay &ray, float t, MediumPart
         const VolumeId id = media.active(i);
         const MediumVolume rec = media.volume(id);
         if (x.x < rec.lower.x || x.y < rec.lower.y || x.z < rec.lower.z || x.x > rec.upper.x || x.y > rec.upper.y ||
-            x.z > rec.upper.z)
+            x.z > rec.upper.z || !mediumSees(rec, ray))
             continue;
         const Affine3f worldToObject = inverseAffine(media.volumeToWorld(id, ray.time));
         // A shell's medium where the ray's spans have it (the same rule).
@@ -403,7 +435,7 @@ NOVA_INLINE int mediumAt(Media &media, const MediumRay &ray, float t, MediumPart
             continue;
         const VolumePoint p = media.evaluate(id, worldToObject.point(x), x, ray.d, ray.time, ray.rayType, ray.depth);
         extinction += p.extinction();
-        if (!isBlack(p.scattering) && n < max)
+        if (!isBlack(p.scattering) && n < max && !mediumAbsorbsOnly(rec, ray))
             parts[n++] = {p.scattering, {p.g, p.g2, p.mix}, id};
     }
     return n;
@@ -413,7 +445,7 @@ NOVA_INLINE int mediumAt(Media &media, const MediumRay &ray, float t, MediumPart
 // false if it crosses none.
 template <class Media, class Spans>
 NOVA_INLINE bool mediumExtent(const Media &media, Spans &spans, const MediumRay &ray, float &a, float &b) {
-    volumeSpans(media, ray.o, ray.d, ray.tEnd, ray.time, spans);
+    volumeSpans(media, ray.o, ray.d, ray.tEnd, ray.time, spans, &ray);
     if (spans.empty())
         return false;
     a = spans.front().t0; // by entry distance
@@ -456,7 +488,7 @@ NOVA_INLINE Spectrum trackMedia(Media &media, Spans &spans, Actives &active, con
             Spectrum e{0.0f, 0.0f, 0.0f};
             walk.forEachAt(t, [&](const MediumActive &w, const VolumePoint &p) {
                 e += p.extinction();
-                if (gather)
+                if (gather && !mediumAbsorbsOnly(w.vol, ray))
                     gatherEmission(*gather, w.vol, w.cell, p.emission, T, inv, ray.o + ray.d * t);
             });
             media.violation(e, sigma);
@@ -486,17 +518,24 @@ NOVA_INLINE Spectrum trackMedia(Media &media, Spans &spans, Actives &active, con
 // is the path throughput before the flight (it weighs the choice only).
 // With `alphaT`, the ratio-tracked transmittance over the whole segment
 // from the same tentative collisions, continued past a scattering event
-// (camera rays' alpha, D12). crossT / crossOut as for trackMedia.
+// (camera rays' alpha, D12); with `alphaV` as well, the opacity of the
+// volumes that are not holdouts in front of what lies behind them (the sum
+// of alphaT times their share of the majorant at each collision: holdout
+// volumes leave alpha, docs/design/M11-P2.md D15). crossT / crossOut as for
+// trackMedia.
 template <class Media, class Spans, class Actives, class Hits>
 NOVA_INLINE MediumFlight flyMedia(Media &media, Spans &spans, Actives &active, Hits &parts, const MediumRay &ray,
                                   Spectrum beta, float u0, Rng &rng, EmissionGather *gather, Spectrum *alphaT,
-                                  const float *crossT = nullptr, Spectrum *crossOut = nullptr, int crossCount = 0) {
+                                  const float *crossT = nullptr, Spectrum *crossOut = nullptr, int crossCount = 0,
+                                  Spectrum *alphaV = nullptr) {
     MediumFlight f;
     Spectrum &F = f.weight;
     bool flying = true;             // no event yet, not ended by roulette
     bool alpha = alphaT != nullptr; // the alpha transmittance is still tracked
     if (alphaT)
         *alphaT = spectrum(1.0f);
+    if (alphaV)
+        *alphaV = spectrum(0.0f);
     int nextCross = 0;
     const auto flush = [&](float t) {
         while (nextCross < crossCount && crossT[nextCross] < t)
@@ -535,7 +574,15 @@ NOVA_INLINE MediumFlight flyMedia(Media &media, Spans &spans, Actives &active, H
                 flush(t);
             parts.clear();
             VolumePoint v;
+            Spectrum opaque{0.0f, 0.0f, 0.0f}; // the extinction of volumes that are not holdouts (alphaV)
             walk.forEachAt(t, [&](const MediumActive &w, const VolumePoint &p) {
+                if (alphaV && !w.vol.holdout)
+                    opaque += p.extinction();
+                if (mediumAbsorbsOnly(w.vol, ray)) { // extinction without events or emission (D15)
+                    v.absorption += p.absorption + p.scattering;
+                    parts.push_back({spectrum(0.0f), spectrum(0.0f), w.span->id, &w, {p.g, p.g2, p.mix}});
+                    return;
+                }
                 v.scattering += p.scattering;
                 v.absorption += p.absorption;
                 parts.push_back({p.scattering, p.emission, w.span->id, &w, {p.g, p.g2, p.mix}});
@@ -543,6 +590,8 @@ NOVA_INLINE MediumFlight flyMedia(Media &media, Spans &spans, Actives &active, H
             const Spectrum e = v.extinction();
             media.violation(e, sigma);
             if (alpha) {
+                if (alphaV)
+                    *alphaV += *alphaT * opaque * inv;
                 *alphaT *= Spectrum{1.0f - e.x * inv, 1.0f - e.y * inv, 1.0f - e.z * inv};
                 alpha = roulette(*alphaT);
             }

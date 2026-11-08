@@ -10,13 +10,16 @@ Two kinds of scenes:
   45 degree sun and an optional dome ("top"); a 45 degree mirror sending every
   camera ray onto vertical cards ("mirror": what reflections see); a wall lit
   by a grazing sun next to the ground ("bounce": what diffuse rays see); a
-  background box shadowing part of the ground ("bgocc", bgoccludeshadow).
+  background box shadowing part of the ground ("bgocc", bgoccludeshadow);
+  "top" with a fog box or tests/data/volumes/pyro.vdb over the ground
+  (volumes' visibility and holdouts).
 - The real LOPs' output (tests/husk/karma_nodes/*.usda, built by isolated
   hython: a Python LOP base stage, the Karma LOP, a Karma Render Settings
   LOP; customData stripped): the Shadow Catcher with and without "Blocks
   Lighting", the Karma Render Settings' "Add Holdout Shadows To Beauty", the
-  Background Plate 1.0 and 2.0. Their plate (./plate.pic) is Houdini's
-  Mandril.pic, copied next to the scene at run time.
+  Background Plate 1.0 and 2.0 (2.0 also with use_background On: the plate
+  composite). Their plate (./plate.pic) is Houdini's Mandril.pic, copied
+  next to the scene at run time.
 
 Region means (R channel, A for alpha) must be within 3 % + 2e-3 of Karma's;
 alpha and exact zeros within 1e-6.
@@ -42,6 +45,9 @@ AOVS = [
     ("HD", "holdouts;CD.+L", "lpe", "color3f"),
     ("HB", "holdout;C.*[LO]", "lpe", "color3f"),
     ("DI", "C<RD>L", "lpe", "color3f"),
+    ("HSG", "holdouts;shadow;CGL", "lpe", "color3f"),
+    ("HUD", "holdouts;unoccluded;CDL", "lpe", "color3f"),
+    ("HSsun", "holdouts;shadow;CD<L.'sun'>", "lpe", "color3f"),
 ]
 
 MATERIALS = '''
@@ -104,6 +110,41 @@ def Scope "m"
             token outputs:out
         }
     }
+    def Material "spec2"
+    {
+        token outputs:mtlx:surface.connect = </m/spec2/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.2, 0.2, 0.2)
+            float inputs:specular_roughness = 0.3
+            token outputs:out
+        }
+    }
+    def Material "emit"
+    {
+        token outputs:mtlx:surface.connect = </m/emit/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:emission = 1
+            color3f inputs:emission_color = (0.5, 0.5, 0.5)
+            token outputs:out
+        }
+    }
+    def Material "fogblack"
+    {
+        token outputs:kma:volume.connect = </m/fogblack/v.outputs:out>
+        def Shader "v"
+        {
+            uniform token info:id = "kma_volume"
+            color3f inputs:absorption = (1, 1, 1)
+            color3f inputs:scattering = (0, 0, 0)
+            token outputs:out
+        }
+    }
 }
 '''
 
@@ -160,6 +201,40 @@ def box(name, lo, hi, material, attrs=""):
     }''' % (name, material, *c, *s, attrs)
 
 
+def fog(holdout=None, vis=None, white=False):
+    """A uniform fog box (Karma's volumeuniform; no material: white, density
+    1; else a black absorber of density 1) over the ground at (2.5, 1, 1.5),
+    1.5 wide."""
+    mat = "" if white else "\n        rel material:binding = </m/fogblack>"
+    return '''
+    def Cube "fog" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        double size = 1.5
+        bool primvars:karma:object:volumeuniform = 1 (interpolation = "constant")%s%s
+        double3 xformOp:translate = (2.5, 1.0, 1.5)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }''' % (mat, prim_attrs(holdout, vis))
+
+
+def vdb(holdout=None, vis=None):
+    """tests/data/volumes/pyro.vdb without a material (Karma's default
+    volume), scaled 0.6 at (2.5, 0, 1.5); the file is copied next to the
+    scene."""
+    return '''
+    def Volume "pyro"
+    {
+        rel field:density = </World/pyro/density>%s
+        double3 xformOp:translate = (2.5, 0.0, 1.5)
+        float3 xformOp:scale = (0.6, 0.6, 0.6)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        def OpenVDBAsset "density"
+        {
+            asset filePath = @./pyro.vdb@
+            token fieldName = "density"
+        }
+    }''' % prim_attrs(holdout, vis)
+
+
 def sun(rotate, intensity, extra=""):
     return '''
     def DistantLight "sun"
@@ -173,14 +248,18 @@ def sun(rotate, intensity, extra=""):
 
 
 ILLUM = "\n        bool inputs:karma:light:illumbackground = 1"
+SUNTAG = '\n        string inputs:karma:light:lpetag = "sun"'
+DL0 = "\n        float karma:object:diffuselimit = 0\n        float nova:object:diffuseLimit = 0"
+RL0 = "\n        float karma:object:reflectlimit = 0\n        float nova:object:reflectLimit = 0"
 
 
 def scene(kind, ground=None, ball=None, target=None, other=None, sun_intensity=3.0, sun_extra="", dome_i=0.0,
-          settings="", caster=False):
+          settings="", caster=False, extra=""):
     ground, ball, target, other = ground or {}, ball or {}, target or {}, other or {}
     geo = lights = ""
     if kind in ("top", "bgocc"):
-        geo += quad("ground", [(-6, 0, 6), (6, 0, 6), (6, 0, -6), (-6, 0, -6)], (0, 1, 0), "grey", prim_attrs(**ground))
+        geo += quad("ground", [(-6, 0, 6), (6, 0, 6), (6, 0, -6), (-6, 0, -6)], (0, 1, 0), ground.pop("material", "grey"),
+                    prim_attrs(**ground))
         geo += sphere("ball", (0, 1, 0), 1.0, "grey", prim_attrs(**ball))
         if kind == "bgocc":
             geo += box("wall", (0.2, 0, -1.2), (2.0, 1.5, -0.8), "grey", prim_attrs(**other))
@@ -197,8 +276,10 @@ def scene(kind, ground=None, ball=None, target=None, other=None, sun_intensity=3
         lights += sun((-53.1301, 180, 0), sun_intensity, sun_extra)
     elif kind == "bounce":
         geo += quad("ground", [(-6, 0, 6), (6, 0, 6), (6, 0, -6), (-6, 0, -6)], (0, 1, 0), "grey", prim_attrs(**ground))
-        geo += quad("wall", [(0, 0, 6), (0, 0, -6), (0, 4, -6), (0, 4, 6)], (1, 0, 0), "grey", prim_attrs(**target))
+        geo += quad("wall", [(0, 0, 6), (0, 0, -6), (0, 4, -6), (0, 4, 6)], (1, 0, 0), target.pop("material", "grey"),
+                    prim_attrs(**target))
         lights += sun((0, 90, 0), sun_intensity, sun_extra)
+    geo += extra
     if dome_i > 0:
         lights += '''
     def DomeLight "dome"
@@ -271,6 +352,7 @@ REGIONS = {
     "L": (-2.0, 0.0, 0.4), "R": (2.0, 0.0, 0.4), "Lopen": (-2.0, 3.0, 0.3),
     "b1": (0.4, 0.0, 0.2), "b2": (1.0, 0.0, 0.3),
     "both": (0.5, -1.6, 0.12), "ball_only": (-0.4, -1.6, 0.15), "wall_only": (1.6, -2.2, 0.15),
+    "fog": (2.5, 1.5, 0.3), "fogshadow": (2.5, -0.6, 0.12),
 }
 
 
@@ -304,9 +386,22 @@ PROBES = {
     # Sun only: the umbra is shadow fraction 1, the open ground 0.
     "bg_ground_sun": ("top", dict(ground=dict(holdout=2)),
                       [("HS", 0, "shadow", 1.0), ("HS", 0, "open", 0.0), ("HB", 0, "open", 0.3388)]),
-    # illumbackground: the light's shadows leave the holdout shadow fraction.
+    # illumbackground: the light's shadows leave the holdout shadow fraction;
+    # holdouts;unoccluded; keeps its light.
     "illum_both": ("top", dict(dome_i=0.3, ground=dict(holdout=2), sun_extra=ILLUM),
-                   [("HS", 0, "open", 0.0132), ("HB", 0, "open", 0.4871)]),
+                   [("HS", 0, "open", 0.0132), ("HB", 0, "open", 0.4871), ("HUD", 0, "shadow", 0.48804)]),
+    # A background holdout's shadow; outputs divide by its whole unoccluded
+    # light (all lobes, all lights): the diffuse and glossy shadows add up
+    # (0.70035 + 0.00742 = shadow;C.L), 0.700 where its own diffuse light
+    # gives 1 - 0.1289 / 0.46739 = 0.724; base 0.2 (the Background Plate's
+    # camera colour) 0.666. A Matte holdout keeps each output's own light.
+    "spec_bg": ("top", dict(dome_i=0.3, ground=dict(holdout=2, material="spec")),
+                [("HS", 0, "shadow", 0.70035), ("HSG", 0, "shadow", 0.00742), ("HUD", 0, "shadow", 0.46739)]),
+    "spec2_bg": ("top", dict(dome_i=0.3, ground=dict(holdout=2, material="spec2")), [("HS", 0, "shadow", 0.66625)]),
+    "spec_matte": ("top", dict(dome_i=0.3, ground=dict(holdout=1, material="spec")), [("HS", 0, "shadow", 0.72422)]),
+    # One light's share over all lights' light.
+    "spec_bg_sun_share": ("top", dict(dome_i=0.3, ground=dict(holdout=2, material="spec"), sun_extra=SUNTAG),
+                          [("HSsun", 0, "shadow", 0.66925)]),
     # Ray visibility: a phantom ball keeps its shadow; without shadow rays
     # the ground under it takes the whole sun.
     "phantom_ball": ("top", dict(dome_i=0.3, ball=dict(vis="-primary")),
@@ -335,6 +430,11 @@ PROBES = {
     "bounce_bg_illum": ("bounce", dict(target=dict(holdout=2), sun_extra=ILLUM), [("C", 0, "b1", 0.2208)]),
     "bounce_matte": ("bounce", dict(target=dict(holdout=1)), [("C", 0, "b1", 0.1078)]),
     "bounce_no_diffuse": ("bounce", dict(target=dict(vis="-diffuse")), [("C", 0, "b1", 0.0005)]),
+    # Light-only rays (past a ray limit) see no pre-lit plate, as no
+    # object's emission (Karma: 0.00047 with or without the wall).
+    "bounce_bg_dl0": ("bounce", dict(target=dict(holdout=2), settings=DL0), [("C", 0, "b1", 0.00047)]),
+    "bounce_emit_dl0": ("bounce", dict(target=dict(material="emit"), settings=DL0), [("C", 0, "b1", 0.00047)]),
+    "mirror_bg_rl0": ("mirror", dict(target=dict(holdout=2), settings=RL0), [("C", 0, "L", 0.0)]),
     # Background holdouts never shadow background points; with
     # bgoccludeshadow a point they occlude keeps its light.
     "bgocc_off": ("bgocc", dict(ground=dict(holdout=2), other=dict(holdout=2)),
@@ -345,6 +445,31 @@ PROBES = {
                  [("HS", 0, "both", 0.0), ("HS", 0, "wall_only", 0.0), ("HS", 0, "ball_only", 1.0),
                   ("HB", 0, "both", 0.3376)]),
     "bgocc_cg_wall": ("bgocc", dict(ground=dict(holdout=2)), [("HS", 0, "wall_only", 1.0), ("HB", 0, "wall_only", 0.0)]),
+    # Volumes (docs/design/M11-P2.md D15): a black fog box (seen through
+    # 1.5 units: e^-1.5) and Karma's white uniform medium; pyro.vdb as
+    # Karma's default volume. Matte and Background: the camera sees what lies
+    # behind as before, alpha drops to the transmittance, the camera ray's
+    # scattering goes to holdout; (Background: lit without background
+    # holdouts' shadows); ray visibility per class.
+    "fog_matte": ("top", dict(dome_i=0.3, extra=fog(holdout=1)),
+                  [("C", 0, "fog", 0.05512), ("C", 3, "fog", 0.2231), ("C", 0, "fogshadow", 0.33699)]),
+    "fog_bg": ("top", dict(dome_i=0.3, extra=fog(holdout=2)),
+               [("C", 0, "fog", 0.05512), ("C", 3, "fog", 0.2231), ("C", 0, "fogshadow", 0.33699)]),
+    "fog_white_matte": ("top", dict(dome_i=0.3, extra=fog(holdout=1, white=True)),
+                        [("C", 0, "fog", 0.06469), ("HB", 0, "fog", 0.17612), ("C", 3, "fog", 0.2231)]),
+    "fog_white_bg": ("top", dict(dome_i=0.3, extra=fog(holdout=2, white=True)),
+                     [("C", 0, "fog", 0.05512), ("HB", 0, "fog", 0.32171), ("C", 3, "fog", 0.2231)]),
+    "fog_no_primary": ("top", dict(dome_i=0.3, extra=fog(vis="-primary")), [("C", 0, "fog", 0.24664), ("C", 3, "fog", 1.0)]),
+    "fog_no_shadow": ("top", dict(dome_i=0.3, extra=fog(vis="-shadow")),
+                      [("C", 0, "fog", 0.10831), ("C", 0, "fogshadow", 0.48146)]),
+    "fog_invisible": ("top", dict(dome_i=0.3, extra=fog(vis="")), [("C", 0, "fog", 0.48641)]),
+    "fog_over_bg_ground": ("top", dict(dome_i=0.3, ground=dict(holdout=2), extra=fog()),
+                           [("C", 3, "fog", 0.7769), ("HS", 0, "fogshadow", 0.31005)]),
+    "vdb_matte": ("top", dict(dome_i=0.3, extra=vdb(holdout=1)),
+                  [("C", 0, "fog", 0.28413), ("HB", 0, "fog", 0.12189), ("C", 3, "fog", 0.6449)]),
+    "vdb_bg": ("top", dict(dome_i=0.3, extra=vdb(holdout=2)),
+               [("C", 0, "fog", 0.27048), ("HB", 0, "fog", 0.15198), ("C", 3, "fog", 0.6449)]),
+    "vdb_no_primary": ("top", dict(dome_i=0.3, extra=vdb(vis="-primary")), [("C", 0, "fog", 0.42246)]),
 }
 
 # The Karma LOPs' scenes (tests/husk/karma_nodes; settings /Render/rendersettings):
@@ -356,11 +481,14 @@ LOPS = {
     "rs_holdout_shadows": [("C", 3, "shadow", 0.3620), ("C", 3, "open", 0.0020), ("C", 3, "ball", 1.0),
                            ("C", 0, "shadow", 0.0), ("holdout_shadow", 0, "shadow", 0.7240),
                            ("holdout_shadow", 0, "open", 0.0040)],
-    # holdout_shadows in the umbra: Karma 0.6660, Nova 0.733 (the plate
-    # material's coat, docs/design/M11-P2.md 5); left out.
     "backgroundplate2": [("C", 0, "ball", 0.4740), ("C", 3, "shadow", 0.0), ("C", 3, "open", 0.0),
-                         ("holdout_shadows", 0, "open", 0.0035), ("holdout_diffuse", 0, "shadow", 0.0011),
-                         ("holdout_diffuse", 0, "open", 0.0006)],
+                         ("holdout_shadows", 0, "shadow", 0.6660), ("holdout_shadows", 0, "open", 0.0035),
+                         ("holdout_diffuse", 0, "shadow", 0.0011), ("holdout_diffuse", 0, "open", 0.0006)],
+    # karma:global:use_background On: husk composites the plate under the
+    # holdouts (C + (1 - alpha) (plate (1 - shadows) + extras), opaque).
+    "backgroundplate2_on": [("C", 0, "ball", 0.4740), ("C", 3, "shadow", 1.0), ("C", 3, "open", 1.0),
+                            ("C", 0, "shadow", 0.0565), ("C", 1, "shadow", 0.0133), ("C", 0, "open", 0.0228),
+                            ("C", 1, "open", 0.0395), ("C", 0, "near", 0.1524), ("C", 2, "near", 0.5624)],
     "backgroundplate1": [("C", 0, "ball", 0.4739), ("C", 3, "shadow", 0.0), ("C", 3, "open", 0.0)],
 }
 
@@ -376,10 +504,15 @@ over "Render"
         token nova:pixelFilter = "box"
         float nova:pixelFilterScale = 0
         int nova:samples = %d
-        float nova:clampIndirect = 0
+        float nova:clampIndirect = 0%s
     }
 }
 '''
+
+# Variants of the LOPs' scenes: name -> (scene, render settings added).
+LOP_VARIANTS = {
+    "backgroundplate2_on": ("backgroundplate2", '\n        token karma:global:use_background = "On"'),
+}
 
 
 def read_layers(np, oiio, exr):
@@ -424,6 +557,7 @@ def main():
     import OpenImageIO as oiio
 
     env, prefs = isolated_env(args)
+    shutil.copyfile(os.path.join(HERE, "..", "data", "volumes", "pyro.vdb"), os.path.join(args.out, "pyro.vdb"))
     for name, (kind, kw, expected) in PROBES.items():
         usd = os.path.join(args.out, name + ".usda")
         with open(usd, "w", encoding="utf-8", newline="\n") as f:
@@ -434,13 +568,15 @@ def main():
         check(proc.returncode == 0, f"husk {name}.usda exits with 0")
         compare(name, read_layers(np, oiio, exr), expected)
 
-    # The LOPs' scenes, with their plate.
+    # The LOPs' scenes, with their plate (husk's working directory is the
+    # output folder: the composite's backgroundfile ./plate.pic is found).
     shutil.copyfile(os.path.join(args.hfs, "houdini", "pic", "Mandril.pic"), os.path.join(args.out, "plate.pic"))
     for name, expected in LOPS.items():
-        shutil.copyfile(os.path.join(HERE, "karma_nodes", name + ".usda"), os.path.join(args.out, name + ".usda"))
+        source, extra = LOP_VARIANTS.get(name, (name, ""))
+        shutil.copyfile(os.path.join(HERE, "karma_nodes", source + ".usda"), os.path.join(args.out, source + ".usda"))
         layer = os.path.join(args.out, name + "_nova.usda")
         with open(layer, "w", encoding="utf-8", newline="\n") as f:
-            f.write(LOP_OVERRIDE % (name, SPP))
+            f.write(LOP_OVERRIDE % (source, SPP, extra))
         exr = os.path.join(args.out, name + ".exr")
         proc = run([tool(args, "husk.exe"), "--renderer", args.renderer, "--headlight", "none", "-s",
                     "/Render/rendersettings", "-o", exr, layer], env, args.out)

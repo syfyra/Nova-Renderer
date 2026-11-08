@@ -13,9 +13,13 @@
 #include <pxr/pxr.h>
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+struct HdNovaPlate; // denoise.h
 
 enum class HdNovaAovKind : uint8_t {
     None,       // nothing Nova fills: the buffer keeps its clear value
@@ -40,11 +44,22 @@ struct HdNovaAovSource {
     int output = -1;        // the LPE program's output (Lpe; -1: the expression failed)
     bool invert = false;    // !expression: 1 - value (Lpe)
     int shadowSlot = -1;    // shadow;expression: its lit sum, the value 1 - lit / unoccluded (Lpe)
+    // holdout;shadow; expressions: the lit slot of the background points'
+    // whole unoccluded light, added to both sums (docs/design/M11-P2.md
+    // D14; -1: none).
+    int holdoutSlot = -1;
     // Karma's shadow catcher image filter on this beauty (denoise.h
-    // HdNovaBackgroundFilter): the shadow AOV's output and lit slot, and the
-    // factor its value adds to the alpha (-1: none).
-    int catcherOutput = -1, catcherSlot = -1;
+    // HdNovaBackgroundFilter): the shadow AOV's output, lit slot and holdout
+    // slot, and the factor its value adds to the alpha (-1: none).
+    int catcherOutput = -1, catcherSlot = -1, catcherHoldoutSlot = -1;
     float catcherAlpha = 0.0f;
+    // Karma's background plate composite on this beauty (denoise.h
+    // HdNovaPlate, docs/design/M11-P2.md D16): the plate, the shadow AOV's
+    // output, lit and holdout slots, the extras' outputs.
+    std::shared_ptr<const HdNovaPlate> plate;
+    bool plateDecode = false; // the viewport's: stored values as sRGB
+    int plateShadowOutput = -1, plateShadowSlot = -1, plateHoldoutSlot = -1;
+    std::vector<int> plateExtras;
     nova::UtilityRequest utility; // Utility
     int utilityIndex = -1;  // the film's plane (Utility)
     nova::CryptoRequest crypto;   // Crypto

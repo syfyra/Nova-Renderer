@@ -44,7 +44,8 @@ Spectrum trackMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGloba
 // A free flight (medium_track.h's flyMedia).
 MediumFlight flyMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGlobals &globals, const MediumRay &ray,
                       Spectrum beta, float u0, Rng &rng, EmissionGather *gather, Spectrum *alphaT,
-                      const float *crossT = nullptr, Spectrum *crossOut = nullptr, int crossCount = 0);
+                      const float *crossT = nullptr, Spectrum *crossOut = nullptr, int crossCount = 0,
+                      Spectrum *alphaV = nullptr);
 
 // The medium at distance t along the ray (a point query, D17): each covering
 // volume's scattering, phase function and id (at most `max`, the rest

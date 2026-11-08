@@ -190,6 +190,11 @@ struct GpuScene {
     const uint32_t *activeVolumes = nullptr;
     uint32_t activeVolumeCount = 0;
     uint8_t levelDependent = 0;
+    // Some volume is a holdout; one's shadow visibility differs from a
+    // scattered class's (Scene's, docs/design/M11-P2.md D15).
+    uint8_t holdoutVolumes = 0;
+    uint8_t backgroundVolumes = 0;
+    uint8_t volumeShadowVisibility = 0;
     // Equiangular sampling (M9 D17): the lights that opted in, chosen by power
     // (table slot -> light), each light's probability of being chosen.
     const uint32_t *eqLights = nullptr;
@@ -345,6 +350,7 @@ struct GpuWave {
     // transmittance in front of each; the rays with an event (pass C').
     Spectrum *mediumT = nullptr;
     Spectrum *mediumAlpha = nullptr;
+    Spectrum *mediumAlphaV = nullptr; // the opacity of the volumes that are not holdouts (D15)
     Spectrum *lightT = nullptr;
     uint8_t *volumeHit = nullptr;
     float *volumeT = nullptr;

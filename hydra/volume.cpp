@@ -223,7 +223,12 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     const bool fieldsDirty = first || (bits & HdChangeTracker::DirtyVolumeField) || versions != _fieldVersions;
     // Per-object settings (constant primvars).
     bool settingsDirty = blurDirty;
+    bool visibilitySettingsDirty = false;
     if (first || (bits & HdChangeTracker::DirtyPrimvar)) {
+        // Ray visibility and holdouts (docs/design/M11-P2.md D15): no rebuild.
+        const nova::ObjectVisibility visibility = HdNovaObjectVisibility(sd, id);
+        visibilitySettingsDirty = !(visibility == _visibility);
+        _visibility = visibility;
         const float limit = volumeLimitOf(sd, id);
         std::string tag = HdNovaObjectLpeTag(sd, id);
         const VolumeLightSettings light = volumeLightOf(sd, id);
@@ -244,7 +249,7 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     const bool rebuild = fieldsDirty || transformDirty || materialDirty || needed != _neededFields ||
                          settingsDirty || (bits & HdChangeTracker::DirtyPrimID);
     const bool visibilityDirty = bits & HdChangeTracker::DirtyVisibility;
-    if (!(rebuild || visibilityDirty)) {
+    if (!(rebuild || visibilityDirty || visibilitySettingsDirty)) {
         *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
         return;
     }
@@ -314,6 +319,7 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     } else if (visibilityDirty) {
         scene.setVolumeVisible(_volumeId, IsVisible());
     }
+    scene.setVolumeVisibility(_volumeId, _visibility); // a no-op while unchanged
     if (transformDirty) {
         std::vector<nova::Mat4> steps;
         for (GfMatrix4d const &m : sampled)

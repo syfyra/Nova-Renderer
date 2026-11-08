@@ -63,6 +63,13 @@ struct Compiled {
     // there, -1 for other outputs; and the number of slots.
     int32_t shadowSlot(size_t output) const;
     uint32_t shadowCount() const;
+    // With holdout shadow; outputs one more slot after theirs: the whole
+    // unoccluded light at background points, by which Karma divides their
+    // occluded light (docs/design/M11-P2.md D14); -1 without such outputs.
+    int32_t holdoutTotalSlot() const;
+    // Whether output o is a holdout shadow; output (holdout;, shadow;, not
+    // unoccluded;).
+    bool holdoutShadow(size_t output) const;
 };
 
 struct Limits {

@@ -132,6 +132,12 @@ struct VolumeRecord {
     // Karma's modifiers are on): continuations then gather lights through a
     // transmittance of their own (wavefront.cpp traceMedia).
     bool levelDependent = false;
+    // Ray visibility and holdouts (core/scene/visibility.h, docs/design/
+    // M11-P2.md D15): the prim's settings and, from commit(), the effective
+    // ones (unset: the render settings').
+    ObjectVisibility visibilitySettings;
+    uint8_t visibility = kVisibleAll;
+    HoldoutMode holdout = HoldoutMode::None;
     // A light source (VolumeDesc::light with emission): its cells by their
     // emission bounds times their world volume, the sum's power (4 pi
     // times), one cell's world volume, and its index in Scene::lights().
@@ -258,6 +264,9 @@ public:
     // Object-to-world at uniform steps over the shutter (one step = static).
     void updateVolumeMotion(VolumeId id, const std::vector<Mat4> &steps);
     void setVolumeVisible(VolumeId id, bool visible);
+    // A volume's ray visibility and holdout mode (as setMeshVisibility; the
+    // same render-settings defaults, docs/design/M11-P2.md D15).
+    void setVolumeVisibility(VolumeId id, const ObjectVisibility &visibility);
     void removeVolume(VolumeId id);
     // The frame being rendered and the frames per second (RenderSettings'):
     // volume shaders that read Time or Frame bound their extinction at it, so
@@ -392,6 +401,12 @@ public:
     const std::vector<VolumeId> &activeVolumes() const { return m_activeVolumes; }
     // Whether an active volume depends on the ray level (VolumeRecord).
     bool anyLevelDependentVolume() const { return m_levelDependentVolumes; }
+    // An active volume is a holdout; one's shadow visibility differs from a
+    // scattered class's (lights along scattered rays then see the volumes
+    // as shadow rays do, D15).
+    bool anyHoldoutVolume() const { return m_holdoutVolumes; }
+    bool anyBackgroundVolume() const { return m_backgroundVolumes; }
+    bool volumeShadowVisibilityDiffers() const { return m_volumeShadowVisibilityDiffers; }
     // A volume's object-to-world transform at a ray time.
     Affine3f volumeToWorld(VolumeId id, float time) const;
 
@@ -450,6 +465,7 @@ private:
     bool m_volumesDirty = false; // added, removed, moved or hidden: the active list and bounds change
     std::vector<VolumeId> m_activeVolumes;
     bool m_levelDependentVolumes = false;
+    bool m_holdoutVolumes = false, m_backgroundVolumes = false, m_volumeShadowVisibilityDiffers = false;
     float m_shadeFrame = 1.0f, m_shadeFps = 24.0f; // setShadeFrame
     void buildVolume(VolumeRecord &rec) const;
     void markVolumesOf(MaterialId material);

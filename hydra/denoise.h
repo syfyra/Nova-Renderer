@@ -8,6 +8,7 @@
 
 #include <pxr/pxr.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -45,14 +46,36 @@ HdNovaDenoiseRequest HdNovaParseKarmaImageFilter(std::string const &json);
 // "holdout_shadow", "shadowcatcherenable": true, "shadowcatcheralpha": a}]]:
 // the destination's alpha takes the shadow AOV times a where the beauty is
 // transparent (measured: alpha + (1 - alpha) a shadow, colour unchanged).
-// The Background Plate's slap comp (backgroundfile, extras) is `plate`.
+// The Background Plate's slap comp (karma:global:background_iprfilter:
+// backgroundfile, backgroundscale, backgroundtranslate, extras) is `plate`:
+// C + (1 - alpha) (plate (1 - shadows) + extras), alpha 1 (measured, D16).
 struct HdNovaBackgroundFilter {
     bool shadowCatcher = false;
     std::string destination = "C", shadows;
     float alpha = 1.0f;
-    bool plate = false; // a background image to composite (not applied by Nova)
+    bool plate = false;                // a background image to composite
+    std::string plateFile;             // backgroundfile (relative: to the working directory, as Karma)
+    float scale[2] = {1.0f, 1.0f};     // backgroundscale
+    float translate[2] = {0.0f, 0.0f}; // backgroundtranslate
+    std::vector<std::string> extras;   // AOVs added under the beauty (names)
 };
 HdNovaBackgroundFilter HdNovaParseKarmaBackgroundFilter(std::string const &json);
+
+// The Background Plate's image (stored values, rows top-down, RGB) and its
+// placement over the frame (docs/design/M11-P2.md D16).
+struct HdNovaPlate {
+    int width = 0, height = 0;
+    std::vector<float> rgb;
+    float scale[2] = {1.0f, 1.0f}, translate[2] = {0.0f, 0.0f};
+    // The texel under NDC (x, y) (y up), as the Background Plate's shader
+    // places it: (ndc - 0.5 - translate) / scale + 0.5, nearest; black
+    // outside the image. `decode`: its stored values taken as sRGB (Karma's
+    // viewport composite, measured; husk's keeps them).
+    void lookup(float x, float y, float out[3], bool decode = false) const;
+};
+// Reads `file` (Houdini .pic and .rat through imaketx) with its stored
+// values; null (with `error`) if it cannot.
+std::shared_ptr<const HdNovaPlate> HdNovaLoadPlate(HdNovaBackgroundFilter const &filter, std::string &error);
 
 // Splits Nova's nova:denoiseAovs ("C diffuse", commas allowed).
 std::vector<std::string> HdNovaSplitAovNames(std::string const &names);
