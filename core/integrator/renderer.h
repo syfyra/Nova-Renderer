@@ -32,6 +32,7 @@ public:
         m_lpeProgram = nullptr;
     }
     void setCamera(const Camera &camera) { m_camera = camera; }
+    const Camera &camera() const { return m_camera; }
     void setSettings(const RenderSettings &settings);
     const RenderSettings &settings() const { return m_settings; }
     // Maximum number of worker threads (0 = all hardware threads).
@@ -84,6 +85,14 @@ public:
         return m_film;
     }
     uint32_t passes() const { return m_film.samples; } // passes in the film, without syncing it
+
+    // Checkpoints (docs/design/M11-P6.md 5): the film and the progress as
+    // bytes, and back into a renderer set up the same way (size, region,
+    // settings). A loaded render continues where the saved one stopped:
+    // every pixel's sample numbers go on from its count, so the result
+    // equals an uninterrupted render.
+    void saveCheckpoint(std::vector<uint8_t> &out);
+    bool loadCheckpoint(const uint8_t *data, size_t size);
     // Rays traced since the last reset() (closest-hit and occlusion queries).
     uint64_t raysTraced() const { return m_rays.load(std::memory_order_relaxed); }
 
@@ -108,6 +117,10 @@ private:
     bool gpuPass(bool lists, uint32_t spp, const LpeTables *lpe);
     // The device film's sums into m_film if GPU passes added to them.
     void syncFilm();
+    // After a pass: the new sample of every pixel into the LPE planes with a
+    // sample filter, as the change of the LPE sums since the last pass
+    // (docs/design/M11-P6.md 4; such renders take one sample per pass).
+    void takeLpeSamples();
 
     const Scene *m_scene = nullptr;
     Camera m_camera;
@@ -151,6 +164,10 @@ private:
     bool m_lastPassGpu = false;
     bool m_filmStale = false; // GPU passes added sums m_film lacks
     std::atomic<uint64_t> m_rays{0};
+    // takeLpeSamples(): per filtered LPE plane the sums at the last pass,
+    // and the pixels' counts then.
+    std::vector<std::vector<Spectrum>> m_lpePrev;
+    std::vector<uint32_t> m_lpePrevCount;
     LpeTables m_lpe;
     const lpe::Compiled *m_lpeProgram = nullptr; // the program m_lpe was built for
     uint64_t m_lpeVersion = 0;                   // and the scene version

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <mutex>
 #include <set>
 
@@ -56,6 +57,20 @@ bool utilityOf(std::string const &name, nova::UtilityRequest &out) {
         {"ray:velocity", U::Velocity},
         {"AO", U::Ao},
         {"export_basecolor", U::BaseColor},
+        // M11 P6 (docs/design/M11-P6.md 3).
+        {"ray:mask", U::Mask},
+        {"ray:hitstack", U::HitStack},
+        {"ray:time", U::Time},
+        {"ray:near", U::Near},
+        {"ray:far", U::Far},
+        {"ray:P", U::RayOrigin},
+        {"ray:D", U::RayDir},
+        {"ray:contrib", U::Contrib},
+        {"ray:dPdz", U::DPdz},
+        {"ray:hituv", U::HitUv},
+        {"ray:hitN_facing", U::NFacing},
+        {"ray:hitNg_facing", U::NgFacing},
+        {"ray:level", U::Level},
     };
     for (auto const &[n, kind] : table)
         if (name == n) {
@@ -85,12 +100,41 @@ HdNovaAovKind namedKind(std::string const &name) {
     return HdNovaAovKind::None;
 }
 
+void warnOnce(std::string const &message) {
+    // Once per message and process: a viewport rebinds on every redraw.
+    static std::mutex mutex;
+    static std::set<std::string> warned;
+    std::lock_guard lock(mutex);
+    if (warned.insert(message).second)
+        HD_NOVA_WARN("%s", message.c_str());
+}
+
+// Karma's raw sources Nova does not fill (docs/design/M11-P6.md 3): the
+// renderer's internal ray flags and statistics.
+bool unsupportedKarmaSource(std::string const &name) {
+    return name == "ray:flags" || name.rfind("stat:", 0) == 0 || name == "oraclevariance";
+}
+
 } // namespace
 
-HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding) {
+bool HdNovaHasPrimIdChannel(HdRenderPassAovBindingVector const &bindings) {
+    for (HdRenderPassAovBinding const &b : bindings)
+        if (b.aovName.GetString() == "PrimId")
+            return true;
+    return false;
+}
+
+HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool primIdChannel) {
     HdNovaAovSource out;
-    const std::string source = setting(binding.aovSettings, "sourceName");
+    std::string source = setting(binding.aovSettings, "sourceName");
     const std::string type = setting(binding.aovSettings, "sourceType");
+    // Karma's holdout prefixes on raw sources ("ray:noholdout;hitP").
+    uint8_t holdouts = 0;
+    for (auto const &[prefix, mode] : {std::pair<char const *, uint8_t>{"ray:noholdout;", 1}, {"ray:holdout;", 2}})
+        if (source.rfind(prefix, 0) == 0) {
+            source = "ray:" + source.substr(std::strlen(prefix));
+            holdouts = mode;
+        }
     // An int var written as float: husk's own key, or the generic driver
     // parameter Karma honours as well (measured: Karma writes 0, 1, 2 for
     // ray:primid with either).
@@ -166,13 +210,62 @@ HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding) {
             out.kind = HdNovaAovKind::Utility;
         }
     }
+    if (out.kind == HdNovaAovKind::Utility && unsupportedKarmaSource(source))
+        out.kind = HdNovaAovKind::None;
+    // Karma's sample filter and default value (husk vars only: the viewport's
+    // Hydra names keep Nova's first hits).
+    if (!source.empty() && out.kind != HdNovaAovKind::None && out.kind != HdNovaAovKind::Crypto) {
+        std::string filterText = setting(binding.aovSettings, "driver:parameters:aov:karma:filter");
+        if (filterText.empty())
+            filterText = setting(binding.aovSettings, "driver:parameters:aov:filter");
+        std::string warning;
+        const nova::SampleFilter filter = nova::parseSampleFilter(filterText, primIdChannel, &warning);
+        if (!warning.empty())
+            warnOnce("AOV " + out.describe + ": " + warning);
+        float defaultValue = 0.0f;
+        for (char const *key : {"driver:parameters:aov:karma:defaultvalue", "driver:parameters:aov:defaultvalue"}) {
+            const auto it = binding.aovSettings.find(TfToken(key));
+            if (it != binding.aovSettings.end()) {
+                const VtValue v = VtValue::Cast<float>(it->second);
+                if (v.IsHolding<float>())
+                    defaultValue = v.UncheckedGet<float>();
+                break;
+            }
+        }
+        using U = nova::UtilityKind;
+        const bool perSample = filter != nova::SampleFilter::Center;
+        const bool rawPerSample = perSample && filter != nova::SampleFilter::Box; // beauty and LPEs: ubox is the film
+        if (out.kind == HdNovaAovKind::Depth && perSample)
+            out.utility = {U::Z, {}}, out.kind = HdNovaAovKind::Utility;
+        else if (out.kind == HdNovaAovKind::PrimId && perSample && source == "ray:objectid")
+            out.utility = {U::ObjectId, {}}, out.kind = HdNovaAovKind::Utility;
+        else if (out.kind == HdNovaAovKind::SampleCount && perSample)
+            out.utility = {U::PixelSamples, {}}, out.kind = HdNovaAovKind::Utility;
+        else if (out.kind == HdNovaAovKind::Beauty && rawPerSample)
+            out.utility = {U::Beauty, {}}, out.kind = HdNovaAovKind::Utility;
+        else if (out.kind == HdNovaAovKind::Lpe && rawPerSample)
+            out.utility = {U::Lpe, out.expression}, out.kind = HdNovaAovKind::Utility;
+        // Karma records utility values at the vertex its utility path
+        // expression names; Nova at the camera hit (Karma's default CO).
+        const std::string pathExpression =
+            withoutSpaces(setting(binding.aovSettings, "driver:parameters:aov:karma:utilitypathexpression"));
+        if (out.kind == HdNovaAovKind::Utility && !pathExpression.empty() && pathExpression != "CO")
+            warnOnce("AOV " + out.describe + ": utility path expression " + pathExpression +
+                     " is not supported; the values are those of the camera hit (CO)");
+        if (out.kind == HdNovaAovKind::Utility && out.utility.kind != U::Ao) {
+            out.utility.filter = filter;
+            // Karma's default value offsets raw vars only (measured: an LPE
+            // var keeps its value).
+            if (out.utility.kind != U::Beauty && out.utility.kind != U::Lpe)
+                out.utility.defaultValue = defaultValue;
+            out.utility.holdouts = holdouts;
+        }
+    }
     if (out.kind == HdNovaAovKind::None) {
-        // Once per AOV and process: a viewport rebinds on every redraw.
-        static std::mutex mutex;
-        static std::set<std::string> warned;
-        std::lock_guard lock(mutex);
-        if (warned.insert(out.describe).second)
-            HD_NOVA_WARN("AOV %s is not supported; it keeps its clear value", out.describe.c_str());
+        // The placeholder var Karma's checkpoint products carry is not an AOV.
+        if (source == "ignored_checkpoint" || name == "ignored_checkpoint")
+            return out;
+        warnOnce("AOV " + out.describe + " is not supported; it keeps its clear value");
     }
     return out;
 }

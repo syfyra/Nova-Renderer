@@ -346,6 +346,7 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     settings.lpe = _delegate->GetLpeProgram(bindings);
     settings.utility = _delegate->GetUtilityRequests(bindings);
     settings.crypto = _delegate->GetCryptoRequests(bindings);
+    settings.deep = _delegate->GetDeepRequest();
 
     // Displacement dicing (M4.6): the first view sets where meshes dice from
     // (camera moves do not re-dice); displaced meshes waiting for it, meshes

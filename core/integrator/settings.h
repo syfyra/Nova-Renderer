@@ -16,6 +16,7 @@ struct Compiled;
 }
 struct UtilityRequest;
 struct CryptoRequest;
+struct DeepRequest;
 
 // Where passes render (docs/design/M10.md D1, D15): the CPU, or the GPU with
 // the CPU as fallback (Nova XPU).
@@ -64,6 +65,8 @@ struct RenderSettings {
     std::shared_ptr<const std::vector<UtilityRequest>> utility;
     // Cryptomattes to render (core/film/crypto.h); null: none.
     std::shared_ptr<const std::vector<CryptoRequest>> crypto;
+    // A deep camera map to render (core/film/film.h); null: none.
+    std::shared_ptr<const DeepRequest> deep;
 
     bool operator==(const RenderSettings &) const = default;
 };

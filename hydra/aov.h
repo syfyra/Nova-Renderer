@@ -56,6 +56,14 @@ struct HdNovaAovSource {
 };
 
 // Resolves a binding; warns once per AOV that Nova does not fill.
-HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding);
+// Karma's per-var sample filter (driver:parameters:aov:karma:filter,
+// docs/design/M11-P6.md 2) makes a utility plane per-sample; a beauty or LPE
+// var whose filter is not ubox becomes a per-sample utility plane too.
+// `primIdChannel`: a var named PrimId is bound (Karma's object coverage
+// modes depend on it).
+HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool primIdChannel = false);
+
+// Whether the bindings hold a var named PrimId.
+bool HdNovaHasPrimIdChannel(HdRenderPassAovBindingVector const &bindings);
 
 PXR_NAMESPACE_CLOSE_SCOPE

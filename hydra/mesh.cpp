@@ -1102,7 +1102,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     if (first || (bits & (HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyInstancer))) {
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
-                            HdNovaCryptoAttributes(sd, id, names));
+                            HdNovaCryptoAttributes(sd, id, names, GetInstancerId()));
     }
     if (!geometryDirty) { // updateMesh() already carried these
         if (visibilityDirty)

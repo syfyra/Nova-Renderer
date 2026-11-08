@@ -286,7 +286,8 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
         return; // the expression failed: keeps the clear value
     // Accumulated kinds change every pass, the others after the first.
     const bool perPass = kind == Kind::Beauty || kind == Kind::Lpe || kind == Kind::Crypto || kind == Kind::SampleCount ||
-                         (kind == Kind::Utility && source.utility.kind == nova::UtilityKind::Ao);
+                         (kind == Kind::Utility && (source.utility.kind == nova::UtilityKind::Ao ||
+                                                    source.utility.filter != nova::SampleFilter::Center));
     if (kind == Kind::Crypto && (source.cryptoIndex < 0 || size_t(source.cryptoIndex) >= film.crypto.size()))
         return;
     if (!perPass && !firstHitAovs)
@@ -400,7 +401,19 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
                 break;
             case Kind::Utility: {
                 const float *v = plane->data.data() + src * plane->width;
-                if (plane->request.kind == nova::UtilityKind::Ao) {
+                if (plane->request.filter != nova::SampleFilter::Center && plane->request.kind != nova::UtilityKind::Ao) {
+                    // Karma's sample filters (docs/design/M11-P6.md 2): every
+                    // pixel gets the filter's value, the background its
+                    // default; an LPE plane takes the beauty's alpha.
+                    float o[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                    nova::resolveFilteredSample(*plane, src, film.count[src], o);
+                    int n = plane->width;
+                    if (plane->request.kind == nova::UtilityKind::Lpe) {
+                        o[3] = film.alphaSum[src] * inv;
+                        n = 4;
+                    }
+                    _WritePixel(i, o, n, component, componentCount);
+                } else if (plane->request.kind == nova::UtilityKind::Ao) {
                     const float a = v[0] * inv;
                     const float o[4] = {a, a, a, 1.0f};
                     _WritePixel(i, o, 4, component, componentCount);

@@ -8,6 +8,8 @@ add_library(hdNova_objects OBJECT
     renderPass.cpp
     aov.cpp
     crypto.cpp
+    deepWriter.cpp
+    products.cpp
     denoise.cpp
     renderBuffer.cpp
     medium.cpp

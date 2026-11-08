@@ -983,6 +983,12 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
     w.prevSet[slot] = kPrevSetDelta;
     w.ao[slot] = 0.0f;
     w.cryptoMesh[slot] = kInvalidId;
+    if (a.records) { // per-sample records (camera_samples.h)
+        w.camEventT[slot] = kInf;
+        w.camOrg[slot] = ray.org;
+        w.camDir[slot] = ray.dir;
+        w.camTime[slot] = time;
+    }
     if (w.lpeState)
         w.lpeState[slot] = a.lpeStart; // after the camera event
     // The cone of the pixel's tile (generateCameraRays: the tile's center).
@@ -1211,16 +1217,28 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             const Spectrum T = w.mediumAlpha[k];
             return 1.0f - (T.x + T.y + T.z) * (1.0f / 3.0f);
         };
+        // The camera hit for the host's cryptomattes and per-sample records
+        // (camera_samples.h), as the CPU's recordCameraHit.
+        const auto recordHit = [&] {
+            w.cryptoMesh[p] = w.hitMesh[k];
+            w.cryptoPrim[p] = w.hitPrim[k];
+            w.cryptoInstance[p] = w.hitInstance[k];
+            if (a.settings.records) {
+                w.camUv[p] = w.hitUv[k];
+                w.camT[p] = tHit;
+            }
+        };
         if (event) {
             float alpha = 1.0f;
             if (miss) {
                 bool visible = false;
                 cameraEnvironment(sc.lights, sc.lightCount, a.rays.org[k], dir, visible);
                 alpha = visible ? 1.0f : volumeAlpha();
-            } else if (a.settings.crypto) { // volumes are transparent to cryptomattes
-                w.cryptoMesh[p] = w.hitMesh[k];
-                w.cryptoPrim[p] = w.hitPrim[k];
+            } else if (a.settings.crypto || a.settings.records) { // volumes are transparent to cryptomattes
+                recordHit();
             }
+            if (a.settings.records)
+                w.camEventT[p] = w.volumeT[k];
             w.alpha[p] += alpha;
             pushEvent();
             return;
@@ -1240,10 +1258,10 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             w.alpha[p] += visible ? 1.0f : media ? volumeAlpha() : 0.0f;
             return;
         }
-        if (a.settings.crypto) {
-            w.cryptoMesh[p] = w.hitMesh[k];
-            w.cryptoPrim[p] = w.hitPrim[k];
-        }
+        if (a.settings.crypto || a.settings.records)
+            recordHit();
+        if (a.settings.records)
+            w.camEventT[p] = tHit;
         const uint8_t holdout = sc.anyHoldouts ? sc.meshes[w.hitMesh[k]].holdout : uint8_t(0);
         if (holdout) {
             // A holdout (core/integrator/holdout.h): transparent to alpha but

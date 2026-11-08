@@ -443,7 +443,7 @@ void HdNovaBasisCurves::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
         scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (M6 D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
-                            HdNovaCryptoAttributes(sd, id, names));
+                            HdNovaCryptoAttributes(sd, id, names, GetInstancerId()));
     }
     if (categoriesDirty)
         HdNovaSyncCategories(sd, id, GetInstancerId(), scene, _meshId); // light linking (M9 D15)
