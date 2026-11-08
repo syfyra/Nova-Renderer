@@ -10,6 +10,7 @@ add_library(hdNova_objects OBJECT
     crypto.cpp
     denoise.cpp
     renderBuffer.cpp
+    atmosphere.cpp
     medium.cpp
     mesh.cpp
     sphere.cpp

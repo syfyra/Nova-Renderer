@@ -811,6 +811,12 @@ bool GpuRenderer::setScene(const Scene &scene) {
     m_view.activeVolumes = put(scene.activeVolumes()).ptr;
     m_view.activeVolumeCount = uint32_t(scene.activeVolumes().size());
     m_view.levelDependent = uint8_t(scene.anyLevelDependentVolume());
+    // The sky atmosphere (docs/design/M11-P7.md) with its altitude levels.
+    m_view.atmosphere = AtmosphereView{};
+    if (const AtmosphereView *atmosphere = scene.atmosphere()) {
+        m_view.atmosphere = *atmosphere;
+        m_view.atmosphere.levels = put(scene.atmosphereLevels()).ptr;
+    }
     // Equiangular sampling (M9 D17): the lights that opted in.
     const Scene::EquiangularLights eq = scene.equiangularLights();
     m_view.eqLights = put(eq.lights, eq.table.count).ptr;
@@ -1203,7 +1209,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     const uint32_t wavePixels = std::max(1u, kMaxWavePaths / std::max(1u, spp));
     for (uint32_t first = 0; first < regionPixels; first += wavePixels) {
         const uint32_t pixels = std::min(wavePixels, regionPixels - first), paths = pixels * spp;
-        const bool media = m_view.activeVolumeCount > 0;
+        const bool media = m_view.anyMedia();
         const bool fake = m_scene->anyFakeCaustics();
         if (!reserveWave(paths) || !reserveWalks(paths) || !setCount(m_rays[0], paths) || (lpeOn && !reserveLpe(paths)) ||
             (media && !reserveMedia(paths)) || (fake && !reserveFake(paths)))

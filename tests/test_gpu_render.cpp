@@ -15,6 +15,7 @@
 #include "core/geometry/curves.h"
 #include "core/gpu/device.h"
 #include "core/lights/sky.h"
+#include "core/math/frame.h"
 #include "core/math/rng.h"
 #include "core/integrator/renderer.h"
 #include "core/scene/scene.h"
@@ -1741,4 +1742,114 @@ TEST_CASE("XPU renders are bit-identical", "[gpu][render]") {
         different += a.film.colorSum[i].x != b.film.colorSum[i].x || a.film.colorSum[i].y != b.film.colorSum[i].y ||
                      a.film.colorSum[i].z != b.film.colorSum[i].z || a.film.alphaSum[i] != b.film.alphaSum[i];
     CHECK(different == 0);
+}
+
+// docs/design/M11-P7.md: the Karma Sky Atmosphere (its default planet, +Z
+// up, the camera 100 m above sea level) lit by a sun disc at 15 degrees, with
+// multiple scattering (volume limit 2), a visible ground below the horizon,
+// a fog box inside the atmosphere (its events compete with the
+// atmosphere's) and a lit quad: the CPU's image means.
+TEST_CASE("XPU sky atmosphere", "[gpu][render][atmosphere]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    using namespace shading;
+    Scene scene;
+    auto atmosphere = std::make_shared<AtmosphereDesc>();
+    atmosphere->center[0] = 0.0;
+    atmosphere->center[1] = 0.0;
+    atmosphere->center[2] = -6371000.0;
+    atmosphere->seaLevel = 6370900.0;
+    atmosphere->groundVisibility = kVisibleAll;
+    atmosphere->groundAlbedo = Spectrum{0.3f, 0.25f, 0.2f};
+    {
+        VolumeDesc v;
+        v.atmosphere = atmosphere;
+        v.volumeLimit = 2.0f;
+        scene.updateVolume(scene.createVolume(), v);
+    }
+    { // a fog box 20 m ahead
+        IrGraph g;
+        IrBuilder b(g);
+        b.output(uint16_t(volume_field::kBase + volume_field::scattering), 3, b.constant(0.05f, 0.05f, 0.05f));
+        MaterialDesc m;
+        m.program = compile(g).program;
+        VolumeDesc v;
+        const MeshDesc cube = [] {
+            MeshDesc c;
+            const float x0 = -4.0f, x1 = 4.0f, y0 = 16.0f, y1 = 24.0f, z0 = -3.0f, z1 = 5.0f;
+            c.points = {{x0, y0, z0}, {x1, y0, z0}, {x1, y1, z0}, {x0, y1, z0},
+                        {x0, y0, z1}, {x1, y0, z1}, {x1, y1, z1}, {x0, y1, z1}};
+            c.indices = {0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
+                         1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7};
+            return c;
+        }();
+        v.shell = makeTriangleShell(cube.points.data(), cube.pointCount(), cube.indices.data(), cube.triangleCount());
+        v.material = scene.createMaterial();
+        scene.updateMaterial(v.material, m);
+        const VolumeId id = scene.createVolume();
+        scene.updateVolume(id, v);
+        scene.updateVolumeMotion(id, {Mat4::identity()});
+    }
+    MeshDesc quad = makeQuad(2.0f);
+    quad.setDisplayColor(spectrum(0.6f));
+    quad.transform = translation({0.0f, 10.0f, -2.0f});
+    scene.updateMesh(scene.createMesh(), quad);
+    LightDesc sun;
+    sun.type = LightType::Distant;
+    sun.normalize = true;
+    sun.angleDeg = 0.53f;
+    sun.cameraVisible = true;
+    {
+        const float a = 15.0f * kPi / 180.0f;
+        const Frame f = Frame::fromNormal({0.0f, std::cos(a), std::sin(a)});
+        const Vec3f axes[3] = {f.t, f.b, f.n};
+        for (int r = 0; r < 3; ++r) {
+            sun.transform.m[r][0] = axes[r].x;
+            sun.transform.m[r][1] = axes[r].y;
+            sun.transform.m[r][2] = axes[r].z;
+        }
+    }
+    scene.updateLight(scene.createLight(), sun);
+    scene.commit();
+    REQUIRE(scene.atmosphere() != nullptr);
+    // Looking along +Y, slightly down: sky, sun, horizon, ground, fog and quad.
+    Camera camera = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 10.0, 24.0, 32, 32, 0.01, 1.0e6);
+    Mat4 m = Mat4::identity();
+    m.m[1][1] = 0.0f; // local -Z to +Y, local +Y to +Z
+    m.m[1][2] = 1.0f;
+    m.m[2][1] = -1.0f;
+    m.m[2][2] = 0.0f;
+    camera.viewToWorld = m;
+    camera.worldToView = inverse(m);
+    const Render cpu = render(scene, camera, 32, 32, 512, RenderDevice::Cpu, 8, true);
+    const Render gpu = render(scene, camera, 32, 32, 512, RenderDevice::Xpu, 8, true);
+    REQUIRE(gpu.gpu);
+    const auto clipped = [](const Film &f) { // the sun disc's few pixels dominate a plain mean
+        double sum = 0.0;
+        for (size_t i = 0; i < f.colorSum.size(); ++i)
+            sum += std::min(double(luminance(f.colorSum[i])) / double(f.count[i]), 1.0);
+        return sum / double(f.colorSum.size());
+    };
+    const double cpuMean = clipped(cpu.film), gpuMean = clipped(gpu.film);
+    INFO("mean CPU " << cpuMean << ", GPU " << gpuMean);
+    CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.01 * cpuMean));
+    for (int q = 0; q < 4; ++q) {
+        double a = 0.0, b = 0.0;
+        for (int y = (q / 2) * 16; y < (q / 2) * 16 + 16; ++y)
+            for (int x = (q % 2) * 16; x < (q % 2) * 16 + 16; ++x) {
+                const size_t i = size_t(y) * 32 + size_t(x);
+                a += std::min(double(luminance(cpu.film.colorSum[i])) / cpu.film.count[i], 1.0);
+                b += std::min(double(luminance(gpu.film.colorSum[i])) / gpu.film.count[i], 1.0);
+            }
+        INFO("quadrant " << q << ": CPU " << a / 256.0 << ", GPU " << b / 256.0);
+        CHECK_THAT(b, WithinAbs(a, 0.02 * a));
+    }
+    // Alpha: the atmosphere's opacity above the horizon, 1 on the ground.
+    double ca = 0.0, ga = 0.0;
+    for (size_t i = 0; i < cpu.film.alphaSum.size(); ++i) {
+        ca += cpu.film.alphaSum[i] / cpu.film.count[i];
+        ga += gpu.film.alphaSum[i] / gpu.film.count[i];
+    }
+    CHECK_THAT(ga, WithinAbs(ca, 1e-3 * ca));
 }

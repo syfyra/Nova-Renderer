@@ -849,8 +849,99 @@ void equiangularSample(const ShadeContext &c, WaveQueues &q, uint32_t k) {
     }
 }
 
+// What a ray that may scatter sees at its end, for the sky atmosphere's
+// choice (MediumRay::behind, docs/design/M11-P7.md): a surface, crossed
+// lights or a visible environment, a sun disc in its direction, or nothing.
+struct AtmosphereBehind {
+    std::vector<uint32_t> distant; // cone-shaped distant lights
+    bool dome = false;
+
+    void init(const ShadeContext &c) {
+        distant.clear();
+        dome = false;
+        for (uint32_t i = 0; i < c.lightCount; ++i) {
+            const LightData &l = c.lights[i];
+            const bool seen = c.depth > 0 || l.cameraVisible;
+            if (l.type == LightType::Dome && seen)
+                dome = true;
+            if (l.type == LightType::Distant && !l.delta && seen)
+                distant.push_back(i);
+        }
+    }
+    uint8_t operator()(const ShadeContext &c, bool miss, Vec3f dir, int crossings) const {
+        if (!miss || crossings > 0 || dome)
+            return 1;
+        for (uint32_t i : distant)
+            if (dot(dir, c.lights[i].direction) >= 1.0f - c.lights[i].oneMinusCosThetaMax)
+                return 2;
+        return 0;
+    }
+};
+
+// The sky atmosphere's ground where ray k's flight ended on it (MediumFlight::
+// ground, docs/design/M11-P7.md): a Lambert surface of the atmosphere's
+// albedo lit by the distant lights through the atmosphere, nothing else
+// (Karma, measured: no sky light, no other lights); the scene's objects
+// shadow it with groundreceiveshadow (shadow rays), else its light is added
+// here. An object-emission (O) event in light path expressions.
+void shadeGround(const ShadeContext &c, WaveQueues &q, uint32_t p, const MediumRay &ray, float t,
+                 const Spectrum &weight, float seed) {
+    const AtmosphereView &a = *c.scene.atmosphere();
+    const Vec3f x = ray.o + ray.d * t;
+    const Vec3f n = atmosphereNormal(a, x);
+    const Spectrum beta = q.beta[p] * weight * a.groundAlbedo;
+    if (isBlack(beta))
+        return;
+    const LpeView *lpe = c.lpe;
+    const lpe::State state = lpe ? q.lpeState[p] : lpe::State(0);
+    const lpe::State object = state ? lpeStep(*lpe, state, lpe::TypeObject, lpe::ScatterNone, 0, 0) : state;
+    const Vec3f origin = x + n * nova::fmax(4.0f * c.tolerance, 1e-6f * maxComponent(absolute(x)));
+    for (uint32_t li = 0; li < c.lightCount; ++li) {
+        const LightData &l = c.lights[li];
+        if (l.type != LightType::Distant)
+            continue;
+        const float cosI = dot(n, l.direction);
+        if (!(cosI > 0.0f))
+            continue;
+        const Spectrum E = l.delta ? l.emission : l.emission * (kTwoPi * l.oneMinusCosThetaMax);
+        const Spectrum unit = beta * E * (cosI * kInvPi * l.diffuse);
+        if (isBlack(unit))
+            continue;
+        if (a.groundShadows) {
+            LightSample ls;
+            ls.wi = l.direction;
+            ls.Li = E;
+            ls.pdf = 1.0f;
+            ls.distance = kInf;
+            ls.delta = true;
+            if (lpe)
+                lpePartsClear(q);
+            if (object)
+                lpePartsAdd(*lpe, q, object, unit, unit);
+            pushShadowRay(c, q, origin, l.direction, shadowRayLength(kInf, c.tolerance), p, unit, ray.time, seed, li,
+                          ls);
+            continue;
+        }
+        const Spectrum contribution =
+            clampContribution(unit * atmosphereTransmittanceToInfinity(a, origin, l.direction), c.clampEscape);
+        if (isBlack(contribution))
+            continue;
+        addRadiance(q, p, contribution);
+        if (object) {
+            if (c.depth == 0)
+                lpeDepositAll(*lpe, c.film, q.pixel[p], object, contribution);
+            else
+                lpeDeposit(*lpe, c.film, q.pixel[p], object, contribution);
+        }
+    }
+}
+
 void traceMedia(const ShadeContext &c, WaveQueues &q) {
     q.media = true;
+    const bool atmosphere = c.scene.atmosphere() != nullptr;
+    thread_local AtmosphereBehind behind;
+    if (atmosphere)
+        behind.init(c);
     const bool equiangular = c.scene.equiangularLights().table.count > 0;
     // Where volumes depend on the ray level (Karma's modifiers), the light a
     // continuation gathers sees them at its event's level, the next event
@@ -889,6 +980,10 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
         ray.o = org;
         ray.d = dir;
         ray.tEnd = miss ? q.rays.tMax[k] : q.hitT[k];
+        // Camera rays that miss see the sky atmosphere past the far clipping
+        // plane (Karma's ignorecameraclip, docs/design/M11-P7.md).
+        if (atmosphere && miss && c.depth == 0 && c.scene.atmosphere()->ignoreClip)
+            ray.tEnd = kInf;
         ray.time = q.rays.time[k];
         ray.rayType = q.rays.rayType[k];
         ray.depth = c.depth;
@@ -920,6 +1015,8 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
                 equiangularSample(c, q, k);
             const int allCrossings = crossings;
             gather.lights = !q.lightSplit;
+            if (atmosphere)
+                ray.behind = behind(c, miss, dir, crossings);
             const MediumFlight f = flyMedia(c.scene, q.volumes, globals, ray, q.beta[p], u0, rng, &gather,
                                             c.depth == 0 ? &q.mediumAlpha[k] : nullptr, crossT, crossOut, crossings);
             q.mediumT[k] = f.weight;
@@ -929,6 +1026,12 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
                 q.volumeId[k] = f.volume;
                 q.volumePhase[k] = f.phase;
                 crossings = f.crossings; // the lights in front of the event
+            }
+            if (f.ground) {
+                // The flight ends on the atmosphere's ground: its light, and
+                // nothing from behind it.
+                shadeGround(c, q, p, ray, f.t, f.weight, shadowRaySeed(q.rays.filterSeed[k]));
+                q.mediumT[k] = spectrum(0.0f);
             }
             if (q.lightSplit) {
                 // Lights along the whole segment, as the light sample's
@@ -1995,7 +2098,9 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
                     equiangularDensities(c, q, k, choice.light, t, choice.selectPdf, pEq, pFree);
                     share = pEq > 0.0f ? pFree * pFree / (pEq * pEq + pFree * pFree) : 1.0f;
                 }
-                const Spectrum unit = q.beta[p] * ls.Li * (f * share / lightPdf);
+                Spectrum unit = q.beta[p] * ls.Li * (f * share / lightPdf);
+                if (phase.kind == PhaseFunction::kSky) // the sky's channels (docs/design/M11-P7.md)
+                    unit *= phase.weight(d, ls.wi);
                 const Spectrum contribution = unit * weight;
                 if (lpe)
                     lpePartsClear(q);
@@ -2023,6 +2128,8 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
         else if (n < 255)
             q.eventCounts[p] += uint64_t(1) << (8 * kVolumeClass);
         Spectrum beta = q.beta[p];
+        if (phase.kind == PhaseFunction::kSky)
+            beta *= phase.weight(d, wi);
         bool alive = !isBlack(beta) && isFinite(beta);
         if (alive && c.depth + 1 >= c.settings.rrStartDepth) {
             const float survive = std::clamp(maxComponent(absolute(beta)) * q.etaScale[p], 0.05f, 0.95f);
@@ -2197,7 +2304,7 @@ void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t 
     q.shadows.partState.clear();
     q.shadows.partValue.clear();
     q.shadows.partUnit.clear();
-    if (!scene.activeVolumes().empty())
+    if (scene.anyMedia())
         traceMedia(c, q);
     else
         q.media = false;
@@ -2363,7 +2470,7 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
     if (scene.backgroundOccludesShadows() && scene.anyBackground())
         rays += probeBackgroundOccluders(scene, s, depth, globals);
     const bool fake = scene.anyFakeCaustics();
-    const bool media = !scene.activeVolumes().empty();
+    const bool media = scene.anyMedia();
     const bool unit = lpe && lpe->unit;
     if (s.emitterCount > 0)
         emitterShadowRadiance(scene, settings, ctx, depth, q, unit);

@@ -1,5 +1,6 @@
 #include "renderDelegate.h"
 
+#include "atmosphere.h"
 #include "camera.h"
 #include "diagnostics.h"
 #include "field.h"
@@ -53,6 +54,7 @@ const TfTokenVector HdNovaRenderDelegate::SUPPORTED_RPRIM_TYPES = {
     HdPrimTypeTokens->basisCurves,
     HdPrimTypeTokens->points,
     HdPrimTypeTokens->volume,
+    HdNovaAtmosphere::TypeToken(), // the Karma Sky Atmosphere (docs/design/M11-P7.md)
 };
 
 const TfTokenVector HdNovaRenderDelegate::SUPPORTED_SPRIM_TYPES = {
@@ -855,6 +857,8 @@ HdRprim *HdNovaRenderDelegate::CreateRprim(TfToken const &typeId, SdfPath const 
         return new HdNovaPoints(rprimId);
     if (typeId == HdPrimTypeTokens->volume)
         return new HdNovaVolume(rprimId);
+    if (typeId == HdNovaAtmosphere::TypeToken())
+        return new HdNovaAtmosphere(rprimId);
     TF_CODING_ERROR("Nova: unknown Rprim type %s", typeId.GetText());
     return nullptr;
 }
