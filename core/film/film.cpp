@@ -11,6 +11,7 @@ uint8_t utilityWidth(UtilityKind kind) {
     case UtilityKind::HitDist:
     case UtilityKind::Face:
     case UtilityKind::Ao: // the unoccluded sum, written to every channel
+    case UtilityKind::BakeAlpha:
         return 1;
     case UtilityKind::Primvar:
         return 4;

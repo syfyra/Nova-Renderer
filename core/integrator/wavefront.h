@@ -26,6 +26,8 @@
 
 namespace nova {
 
+class Baker;
+
 // Film pixels [x0, x1) x [y0, y1).
 struct TileRect {
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
@@ -309,9 +311,12 @@ struct WaveQueues {
 // started (render statistics, docs/design/M9.md).
 void subsurfaceWalkStats(uint64_t &walks, uint64_t &capped);
 
+// With `baker` (texture baking, core/bake/bake.h), the camera rays are the
+// bake's: every sample's path starts at its shading point (samples without
+// one add nothing), and the bake's maps accumulate alongside.
 uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettings &settings, const PixelFilter &filter,
                     const TileRect &tile, const uint32_t *pixels, uint32_t pixelCount, Film &film, WaveQueues &queues,
-                    const LpeTables *lpe = nullptr, uint32_t samplesPerPixel = 1);
+                    const LpeTables *lpe = nullptr, uint32_t samplesPerPixel = 1, const Baker *baker = nullptr);
 
 // renderWave's first part alone: the first-hit AOVs of the tile's pixels
 // (or of pixels in it) without a sample yet, for passes whose samples

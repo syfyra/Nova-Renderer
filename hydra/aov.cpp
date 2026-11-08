@@ -65,6 +65,29 @@ bool utilityOf(std::string const &name, nova::UtilityRequest &out) {
     return false;
 }
 
+// The Karma Texture Baker's raw sources (husd/karmatexturebaker.py's AOV
+// table): its maps, and export_<input> for the Standard Surface inputs.
+bool bakeOf(std::string const &name, nova::UtilityRequest &out) {
+    using U = nova::UtilityKind;
+    static const std::pair<char const *, U> table[] = {
+        {"Nt", U::BakeNormal},         {"Ds", U::BakeHeight},     {"Vd", U::BakeVector},
+        {"Vdt", U::BakeVectorTangent}, {"Oc", U::BakeOcclusion},  {"Cv", U::BakeCavity},
+        {"Th", U::BakeThickness},      {"Cu", U::BakeCurvature},  {"Eg", U::BakeEdge},
+        {"Rn", U::BakeRoundedNormal},  {"Af", U::BakeAlpha},      {"__bake_P", U::BakePosition},
+        {"N", U::BakeShadingNormal},   {"Ng", U::BakeGeometricNormal},
+    };
+    for (auto const &[n, kind] : table)
+        if (name == n) {
+            out = {kind, {}};
+            return true;
+        }
+    if (name.rfind("export_", 0) == 0) {
+        out = {U::BakeExport, name.substr(7)};
+        return true;
+    }
+    return false;
+}
+
 // Hydra's names and Karma's ray:* sources Nova fills.
 HdNovaAovKind namedKind(std::string const &name) {
     if (name == HdAovTokens->color.GetString())
@@ -87,7 +110,22 @@ HdNovaAovKind namedKind(std::string const &name) {
 
 } // namespace
 
-HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding) {
+static HdNovaAovSource resolveAov(HdRenderPassAovBinding const &binding);
+
+HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool bake) {
+    HdNovaAovSource out = resolveAov(binding);
+    if (!bake)
+        return out;
+    // A bake: the baker's raw sources are its maps; every plane is filtered.
+    const std::string source = setting(binding.aovSettings, "sourceName");
+    const std::string type = setting(binding.aovSettings, "sourceType");
+    if ((type.empty() || type == "raw") && bakeOf(source, out.utility))
+        out.kind = HdNovaAovKind::Utility;
+    out.perSample = out.kind == HdNovaAovKind::Utility;
+    return out;
+}
+
+static HdNovaAovSource resolveAov(HdRenderPassAovBinding const &binding) {
     HdNovaAovSource out;
     const std::string source = setting(binding.aovSettings, "sourceName");
     const std::string type = setting(binding.aovSettings, "sourceType");
