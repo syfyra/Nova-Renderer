@@ -80,6 +80,11 @@ public:
     bool ReadRgba(std::vector<float> &rgba) const;
     // Writes RGBA float, rows top-down (3-channel buffers take RGB).
     void WriteRgba(const float *rgba);
+    // The buffer's pixels as floats, all its channels, in its own (the
+    // film's) pixel order; false for int formats. Karma's bake image
+    // filters (docs/design/M11-P8.md) run on these.
+    bool ReadFloats(std::vector<float> &values, int &channels) const;
+    void WriteFloats(const float *values);
 
     static TfToken const &AlbedoToken();
 

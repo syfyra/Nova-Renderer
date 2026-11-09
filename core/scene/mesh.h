@@ -55,6 +55,10 @@ struct MeshDesc {
     // index), for the face-index AOV (Karma's ray:primid).
     std::vector<int32_t> triangleFaces;
     bool visible = true;
+    // The authored faces wind clockwise (USD leftHanded); the host reversed
+    // them into the triangles (texture baking's MikkTSpace signs follow the
+    // authored winding, docs/design/M11-P8.md).
+    bool leftHanded = false;
 
     // Curves: the control point count of every curve (periodic and pinned
     // curves already expanded by the host), the radius at every control

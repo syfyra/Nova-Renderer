@@ -60,6 +60,9 @@ struct HdNovaAovSource {
     int plateShadowOutput = -1, plateShadowSlot = -1, plateHoldoutSlot = -1;
     std::vector<int> plateExtras;
     nova::UtilityRequest utility; // Utility
+    // The plane holds per-sample sums (a texture bake's maps, M11 P8): the
+    // value is the sum over the pixel's count.
+    bool perSample = false;
     int utilityIndex = -1;  // the film's plane (Utility)
     nova::CryptoRequest crypto;   // Crypto
     int cryptoIndex = -1;   // the film's plane (Crypto)
@@ -70,6 +73,9 @@ struct HdNovaAovSource {
 };
 
 // Resolves a binding; warns once per AOV that Nova does not fill.
-HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding);
+// `bake`: the render is a texture bake (docs/design/M11-P8.md): the
+// Texture Baker's raw sources (Nt, Af, __bake_P, N, export_*, ...) are its
+// maps, and every utility plane is filtered per sample.
+HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool bake = false);
 
 PXR_NAMESPACE_CLOSE_SCOPE
