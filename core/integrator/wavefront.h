@@ -90,9 +90,14 @@ struct ShadowQueue {
     uint32_t emitterCount = 0;
 
     void reserve(uint32_t capacity);
+    // More room, keeping the rays pushed (a path's light samples per depth
+    // are bounded, WaveQueues::reserve; this keeps a miscount safe).
+    void grow();
     // `flags`: the hit filter's ray flags (kRayFromBackground, core/scene/visibility.h).
     void push(Vec3f o, Vec3f d, float t, uint32_t pathSlot, Spectrum c, float rayTime, float seed,
               uint16_t category = 0xFFFFu, uint8_t flags = 0) {
+        if (rays.size >= contribution.size())
+            grow();
         contribution[rays.size] = c;
         shadowCategory[rays.size] = category;
         emitter[rays.size] = kInvalidId;

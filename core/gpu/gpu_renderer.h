@@ -179,7 +179,11 @@ private:
     // rays).
     uint32_t m_capacity = 0;
     bool m_nestedReserved = false; // the wave holds the nested dielectrics' media (GpuWave::nested)
-    uint32_t m_shadowSlots = 0; // shadow rays per path the wave holds (2, 3 with walks, +1 with shadow-linked domes)
+    // Shadow rays per path the wave holds (2, 3 with walks, +1 with
+    // shadow-linked domes, +1 with the sky atmosphere's ground shadowed).
+    uint32_t m_shadowSlots = 0;
+    // The sky atmosphere's visible ground takes shadow rays (shadeGround).
+    bool groundShadows() const { return m_view.atmosphere.volume != 0xFFFFFFFFu && m_view.atmosphere.groundShadows; }
     std::vector<DeviceBuffer> m_waveBuffers;
     GpuWave m_wave;
     GpuRays m_rays[2];

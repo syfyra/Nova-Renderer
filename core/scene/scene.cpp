@@ -478,15 +478,22 @@ void Scene::setDefaultOutline(const ObjectOutline &outline) {
 
 void Scene::setLightOverride(LightOverride mode, bool autoHeadlight, const Mat4 &cameraToWorld) {
     std::lock_guard lock(m_mutex);
-    // The camera orients the headlight only where there may be one.
-    const bool head = mode == LightOverride::Headlight || (mode == LightOverride::Off && autoHeadlight);
-    const Mat4 toWorld = head ? cameraToWorld : Mat4::identity();
-    if (m_lightOverride == mode && m_autoHeadlight == autoHeadlight &&
-        std::memcmp(&m_headlightToWorld, &toWorld, sizeof(Mat4)) == 0)
-        return;
+    // The camera moves the headlight only where there is one: the auto
+    // headlight only on a stage without lights (commit()). The camera is
+    // kept for a headlight that appears later (the stage's lights removed:
+    // the lights are rebuilt then).
+    bool stageLights = false;
+    for (const std::optional<LightDesc> &light : m_lights)
+        stageLights |= light && light->visible;
+    const bool head =
+        mode == LightOverride::Headlight || (mode == LightOverride::Off && autoHeadlight && !stageLights);
+    const bool moved = std::memcmp(&m_headlightToWorld, &cameraToWorld, sizeof(Mat4)) != 0;
+    const bool changed = m_lightOverride != mode || m_autoHeadlight != autoHeadlight || (head && moved);
     m_lightOverride = mode;
     m_autoHeadlight = autoHeadlight;
-    m_headlightToWorld = toWorld;
+    m_headlightToWorld = cameraToWorld;
+    if (!changed)
+        return;
     m_lightsDirty = true;
     ++m_version;
 }

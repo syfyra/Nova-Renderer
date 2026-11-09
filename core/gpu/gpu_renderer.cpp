@@ -895,8 +895,10 @@ bool GpuRenderer::setFilm(const Film &film) {
 
 bool GpuRenderer::reserveWave(uint32_t paths) {
     // Pre-lit background holdouts with illumbackground lights use the walk
-    // exits' kind (kernels.cu shadePrelit).
-    const uint32_t slots = (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u);
+    // exits' kind (kernels.cu shadePrelit); the sky atmosphere's ground with
+    // groundreceiveshadow has a kind of its own (shadeGround).
+    const uint32_t slots = (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u) +
+                           (groundShadows() ? 1u : 0u);
     const bool nested = m_view.nestedDielectrics != 0;
     if (paths <= m_capacity && slots <= m_shadowSlots && (!nested || m_nestedReserved))
         return true;
@@ -917,6 +919,7 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
         field(r.filterSeed, n);
         field(r.rayType, n);
         r.count = m_counts.as<uint32_t>() + countSlot;
+        r.capacity = uint32_t(n);
     };
     GpuWave &w = m_wave;
     field(w.pixel, paths);
@@ -959,7 +962,10 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     // Up to two light samples per path and depth: at the hit or volume
     // event, and an equiangular one along the ray's medium segment; with
     // subsurface walks a third at a walk's exit; with shadow-linked domes
-    // one more, a dome's BSDF sample at the event or the exit (path.h).
+    // one more, a dome's BSDF sample at the event or the exit (path.h); with
+    // the atmosphere's ground shadowed one at the ground (one per path: the
+    // shadow kernel's runs, kernel_types.h shadowSlot). A push past the
+    // budget is dropped (pushRay).
     const size_t shadows = size_t(paths) * slots;
     rays(w.shadow, 2, shadows);
     field(w.shadowContribution, shadows);
@@ -1040,8 +1046,9 @@ bool GpuRenderer::uploadLpe(const LpeTables &tables, uint64_t generation) {
 
 bool GpuRenderer::reserveLpe(uint32_t paths) {
     // Per shadow ray its parts' range, as many rays as the shadow queue holds
-    // (reserveWave ran first: m_shadowSlots per path, 2 to 4 with walks and
-    // shadow-linked domes); up to 4 parts per shadow ray on average, more are
+    // (reserveWave ran first: m_shadowSlots per path, 2 to 5 with walks,
+    // shadow-linked domes and the atmosphere's ground); up to 4 parts per
+    // shadow ray on average, more are
     // dropped (lpe_path.h).
     const size_t rays = size_t(paths) * m_shadowSlots;
     if (paths > m_lpeCapacity || rays > m_lpeRayCapacity) {
@@ -1189,6 +1196,7 @@ bool GpuRenderer::reserveFake(uint32_t paths) {
         r.filterSeed = b[5].as<float>();
         r.rayType = b[6].as<uint8_t>();
         r.count = m_counts.as<uint32_t>() + 5 + q;
+        r.capacity = m_fakeCapacity;
     }
     return true;
 }
@@ -1647,6 +1655,11 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 if (!launch(m_shadow, shadows, &sh))
                     return false;
             }
+            if (groundShadows()) { // the sky atmosphere's ground's (shadeGround): a fifth run
+                sh.slot = 4;
+                if (!launch(m_shadow, shadows, &sh))
+                    return false;
+            }
             if (counts[3] > 0) { // the ambient occlusion AOV's rays (depth 0)
                 TraceParams aoQuery;
                 aoQuery.org = m_wave.aoRays.org;
@@ -1699,7 +1712,8 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 m_sampleRadiance.resize(paths);
                 if (!get(r.uv, m_wave.camUv) || !get(r.t, m_wave.camT) || !get(r.eventT, m_wave.camEventT) ||
                     !get(r.org, m_wave.camOrg) || !get(r.dir, m_wave.camDir) || !get(r.time, m_wave.camTime) ||
-                    !get(r.alpha, m_wave.alpha) || !get(m_sampleRadiance, m_wave.radiance))
+                    !get(r.alpha, m_wave.alpha) || !get(m_sampleRadiance, m_wave.radiance) ||
+                    !get(m_sampleIndex, m_wave.sampleIndex))
                     return false;
             }
             for (uint32_t slot = 0; slot < paths; ++slot) {
@@ -1707,14 +1721,19 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 const int x = region.x0 + int(pixel % uint32_t(region.width())), y = region.y0 + int(pixel / uint32_t(region.width()));
                 const uint32_t pix = list ? (*list)[pixel] : uint32_t(y) * uint32_t(film.width) + uint32_t(x);
                 m_samplePixel[slot] = pix;
-                m_sampleIndex[slot] = film.count[pix] + slot % spp; // the counts follow after the waves
                 if (gs.crypto && r.mesh[slot] != kInvalidId)
                     accumulateCrypto(*m_scene, film, pix, r.mesh[slot], r.prim[slot], r.instance[slot]);
             }
-            if (gs.records)
+            if (gs.records) {
+                // The sample numbers the device drew with (novaGenerate: its
+                // counts, which the host's only follow after the pass), the
+                // film's own as the CPU's records take them (Film::sampleOffset).
+                for (uint32_t slot = 0; slot < paths; ++slot)
+                    m_sampleIndex[slot] -= film.sampleOffset;
                 accumulateCameraSamples(*m_scene, camera, gs.globals, film,
                                         CameraSampleView::of(r, paths, m_samplePixel.data(), m_sampleIndex.data(),
                                                              m_sampleRadiance.data()));
+            }
         }
     }
 

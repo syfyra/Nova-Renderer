@@ -145,9 +145,9 @@ struct WatertightRay {
     }
 };
 
-// Slab test of box [lo, hi] against the line o + t d, t in (tMin, inf).
-NOVA_INLINE bool boxHit(Vec3f o, Vec3f inv, Vec3f lo, Vec3f hi, float tMin) {
-    float t0 = tMin, t1 = 3.0e38f;
+// Slab test of box [lo, hi] against the line o + t d, t in (tMin, tMax).
+NOVA_INLINE bool boxHit(Vec3f o, Vec3f inv, Vec3f lo, Vec3f hi, float tMin, float tMax = 3.0e38f) {
+    float t0 = tMin, t1 = tMax;
     const float oo[3] = {o.x, o.y, o.z}, ii[3] = {inv.x, inv.y, inv.z};
     const float l[3] = {lo.x, lo.y, lo.z}, h[3] = {hi.x, hi.y, hi.z};
     for (int a = 0; a < 3; ++a) {
@@ -166,19 +166,41 @@ NOVA_INLINE bool boxHit(Vec3f o, Vec3f inv, Vec3f lo, Vec3f hi, float tMin) {
 
 } // namespace shell_detail
 
+// What a scan of the shell's crossings along a line finds (shellScan).
+struct ShellScan {
+    int kept = 0;      // crossings kept in (lo, hi), ascending (the nearest kShellCrossings)
+    int inRange = 0;   // crossings in (lo, hi) in all
+    int ahead = 0;     // crossings with t > lo in all (up to the boxes' reach, boxMax)
+    int aheadSum = 0;  // their sides' sum (+1 leaving along the face's normal, -1 entering)
+    int behindSum = 0; // the sides' sum of the crossings with t <= lo (from boxMin on)
+};
+
 // The crossings of the shell by the line o + t d (object space, d not
-// necessarily unit) with t > tMin: the nearest kShellCrossings ascending
-// in `out` with their sides in `sign` (+1 leaving along the face's normal,
-// -1 entering); returns how many there are in all.
-NOVA_INLINE int shellCrossings(const ShellView &s, Vec3f o, Vec3f d, float tMin, float *out, int8_t *sign) {
-    int total = 0, kept = 0;
+// necessarily unit) within the BVH boxes it meets over (boxMin, boxMax): the
+// nearest kShellCrossings with lo < t < hi ascending in `out` with their
+// sides in `sign`, and the counts of ShellScan.
+NOVA_INLINE void shellScan(const ShellView &s, Vec3f o, Vec3f d, float lo, float hi, float boxMin, float boxMax,
+                           float *out, int8_t *sign, ShellScan &r) {
+    r = ShellScan{};
+    const auto add = [&](float t, int8_t side) {
+        if (t > lo) {
+            ++r.ahead;
+            r.aheadSum += side;
+            if (t < hi) {
+                ++r.inRange;
+                shell_detail::keep(out, sign, r.kept, t, side);
+            }
+        } else {
+            r.behindSum += side;
+        }
+    };
     if (s.kind == ShellKind::Sphere) {
         // |o + t d - c|^2 = r^2, the stable roots: entering, then leaving.
         const Vec3f f = o - s.center;
         const float a = dot(d, d), b = dot(f, d), c = dot(f, f) - s.radius * s.radius;
         const float disc = b * b - a * c;
         if (!(disc > 0.0f) || !(a > 0.0f))
-            return 0;
+            return;
         const float q = -(b + (b < 0.0f ? -std::sqrt(disc) : std::sqrt(disc)));
         float t0 = q / a, t1 = q != 0.0f ? c / q : t0;
         if (t0 > t1) {
@@ -186,20 +208,13 @@ NOVA_INLINE int shellCrossings(const ShellView &s, Vec3f o, Vec3f d, float tMin,
             t0 = t1;
             t1 = x;
         }
-        if (t0 > tMin) {
-            out[kept] = t0;
-            sign[kept++] = -1;
-            ++total;
-        }
-        if (t1 > tMin && t1 != t0) {
-            out[kept] = t1;
-            sign[kept++] = 1;
-            ++total;
-        }
-        return total;
+        add(t0, -1);
+        if (t1 != t0)
+            add(t1, 1);
+        return;
     }
     if (s.kind != ShellKind::Triangles || s.nodeCount == 0)
-        return 0;
+        return;
     const shell_detail::WatertightRay wr(d);
     // Axis-parallel rays: a huge reciprocal instead of infinity (no 0 x inf).
     const auto reciprocal = [](float x) { return 1.0f / (x != 0.0f ? x : 1.0e-30f); };
@@ -209,7 +224,7 @@ NOVA_INLINE int shellCrossings(const ShellView &s, Vec3f o, Vec3f d, float tMin,
     stack[top++] = 0;
     while (top > 0) {
         const ShellNode &n = s.nodes[stack[--top]];
-        if (!shell_detail::boxHit(o, inv, n.lower, n.upper, tMin))
+        if (!shell_detail::boxHit(o, inv, n.lower, n.upper, boxMin, boxMax))
             continue;
         if (n.count == 0) {
             if (top + 2 <= kShellStack) {
@@ -222,19 +237,30 @@ NOVA_INLINE int shellCrossings(const ShellView &s, Vec3f o, Vec3f d, float tMin,
             const Vec3f *v = s.triangles + size_t(i) * 3;
             float t;
             bool leaves;
-            if (wr.hit(o, v[0], v[1], v[2], t, leaves) && t > tMin) {
-                ++total;
-                shell_detail::keep(out, sign, kept, t, leaves ? int8_t(1) : int8_t(-1));
-            }
+            if (wr.hit(o, v[0], v[1], v[2], t, leaves) && t > boxMin)
+                add(t, leaves ? int8_t(1) : int8_t(-1));
         }
     }
-    return total;
+}
+
+// The crossings of the shell by the line o + t d (object space, d not
+// necessarily unit) with t > tMin: the nearest kShellCrossings ascending
+// in `out` with their sides in `sign` (+1 leaving along the face's normal,
+// -1 entering); returns how many there are in all.
+NOVA_INLINE int shellCrossings(const ShellView &s, Vec3f o, Vec3f d, float tMin, float *out, int8_t *sign) {
+    ShellScan r;
+    shellScan(s, o, d, tMin, 3.0e38f, tMin, 3.0e38f, out, sign, r);
+    return r.ahead;
 }
 
 // The shell's inside along the ray o + t d within [t0, t1) (0 <= t0): calls
-// emit(a, b) for each interval, in order. Closed shells take the crossings
-// ahead (t > 0), open ones the whole line; past the kept crossings the rest
-// decide up to t1.
+// emit(a, b) for each interval, in order. The state at t0 comes from every
+// crossing that decides it (closed shells: the parity of those ahead; open
+// ones: the faces' sides over the whole line), then the crossings within
+// [t0, t1) toggle it, kShellCrossings at a time: a window ends before the
+// distance of its last kept crossing (every nearer one is kept; ties at
+// that distance may not be) and the next starts there. Exact for any number
+// of crossings, but for more than kShellCrossings at one distance.
 template <class Emit>
 NOVA_INLINE void shellIntervals(const ShellView &s, Vec3f o, Vec3f d, float t0, float t1, Emit &&emit) {
     float c[kShellCrossings];
@@ -263,33 +289,40 @@ NOVA_INLINE void shellIntervals(const ShellView &s, Vec3f o, Vec3f d, float t0, 
         if (!(t0 < t1))
             return;
     }
-    const int total = shellCrossings(s, o, d, line ? -3.0e38f : 0.0f, c, sign);
-    const int kept = total < kShellCrossings ? total : kShellCrossings;
-    // Open: the faces ahead of an interval minus the exits behind it.
-    int ahead = 0, behind = 0;
-    if (line)
-        for (int i = 0; i < kept; ++i)
-            ahead += sign[i];
-    bool inside = line ? ahead > 0 : (total & 1) != 0;
-    float start = -3.0e38f;
-    for (int i = 0; i <= kept; ++i) {
-        const float end = i < kept ? c[i] : 3.0e38f;
-        if (inside) {
-            const float a = start > t0 ? start : t0, b = end < t1 ? end : t1; // std::max, std::min
-            if (a < b)
-                emit(a, b);
+    ShellScan scan;
+    shellScan(s, o, d, t0, t1, line ? -3.0e38f : t0, 3.0e38f, c, sign, scan);
+    // Open: the exits minus the entries ahead, the entries minus the exits
+    // behind.
+    int ahead = scan.aheadSum, behind = -scan.behindSum;
+    bool inside = line ? ahead > 0 || behind > 0 : (scan.ahead & 1) != 0;
+    float start = t0;
+    for (;;) {
+        const bool more = scan.inRange > scan.kept;
+        int n = scan.kept;
+        if (more) {
+            while (n > 0 && c[n - 1] == c[scan.kept - 1])
+                --n;
+            if (n == 0)
+                n = scan.kept; // all at one distance: as they are
         }
-        if (!(end < t1) || i == kept)
+        for (int i = 0; i < n; ++i) {
+            if (inside && start < c[i])
+                emit(start, c[i]);
+            if (line) {
+                ahead -= sign[i];
+                behind -= sign[i]; // an entry behind counts +1
+                inside = ahead > 0 || behind > 0;
+            } else {
+                inside = !inside;
+            }
+            start = c[i];
+        }
+        if (!more)
             break;
-        if (line) {
-            ahead -= sign[i];
-            behind -= sign[i]; // an entry behind counts +1
-            inside = ahead > 0 || behind > 0;
-        } else {
-            inside = !inside;
-        }
-        start = end;
+        shellScan(s, o, d, start, t1, start, t1, c, sign, scan); // the next window
     }
+    if (inside && start < t1)
+        emit(start, t1);
 }
 
 // Whether distance t >= 0 along the ray lies inside the shell.

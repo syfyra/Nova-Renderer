@@ -201,6 +201,11 @@ NOVA_INLINE constexpr uint32_t outline(uint32_t i) { return kOutlineBase + i; }
 // The simplified shading's ambient occlusion ray at the camera hit (Karma's
 // disable_lighting, core/integrator/lookdev.h), 2D.
 constexpr uint32_t kLookAo = 0xB0000u;
+// The sky atmosphere's ground with groundreceiveshadow: the choice of the
+// distant light its shadow ray goes to (path.h chooseGroundLight), 1D per
+// depth.
+constexpr uint32_t kGroundLightBase = 0xC0000u;
+NOVA_INLINE constexpr uint32_t groundLight(uint32_t depth) { return kGroundLightBase + depth; }
 } // namespace stream
 
 } // namespace nova

@@ -452,6 +452,44 @@ TEST_CASE("Look-dev light overrides", "[lookdev][render]") {
     }
 }
 
+// The auto headlight follows the camera only while it exists: with the
+// stage's lights there is none, and a camera move changes nothing (it
+// rebuilt the lights, the light tree and the XPU's scene every time). The
+// camera is kept for a headlight that appears later.
+TEST_CASE("The auto headlight follows the camera only when there is one", "[lookdev][lights]") {
+    Scene scene;
+    scene.updateMesh(scene.createMesh(), makeQuad(1.0f));
+    LightDesc sun;
+    sun.type = LightType::Distant;
+    const LightId light = scene.createLight();
+    scene.updateLight(light, sun);
+    Mat4 a = translation({0.0f, 0.0f, 10.0f}), b = Mat4::identity(); // b looks along +Y
+    b.m[1][1] = 0.0f;
+    b.m[1][2] = 1.0f;
+    b.m[2][1] = -1.0f;
+    b.m[2][2] = 0.0f;
+    scene.setLightOverride(LightOverride::Off, true, a);
+    scene.commit();
+    REQUIRE(scene.lights().size() == 1);
+    const uint64_t v = scene.version();
+    scene.setLightOverride(LightOverride::Off, true, b);
+    CHECK(scene.version() == v);
+    scene.commit();
+    CHECK(scene.version() == v);
+    // Without the stage's light: the headlight, along the latest camera.
+    scene.removeLight(light);
+    scene.commit();
+    REQUIRE(scene.lights().size() == 1);
+    const Vec3f bz{float(b.m[2][0]), float(b.m[2][1]), float(b.m[2][2])};
+    CHECK(std::fabs(dot(scene.lights()[0].direction, bz)) > 0.999f);
+    // Now the camera moves it.
+    const uint64_t w = scene.version();
+    scene.setLightOverride(LightOverride::Off, true, a);
+    CHECK(scene.version() != w);
+    scene.commit();
+    CHECK(std::fabs(scene.lights()[0].direction.z) > 0.999f);
+}
+
 TEST_CASE("XPU outlines and look-dev overrides", "[gpu][render][outline][lookdev]") {
     const Camera persp = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 50.0, 36.0, kW, kH);
     const Camera ortho = makeOrthoCamera({0.0f, 0.0f, 10.0f}, 4.0f, kRes, kRes);
