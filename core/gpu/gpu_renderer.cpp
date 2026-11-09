@@ -1712,7 +1712,8 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 m_sampleRadiance.resize(paths);
                 if (!get(r.uv, m_wave.camUv) || !get(r.t, m_wave.camT) || !get(r.eventT, m_wave.camEventT) ||
                     !get(r.org, m_wave.camOrg) || !get(r.dir, m_wave.camDir) || !get(r.time, m_wave.camTime) ||
-                    !get(r.alpha, m_wave.alpha) || !get(m_sampleRadiance, m_wave.radiance))
+                    !get(r.alpha, m_wave.alpha) || !get(m_sampleRadiance, m_wave.radiance) ||
+                    !get(m_sampleIndex, m_wave.sampleIndex))
                     return false;
             }
             for (uint32_t slot = 0; slot < paths; ++slot) {
@@ -1720,14 +1721,19 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 const int x = region.x0 + int(pixel % uint32_t(region.width())), y = region.y0 + int(pixel / uint32_t(region.width()));
                 const uint32_t pix = list ? (*list)[pixel] : uint32_t(y) * uint32_t(film.width) + uint32_t(x);
                 m_samplePixel[slot] = pix;
-                m_sampleIndex[slot] = film.count[pix] + slot % spp; // the counts follow after the waves
                 if (gs.crypto && r.mesh[slot] != kInvalidId)
                     accumulateCrypto(*m_scene, film, pix, r.mesh[slot], r.prim[slot], r.instance[slot]);
             }
-            if (gs.records)
+            if (gs.records) {
+                // The sample numbers the device drew with (novaGenerate: its
+                // counts, which the host's only follow after the pass), the
+                // film's own as the CPU's records take them (Film::sampleOffset).
+                for (uint32_t slot = 0; slot < paths; ++slot)
+                    m_sampleIndex[slot] -= film.sampleOffset;
                 accumulateCameraSamples(*m_scene, camera, gs.globals, film,
                                         CameraSampleView::of(r, paths, m_samplePixel.data(), m_sampleIndex.data(),
                                                              m_sampleRadiance.data()));
+            }
         }
     }
 

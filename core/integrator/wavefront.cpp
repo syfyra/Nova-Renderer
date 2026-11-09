@@ -3127,10 +3127,20 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
             if (!q.holdout[slot])
                 guideFlushPath(*guide, records, slot, q.radiance[slot], q.pixelSeed[slot], q.sampleIndex[slot]);
     }
-    if (q.records) // filtered utility planes and the deep map (camera_samples.h)
+    if (q.records) { // filtered utility planes and the deep map (camera_samples.h)
+        // The film's own sample numbers (Even/Odd filters, the pixel-samples
+        // var): without Film::sampleOffset, as on the XPU.
+        const uint32_t *index = q.sampleIndex.data();
+        thread_local std::vector<uint32_t> relative;
+        if (film.sampleOffset != 0) {
+            relative.resize(paths);
+            for (uint32_t slot = 0; slot < paths; ++slot)
+                relative[slot] = q.sampleIndex[slot] - film.sampleOffset;
+            index = relative.data();
+        }
         accumulateCameraSamples(scene, camera, globals, film,
-                                CameraSampleView::of(q.camera, paths, q.pixel.data(), q.sampleIndex.data(),
-                                                     q.radiance.data()));
+                                CameraSampleView::of(q.camera, paths, q.pixel.data(), index, q.radiance.data()));
+    }
     if (q.walksDone > 0) {
         g_walks.fetch_add(q.walksDone, std::memory_order_relaxed);
         g_walksCapped.fetch_add(q.walksCapped, std::memory_order_relaxed);

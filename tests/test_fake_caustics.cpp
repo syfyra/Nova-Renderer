@@ -447,7 +447,12 @@ TEST_CASE("Constrained roughness leaves fake-caustic pass-throughs as their shad
     auto render = [](LightStrategy strategy) {
         Setup s(true);
         s.ground();
-        s.plane(0.3f, -4.0f, 4.0f, glass(1.0f, spectrum(1.0f), true)); // the rough sheet under the camera
+        // The rough sheet under the camera, without reflection: its own light
+        // (a glossy event: fake caustics do not apply, so its light samples
+        // and its BSDF samples see the glass differently, by design) is 0.
+        SurfaceInputs sheet = glass(1.0f, spectrum(1.0f), true);
+        sheet.set(sf::specularWeight, 0.0f);
+        s.plane(0.3f, -4.0f, 4.0f, sheet);
         s.plane(0.5f, -4.0f, 4.0f, glass(0.0f, {1.0f, 0.5f, 0.25f})); // smooth glass over everything
         LightDesc rect; // emits along its -Z: down
         rect.type = LightType::Rect;

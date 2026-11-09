@@ -2358,6 +2358,8 @@ TEST_CASE("XPU light and BSDF samples agree past shadow-invisible surfaces and f
             d.inputs.set(surface_field::transmissionColor, tint);
             d.inputs.set(surface_field::specularRoughness, roughness);
             d.inputs.set(surface_field::thinWalled, thin ? 1.0f : 0.0f);
+            if (thin) // the sheet without reflection: its own (glossy) light is 0
+                d.inputs.set(surface_field::specularWeight, 0.0f);
             const MaterialId mat = scene.createMaterial();
             scene.updateMaterial(mat, d);
             scene.setMeshMaterials(id, {mat});
