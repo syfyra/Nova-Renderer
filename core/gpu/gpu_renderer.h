@@ -210,7 +210,11 @@ private:
     // The film.
     DeviceBuffer m_colorSum, m_alphaSum, m_count, m_aoPlane, m_lpeSum, m_lpeLit;
     DeviceBuffer m_outlinePlanes[kOutlinePlaneCount]; // Karma's outline planes (OutlinePlane order)
-    std::vector<uint32_t> m_cryptoMesh, m_cryptoPrim; // a wave's camera hits on the host
+    // A wave's camera hits on the host (cryptomattes, per-sample records),
+    // with their pixels, sample numbers and radiance.
+    CameraSampleRecords m_records;
+    std::vector<uint32_t> m_samplePixel, m_sampleIndex;
+    std::vector<Spectrum> m_sampleRadiance;
     int m_width = 0, m_height = 0;
 };
 

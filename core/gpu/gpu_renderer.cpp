@@ -939,6 +939,13 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.outlineRadius, paths);
     field(w.outlineFlagged, paths);
     field(w.outlineTypes, paths);
+    field(w.cryptoInstance, paths);
+    field(w.camUv, paths);
+    field(w.camT, paths);
+    field(w.camEventT, paths);
+    field(w.camOrg, paths);
+    field(w.camDir, paths);
+    field(w.camTime, paths);
     rays(m_rays[0], 0, paths);
     rays(m_rays[1], 1, paths);
     m_capacity = ok ? paths : 0;
@@ -1178,6 +1185,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     gs.outline = settings.outline; // Karma's outlines and look-dev overrides (M11 P9a)
     gs.look = settings.look;
     const bool outlines = outlineOn(settings.outline);
+    gs.records = film.wantsSampleRecords();
     // The camera cone of each 32 x 32 tile of the region at its center, as
     // the CPU's tiles (Renderer::buildTiles, generateCameraRays).
     const int tilesX = (region.width() + 31) / 32, tilesY = (region.height() + 31) / 32;
@@ -1259,6 +1267,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
         g.seed = settings.seed;
         g.lpeStart = lpeOn ? lpe->program.start : lpe::State(0);
         g.filterSeeds = view.anyFiltered;
+        g.records = gs.records;
         if (!launch(m_generate, paths, &g))
             return false;
         // Per depth the queue lengths come back after shading (12 bytes): the
@@ -1508,21 +1517,37 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
         f.outline = settings.outline;
         if (!launch(m_flush, pixels, &f))
             return false;
-        if (gs.crypto) { // the camera hits' ids, accumulated on the host (D9)
-            m_cryptoMesh.resize(paths);
-            m_cryptoPrim.resize(paths);
-            if (!m_device.download(m_cryptoMesh.data(), CUdeviceptr(m_wave.cryptoMesh), paths * sizeof(uint32_t)) ||
-                !m_device.download(m_cryptoPrim.data(), CUdeviceptr(m_wave.cryptoPrim), paths * sizeof(uint32_t)))
+        if (gs.crypto || gs.records) { // the camera hits, accumulated on the host (D9; M11 P6)
+            CameraSampleRecords &r = m_records;
+            r.reserve(paths);
+            m_samplePixel.resize(paths);
+            m_sampleIndex.resize(paths);
+            const auto get = [&](auto &dst, auto *src) {
+                return m_device.download(dst.data(), CUdeviceptr(src), paths * sizeof(dst[0]));
+            };
+            if (!get(r.mesh, m_wave.cryptoMesh) || !get(r.prim, m_wave.cryptoPrim) ||
+                !get(r.instance, m_wave.cryptoInstance))
                 return false;
+            if (gs.records) {
+                m_sampleRadiance.resize(paths);
+                if (!get(r.uv, m_wave.camUv) || !get(r.t, m_wave.camT) || !get(r.eventT, m_wave.camEventT) ||
+                    !get(r.org, m_wave.camOrg) || !get(r.dir, m_wave.camDir) || !get(r.time, m_wave.camTime) ||
+                    !get(r.alpha, m_wave.alpha) || !get(m_sampleRadiance, m_wave.radiance))
+                    return false;
+            }
             for (uint32_t slot = 0; slot < paths; ++slot) {
-                if (m_cryptoMesh[slot] == kInvalidId)
-                    continue;
                 const uint32_t pixel = first + slot / spp;
                 const int x = region.x0 + int(pixel % uint32_t(region.width())), y = region.y0 + int(pixel / uint32_t(region.width()));
-                accumulateCrypto(*m_scene, film,
-                                 list ? (*list)[pixel] : uint32_t(y) * uint32_t(film.width) + uint32_t(x),
-                                 m_cryptoMesh[slot], m_cryptoPrim[slot]);
+                const uint32_t pix = list ? (*list)[pixel] : uint32_t(y) * uint32_t(film.width) + uint32_t(x);
+                m_samplePixel[slot] = pix;
+                m_sampleIndex[slot] = film.count[pix] + slot % spp; // the counts follow after the waves
+                if (gs.crypto && r.mesh[slot] != kInvalidId)
+                    accumulateCrypto(*m_scene, film, pix, r.mesh[slot], r.prim[slot], r.instance[slot]);
             }
+            if (gs.records)
+                accumulateCameraSamples(*m_scene, camera, gs.globals, film,
+                                        CameraSampleView::of(r, paths, m_samplePixel.data(), m_sampleIndex.data(),
+                                                             m_sampleRadiance.data()));
         }
     }
 

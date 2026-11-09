@@ -360,7 +360,7 @@ void HdNovaSphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         scene.setMeshOutline(_meshId, HdNovaObjectOutline(sd, id));       // M11 P9a
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
-                            HdNovaCryptoAttributes(sd, id, names));
+                            HdNovaCryptoAttributes(sd, id, names, GetInstancerId()));
     }
     if (categoriesDirty)
         HdNovaSyncCategories(sd, id, GetInstancerId(), scene, _meshId); // light linking (M9 D15)

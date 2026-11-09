@@ -17,6 +17,8 @@
 #include "renderBuffer.h"
 #include "renderPass.h"
 #include "volume.h"
+#include "deepWriter.h"
+#include "products.h"
 
 #include "core/film/lpe_compile.h"
 
@@ -35,6 +37,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <set>
 #include <string>
@@ -212,8 +218,10 @@ HdNovaRenderDelegate::GetLpeProgram(HdRenderPassAovBindingVector const &bindings
     std::vector<std::string> names; // the first AOV of each expression, for messages
     for (const HdRenderPassAovBinding &b : bindings) {
         const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
-        if (s.kind == HdNovaAovKind::Lpe &&
-            std::find(expressions.begin(), expressions.end(), s.expression) == expressions.end()) {
+        // LPE vars with a per-sample filter are utility planes of an output.
+        const bool lpe = s.kind == HdNovaAovKind::Lpe ||
+                         (s.kind == HdNovaAovKind::Utility && s.utility.kind == nova::UtilityKind::Lpe);
+        if (lpe && std::find(expressions.begin(), expressions.end(), s.expression) == expressions.end()) {
             expressions.push_back(s.expression);
             names.push_back(s.describe);
         }
@@ -243,8 +251,9 @@ HdNovaRenderDelegate::GetLpeProgram(HdRenderPassAovBindingVector const &bindings
 std::shared_ptr<const std::vector<nova::UtilityRequest>>
 HdNovaRenderDelegate::GetUtilityRequests(HdRenderPassAovBindingVector const &bindings) {
     std::vector<nova::UtilityRequest> requests;
+    const bool primId = HdNovaHasPrimIdChannel(bindings);
     for (const HdRenderPassAovBinding &b : bindings) {
-        const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
+        const HdNovaAovSource s = _ResolveAov(b, primId);
         if (s.kind == HdNovaAovKind::Utility && std::find(requests.begin(), requests.end(), s.utility) == requests.end())
             requests.push_back(s.utility);
     }
@@ -268,6 +277,20 @@ HdNovaRenderDelegate::GetCryptoRequests(HdRenderPassAovBindingVector const &bind
     else if (!_crypto || *_crypto != requests)
         _crypto = std::make_shared<const std::vector<nova::CryptoRequest>>(std::move(requests));
     return _crypto;
+}
+
+HdNovaAovSource HdNovaRenderDelegate::_ResolveAov(HdRenderPassAovBinding const &binding, bool primIdChannel) const {
+    HdNovaAovSource s = HdNovaResolveAov(binding, IsBaking(), primIdChannel);
+    if (s.kind == HdNovaAovKind::Utility && s.utility.kind == nova::UtilityKind::Lpe) {
+        // The program's output (GetLpeProgram ran first); none: the clear value.
+        const auto it = std::find(_lpeExpressions.begin(), _lpeExpressions.end(), s.expression);
+        const size_t i = size_t(it - _lpeExpressions.begin());
+        if (_lpeProgram && it != _lpeExpressions.end() && _lpeProgram->errors[i].empty())
+            s.utility.index = int32_t(i);
+        else
+            s.kind = HdNovaAovKind::None;
+    }
+    return s;
 }
 
 bool HdNovaRenderDelegate::IsBaking() const {
@@ -300,8 +323,9 @@ std::shared_ptr<const nova::BakeSettings> HdNovaRenderDelegate::GetBakeSettings(
 void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bindings) {
     _aovBindings = bindings;
     _aovSources.clear();
+    const bool primId = HdNovaHasPrimIdChannel(bindings);
     for (const HdRenderPassAovBinding &b : bindings) {
-        HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
+        HdNovaAovSource s = _ResolveAov(b, primId);
         if (s.kind == HdNovaAovKind::Lpe && _lpeProgram) {
             const auto it = std::find(_lpeExpressions.begin(), _lpeExpressions.end(), s.expression);
             const size_t i = size_t(it - _lpeExpressions.begin());
@@ -397,6 +421,216 @@ void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bi
     }
 }
 
+// ---------------------------------------------------------------------------
+// Non-raster products: deep camera maps and checkpoints (docs/design/M11-P6.md)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The deep channel names of a var's values (husk's rules for raster
+// channels: one value takes the var's name, points, normals and vectors
+// .x .y .z, others .R .G .B .A).
+void deepChannelNames(std::string const &name, std::string const &dataType, int width, std::vector<std::string> &out) {
+    if (width == 1) {
+        out.push_back(name);
+        return;
+    }
+    const bool xyz = dataType.find("point") == 0 || dataType.find("normal") == 0 || dataType.find("vector") == 0;
+    static char const *const xyzNames[] = {".x", ".y", ".z", ".w"}, *const rgbaNames[] = {".R", ".G", ".B", ".A"};
+    for (int c = 0; c < width; ++c)
+        out.push_back(name + (xyz ? xyzNames[c] : rgbaNames[c]));
+}
+
+uint64_t fnv1a(void const *data, size_t size, uint64_t h = 1469598103934665603ull) {
+    auto const *b = static_cast<uint8_t const *>(data);
+    for (size_t i = 0; i < size; ++i)
+        h = (h ^ b[i]) * 1099511628211ull;
+    return h;
+}
+
+constexpr char kCheckpointMagic[8] = {'N', 'O', 'V', 'A', 'C', 'K', 'P', '1'};
+
+} // namespace
+
+std::shared_ptr<const nova::DeepRequest> HdNovaRenderDelegate::GetDeepRequest() {
+    static const TfToken productsKey("delegateRenderProducts"), hitDist("karma:global:dcm_usehitdist"),
+        excludeHoldouts("karma:global:dcm_excludeholdouts");
+    ProductConfig config;
+    std::optional<nova::DeepRequest> request;
+    // The viewport never writes products (nor resumes checkpoints).
+    if (!GetRenderSetting<bool>(HdNovaSettingsTokens->houdiniViewport, false)) {
+        for (HdNovaDelegateProduct const &p : HdNovaParseDelegateProducts(GetRenderSetting(productsKey))) {
+            if (p.type == "karma:checkpoint" && config.checkpointPath.empty() && !p.name.empty()) {
+                config.checkpointPath = p.name;
+                config.checkpointSeconds = std::max(0.0, HdNovaProductNumber(p.settings, "saveFrequency", 60.0));
+                config.resume = HdNovaProductNumber(p.settings, "resume", 1.0) != 0.0;
+            } else if (p.type == "karma:deep" && !request && !p.name.empty()) {
+                nova::DeepRequest d;
+                d.compression = int(HdNovaProductNumber(p.settings, "karma:product:dcmcompression", 5.0));
+                d.zbias = float(HdNovaProductNumber(p.settings, "karma:product:dcmzbias", 0.001));
+                d.hitDistance = VtValue::Cast<bool>(GetRenderSetting(hitDist)).GetWithDefault(false);
+                d.excludeHoldouts = VtValue::Cast<bool>(GetRenderSetting(excludeHoldouts)).GetWithDefault(false);
+                config.deepPath = p.name;
+                config.deepOpacitySize = int(HdNovaProductNumber(p.settings, "karma:product:dcmofsize", 3.0)) >= 3 ? 3 : 1;
+                // The product's vars: the beauty is the deep RGBA; other
+                // first-hit values ride along as extra channels.
+                for (HdNovaProductVar const &v : p.vars) {
+                    HdRenderPassAovBinding b;
+                    b.aovName = v.aovName;
+                    b.aovSettings = v.settings;
+                    const HdNovaAovSource s = HdNovaResolveAov(b);
+                    nova::UtilityRequest r;
+                    using U = nova::UtilityKind;
+                    switch (s.kind) {
+                    case HdNovaAovKind::Beauty:
+                        continue;
+                    case HdNovaAovKind::Utility:
+                        if (s.utility.kind == U::Beauty)
+                            continue;
+                        r = s.utility;
+                        break;
+                    case HdNovaAovKind::Depth:
+                        r.kind = U::Z;
+                        break;
+                    case HdNovaAovKind::PrimId:
+                        r.kind = U::ObjectId;
+                        break;
+                    case HdNovaAovKind::Normal:
+                        r.kind = U::N;
+                        break;
+                    case HdNovaAovKind::SampleCount:
+                        r.kind = U::PixelSamples;
+                        break;
+                    default:
+                        r.kind = U::Lpe; // not available per sample
+                        break;
+                    }
+                    if (r.kind == U::Lpe || r.kind == U::Ao) {
+                        static std::mutex mutex;
+                        static std::set<std::string> warned;
+                        std::lock_guard lock(mutex);
+                        if (warned.insert(p.name + "/" + v.aovName.GetString()).second)
+                            HD_NOVA_WARN("deep image %s: var %s is not written (LPE, cryptomatte and AO vars have "
+                                         "no per-sample values in Nova's deep output)",
+                                         p.name.c_str(), v.aovName.GetText());
+                        continue;
+                    }
+                    r.filter = nova::SampleFilter::Center;
+                    r.defaultValue = 0.0f;
+                    d.extras.push_back(r);
+                    deepChannelNames(v.aovName.GetString(), HdNovaProductString(v.settings, "dataType"),
+                                     nova::utilityWidth(r.kind), config.deepChannels);
+                }
+                request = d;
+            } else if (p.type != "karma:checkpoint" && p.type != "karma:deep" && !p.type.empty()) {
+                static std::mutex mutex;
+                static std::set<std::string> warned;
+                std::lock_guard lock(mutex);
+                if (warned.insert(p.type).second)
+                    HD_NOVA_WARN("render product type '%s' (%s) is not supported", p.type.c_str(), p.name.c_str());
+            }
+        }
+    }
+    _products = config;
+    if (!request)
+        _deep.reset();
+    else if (!_deep || !(*_deep == *request))
+        _deep = std::make_shared<const nova::DeepRequest>(*request);
+    return _deep;
+}
+
+bool HdNovaRenderDelegate::_ResumeCheckpoint() {
+    const std::string &path = _activeProducts.checkpointPath;
+    if (path.empty() || !_activeProducts.resume || _renderer.passes() != 0 || !_resumeTried.insert(path).second)
+        return false;
+    std::ifstream in(std::filesystem::u8path(path), std::ios::binary);
+    if (!in)
+        return false;
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    nova::Camera const &camera = _renderer.camera();
+    uint64_t signature = fnv1a(&camera.worldToView, sizeof(camera.worldToView));
+    signature = fnv1a(&camera.ndcToView, sizeof(camera.ndcToView), signature);
+    const nova::RenderSettings &rs = _renderer.settings();
+    signature = fnv1a(&rs.seed, sizeof(rs.seed), signature);
+    if (bytes.size() < 16 || std::memcmp(bytes.data(), kCheckpointMagic, 8) != 0 ||
+        std::memcmp(bytes.data() + 8, &signature, 8) != 0 ||
+        !_renderer.loadCheckpoint(bytes.data() + 16, bytes.size() - 16)) {
+        std::fprintf(stderr, "[Nova] Checkpoint %s does not match this render: starting over\n", path.c_str());
+        return false;
+    }
+    const uint32_t target = std::max(1u, rs.maxSamples);
+    std::fprintf(stderr, "[Nova] Resuming from checkpoint %s: %u of %u samples\n", path.c_str(),
+                 _renderer.samplesDone(), target);
+    std::fflush(stderr);
+    return true;
+}
+
+void HdNovaRenderDelegate::_SaveCheckpoint() {
+    const std::string &path = _activeProducts.checkpointPath;
+    if (path.empty() || _renderer.passes() == 0)
+        return;
+    std::vector<uint8_t> bytes;
+    _renderer.saveCheckpoint(bytes);
+    nova::Camera const &camera = _renderer.camera();
+    uint64_t signature = fnv1a(&camera.worldToView, sizeof(camera.worldToView));
+    signature = fnv1a(&camera.ndcToView, sizeof(camera.ndcToView), signature);
+    signature = fnv1a(&_renderer.settings().seed, sizeof(uint32_t), signature);
+    // Written next to the file and renamed: an interrupted save keeps the last one.
+    const std::filesystem::path target = std::filesystem::u8path(path);
+    std::filesystem::path temp = target;
+    temp += ".tmp";
+    std::error_code ec;
+    if (target.has_parent_path())
+        std::filesystem::create_directories(target.parent_path(), ec);
+    {
+        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        out.write(kCheckpointMagic, 8);
+        out.write(reinterpret_cast<char const *>(&signature), 8);
+        out.write(reinterpret_cast<char const *>(bytes.data()), std::streamsize(bytes.size()));
+        if (!out) {
+            HD_NOVA_WARN("cannot write checkpoint %s", path.c_str());
+            return;
+        }
+    }
+    std::filesystem::rename(temp, target, ec);
+    if (ec) {
+        HD_NOVA_WARN("cannot write checkpoint %s: %s", path.c_str(), ec.message().c_str());
+        return;
+    }
+    _lastCheckpointNs = nowNs();
+    std::fprintf(stderr, "[Nova] Saved checkpoint: %s (%u samples)\n", path.c_str(), _renderer.samplesDone());
+    std::fflush(stderr);
+}
+
+void HdNovaRenderDelegate::_WriteDeep() {
+    if (_activeProducts.deepPath.empty())
+        return;
+    nova::Film const &film = _renderer.film();
+    nova::Camera const &camera = _renderer.camera();
+    HdNovaDeepOutput out;
+    out.path = _activeProducts.deepPath;
+    out.opacitySize = _activeProducts.deepOpacitySize;
+    out.extraChannels = _activeProducts.deepChannels;
+    out.hasCamera = true;
+    // Houdini's camera space looks down +Z (as Karma's header).
+    nova::Mat4 flip = nova::Mat4::identity();
+    flip.m[2][2] = -1.0;
+    out.worldToCamera = camera.worldToView * flip;
+    out.worldToNdc = camera.worldToView * inverse(camera.ndcToView);
+    const nova::UtilityContext clip = nova::UtilityContext::make(_scene, camera);
+    out.clipNear = clip.nearDepth;
+    out.clipFar = clip.farDepth;
+    out.originX = camera.imageOriginX;
+    out.fullWidth = film.width;
+    out.fullHeight = film.height;
+    std::string error;
+    if (HdNovaWriteDeepImage(film, out, error))
+        std::fprintf(stderr, "[Nova] Saved deep image: %s\n", out.path.c_str());
+    else
+        HD_NOVA_WARN("deep image %s: %s", out.path.c_str(), error.c_str());
+    std::fflush(stderr);
+}
+
 HdNovaDenoiseConfig HdNovaRenderDelegate::GetDenoiseConfig() const {
     HdNovaDenoiseConfig config;
     const auto text = [&](TfToken const &key) {
@@ -431,6 +665,8 @@ HdNovaDenoiseConfig HdNovaRenderDelegate::GetDenoiseConfig() const {
 }
 
 void HdNovaRenderDelegate::OnRenderStarted() {
+    _activeProducts = _products;
+    _lastCheckpointNs = nowNs();
     _completedSamples = 0;
     _completedPasses = 0;
     _targetSamples = _renderer.settings().maxSamples;
@@ -459,11 +695,16 @@ void HdNovaRenderDelegate::_RenderLoop() {
 
     for (;;) {
         if (interrupted()) {
-            // Interrupted before converging: the next Execute restarts.
-            if (!_renderer.converged())
+            // Interrupted before converging: the next Execute restarts; a
+            // checkpoint product keeps what was rendered (M11 P6).
+            if (!_renderer.converged()) {
                 _needsReset = true;
+                _SaveCheckpoint();
+            }
             return;
         }
+        // A checkpoint already at the target only needs its buffers written.
+        const bool resumedDone = _ResumeCheckpoint() && _renderer.converged();
         if (_renderThread.IsPauseRequested()) {
             // The first-proxy-pass exemption is for a running pass only: a
             // paused loop must honour a stop request, since StopRender()
@@ -476,7 +717,7 @@ void HdNovaRenderDelegate::_RenderLoop() {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             continue;
         }
-        if (_renderer.converged())
+        if (_renderer.converged() && !resumedDone)
             return;
         HdNovaTextureSystem &textures = _renderParam->GetSurfaceTextures();
         if (textures.GetOptions().abortOnMissing && textures.MissingCount() > 0) {
@@ -504,7 +745,7 @@ void HdNovaRenderDelegate::_RenderLoop() {
             return;
         }
 
-        if (!_renderer.renderPass(interrupted)) {
+        if (!resumedDone && !_renderer.renderPass(interrupted)) {
             _needsReset = true; // the film holds a partial pass
             return;
         }
@@ -603,6 +844,19 @@ void HdNovaRenderDelegate::_RenderLoop() {
         }
         if (!denoised.empty())
             HdNovaDenoiseBuffers(film, denoised, guidesAlbedo, guidesNormal);
+        // Non-raster products (M11 P6): the deep image when done (before the
+        // buffers converge, so husk's exit finds it), checkpoints every
+        // saveFrequency seconds; a finished render removes its checkpoint.
+        if (converged) {
+            _WriteDeep();
+            if (!_activeProducts.checkpointPath.empty()) {
+                std::error_code ec;
+                std::filesystem::remove(std::filesystem::u8path(_activeProducts.checkpointPath), ec);
+            }
+        } else if (!_activeProducts.checkpointPath.empty() &&
+                   double(nowNs() - _lastCheckpointNs) * 1e-9 >= _activeProducts.checkpointSeconds) {
+            _SaveCheckpoint();
+        }
         // The stats first: a host that sees the buffers converged reads the
         // final counts and the "Converged" stage.
         _completedSamples = _renderer.samplesDone();

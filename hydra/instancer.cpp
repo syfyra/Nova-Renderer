@@ -440,6 +440,81 @@ void HdNovaInstancer::ComputeInstanceAttributes(SdfPath const &prototypeId,
     }
 }
 
+namespace {
+
+// A string, token or int array primvar's values as strings (false: another type).
+bool instanceStrings(VtValue const &v, std::vector<std::string> &out) {
+    out.clear();
+    if (v.IsHolding<VtArray<std::string>>())
+        out.assign(v.UncheckedGet<VtArray<std::string>>().begin(), v.UncheckedGet<VtArray<std::string>>().end());
+    else if (v.IsHolding<VtArray<TfToken>>())
+        for (TfToken const &t : v.UncheckedGet<VtArray<TfToken>>())
+            out.push_back(t.GetString());
+    else if (v.IsHolding<VtArray<int>>())
+        for (int i : v.UncheckedGet<VtArray<int>>())
+            out.push_back(std::to_string(i));
+    else if (v.IsHolding<VtArray<int64_t>>())
+        for (int64_t i : v.UncheckedGet<VtArray<int64_t>>())
+            out.push_back(std::to_string(i));
+    else
+        return false;
+    return true;
+}
+
+} // namespace
+
+void HdNovaInstancer::ComputeInstanceStrings(SdfPath const &prototypeId,
+                                             std::vector<std::pair<std::string, std::vector<std::string>>> &out) const {
+    out.clear();
+    if (!_visible)
+        return;
+    VtIntArray const indices = GetDelegate()->GetInstanceIndices(GetId(), prototypeId);
+    if (indices.empty())
+        return;
+    // The outer levels (one value per parent instance), as ComputeInstanceAttributes.
+    std::vector<std::pair<std::string, std::vector<std::string>>> parent;
+    size_t np = 1;
+    if (!GetParentId().IsEmpty()) {
+        HdNovaInstancer const *p = _Parent();
+        if (!TF_VERIFY(p))
+            return;
+        p->ComputeInstanceStrings(GetId(), parent);
+        np = p->_FlattenedCount(GetId());
+        if (np == 0)
+            return;
+    }
+    size_t const n = indices.size();
+    std::vector<std::string> values;
+    for (auto const &[name, value] : _shadingPrimvars) {
+        if (!instanceStrings(value, values) || values.empty())
+            continue;
+        std::vector<std::string> const *outer = nullptr;
+        for (auto const &pa : parent)
+            if (pa.first == name.GetString() && pa.second.size() == np)
+                outer = &pa.second;
+        std::vector<std::string> flat(n * np);
+        for (size_t p = 0; p < np; ++p)
+            for (size_t c = 0; c < n; ++c) {
+                const int i = indices[c];
+                if (i >= 0 && size_t(i) < values.size())
+                    flat[p * n + c] = values[size_t(i)];
+                else if (outer)
+                    flat[p * n + c] = (*outer)[p];
+            }
+        out.emplace_back(name.GetString(), std::move(flat));
+    }
+    for (auto const &pa : parent) {
+        if (pa.second.size() != np ||
+            std::any_of(out.begin(), out.end(), [&](auto const &a) { return a.first == pa.first; }))
+            continue;
+        std::vector<std::string> flat(n * np);
+        for (size_t p = 0; p < np; ++p)
+            for (size_t c = 0; c < n; ++c)
+                flat[p * n + c] = pa.second[p];
+        out.emplace_back(pa.first, std::move(flat));
+    }
+}
+
 void HdNovaInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId, GfMatrix4d const &prototypeXf,
                                                 std::vector<nova::Xform34> &out) const {
     out.clear();
