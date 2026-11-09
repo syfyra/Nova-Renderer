@@ -161,11 +161,11 @@ None of these change the converged image; they decide how many samples Karma tak
 | `karma:object:varianceaa_maxsamples` | 9 | Max secondary rays of per-component variance AA. | **S** - | N | - | - |
 | `karma:object:varianceaa_thresh` | 0.01 | Noise threshold of per-component variance AA. | **S** - | N | - | - |
 | `karma:hydra:variance` | 0.01 | Viewport variance threshold (Karma display option). | **S** - | N | S/- | - |
-| `karma:global:guiding_enable` | off | Path guiding of indirect rays from learned radiance. | **S** - | N | L/L | equal-time noise |
-| `karma:global:guiding_samples` | 0 | Training samples (0: train throughout). | **S** - | N | with guiding | - |
-| `karma:global:guiding_components` | diffuse volume sss | Components that are guided. | **S** - | N | with guiding | - |
-| `karma:global:guiding_deterministic` | off | Deterministic guiding at extra cost. | **S** - | N | with guiding | - |
-| `karma:global:guiding_clearbuffers` | off | Discard the training samples from the image. | **S** - | N | with guiding | - |
+| `karma:global:guiding_enable` | off | Path guiding of indirect rays from learned radiance. | **F** `nova:guiding` (M11-P9c: Nova's own SD-tree, CPU and XPU; Karma XPU ignores guiding) | N | done | `husk_karma_guiding` |
+| `karma:global:guiding_samples` | 0 | Training samples (0: train throughout). | **F** `nova:guidingSamples` | N | done | `husk_karma_guiding` |
+| `karma:global:guiding_components` | diffuse volume sss | Components that are guided. | **F** `nova:guidingComponents` | N | done | `husk_karma_guiding` |
+| `karma:global:guiding_deterministic` | off | Deterministic guiding at extra cost. | **F** Nova's guiding is always deterministic | N | done | `husk_karma_guiding` |
+| `karma:global:guiding_clearbuffers` | off | Discard the training samples from the image. | **F** `nova:guidingClearBuffers` | N | done | `husk_karma_guiding` |
 
 
 ### 2. Pixel filter, image filters, components, deep output

@@ -5,7 +5,8 @@ geo_*.usda scenes (a subLayer): a Karma Render Settings LOP
 Shading, the Karma properties the Karma LOP does not show
 (override_lighting, head_*, autoheadlight) with the types the Render
 Settings LOP authors them, and a Render Geometry Settings LOP with the
-objects' outline properties on its Karma tab. The generated files are committed;
+objects' outline properties (or the panel's treat_as_lightsource) on its
+Karma tab. The generated files are committed;
 rebuild them after a Houdini update with an isolated hython:
 
   powershell -ExecutionPolicy Bypass -File tests\\houdini\\run_hython.ps1 -Script tests\\husk\\karma_looks\\build_karma_looks.py
@@ -46,6 +47,10 @@ CASES = {
     # Look-dev overrides.
     'look_base': ('geo_look.usda', dict(PATH), {}, []),
     'look_emissive': ('geo_look.usda', dict(PATH), {'override_lighting': 'Emissive Objects'}, []),
+    # The panel treated as a light (its menu index 1, Yes): its bounce
+    # light on the floor and wall without the noise of BSDF hits.
+    'look_emissive_light': ('geo_look.usda', dict(PATH), {'override_lighting': 'Emissive Objects'},
+                            [('/World/panel', {'treat_as_lightsource': 1})]),
     'look_headlight': ('geo_look.usda', dict(PATH), {'override_lighting': 'Headlight'}, []),
     'look_dome': ('geo_look.usda', dict(PATH), {'override_lighting': 'Dome Light'}, []),
     'look_auto': ('geo_look_dark.usda', dict(PATH), {'autoheadlight': 1}, []),

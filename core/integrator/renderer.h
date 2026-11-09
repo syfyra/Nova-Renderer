@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/film/film.h"
+#include "core/integrator/guide_field.h"
 #include "core/integrator/settings.h"
 #include "core/integrator/wavefront.h"
 #include "core/scene/camera.h"
@@ -31,6 +32,7 @@ public:
     void setScene(const Scene *scene) {
         m_scene = scene;
         m_lpeProgram = nullptr;
+        m_guide.reset(); // another scene's field (versions are per scene)
     }
     void setCamera(const Camera &camera) { m_camera = camera; }
     const Camera &camera() const { return m_camera; }
@@ -72,8 +74,12 @@ public:
     void parallelRows(int y0, int y1, const std::function<void(int, int)> &body) const;
 
     bool converged() const {
-        return m_level >= m_settings.maxSamples || (m_settings.adaptive && m_oracleReady && m_activeCount == 0);
+        return m_level >= targetSamples() || (m_settings.adaptive && m_oracleReady && m_activeCount == 0);
     }
+    // Path guiding (docs/design/M11-P9c.md): the field (null: guiding has
+    // been off), and the training samples the film dropped (clearBuffers).
+    const PathGuide *guide() const { return m_guide.get(); }
+    uint32_t discardedSamples() const { return m_discarded; }
     // Whether the last pass gave pixels their first sample (and so wrote
     // first-hit AOVs).
     bool firstHitPass() const { return m_firstHitPass; }
@@ -115,9 +121,22 @@ private:
     void selectPixels(int stride);
     // Nova XPU (docs/design/M10.md D15): renders the pass on the GPU (with
     // lists: m_tilePixels' pixels); false leaves it to the CPU.
-    bool gpuPass(bool lists, uint32_t spp, const LpeTables *lpe);
+    bool gpuPass(bool lists, uint32_t spp, const LpeTables *lpe, const PathGuide *guide);
     // The device film's sums into m_film if GPU passes added to them.
     void syncFilm();
+    // The samples per pixel the film is rendered to: the settings' maximum,
+    // less the training samples a guided render dropped (clearBuffers).
+    uint32_t targetSamples() const {
+        return m_discarded >= m_settings.maxSamples ? 1u : m_settings.maxSamples - m_discarded;
+    }
+    // Path guiding before a pass: the field (re)started when the scene or the
+    // settings changed; null when guiding is off.
+    const GuideView *prepareGuide(GuideView &view);
+    // After a pass of spp samples per pixel: the iteration ends when due
+    // (the GPU's records first); clearBuffers drops the training samples.
+    void finishGuidePass(uint32_t spp, bool gpu);
+    // The sample offset of a film restarted now (Film::sampleOffset).
+    uint32_t restartOffset() const;
     // After a pass: the new sample of every pixel into the LPE planes with a
     // sample filter, as the change of the LPE sums since the last pass
     // (docs/design/M11-P6.md 4; such renders take one sample per pass).
@@ -177,6 +196,9 @@ private:
     const lpe::Compiled *m_lpeProgram = nullptr; // the program m_lpe was built for
     uint64_t m_lpeVersion = 0;                   // and the scene version
     uint64_t m_lpeGeneration = 0;                // counts m_lpe's builds (the GPU's copy follows it)
+    std::unique_ptr<PathGuide> m_guide;
+    uint32_t m_discarded = 0; // training samples dropped from the film (clearBuffers)
+    bool m_gpuGuide = false;  // the device holds records of the current training iteration
     std::unique_ptr<Baker> m_baker;
     const BakeSettings *m_bakeBuilt = nullptr; // the settings and scene version m_baker was built for
     uint64_t m_bakeVersion = 0;

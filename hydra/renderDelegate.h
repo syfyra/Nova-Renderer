@@ -251,6 +251,9 @@ private:
     // Karma render settings Nova does not honour and that change the image
     // (once per delegate, i.e. per stage render; docs/design/M11-P1.md).
     void _WarnUnsupportedKarmaSettings() const;
+    // Path guiding's component list (Karma's labels) as guide:: bits; unknown
+    // names warn once (docs/design/M11-P9c.md).
+    uint8_t _GuidingComponents(std::string const &text) const;
     double _NumberSetting(TfToken const &nova, TfToken const &karma, double fallback, double karmaScale = 1.0) const;
 
     nova::RenderDevice _device; // the plugin's (nova:device's default)

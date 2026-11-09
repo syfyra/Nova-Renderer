@@ -11,6 +11,7 @@
 #include "core/gpu/device.h"
 #include "core/gpu/kernel_types.h"
 #include "core/gpu/optix_scene.h"
+#include "core/integrator/guide_field.h"
 #include "core/integrator/settings.h"
 #include "core/integrator/wavefront.h"
 #include "core/scene/camera.h"
@@ -66,9 +67,16 @@ public:
     // names the tables' contents (the caller's counter, changed with every
     // rebuild) so the device copy is kept while it stays; 0 uploads them
     // with every pass.
+    // With `guide` (path guiding, docs/design/M11-P9c.md) its field guides
+    // the pass and, while it trains, the pass's records add to the device's
+    // copy of its sums (downloadGuide brings them to the host).
     bool renderPass(const Camera &camera, const RenderSettings &settings, const PixelFilter &filter,
                     const TileRect &region, uint32_t spp, Film &film, uint64_t &rays, const LpeTables *lpe = nullptr,
-                    const std::vector<uint32_t> *list = nullptr, uint64_t lpeGeneration = 0);
+                    const std::vector<uint32_t> *list = nullptr, uint64_t lpeGeneration = 0,
+                    const PathGuide *guide = nullptr);
+    // Adds the device's training sums of the field's current generation to
+    // the host's (before the host ends an iteration).
+    bool downloadGuide(PathGuide &guide);
 
 private:
     // Copies to the device into a buffer of "into" (put: of the scene's,
@@ -82,6 +90,10 @@ private:
     bool reserveFake(uint32_t paths);
     bool reserveWalks(uint32_t paths);
     bool uploadLpe(const LpeTables &tables, uint64_t generation);
+    // The field's arrays on the device (when its generation changed; sums
+    // cleared) and the wave's records.
+    bool uploadGuide(const PathGuide &guide);
+    bool reserveGuide(uint32_t paths);
     bool launch(CUfunction fn, uint32_t threads, void *args);
 
     // Textures (D10): per TextureId of the scene's sampler its shape, the
@@ -139,6 +151,7 @@ private:
     CUfunction m_generate = nullptr, m_shade = nullptr, m_shadow = nullptr, m_ao = nullptr, m_flush = nullptr;
     CUfunction m_media = nullptr, m_volumes = nullptr, m_fakeStart = nullptr, m_fakeStep = nullptr;
     CUfunction m_walkExit = nullptr;
+    CUfunction m_guideSnap = nullptr, m_guideRecord = nullptr;
     CUfunction m_outlineMain = nullptr, m_outlineRays = nullptr, m_outlineFlags = nullptr, m_outlineFinish = nullptr;
 
     // The scene: its buffers and their views.
@@ -211,6 +224,15 @@ private:
     std::vector<DeviceBuffer> m_walkWave;
     DeviceBuffer m_walkParams;
     uint32_t m_walkCapacity = 0;
+
+    // Path guiding: the field's device copy (spatial nodes, leaves, sampling
+    // nodes, building children, building leaves, building sums, leaf counts)
+    // of the generation m_guideGeneration, its view, and the wave's records.
+    std::vector<DeviceBuffer> m_guideBuffers;
+    uint64_t m_guideGeneration = 0;
+    GuideView m_guideView;
+    std::vector<DeviceBuffer> m_guideWave;
+    uint32_t m_guideCapacity = 0;
 
     // The film.
     DeviceBuffer m_colorSum, m_alphaSum, m_count, m_aoPlane, m_lpeSum, m_lpeLit;

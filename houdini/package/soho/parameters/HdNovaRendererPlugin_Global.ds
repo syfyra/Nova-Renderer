@@ -427,6 +427,108 @@
             }
         }
         groupcollapsible {
+            name    "nova_indirect_guiding"
+            label   "Indirect Guiding"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novaguiding_control_y6a"
+                label   "Enable Indirect Guiding"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaguiding_xta"
+                label   "Enable Indirect Guiding"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "Path guiding: Nova learns from the first samples where indirect light comes from and sends more indirect rays there, on the CPU and the GPU. The image stays the same; its noise drops where indirect light comes from small or hidden parts of the scene (a room lit through a window, light behind a wall), and the renders stay deterministic. Unset: Karma's guiding_enable."
+                parmtag { "spare_category" "Indirect Guiding" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaguiding_control_y6a == block } { xn__novaguiding_control_y6a == none }"
+            }
+            parm {
+                name    "xn__novaguidingSamples_control_djb"
+                label   "Indirect Training Samples"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaguidingSamples_c5a"
+                label   "Indirect Training Samples"
+                type    int
+                size    1
+                default { 0 }
+                range   { 0 256 }
+                help    "The samples per pixel that keep improving what guiding learned; the rest of the render uses it as it is then. 0: learn throughout the render. Unset: Karma's guiding_samples (primary samples: with Karma's Variance or Distributed sampling, times the maximum secondary samples)."
+                parmtag { "spare_category" "Indirect Guiding" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaguidingSamples_control_djb == block } { xn__novaguidingSamples_control_djb == none }"
+            }
+            parm {
+                name    "xn__novaguidingComponents_control_8nb"
+                label   "Indirect Guiding Components"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'string')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaguidingComponents_79a"
+                label   "Indirect Guiding Components"
+                type    string
+                size    1
+                default { "diffuse volume sss" }
+                help    "The kinds of scattering that guiding steers, by their names: diffuse, reflect, coat, refract, volume, sss. Unset: Karma's guiding_components."
+                parmtag { "spare_category" "Indirect Guiding" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "string" }
+                disablewhen "{ xn__novaguidingComponents_control_8nb == block } { xn__novaguidingComponents_control_8nb == none }"
+            }
+            parm {
+                name    "xn__novaguidingClearBuffers_control_irb"
+                label   "Indirect Guiding Render from Scratch Post-Training"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaguidingClearBuffers_heb"
+                label   "Indirect Guiding Render from Scratch Post-Training"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "Drops the training samples from the image when training ends (Indirect Training Samples above 0); the render still takes Samples in all. Unset: Karma's guiding_clearbuffers."
+                parmtag { "spare_category" "Indirect Guiding" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaguidingClearBuffers_control_irb == block } { xn__novaguidingClearBuffers_control_irb == none }"
+            }
+        }
+        groupcollapsible {
             name    "nova_denoising"
             label   "Denoising"
             grouptag { "group_default" "1" }

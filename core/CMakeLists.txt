@@ -24,6 +24,7 @@ add_library(nova_core STATIC
     integrator/wavefront.cpp
     integrator/camera_samples.cpp
     integrator/renderer.cpp
+    integrator/guide_field.cpp
     film/film.cpp
     film/filter.cpp
     film/lpe_compile.cpp
