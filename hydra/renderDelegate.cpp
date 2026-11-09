@@ -23,6 +23,7 @@
 #include "products.h"
 
 #include "core/film/lpe_compile.h"
+#include "core/integrator/guiding.h"
 
 #include <pxr/base/gf/vec2d.h>
 #include <pxr/base/gf/vec2f.h>
@@ -53,6 +54,19 @@ PXR_NAMESPACE_OPEN_SCOPE
 TF_DEFINE_PUBLIC_TOKENS(HdNovaSettingsTokens, HDNOVA_SETTINGS_TOKENS);
 
 namespace {
+
+// Path guiding's settings, Nova's and Karma's (docs/design/M11-P9c.md).
+TF_DEFINE_PRIVATE_TOKENS(_guiding,
+    ((enable, "nova:guiding"))
+    ((samples, "nova:guidingSamples"))
+    ((components, "nova:guidingComponents"))
+    ((clearBuffers, "nova:guidingClearBuffers"))
+    ((karmaEnable, "karma:global:guiding_enable"))
+    ((karmaSamples, "karma:global:guiding_samples"))
+    ((karmaComponents, "karma:global:guiding_components"))
+    ((karmaDeterministic, "karma:global:guiding_deterministic"))
+    ((karmaClearBuffers, "karma:global:guiding_clearbuffers"))
+);
 
 int64_t nowNs() {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -163,6 +177,11 @@ void HdNovaRenderDelegate::_Initialize() {
         {"Abort on Missing Texture", HdNovaSettingsTokens->abortOnMissingTexture, VtValue(false)},
         {"Texture Statistics", HdNovaSettingsTokens->textureStats, VtValue(0)},
         {"GPU Texture Budget", HdNovaSettingsTokens->gpuTextureBudget, VtValue(0)},
+        // Path guiding (docs/design/M11-P9c.md), Karma's labels.
+        {"Enable Indirect Guiding", _guiding->enable, VtValue(false)},
+        {"Indirect Training Samples", _guiding->samples, VtValue(0)},
+        {"Indirect Guiding Components", _guiding->components, VtValue(std::string("diffuse volume sss"))},
+        {"Indirect Guiding Render from Scratch Post-Training", _guiding->clearBuffers, VtValue(false)},
     };
     _PopulateDefaultSettings(_settingDescriptors);
 
@@ -1288,6 +1307,27 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
     if (IsBaking())
         s.adaptive = false; // bakes take every texel sample (M11 P8)
 
+    // Path guiding (docs/design/M11-P9c.md): Nova's settings, else Karma's
+    // guiding_*. Karma counts training in primary samples, which Nova's
+    // samples are with Path Traced and primary x secondary otherwise (as
+    // above). Nova's guiding is always deterministic (guiding_deterministic
+    // changes nothing).
+    if (flag(_guiding->enable, _guiding->karmaEnable, false)) {
+        s.guiding.enable = true;
+        double training = 0.0;
+        if (const auto v = HdNovaNumber(own(_guiding->samples)))
+            training = *v;
+        else if (const auto k = HdNovaNumber(karma(_guiding->karmaSamples)))
+            training = *k * (karmaSampling && mode != 0 ? secondaryMax : 1.0);
+        s.guiding.trainingSamples = uint32_t(std::clamp(std::lround(std::isfinite(training) ? training : 0.0), 0l, 1l << 20));
+        VtValue components = own(_guiding->components);
+        if (components.IsEmpty())
+            components = karma(_guiding->karmaComponents);
+        if (!components.IsEmpty())
+            s.guiding.components = _GuidingComponents(HdNovaText(components));
+        s.guiding.clearBuffers = flag(_guiding->clearBuffers, _guiding->karmaClearBuffers, false);
+        s.guiding.deterministic = HdNovaFlag(karma(_guiding->karmaDeterministic)).value_or(false);
+    }
     // Karma's outlines (docs/design/M11-P9a.md): the render's settings and
     // the render settings' karma:object:outline_* for objects without their
     // own. Lines need an outline AOV too (the core checks the film).
@@ -1347,6 +1387,29 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
     }
     _WarnUnsupportedKarmaSettings();
     return s;
+}
+
+uint8_t HdNovaRenderDelegate::_GuidingComponents(std::string const &text) const {
+    // Karma's component labels, separated by spaces or commas.
+    static const std::pair<const char *, uint8_t> names[] = {
+        {"diffuse", nova::guide::kDiffuse}, {"reflect", nova::guide::kReflect}, {"coat", nova::guide::kCoat},
+        {"refract", nova::guide::kRefract}, {"volume", nova::guide::kVolume},   {"sss", nova::guide::kSss}};
+    uint8_t mask = 0;
+    for (std::string const &word : TfStringTokenize(text, " ,\t\n")) {
+        bool known = false;
+        for (auto const &[name, bit] : names)
+            if (word == name) {
+                mask |= bit;
+                known = true;
+            }
+        if (!known) {
+            std::lock_guard lock(_warnMutex);
+            if (_warnedKarma.insert("guiding_components:" + word).second)
+                HD_NOVA_WARN("path guiding: unknown component '%s' (diffuse, reflect, coat, refract, volume, sss)",
+                             word.c_str());
+        }
+    }
+    return mask;
 }
 
 HdNovaObjectDefaults HdNovaRenderDelegate::GetObjectDefaults() const {
@@ -1417,7 +1480,6 @@ void HdNovaRenderDelegate::_WarnUnsupportedKarmaSettings() const {
     static const auto off = [](VtValue const &v) { return !HdNovaFlag(v).value_or(true); };
     static const auto text = [](VtValue const &v) { return !TfStringTrim(HdNovaText(v)).empty(); };
     static const Check checks[] = {
-        {"karma:global:guiding_enable", "path guiding", on},
         {"karma:global:image_blur", "image blur off (camera rays at shutter open)", off},
         {"karma:global:samplefilter", "sample filters", text},
         {"karma:global:globalaovmaterial", "the global AOV material", text},

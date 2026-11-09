@@ -140,6 +140,18 @@ void WaveQueues::reserve(uint32_t paths) {
     shadows.reserve(4 * paths);
 }
 
+void WaveQueues::reserveGuide(uint32_t paths) {
+    if (guideCount.size() < paths) {
+        guideCount.resize(paths);
+        guidePending.resize(paths);
+        guideSlot.resize(size_t(paths) * guide::kVertices);
+        guideWeight.resize(size_t(paths) * guide::kVertices);
+        guideSnap.resize(size_t(paths) * guide::kVertices);
+    }
+    std::fill_n(guideCount.begin(), paths, uint8_t(0));
+    std::fill_n(guidePending.begin(), paths, uint8_t(0));
+}
+
 namespace {
 
 // Adds a contribution to the path's radiance. A NaN/Inf contribution counts
@@ -439,7 +451,7 @@ void generateCameraRays(const Camera &camera, const PixelFilter &filter, uint32_
             const uint32_t slot = pixelSlot * samplesPerPixel + j;
             const int ix = x + camera.imageOriginX, iy = y + camera.imageOriginY;
             const uint32_t pix = uint32_t(y) * uint32_t(film.width) + uint32_t(x);
-            const uint32_t sampleIndex = film.count[pix] + j;
+            const uint32_t sampleIndex = film.sampleOffset + film.count[pix] + j;
             const Sampler sampler = Sampler::make(ix, iy, sampleIndex, seed);
             const Vec2f offset = filter.sample(sampler.get2D(stream::kPixelFilter));
             const float time = sampler.get1D(stream::kTime); // box shutter; the whole path shares it
@@ -534,6 +546,10 @@ struct ShadeContext {
     bool holdoutShading;
     bool illumBackground;
     const ShadeGlobals &globals; // the render's frame and camera (surface shading)
+    // Path guiding (core/integrator/guiding.h; null: off) and, while it
+    // trains, the wave's records.
+    const GuideView *guide;
+    GuidePaths guidePaths;
 };
 
 // The light path expression variants of the light and closure queries stay
@@ -631,6 +647,28 @@ NOVA_NOINLINE ClosureEval evalLobesOutOfLine(const ClosureList &cl, Vec3f wo, Ve
 NOVA_NOINLINE bool sampleLobesOutOfLine(const ClosureList &cl, Vec3f wo, Vec3f u, ClosureSample &s, Spectrum *lobeF,
                                         uint32_t &mask) {
     return nova::sampleClosureLobes(cl, wo, u, s, lobeF, mask);
+}
+
+// Path guiding's continuation (guiding.h), with or without the lobes'
+// values, out of line.
+NOVA_NOINLINE bool sampleGuidedOutOfLine(const ClosureList &cl, Vec3f wo, Vec3f u, float uGuide, const GuideView &g,
+                                         const GuideSite &site, ClosureSample &s, Spectrum *lobeF, uint32_t &mask,
+                                         bool perLobe) {
+    if (!perLobe)
+        return sampleClosureGuided(cl, wo, u, uGuide, g, site, s);
+    return sampleClosureGuided(cl, wo, u, uGuide, g, site, s, [&](int i, const Spectrum &f) {
+        lobeF[i] = f;
+        mask |= 1u << i;
+    });
+}
+
+// Records a guided vertex of path p (guiding.h) whose continuation wi of
+// density pdf left it with throughput beta; the jitter from its own stream.
+NOVA_NOINLINE void guideRecord(const ShadeContext &c, const WaveQueues &q, uint32_t p, Vec3f P, Vec3f wi, float pdf,
+                               const Spectrum &beta) {
+    Rng rng = Rng::make(q.pixelSeed[p], q.sampleIndex[p], stream::guideRecord(c.depth));
+    const float jx = rng.next(), jy = rng.next(), jz = rng.next();
+    guideRecordVertex(*c.guide, c.guidePaths, p, P, wi, pdf, beta, Vec3f{jx, jy, jz});
 }
 
 // A camera ray's surface hit into its path's sample record (M11 P6).
@@ -1868,6 +1906,14 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
         // values (D5); most closures are one event per side.
         const bool perLobe = state && lpeNeedsLobes(*lpe, state, cl, tag);
 
+        // Path guiding (guiding.h): the guided lobes (listed components with
+        // room under their ray limits) and the field at the hit.
+        GuideSite guided;
+        if (c.guide)
+            guided = guideSurfaceSite(*c.guide, cl, hit.P,
+                                      guideOpenClasses(q.eventCounts[p], c.scene.meshRecord(hit.mesh).rayLimits,
+                                                       c.settings.limits, q.limitDither[p]));
+
         const Sampler sampler{q.pixelSeed[p], q.sampleIndex[p]};
         const Vec3f origin = leave(ng);
         const float shadowSeed = shadowRaySeed(q.rays.filterSeed[k]);
@@ -1904,9 +1950,12 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                 const Spectrum f = e.fcosDiffuse * light.diffuse + (e.fcos - e.fcosDiffuse) * light.specular;
                 if (!isBlack(f)) {
                     const float lightPdf = selectPdf * ls.pdf;
+                    // The continuation's density there: the closure's, or
+                    // with guided lobes the guided mixture's.
+                    const float bsdfPdf = guided.alpha > 0.0f ? guidedPdf(*c.guide, guided, e, ls.wi) : e.pdf;
                     // Shadow-linked lights other than domes are sampled by
                     // NEE alone (D15): weight 1.
-                    const float weight = lightSampleWeight(strategy, lightPdf, e.pdf, ls.delta || light.neeOnly());
+                    const float weight = lightSampleWeight(strategy, lightPdf, bsdfPdf, ls.delta || light.neeOnly());
                     const Spectrum contribution = q.beta[p] * f * ls.Li * (weight / lightPdf);
                     if (lpe)
                         lpePartsClear(q);
@@ -1967,7 +2016,11 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
         Spectrum lobeF[ClosureList::kMaxLobes];
         uint32_t lobeMask = 0;
         const Vec3f us = sampler.get3D(stream::bounce(c.depth, stream::kBsdf));
-        const bool sampled = perLobe ? sampleLobesOutOfLine(cl, wo, us, s, lobeF, lobeMask) : sampleClosure(cl, wo, us, s);
+        const bool sampled =
+            guided.alpha > 0.0f ? sampleGuidedOutOfLine(cl, wo, us, sampler.get1D(stream::guide(c.depth)), *c.guide,
+                                                        guided, s, lobeF, lobeMask, perLobe)
+            : perLobe           ? sampleLobesOutOfLine(cl, wo, us, s, lobeF, lobeMask)
+                                : sampleClosure(cl, wo, us, s);
         if (sampled) {
             const Spectrum wholeWeight = s.weight; // all lobes (lpeScatter may keep one class's share)
             const lpe::State next = state ? lpeScatter(c, *lpe, state, cl, s, lobeF, lobeMask, tag, sampler) : state;
@@ -2111,6 +2164,10 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                                 c.scene.anyFiltered() ? sampler.get1D(stream::bounce(c.depth + 1, stream::kOpacity))
                                                       : 0.0f,
                                 s.rayClass);
+                // A full, non-delta continuation of a guided vertex trains
+                // the field.
+                if (guided.record && !s.delta && !q.lightOnly[p])
+                    guideRecord(c, q, p, hit.P, s.wi, s.pdf, beta);
             }
         }
     }
@@ -2226,6 +2283,13 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
         const lpe::State scattered = state ? lpeStep(*lpe, state, lpe::TypeVolume, lpe::ScatterNone, tag, 0) : state;
         if (scattered && lpe->albedo && lpe->albedoAfter[scattered])
             lpeDeposit(*lpe, c.film, q.pixel[p], lpe->program.step(scattered, lpe->albedoSymbol), q.beta[p]);
+        const float volumeLimit = c.scene.volumeRecord(volume).desc.volumeLimit;
+        const uint32_t allowed =
+            pathLimit(volumeLimit >= 0.0f ? volumeLimit : c.settings.limits.limit[kVolumeClass], q.limitDither[p]);
+        const uint32_t n = uint32_t(q.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu;
+        // Path guiding (guiding.h): the phase function mixed with the field
+        // while the continuation is a full ray.
+        const GuideSite guided = c.guide ? guidePointSite(*c.guide, x, guide::kVolume, n < allowed) : GuideSite{};
 
         // Next-event estimation (no surface: the shadow ray starts at x).
         const LightChoice choice =
@@ -2236,8 +2300,11 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
             const float f = phase.eval(d, ls.wi) * light.diffuse;
             if (f != 0.0f) {
                 const float lightPdf = choice.selectPdf * ls.pdf;
-                const float weight = lightSampleWeight(c.settings.lightStrategy, lightPdf, phase.eval(d, ls.wi),
-                                                       ls.delta || light.neeOnly());
+                const float phasePdf = phase.eval(d, ls.wi);
+                const float weight = lightSampleWeight(
+                    c.settings.lightStrategy, lightPdf,
+                    guided.alpha > 0.0f ? guidedPointPdf(*c.guide, guided, phasePdf, ls.wi) : phasePdf,
+                    ls.delta || light.neeOnly());
                 // A light sampled equiangularly along this ray (D17): the
                 // free flight's share of the distance.
                 float share = 1.0f;
@@ -2264,20 +2331,32 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
             }
         }
 
-        // The continuation.
-        float pdf = 0.0f;
-        const Vec3f wi = phase.sample(d, sampler.get3D(stream::bounce(c.depth, stream::kBsdf)), pdf);
-        if (!(pdf > 0.0f))
+        // The continuation: the phase function's sample (weight 1), or with
+        // the guide the mixture's (weight phase / mixture density).
+        float pdf = 0.0f, phaseWeight = 1.0f;
+        const Vec3f u = sampler.get3D(stream::bounce(c.depth, stream::kBsdf));
+        Vec3f wi;
+        if (guided.alpha > 0.0f && sampler.get1D(stream::guide(c.depth)) < guided.alpha) {
+            float pg = 0.0f;
+            wi = guideSample(*c.guide, guided.root, {u.x, u.y}, pg);
+            const float ph = pg > 0.0f ? phase.eval(d, wi) : 0.0f;
+            pdf = (1.0f - guided.alpha) * ph + guided.alpha * pg;
+            phaseWeight = pdf > 0.0f ? ph / pdf : 0.0f;
+        } else {
+            wi = phase.sample(d, u, pdf);
+            if (guided.alpha > 0.0f && pdf > 0.0f) {
+                const float ph = pdf;
+                pdf = guidedPointPdf(*c.guide, guided, ph, wi);
+                phaseWeight = ph / pdf;
+            }
+        }
+        if (!(pdf > 0.0f) || !(phaseWeight > 0.0f))
             continue;
-        const float volumeLimit = c.scene.volumeRecord(volume).desc.volumeLimit;
-        const uint32_t allowed =
-            pathLimit(volumeLimit >= 0.0f ? volumeLimit : c.settings.limits.limit[kVolumeClass], q.limitDither[p]);
-        const uint32_t n = uint32_t(q.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu;
         if (n >= allowed)
             q.lightOnly[p] = 1;
         else if (n < 255)
             q.eventCounts[p] += uint64_t(1) << (8 * kVolumeClass);
-        Spectrum beta = q.beta[p];
+        Spectrum beta = q.beta[p] * phaseWeight;
         if (phase.kind == PhaseFunction::kSky)
             beta *= phase.weight(d, wi);
         bool alive = !isBlack(beta) && isFinite(beta);
@@ -2311,6 +2390,8 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
         q.nextRays.push(x, wi, kInf, p, time,
                         c.scene.anyFiltered() ? sampler.get1D(stream::bounce(c.depth + 1, stream::kOpacity)) : 0.0f,
                         RayClass::Volume);
+        if (guided.record && !q.lightOnly[p])
+            guideRecord(c, q, p, x, wi, pdf, beta);
     }
 }
 
@@ -2358,6 +2439,9 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
         const Vec3f n = faceForward(hit.N, ng);
         const Vec3f origin = offsetRayOrigin(hit.P, ng);
         const lpe::State state = lpe ? q.lpeState[p] : lpe::State(0);
+        // Path guiding (guiding.h): the exit's cosine lobe mixed with the
+        // field when the continuation is a full ray.
+        const GuideSite guided = c.guide ? guidePointSite(*c.guide, hit.P, guide::kSss, !q.lightOnly[p]) : GuideSite{};
 
         // Next-event estimation with the exit's Lambert lobe.
         const LightChoice choice =
@@ -2369,8 +2453,10 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
             const float cosI = dot(ls.wi, n);
             if (cosI > 0.0f && dot(ls.wi, ng) > 0.0f) {
                 const float lightPdf = choice.selectPdf * ls.pdf;
+                const float own = cosineHemispherePdf(cosI);
                 const float weight =
-                    lightSampleWeight(c.settings.lightStrategy, lightPdf, cosineHemispherePdf(cosI),
+                    lightSampleWeight(c.settings.lightStrategy, lightPdf,
+                                      guided.alpha > 0.0f ? guidedPointPdf(*c.guide, guided, own, ls.wi) : own,
                                       ls.delta || light.neeOnly());
                 const Spectrum unit = beta * ls.Li * light.diffuse * (cosI * kInvPi / lightPdf);
                 const Spectrum contribution = unit * weight;
@@ -2389,10 +2475,28 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
         // The continuation: the entry's kBsdf direction numbers were not used
         // (it picked the lobe only), Russian roulette after the walk.
         const Vec3f us = sampler.get3D(stream::bounce(c.depth, stream::kBsdf));
-        const Vec3f wi = Frame::fromNormal(n).toWorld(sampleCosineHemisphere({us.x, us.y}));
-        const float pdf = cosineHemispherePdf(dot(wi, n));
-        if (!(dot(wi, ng) > 0.0f) || !(pdf > 0.0f))
-            continue;
+        Vec3f wi;
+        float pdf;
+        if (guided.alpha > 0.0f) {
+            // The mixture of the cosine lobe and the field (weight cos / pi
+            // over its density).
+            float pg = 1.0f;
+            wi = sampler.get1D(stream::guide(c.depth)) < guided.alpha
+                     ? guideSample(*c.guide, guided.root, {us.x, us.y}, pg)
+                     : Frame::fromNormal(n).toWorld(sampleCosineHemisphere({us.x, us.y}));
+            if (!(pg > 0.0f))
+                continue;
+            const float own = cosineHemispherePdf(dot(wi, n));
+            pdf = guidedPointPdf(*c.guide, guided, own, wi);
+            if (!(dot(wi, ng) > 0.0f) || !(own > 0.0f) || !(pdf > 0.0f))
+                continue;
+            beta *= own / pdf;
+        } else {
+            wi = Frame::fromNormal(n).toWorld(sampleCosineHemisphere({us.x, us.y}));
+            pdf = cosineHemispherePdf(dot(wi, n));
+            if (!(dot(wi, ng) > 0.0f) || !(pdf > 0.0f))
+                continue;
+        }
         if (c.depth + 1 >= c.settings.rrStartDepth) {
             const float survive = rouletteSurvival(beta, q.etaScale[p]);
             if (sampler.get1D(stream::bounce(c.depth, stream::kRoulette)) >= survive)
@@ -2418,11 +2522,14 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
         q.nextRays.push(origin, wi, kInf, p, time,
                         c.scene.anyFiltered() ? sampler.get1D(stream::bounce(c.depth + 1, stream::kOpacity)) : 0.0f,
                         RayClass::Sss);
+        if (guided.record)
+            guideRecord(c, q, p, hit.P, wi, pdf, beta);
     }
 }
 
 void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t depth, Film &film, WaveQueues &q,
-                   const ClosureContext &closures, const LpeView *lpe, UtilityPlane *ao, const ShadeGlobals &globals) {
+                   const ClosureContext &closures, const LpeView *lpe, UtilityPlane *ao, const ShadeGlobals &globals,
+                   const GuideView *guide) {
     const LightTreeView tree = scene.lightTree();
     bool illumBackground = false;
     if (scene.anyBackground())
@@ -2449,7 +2556,9 @@ void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t 
                          ao,
                          (lpe && lpe->program.holdoutStart != 0) || ao,
                          illumBackground,
-                         globals};
+                         globals,
+                         guide,
+                         guide && guide->training ? q.guidePaths() : GuidePaths{}};
     // The light samples of this depth (traceMedia's equiangular ones first).
     q.shadows.rays.size = 0;
     q.shadows.emitterCount = 0;
@@ -2870,7 +2979,8 @@ static uint64_t generateBakePaths(const Scene &scene, const Camera &camera, cons
 
 uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettings &settings,
                     const PixelFilter &filter, const TileRect &tile, const uint32_t *pixels, uint32_t pixelCount,
-                    Film &film, WaveQueues &q, const LpeTables *tables, uint32_t samplesPerPixel, const Baker *baker) {
+                    Film &film, WaveQueues &q, const LpeTables *tables, uint32_t samplesPerPixel, const Baker *baker,
+                    const GuideView *guide) {
     const LpeView lpeView = tables ? tables->view() : LpeView{};
     const LpeView *lpe = tables ? &lpeView : nullptr;
     const uint32_t pixelPaths = pixels ? pixelCount : tile.pixelCount();
@@ -2907,6 +3017,11 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
                            scene.anyFiltered());
     if (lpe)
         std::fill(q.lpeState.begin(), q.lpeState.begin() + paths, lpe->program.start); // after the camera event
+    // Path guiding (guiding.h): the field, and its records while it trains.
+    const bool active = guide && guide->active();
+    const bool training = active && guide->training;
+    if (training)
+        q.reserveGuide(paths);
 
     UtilityPlane *ao = film.utility.empty() || baker ? nullptr : film.findUtility(UtilityKind::Ao);
     const bool outlines = !baker && outlineOn(settings.outline); // Karma's outlines: camera renders only
@@ -2923,7 +3038,14 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
         if (outlines && depth == 0)
             rays += traceOutlines(scene, settings, q, globals);
         q.aoRays.size = 0;
-        shadeSurfaces(scene, settings, depth, film, q, ctx, lpe, ao, globals);
+        // Path guiding: the vertices of the last bounce have their own
+        // light samples in now (guiding.h, guideSnapshot).
+        if (training && depth > 0) {
+            const GuidePaths records = q.guidePaths();
+            for (uint32_t k = 0; k < q.rays.size; ++k)
+                guideSnapshot(records, q.rays.path[k], q.radiance[q.rays.path[k]]);
+        }
+        shadeSurfaces(scene, settings, depth, film, q, ctx, lpe, ao, globals, active ? guide : nullptr);
         rays += q.walkRays;
         q.walkRays = 0;
         rays += traceShadowRays(scene, settings, ctx, depth, q, film, lpe);
@@ -2942,6 +3064,14 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
         if (isFinite(L)) // a NaN/Inf sample counts as black instead of poisoning the pixel
             film.colorSum[q.pixel[slot]] += L;
         ++film.count[q.pixel[slot]];
+    }
+    // The paths' guided vertices train the field (a holdout path's light is
+    // not in its radiance).
+    if (training) {
+        const GuidePaths records = q.guidePaths();
+        for (uint32_t slot = 0; slot < paths; ++slot)
+            if (!q.holdout[slot])
+                guideFlushPath(*guide, records, slot, q.radiance[slot], q.pixelSeed[slot], q.sampleIndex[slot]);
     }
     if (q.records) // filtered utility planes and the deep map (camera_samples.h)
         accumulateCameraSamples(scene, camera, globals, film,
