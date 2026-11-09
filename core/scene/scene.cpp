@@ -769,6 +769,14 @@ void Scene::setVolumeVisible(VolumeId id, bool visible) {
     ++m_version;
 }
 
+void Scene::setVolumeVisibility(VolumeId id, const ObjectVisibility &visibility) {
+    std::lock_guard lock(m_mutex);
+    if (id >= m_volumes.size() || !m_volumes[id].alive || m_volumes[id].visibilitySettings == visibility)
+        return;
+    m_volumes[id].visibilitySettings = visibility;
+    ++m_version;
+}
+
 void Scene::setShadeFrame(float frame, float fps) {
     std::lock_guard lock(m_mutex);
     if (m_shadeFrame == frame && m_shadeFps == fps)
@@ -1213,6 +1221,26 @@ bool Scene::commit() {
         for (VolumeId id : m_activeVolumes)
             m_levelDependentVolumes |= m_volumes[id].levelDependent;
         buildAtmosphere();
+    }
+    // Volume ray visibility and holdouts (docs/design/M11-P2.md D15): the
+    // effective settings, as meshes' (updateFilterFlags).
+    m_holdoutVolumes = m_backgroundVolumes = m_volumeShadowVisibilityDiffers = false;
+    for (VolumeRecord &v : m_volumes) {
+        if (!v.alive)
+            continue;
+        const ObjectVisibility &own = v.visibilitySettings;
+        const int mask = own.mask >= 0 ? own.mask : m_defaultVisibility.mask;
+        const int holdout = own.holdout >= 0 ? own.holdout : m_defaultVisibility.holdout;
+        v.visibility = mask >= 0 ? uint8_t(mask & kVisibleAll) : kVisibleAll;
+        v.holdout = holdout > 0 && holdout <= int(HoldoutMode::Background) ? HoldoutMode(holdout) : HoldoutMode::None;
+    }
+    for (VolumeId id : m_activeVolumes) {
+        const VolumeRecord &v = m_volumes[id];
+        m_holdoutVolumes |= v.holdout != HoldoutMode::None;
+        m_backgroundVolumes |= v.holdout == HoldoutMode::Background;
+        const bool shadow = visibleTo(v.visibility, uint8_t(RayClass::Shadow));
+        for (RayClass c : {RayClass::Diffuse, RayClass::Reflect, RayClass::Refract, RayClass::Sss, RayClass::Volume})
+            m_volumeShadowVisibilityDiffers |= visibleTo(v.visibility, uint8_t(c)) != shadow;
     }
     // Emissive volumes that are light sources follow the host's lights
     // (docs/design/M8.md D13).

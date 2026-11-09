@@ -9,6 +9,7 @@
 #include "karmaSettings.h"
 #include "motion.h"
 
+#include "core/scene/visibility.h"
 #include "core/volume/volume.h"
 
 #include <pxr/imaging/hd/volume.h>
@@ -51,6 +52,7 @@ private:
     float _velocityBlur = 0.0f;             // velocity blur on: volumevblurscale / fps (0: off)
     bool _warnedFilter = false;             // karma:object:volumefilter other than box/1 (once)
     float _lightDiffuse = 1.0f, _lightSpecular = 1.0f; // karma:object:lightsource_*scale
+    nova::ObjectVisibility _visibility; // karma:object:rendervisibility / holdoutmode (M11-P2 D15)
     HdNovaShutter _sampledShutter;
     unsigned _sampledMaxSteps = 0;
 };

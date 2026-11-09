@@ -109,6 +109,7 @@ void WaveQueues::reserve(uint32_t paths) {
         volumeId.resize(paths);
         volumePhase.resize(paths);
         mediumAlpha.resize(paths);
+        mediumAlphaV.resize(paths);
         volumeShade.resize(paths);
         lightT.resize(paths);
         eqA.resize(paths);
@@ -594,26 +595,31 @@ NOVA_NOINLINE Spectrum areaLightsAlongRayLpe(const ShadeContext &c, WaveQueues &
 // and the lit one here, both with weight 1. `beta`: the escaping lights'
 // throughput (gatherLights': with level-dependent volumes the light
 // transmittance, not the flight's weight).
+// A continuation that left a background point (D14) brings no lit sum of
+// the illumbackground lights: shadow; outputs leave them out there.
 NOVA_NOINLINE Spectrum escapedRadianceLpe(const ShadeContext &c, WaveQueues &q, uint32_t p, lpe::State state,
                                           Vec3f dir, const LightFilterSite &site, const Spectrum &beta) {
     lpePartsClear(q);
+    const bool fromBackground = c.depth == 1 && q.holdout[p] == uint8_t(HoldoutMode::Background);
     return escapedRadiance(c.lights, pathPmf(c, q, p), c.lightCount, dir, site, q.bsdfPdf[p],
                            c.settings.lightStrategy, q.diffuseShare[p], [&](uint32_t i, const Spectrum &Li) {
                                const lpe::State s = lpeLightStep(*c.lpe, state, i);
                                lpePartsAdd(*c.lpe, q, s, Li);
-                               if (c.lpe->unit && !(c.lightSampler.pmf[i] > 0.0f))
+                               if (c.lpe->unit && !(c.lightSampler.pmf[i] > 0.0f) &&
+                                   !(fromBackground && c.lights[i].illumBackground))
                                    lpeDepositUnit(*c.lpe, c.film, q.pixel[p], s, beta * Li, false, true);
                            });
 }
 
 // The unoccluded; estimate of the lights at infinity that light sampling
 // never picks, along a continuation (direction, weight already in beta) of a
-// non-delta event or not, gathered at `site`.
+// non-delta event or not, gathered at `site`; from a background point with
+// the continuation's weight over all lobes (D14).
 NOVA_NOINLINE void lpeUnoccludedEnvironment(const ShadeContext &c, uint32_t pixel, lpe::State state, Vec3f dir,
                                             const LightFilterSite &site, float diffuseShare, const Spectrum &beta,
-                                            bool nonDelta) {
+                                            bool nonDelta, const Spectrum *wholeBeta = nullptr) {
     nova::lpeUnoccludedEnvironment(*c.lpe, c.lights, c.lightCount, c.lightSampler.pmf, c.film, pixel, state, dir,
-                                   site, diffuseShare, beta, nonDelta);
+                                   site, diffuseShare, beta, nonDelta, wholeBeta);
 }
 
 // evalClosure and sampleClosure with the lobes' values, out of line.
@@ -898,11 +904,21 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
     thread_local AtmosphereBehind behind;
     if (atmosphere)
         behind.init(c);
-    const bool equiangular = c.scene.equiangularLights().table.count > 0;
+    // Camera rays through holdout volumes (docs/design/M11-P2.md D15): their
+    // emission to holdout; outputs, alpha without their opacity, no
+    // equiangular samples (the free flight's events alone, weight 1).
+    const bool holdoutVolumes = c.depth == 0 && c.scene.anyHoldoutVolume();
+    const bool equiangular = c.scene.equiangularLights().table.count > 0 && !holdoutVolumes;
     // Where volumes depend on the ray level (Karma's modifiers), the light a
     // continuation gathers sees them at its event's level, the next event
     // at its own (measured, research H 4.7); otherwise one flight does both.
-    q.lightSplit = c.depth > 0 && c.scene.anyLevelDependentVolume();
+    // So too where a volume's shadow visibility differs from the ray's
+    // class's: lights are found with shadow visibility (Karma, D15).
+    // And the lights a ray leaving a background point gathers pass
+    // background volumes, as its shadow rays do (Karma, D15).
+    const bool shadowVisibility = c.depth > 0 && c.scene.volumeShadowVisibilityDiffers();
+    const bool backgroundLights = c.depth == 1 && c.scene.anyBackgroundVolume();
+    q.lightSplit = c.depth > 0 && (c.scene.anyLevelDependentVolume() || shadowVisibility || backgroundLights);
     q.crossingLight.clear();
     q.crossingT.clear();
     q.crossingAtten.clear();
@@ -964,6 +980,7 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
             gather.multipliers = true;
         }
         EmissionGather lightGather = gather; // lights of the split transmittance
+        gather.holdouts = holdoutVolumes;
         q.volumeHit[k] = 0;
         q.eqA[k] = q.eqB[k] = 0.0f;
         if (!q.lightOnly[p] && c.depth < c.settings.maxDepth) {
@@ -974,7 +991,8 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
             if (atmosphere)
                 ray.behind = behind(c, miss, dir, crossings);
             const MediumFlight f = flyMedia(c.scene, q.volumes, globals, ray, q.beta[p], u0, rng, &gather,
-                                            c.depth == 0 ? &q.mediumAlpha[k] : nullptr, crossT, crossOut, crossings);
+                                            c.depth == 0 ? &q.mediumAlpha[k] : nullptr, crossT, crossOut, crossings,
+                                            holdoutVolumes ? &q.mediumAlphaV[k] : nullptr);
             q.mediumT[k] = f.weight;
             if (f.scattered) {
                 q.volumeHit[k] = 1;
@@ -995,6 +1013,9 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
                 // (one level lower), whether or not the flight scattered.
                 MediumRay light = ray;
                 --light.depth;
+                if (shadowVisibility)
+                    light.visibleClass = uint8_t(RayClass::Shadow);
+                light.fromBackground = backgroundLights && q.holdout[p] == uint8_t(HoldoutMode::Background);
                 const uint32_t ls = stream::mediumLight(c.depth);
                 Rng lrng = Rng::make(q.pixelSeed[p], q.sampleIndex[p], ls);
                 lightGather.objects = false;
@@ -1010,9 +1031,13 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
             // modifiers, measured research H 4.7).
             if (ray.depth > 0)
                 --ray.depth;
+            if (shadowVisibility)
+                ray.visibleClass = uint8_t(RayClass::Shadow);
+            ray.fromBackground = backgroundLights && q.holdout[p] == uint8_t(HoldoutMode::Background);
             gather.objects = false;
             q.mediumT[k] = trackMedia(c.scene, q.volumes, globals, ray, u0, rng, &gather, crossT, crossOut, crossings);
             q.mediumAlpha[k] = q.lightT[k] = q.mediumT[k];
+            q.mediumAlphaV[k] = spectrum(1.0f) - q.mediumT[k];
         }
         for (int i = 0; i < crossings; ++i) {
             q.crossingLight.push_back(crossLight[i]);
@@ -1029,6 +1054,13 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
             if (state)
                 lpeDepositAll(*lpe, c.film, q.pixel[p], lpeStep(*lpe, state, lpe::TypeObject, lpe::ScatterNone, 0, 0),
                               contribution);
+        }
+        // Holdout volumes' emission seen by the camera: holdout; outputs only.
+        if (!isBlack(gather.holdoutSum) && lpe) { // the start may be dead (only holdout; outputs)
+            const lpe::State held = lpeHoldoutState(lpe->program, state);
+            if (held)
+                lpeDepositAll(*lpe, c.film, q.pixel[p], lpeStep(*lpe, held, lpe::TypeObject, lpe::ScatterNone, 0, 0),
+                              clampContribution(q.beta[p] * gather.holdoutSum, c.clampEmission));
         }
         for (const EmissionGather *g : {&gather, &lightGather})
             for (int s = 0; s < g->lightCount; ++s) {
@@ -1143,13 +1175,25 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 const Spectrum T = q.mediumAlpha[k];
                 return 1.0f - (T.x + T.y + T.z) * (1.0f / 3.0f);
             };
+            // With holdout volumes (D15) the other volumes' opacity, plus
+            // what lies behind (1: opaque) seen through all of them.
+            const bool heldOut = q.media && c.scene.anyHoldoutVolume();
+            const auto alphaOver = [&](float behind) {
+                const Spectrum V = q.mediumAlphaV[k], T = q.mediumAlpha[k];
+                return (V.x + V.y + V.z + behind * (T.x + T.y + T.z)) * (1.0f / 3.0f);
+            };
+            const auto surfaceAlpha = [&] {
+                const bool cut = c.scene.anyHoldouts() && c.scene.meshRecord(q.hitMesh[k]).holdout != HoldoutMode::None;
+                return heldOut ? alphaOver(cut ? 0.0f : 1.0f) : 1.0f;
+            };
             if (event) {
                 float alpha = 1.0f;
                 if (miss) {
                     bool visible = false;
                     cameraEnvironment(c.lights, c.lightCount, q.rays.org[k], dir, visible);
-                    alpha = visible ? 1.0f : volumeAlpha();
+                    alpha = heldOut ? alphaOver(visible ? 1.0f : 0.0f) : visible ? 1.0f : volumeAlpha();
                 } else {
+                    alpha = surfaceAlpha();
                     if (!film.crypto.empty()) // volumes are transparent to cryptomattes
                         cryptoAccumulate(c.scene, film, q.pixel[p], q.hitMesh[k], q.hitPrim[k], q.hitInstance[k]);
                     if (q.records)
@@ -1169,7 +1213,10 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 const Spectrum Le = state ? cameraEnvironmentLpe(c, q, p, state, q.rays.org[k], dir, visible)
                                           : cameraEnvironment(c.lights, c.lightCount, q.rays.org[k], dir, visible);
                 addRadiance(q, p, clampContribution(beta * Le, c.clampLight));
-                addAlpha(visible ? 1.0f : q.media ? volumeAlpha() : 0.0f);
+                addAlpha(heldOut   ? alphaOver(visible ? 1.0f : 0.0f)
+                         : visible ? 1.0f
+                         : q.media ? volumeAlpha()
+                                   : 0.0f);
                 continue;
             }
             if (!film.crypto.empty())
@@ -1183,14 +1230,14 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
             if (holdout != HoldoutMode::None) {
                 // A holdout (core/integrator/holdout.h): transparent to alpha
                 // but for the volumes in front, its light to holdout; outputs.
-                addAlpha(q.media ? volumeAlpha() : 0.0f);
+                addAlpha(heldOut ? alphaOver(0.0f) : q.media ? volumeAlpha() : 0.0f);
                 q.holdout[p] = uint8_t(holdout);
                 if (lpe)
                     q.lpeState[p] = lpeHoldoutState(lpe->program, q.lpeState[p]);
                 if (!c.holdoutShading)
                     continue; // nothing takes its light
             } else {
-                addAlpha(1.0f); // surfaces are opaque to alpha (transmission included)
+                addAlpha(surfaceAlpha()); // surfaces are opaque to alpha (transmission included)
             }
         } else {
             // Rays scattered by a surface collect the area lights they crossed
@@ -1458,6 +1505,27 @@ void pushShadowRay(const ShadeContext &c, WaveQueues &q, Vec3f o, Vec3f d, float
     q.shadows.push(o, d, t, p, clampContribution(contribution, c.clampNee), time, seed, light.shadowCategory, flags);
     if (c.lpe)
         lpeAttachParts(q, clampScale(contribution, c.clampNee));
+}
+
+// The weight-1 parts of a light sample at a background point (D14,
+// lpeDepositBackgroundUnit): an illumbackground light's go to unoccluded;
+// outputs now and leave the shadow ray none (shadow; outputs leave such
+// lights out; Karma); another light's whole unoccluded light `whole` (all
+// lobes; towards an emissive triangle without its emission, which only the
+// shadow ray evaluates: its constant emission instead) to the holdout total,
+// and its parts to the shadow ray, which traceShadowRays deposits by the
+// background rule.
+void backgroundLightParts(const ShadeContext &c, WaveQueues &q, uint32_t p, const LightData &light,
+                          const Spectrum &whole) {
+    const LpeView &lpe = *c.lpe;
+    if (light.illumBackground) {
+        for (size_t j = 0; j < q.lpePartState.size(); ++j)
+            lpeDepositBackgroundUnit(lpe, c.film, q.pixel[p], q.lpePartState[j], q.lpePartUnit[j], spectrum(0.0f),
+                                     false);
+        std::fill(q.lpePartUnit.begin(), q.lpePartUnit.end(), spectrum(0.0f));
+        return;
+    }
+    lpeDepositHoldoutTotal(lpe, c.film, q.pixel[p], light.type == LightType::Triangle ? whole * light.emission : whole);
 }
 
 // A background holdout seen by a ray other than the camera's
@@ -1850,10 +1918,8 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                         lpeLightSampleParts(*lpe, q, state, tag, cl, lobeF, lobeMask, light, li,
                                             dot(ls.wi, ng) < 0.0f, dot(wo, hit.Ng) > 0.0f, f,
                                             q.beta[p] * ls.Li * (1.0f / lightPdf), weight);
-                        // At a background point the illumbackground lights
-                        // stay out of the unoccluded; and shadow; sums.
-                        if (backgroundPoint && light.illumBackground)
-                            std::fill(q.lpePartUnit.begin(), q.lpePartUnit.end(), spectrum(0.0f));
+                        if (backgroundPoint && lpe->unit)
+                            backgroundLightParts(c, q, p, light, q.beta[p] * f * ls.Li * (1.0f / lightPdf));
                     }
                     const uint8_t flags = backgroundPoint ? kRayFromBackground : uint8_t(0);
                     if ((weight > 0.0f && !isBlack(contribution)) || (lpe && lpe->unit && !q.lpePartState.empty())) {
@@ -1903,6 +1969,7 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
         const Vec3f us = sampler.get3D(stream::bounce(c.depth, stream::kBsdf));
         const bool sampled = perLobe ? sampleLobesOutOfLine(cl, wo, us, s, lobeF, lobeMask) : sampleClosure(cl, wo, us, s);
         if (sampled) {
+            const Spectrum wholeWeight = s.weight; // all lobes (lpeScatter may keep one class's share)
             const lpe::State next = state ? lpeScatter(c, *lpe, state, cl, s, lobeF, lobeMask, tag, sampler) : state;
             // Into the inside of a solid dielectric (as for light samples),
             // before thin-wall pass-throughs change s.
@@ -1966,29 +2033,35 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                 s.weight *= cl.absorptionColor;
             }
             Spectrum beta = q.beta[p] * s.weight;
+            Spectrum wholeBeta = q.beta[p] * wholeWeight;
             float etaScale = q.etaScale[p];
             if (s.refract)
                 etaScale *= s.eta * s.eta; // the BTDF scaled radiance by 1 / eta^2
             bool alive = !isBlack(beta) && isFinite(beta);
             if (alive && c.depth + 1 >= c.settings.rrStartDepth) {
                 const float survive = rouletteSurvival(beta, etaScale);
-                if (sampler.get1D(stream::bounce(c.depth, stream::kRoulette)) < survive)
+                if (sampler.get1D(stream::bounce(c.depth, stream::kRoulette)) < survive) {
                     beta *= 1.0f / survive;
-                else
+                    wholeBeta *= 1.0f / survive;
+                } else {
                     alive = false;
+                }
             }
             if (alive) {
                 q.beta[p] = beta;
                 if (lpe)
                     q.lpeState[p] = next;
-                if (next && lpe->unit && !intoSolid) { // as light samples: none into solid glass
+                // As light samples: none into solid glass. At a background
+                // point by its rule (D14), the whole light even where this
+                // lobe's state leads to no output.
+                if (lpe && (next || backgroundPoint) && lpe->unit && !intoSolid) {
                     // Gathered at this hit with the receiver set the
                     // continuation will carry (gatherSite()).
                     const uint32_t set = !s.delta                          ? receiverSet
                                          : (q.prevSet[p] & kPrevSetDelta) ? c.scene.receiverSet(hit.mesh, q.hitInstance[k])
                                                                           : prevLinkSet(q.prevSet[p]);
                     lpeUnoccludedEnvironment(c, q.pixel[p], next, s.wi, LightFilterSite{origin, c.links.categories(set)},
-                                             s.diffuseShare, beta, !s.delta);
+                                             s.diffuseShare, beta, !s.delta, backgroundPoint ? &wholeBeta : nullptr);
                 }
                 q.bsdfPdf[p] = s.delta ? -1.0f : s.pdf;
                 q.diffuseShare[p] = s.diffuseShare;
@@ -2139,6 +2212,15 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
         const PhaseFunction phase = q.volumePhase[k];
         const VolumeId volume = q.volumeId[k];
         const Sampler sampler{q.pixelSeed[p], q.sampleIndex[p]};
+        // A camera ray's event in a holdout volume (D15): a holdout path, as
+        // at a holdout surface; in a background holdout a background point.
+        const HoldoutMode held = c.depth == 0 ? c.scene.volumeRecord(volume).holdout : HoldoutMode::None;
+        if (held != HoldoutMode::None) {
+            q.holdout[p] = uint8_t(held);
+            if (lpe)
+                q.lpeState[p] = lpeHoldoutState(lpe->program, q.lpeState[p]);
+        }
+        const bool backgroundPoint = held == HoldoutMode::Background;
         const lpe::State state = lpe ? q.lpeState[p] : lpe::State(0);
         const uint32_t tag = state && volume < lpe->volumeTag.size() ? lpe->volumeTag[volume] : 0u;
         const lpe::State scattered = state ? lpeStep(*lpe, state, lpe::TypeVolume, lpe::ScatterNone, tag, 0) : state;
@@ -2172,10 +2254,12 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
                     lpePartsClear(q);
                 if (scattered && (weight > 0.0f || lpe->unit))
                     lpePartsAdd(*lpe, q, lpeLightStep(*lpe, scattered, choice.light), contribution, unit);
+                if (backgroundPoint && lpe && lpe->unit) // whatever the event's state (D14)
+                    backgroundLightParts(c, q, p, light, unit);
                 if ((weight > 0.0f && !isBlack(contribution)) || (lpe && lpe->unit && !q.lpePartState.empty())) {
                     const float shadowSeed = shadowRaySeed(q.rays.filterSeed[k]);
                     pushShadowRay(c, q, x, ls.wi, shadowRayLength(ls.distance, c.tolerance), p, contribution, time,
-                                  shadowSeed, choice.light, ls);
+                                  shadowSeed, choice.light, ls, backgroundPoint ? kRayFromBackground : uint8_t(0));
                 }
             }
         }
@@ -2209,9 +2293,9 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
         q.beta[p] = beta;
         if (lpe)
             q.lpeState[p] = scattered;
-        if (scattered && lpe->unit) // volume events are receiver set 0
+        if (lpe && (scattered || backgroundPoint) && lpe->unit) // volume events are receiver set 0
             lpeUnoccludedEnvironment(c, q.pixel[p], scattered, wi, LightFilterSite{x, c.links.categories(0u)}, 1.0f,
-                                     beta, true);
+                                     beta, true, backgroundPoint ? &beta : nullptr);
         q.bsdfPdf[p] = pdf;
         q.diffuseShare[p] = 1.0f;
         q.prevP[p] = x;
@@ -2573,6 +2657,8 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
                 ray.time = s.rays.time[i];
                 ray.rayType = uint8_t(RayClass::Shadow);
                 ray.depth = depth;
+                // Background holdout volumes do not shadow background points (D15).
+                ray.fromBackground = (s.rays.rayType[i] & kRayFromBackground) != 0;
                 const uint32_t stream = stream::mediumShadow(depth);
                 Rng rng = Rng::make(q.pixelSeed[p], q.sampleIndex[p], stream);
                 const Spectrum Tm = trackMedia(scene, q.volumes, globals, ray,
@@ -2585,11 +2671,18 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
         if (!lpe)
             continue;
         // unoccluded; takes the light before shadowing, shadow;'s lit sum
-        // what passes (D7).
+        // what passes (D7); light samples of background points (camera hits
+        // on background holdouts) by their own rule (D14).
+        const bool background = depth == 0 && (s.rays.rayType[i] & kRayFromBackground);
         for (uint32_t j = s.partBegin[i], end = j + s.partCount[i]; j < end; ++j) {
             if (!blocked)
                 lpeDeposit(*lpe, film, q.pixel[p], s.partState[j], s.partValue[j] * T);
-            if (unit) {
+            if (!unit)
+                continue;
+            if (background) {
+                lpeDepositBackgroundUnit(*lpe, film, q.pixel[p], s.partState[j], s.partUnit[j],
+                                         blocked ? spectrum(0.0f) : s.partUnit[j] * T, true);
+            } else {
                 lpeDepositUnit(*lpe, film, q.pixel[p], s.partState[j], s.partUnit[j], true, false);
                 if (!blocked)
                     lpeDepositUnit(*lpe, film, q.pixel[p], s.partState[j], s.partUnit[j] * T, false, true);

@@ -152,6 +152,9 @@ const LpeTables *Renderer::lpeTables() {
     t.plainOuts.clear();
     t.unitOuts.clear();
     t.litSlots.clear();
+    t.unitShadow.clear();
+    const int32_t holdoutTotal = c->holdoutTotalSlot();
+    t.holdoutTotalSlot = holdoutTotal >= 0 ? uint16_t(holdoutTotal) : uint16_t(0xFFFF);
     for (lpe::State s = 0; s < t.program.stateCount; ++s) {
         const uint16_t *outs = t.program.outputs(s);
         for (uint32_t i = 0; i < t.program.outputCount(s); ++i) {
@@ -159,10 +162,12 @@ const LpeTables *Renderer::lpeTables() {
             // holdout; outputs are fed like the others: only paths that
             // hit a holdout reach their states (Program::holdoutStart).
             const uint8_t flags = t.program.outputFlags[o];
-            if (flags & (lpe::OutputUnoccluded | lpe::OutputShadow))
+            if (flags & (lpe::OutputUnoccluded | lpe::OutputShadow)) {
                 t.unitOuts.push_back(o);
-            else
+                t.unitShadow.push_back((flags & lpe::OutputShadow) && !(flags & lpe::OutputUnoccluded) ? 1 : 0);
+            } else {
                 t.plainOuts.push_back(o);
+            }
             if ((flags & lpe::OutputShadow) && !(flags & lpe::OutputUnoccluded) && t.shadowSlot[o] >= 0)
                 t.litSlots.push_back(uint16_t(t.shadowSlot[o]));
         }

@@ -841,6 +841,9 @@ bool GpuRenderer::setScene(const Scene &scene) {
     m_view.activeVolumes = put(scene.activeVolumes()).ptr;
     m_view.activeVolumeCount = uint32_t(scene.activeVolumes().size());
     m_view.levelDependent = uint8_t(scene.anyLevelDependentVolume());
+    m_view.holdoutVolumes = uint8_t(scene.anyHoldoutVolume());
+    m_view.backgroundVolumes = uint8_t(scene.anyBackgroundVolume());
+    m_view.volumeShadowVisibility = uint8_t(scene.volumeShadowVisibilityDiffers());
     // The sky atmosphere (docs/design/M11-P7.md) with its altitude levels.
     m_view.atmosphere = AtmosphereView{};
     if (const AtmosphereView *atmosphere = scene.atmosphere()) {
@@ -1025,6 +1028,7 @@ bool GpuRenderer::uploadLpe(const LpeTables &tables, uint64_t generation) {
     v.plainOuts = copy(v.plainOuts.data(), v.plainOuts.size());
     v.unitOuts = copy(v.unitOuts.data(), v.unitOuts.size());
     v.litSlots = copy(v.litSlots.data(), v.litSlots.size());
+    v.unitShadow = copy(v.unitShadow.data(), v.unitShadow.size());
     if (!ok)
         return false;
     m_lpe = v;
@@ -1069,14 +1073,14 @@ bool GpuRenderer::reserveLpe(uint32_t paths) {
 bool GpuRenderer::reserveMedia(uint32_t paths) {
     if (paths > m_mediaCapacity) {
         m_mediaWave.clear();
-        m_mediaWave.resize(15);
+        m_mediaWave.resize(16);
         const size_t n = paths, c = size_t(paths) * kGpuCrossings;
-        const size_t sizes[15] = {n * sizeof(Spectrum), n * sizeof(Spectrum), n * sizeof(Spectrum), n,
+        const size_t sizes[16] = {n * sizeof(Spectrum), n * sizeof(Spectrum), n * sizeof(Spectrum), n,
                                   n * sizeof(float),    n * sizeof(uint32_t), n * sizeof(PhaseFunction), n,
                                   c * sizeof(uint32_t), c * sizeof(float),    c * sizeof(Spectrum),
                                   n * sizeof(uint32_t), sizeof(uint32_t),     n * sizeof(float),
-                                  n * sizeof(float)};
-        for (int i = 0; i < 15; ++i)
+                                  n * sizeof(float),    n * sizeof(Spectrum)};
+        for (int i = 0; i < 16; ++i)
             if (!m_mediaWave[size_t(i)].reserve(m_device, sizes[i])) {
                 m_mediaCapacity = 0;
                 return false;
@@ -1099,6 +1103,7 @@ bool GpuRenderer::reserveMedia(uint32_t paths) {
     w.volumeShadeCount = m_mediaWave[12].as<uint32_t>();
     w.eqA = m_mediaWave[13].as<float>();
     w.eqB = m_mediaWave[14].as<float>();
+    w.mediumAlphaV = m_mediaWave[15].as<Spectrum>();
     return true;
 }
 

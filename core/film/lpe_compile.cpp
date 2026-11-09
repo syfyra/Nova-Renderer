@@ -565,7 +565,24 @@ uint32_t Compiled::shadowCount() const {
     uint32_t n = 0;
     for (size_t i = 0; i < outputFlags.size(); ++i)
         n += (outputFlags[i] & OutputShadow) && errors[i].empty() ? 1u : 0u;
-    return n;
+    return n + (holdoutTotalSlot() >= 0 ? 1u : 0u);
+}
+
+bool Compiled::holdoutShadow(size_t output) const {
+    if (output >= outputFlags.size() || !errors[output].empty())
+        return false;
+    const uint8_t f = outputFlags[output];
+    return (f & OutputHoldout) && (f & OutputShadow) && !(f & OutputUnoccluded);
+}
+
+int32_t Compiled::holdoutTotalSlot() const {
+    int32_t slots = 0;
+    bool any = false;
+    for (size_t i = 0; i < outputFlags.size(); ++i) {
+        slots += (outputFlags[i] & OutputShadow) && errors[i].empty() ? 1 : 0;
+        any |= holdoutShadow(i);
+    }
+    return any ? slots : -1;
 }
 
 State Compiled::run(std::vector<Event> const &events) const {

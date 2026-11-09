@@ -199,6 +199,11 @@ struct GpuScene {
     const uint32_t *activeVolumes = nullptr;
     uint32_t activeVolumeCount = 0;
     uint8_t levelDependent = 0;
+    // Some volume is a holdout; one's shadow visibility differs from a
+    // scattered class's (Scene's, docs/design/M11-P2.md D15).
+    uint8_t holdoutVolumes = 0;
+    uint8_t backgroundVolumes = 0;
+    uint8_t volumeShadowVisibility = 0;
     // The sky atmosphere (docs/design/M11-P7.md; volume kInvalidId: none).
     AtmosphereView atmosphere;
     NOVA_INLINE bool anyMedia() const { return activeVolumeCount > 0 || atmosphere.volume != 0xFFFFFFFFu; }
@@ -388,6 +393,7 @@ struct GpuWave {
     // transmittance in front of each; the rays with an event (pass C').
     Spectrum *mediumT = nullptr;
     Spectrum *mediumAlpha = nullptr;
+    Spectrum *mediumAlphaV = nullptr; // the opacity of the volumes that are not holdouts (D15)
     Spectrum *lightT = nullptr;
     uint8_t *volumeHit = nullptr;
     float *volumeT = nullptr;
