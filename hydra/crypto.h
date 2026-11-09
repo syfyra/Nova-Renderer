@@ -36,8 +36,12 @@ private:
 std::string HdNovaCryptoObjectName(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &instancerId);
 
 // The constant and uniform string/int primvars of a gprim as cryptomatte
-// attributes (their names noted).
+// attributes (their names noted); with an instancer also the instancers'
+// instance-rate ones the gprim does not define itself, one value per
+// instance (Karma: the gprim's own primvar wins, then the innermost
+// instancer's; docs/design/M11-P6.md 7).
 std::vector<nova::CryptoAttribute> HdNovaCryptoAttributes(HdSceneDelegate *sd, SdfPath const &id,
-                                                          HdNovaCryptoNames &names);
+                                                          HdNovaCryptoNames &names,
+                                                          SdfPath const &instancerId = SdfPath());
 
 PXR_NAMESPACE_CLOSE_SCOPE

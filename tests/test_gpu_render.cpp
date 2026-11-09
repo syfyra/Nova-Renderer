@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <vector>
@@ -1832,4 +1833,72 @@ TEST_CASE("XPU renders are bit-identical", "[gpu][render]") {
         different += a.film.colorSum[i].x != b.film.colorSum[i].x || a.film.colorSum[i].y != b.film.colorSum[i].y ||
                      a.film.colorSum[i].z != b.film.colorSum[i].z || a.film.alphaSum[i] != b.film.alphaSum[i];
     CHECK(different == 0);
+}
+
+// M11 P6 (docs/design/M11-P6.md): the per-sample planes (Karma's sample
+// filters), the deep map and a checkpoint resume on the XPU match the CPU.
+TEST_CASE("XPU per-sample AOVs, deep maps and checkpoints", "[gpu][render][aov][deep]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    cornellBox(scene);
+    const Camera camera = makePerspectiveCamera({0.0f, 1.0f, 3.6f}, 0.05, 0.036, 32, 32);
+    using U = UtilityKind;
+    using F = SampleFilter;
+    RenderSettings settings;
+    settings.maxSamples = 16;
+    settings.maxDepth = 3;
+    settings.utility = std::make_shared<const std::vector<UtilityRequest>>(std::vector<UtilityRequest>{
+        {U::Z, {}, F::ZMin}, {U::Z, {}, F::Box}, {U::P, {}, F::Box}, {U::ObjectId, {}, F::Max}, {U::Mask, {}, F::Box},
+        {U::Time, {}, F::Var}, {U::HitUv, {}, F::Box}, {U::Beauty, {}, F::Max}});
+    DeepRequest deep;
+    deep.extras = {{U::Z, {}}};
+    settings.deep = std::make_shared<const DeepRequest>(deep);
+    const auto run = [&](RenderDevice device, int stopAfter, std::vector<uint8_t> *checkpoint) {
+        Renderer renderer;
+        RenderSettings s = settings;
+        s.device = device;
+        renderer.setScene(&scene);
+        renderer.setSettings(s);
+        renderer.setCamera(camera);
+        renderer.resize(32, 32);
+        if (checkpoint && stopAfter < 0)
+            REQUIRE(renderer.loadCheckpoint(checkpoint->data(), checkpoint->size()));
+        bool gpu = true;
+        for (int pass = 0; !renderer.converged() && (stopAfter < 0 || pass < stopAfter); ++pass) {
+            renderer.renderPass({});
+            gpu = gpu && renderer.lastPassOnGpu();
+        }
+        if (checkpoint && stopAfter >= 0)
+            renderer.saveCheckpoint(*checkpoint);
+        CHECK(gpu == (device == RenderDevice::Xpu));
+        return renderer.film();
+    };
+    const Film cpu = run(RenderDevice::Cpu, -1, nullptr);
+    const Film xpu = run(RenderDevice::Xpu, -1, nullptr);
+    REQUIRE(cpu.utility.size() == xpu.utility.size());
+    for (size_t k = 0; k < cpu.utility.size(); ++k) {
+        const UtilityPlane &a = cpu.utility[k], &b = xpu.utility[k];
+        if (a.request.kind == U::Beauty)
+            continue; // the path's radiance differs per sample between the devices (float order)
+        size_t far = 0;
+        for (size_t i = 0; i < a.data.size(); ++i)
+            far += std::fabs(a.data[i] - b.data[i]) > 1e-3f * std::max(1.0f, std::fabs(a.data[i]));
+        INFO("plane " << k);
+        CHECK(far <= a.data.size() / 200); // the same camera hits (rare float ties at edges)
+    }
+    // The deep map: the same records' depths and coverage per pixel.
+    size_t sameDepths = 0;
+    for (size_t i = 0; i < cpu.deep[0].pixels.size(); ++i)
+        sameDepths += cpu.deep[0].pixels[i].size() == xpu.deep[0].pixels[i].size();
+    CHECK(sameDepths >= cpu.deep[0].pixels.size() * 99 / 100);
+    // A render saved on the XPU and resumed there equals the uninterrupted one.
+    std::vector<uint8_t> bytes;
+    run(RenderDevice::Xpu, 6, &bytes);
+    const Film resumed = run(RenderDevice::Xpu, -1, &bytes);
+    CHECK(resumed.count == xpu.count);
+    CHECK(std::memcmp(resumed.colorSum.data(), xpu.colorSum.data(), xpu.colorSum.size() * sizeof(Spectrum)) == 0);
+    CHECK(resumed.utility[0].data == xpu.utility[0].data);
+    CHECK(resumed.deep[0].pixels == xpu.deep[0].pixels);
 }

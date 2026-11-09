@@ -22,6 +22,7 @@
 #include <set>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -198,6 +199,11 @@ public:
     // The cryptomattes the bindings ask for (null: none), likewise.
     std::shared_ptr<const std::vector<nova::CryptoRequest>> GetCryptoRequests(
         HdRenderPassAovBindingVector const &bindings);
+    // Non-raster products husk hands over (products.h; docs/design/M11-P6.md
+    // 5, 6): the deep camera map to render (null: none; the same object
+    // while it stays the same). Also notes the deep file and the checkpoint
+    // product, which the next render uses (OnRenderStarted).
+    std::shared_ptr<const nova::DeepRequest> GetDeepRequest();
     // Texture baking (docs/design/M11-P8.md): whether the settings are a
     // Karma Texture Baker's, and its settings with the meshes resolved (null:
     // no bake); the same object while they stay the same.
@@ -220,6 +226,14 @@ public:
 private:
     void _Initialize();
     void _RenderLoop();
+    // HdNovaResolveAov plus the LPE output of a per-sample LPE plane.
+    HdNovaAovSource _ResolveAov(HdRenderPassAovBinding const &binding, bool primIdChannel) const;
+    // Checkpoints (render thread): resume from the product's file before the
+    // first pass, save periodically and when stopped, remove when done.
+    bool _ResumeCheckpoint(); // true: loaded
+    void _SaveCheckpoint();
+    // The deep file at the end of a render (render thread).
+    void _WriteDeep();
     // houdini:frame and houdini:fps (1 and 24 when not set).
     void _FrameAndFps(float &frame, float &fps) const;
 
@@ -255,6 +269,21 @@ private:
     std::shared_ptr<const nova::lpe::Compiled> _lpeProgram;
     std::shared_ptr<const std::vector<nova::UtilityRequest>> _utility;
     std::shared_ptr<const std::vector<nova::CryptoRequest>> _crypto;
+    // Non-raster products: the deep request and file (_deep*: what Execute
+    // found; _active*: what the running render uses), the checkpoint file,
+    // its save interval (s) and whether to resume from it.
+    struct ProductConfig {
+        std::string deepPath;
+        int deepOpacitySize = 3;
+        std::vector<std::string> deepChannels;
+        std::string checkpointPath;
+        double checkpointSeconds = 60.0;
+        bool resume = true;
+    };
+    std::shared_ptr<const nova::DeepRequest> _deep;
+    ProductConfig _products, _activeProducts;
+    std::set<std::string> _resumeTried; // checkpoint files a render resumed from (or tried)
+    int64_t _lastCheckpointNs = 0;
     std::shared_ptr<const nova::BakeSettings> _bake;
     std::vector<HdNovaBakeFilter> _bakeFilters; // set with the bindings
     std::mutex _controlMutex;

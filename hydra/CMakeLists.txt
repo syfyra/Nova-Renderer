@@ -9,6 +9,8 @@ add_library(hdNova_objects OBJECT
     aov.cpp
     bake.cpp
     crypto.cpp
+    deepWriter.cpp
+    products.cpp
     denoise.cpp
     renderBuffer.cpp
     medium.cpp
