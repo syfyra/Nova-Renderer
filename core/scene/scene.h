@@ -2,6 +2,7 @@
 
 #include "core/accel/accel.h"
 #include "core/film/crypto.h"
+#include "core/integrator/lookdev.h"
 #include "core/lights/light_sampler.h"
 #include "core/lights/light_tree.h"
 #include "core/lights/lights.h"
@@ -9,6 +10,7 @@
 #include "core/scene/hit.h"
 #include "core/scene/material.h"
 #include "core/scene/mesh.h"
+#include "core/scene/outline.h"
 #include "core/scene/ray_limits.h"
 #include "core/scene/ray.h"
 #include "core/scene/visibility.h"
@@ -58,6 +60,13 @@ struct MeshRecord {
     ObjectVisibility visibilitySettings;
     uint8_t visibility = kVisibleAll;
     HoldoutMode holdout = HoldoutMode::None;
+    // Karma's outlines (core/scene/outline.h): the object's own settings and
+    // the effective ones (commit(): unset fields take the render settings').
+    OutlineOverrides outlineSettings;
+    ObjectOutline outline;
+    // The display colour (primvar displayColor, else Cd) for Karma's
+    // simplified shading (core/integrator/lookdev.h; commit()).
+    AttributeRef displayColor;
     std::vector<uint16_t> triangleSlots;
     // Where each material's primvar reads come from on this mesh (commit()).
     struct MaterialBinding {
@@ -239,6 +248,15 @@ public:
     // The render settings' visibility and holdout mode, for objects without
     // their own (applied at commit()). Unset fields: visible to all, none.
     void setDefaultVisibility(const ObjectVisibility &visibility);
+    // Karma's outlines (core/scene/outline.h): an object's own settings, and
+    // the render settings' for objects without their own (commit()).
+    void setMeshOutline(MeshId id, const OutlineOverrides &outline);
+    void setDefaultOutline(const ObjectOutline &outline);
+    // Karma's look-dev light overrides (core/integrator/lookdev.h): the
+    // stage's lights off (any mode but Off), a headlight along the camera's
+    // -Z (Headlight, or autoHeadlight on a stage without lights) or a white
+    // dome (Dome). `cameraToWorld` orients the headlight. Applied at commit().
+    void setLightOverride(LightOverride mode, bool autoHeadlight, const Mat4 &cameraToWorld);
     // Karma's bgoccludeshadow (render setting): a background-holdout point
     // whose shadow ray another background holdout occludes keeps its light
     // (off: background holdouts never shadow background points).
@@ -476,6 +494,10 @@ private:
     bool m_nestedDielectrics = false;
     RayLimits m_objectDefaults; // the shading-side fields (setObjectDefaults)
     ObjectVisibility m_defaultVisibility;
+    ObjectOutline m_defaultOutline;
+    LightOverride m_lightOverride = LightOverride::Off;
+    bool m_autoHeadlight = false;
+    Mat4 m_headlightToWorld = Mat4::identity();
     bool m_anyHoldouts = false, m_anyBackground = false, m_bgOccludeShadow = false;
     bool m_shadowVisibilityDiffers = false;
     void updateFilterFlags(bool &geometryChanged);

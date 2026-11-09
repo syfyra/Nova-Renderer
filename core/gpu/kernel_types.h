@@ -10,10 +10,12 @@
 #include "core/bsdf/surface.h"
 #include "core/film/filter.h"
 #include "core/gpu/device_texture.h"
+#include "core/integrator/lookdev.h"
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_lane.h"
 #include "core/integrator/medium_track.h"
 #include "core/integrator/nested.h"
+#include "core/integrator/outline.h"
 #include "core/lights/light_sampler.h"
 #include "core/lights/light_tree.h"
 #include "core/lights/lights.h"
@@ -55,6 +57,10 @@ struct GpuMesh {
     // Ray visibility mask and holdout mode (MeshRecord's, M11 P2).
     uint8_t visibility = kVisibleAll;
     uint8_t holdout = 0; // HoldoutMode
+    // Karma's outlines and simplified shading (M11 P9a): MeshRecord::outline,
+    // the display colour (MeshRecord::displayColor, device data).
+    ObjectOutline outline;
+    AttributeRef displayColor;
 
     // Scene::emitterLight and Scene::receiverSet.
     NOVA_INLINE uint32_t emitterLight(uint32_t instance, uint32_t prim) const {
@@ -230,6 +236,10 @@ struct GpuSettings {
     float textureFilterWidth = 0.25f;
     uint8_t ao = 0;     // the film has an ambient occlusion plane
     uint8_t crypto = 0; // the film has cryptomattes: camera hits are recorded
+    // Karma's outlines (lines at the camera hits) and look-dev overrides
+    // (simplified shading), docs/design/M11-P9a.md.
+    OutlineSettings outline;
+    LookDevSettings look;
     // The film has per-sample planes (filtered utility AOVs, a deep map;
     // docs/design/M11-P6.md 4): the camera hits' full records too.
     uint8_t records = 0;
@@ -347,6 +357,16 @@ struct GpuWave {
     // which the host accumulates.
     uint32_t *cryptoMesh = nullptr;
     uint32_t *cryptoPrim = nullptr;
+    // Karma's outlines (WaveQueues::outline*, core/integrator/outline.h): per
+    // path its camera sample's line; per camera ray the hit the stencil
+    // compares with, its tan radius, the stencil's flagged rays and types
+    // (kOutlineValid: the hit has outlines). The stencil's rays use aoRays
+    // (path: the camera ray), their hits the light* arrays (free at depth 0).
+    OutlineSample *outline = nullptr;
+    OutlineMain *outlineMain = nullptr;
+    float *outlineRadius = nullptr;
+    uint16_t *outlineFlagged = nullptr;
+    uint8_t *outlineTypes = nullptr;
     uint32_t *cryptoInstance = nullptr;
     // Per-sample records (records): the camera hit's barycentrics and
     // distance, the first event's distance (kInf: none), the camera ray.
@@ -406,6 +426,8 @@ struct GpuFilm {
     float *alphaSum = nullptr;
     uint32_t *count = nullptr;
     float *ao = nullptr; // the ambient occlusion plane (null: none)
+    // Karma's outline planes (OutlinePlane order; null: none).
+    float *outline[kOutlinePlaneCount] = {};
     int width = 0;
     // Light path expression sums, output-major (Film::lpe, Film::lpeLitSum).
     Spectrum *lpeSum = nullptr;
@@ -467,6 +489,19 @@ struct FlushArgs {
     GpuFilm film;
     uint32_t pixelCount = 0;
     uint32_t spp = 1;
+    // Karma's outlines: the lines over the beauty and into the outline planes.
+    uint8_t outlines = 0;
+    OutlineSettings outline;
+};
+
+// Karma's outlines (traceOutlines): one stencil point's pass over this
+// depth's camera rays.
+struct OutlineArgs {
+    GpuScene scene;
+    GpuSettings settings;
+    GpuWave wave;
+    GpuRays rays; // the camera rays and their hits
+    uint32_t point = 0;
 };
 
 } // namespace nova::gpu

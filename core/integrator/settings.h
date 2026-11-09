@@ -1,7 +1,10 @@
 #pragma once
 
 #include "core/film/filter.h"
+#include "core/integrator/lookdev.h"
+#include "core/integrator/outline.h"
 #include "core/lights/light_strategy.h"
+#include "core/scene/outline.h"
 #include "core/scene/ray_limits.h"
 #include "core/scene/visibility.h"
 
@@ -42,6 +45,14 @@ struct RenderSettings {
     // (docs/design/M11-P2.md; the host applies them to the scene).
     ObjectVisibility objectVisibility;
     bool backgroundOccludesShadows = false;
+    // Karma's outlines (docs/design/M11-P9a.md): the render's settings and
+    // the defaults of objects without their own (the host applies those to
+    // the scene, Scene::setDefaultOutline).
+    OutlineSettings outline;
+    ObjectOutline objectOutline;
+    // Karma's look-dev overrides (lights: the host applies them to the
+    // scene, Scene::setLightOverride; simplified shading: the integrator).
+    LookDevSettings look;
     uint32_t rrStartDepth = 3;    // Russian roulette starts at this depth
     float clampIndirect = 10.0f;  // firefly clamp for indirect light (0 = off)
     // Karma's colour limits (docs/design/M11-P1.md, measured): clampDirect

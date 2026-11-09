@@ -188,6 +188,7 @@ void Scene::updateFilterFlags(bool &geometryChanged) {
         const int holdout = own.holdout >= 0 ? own.holdout : m_defaultVisibility.holdout;
         rec.visibility = mask >= 0 ? uint8_t(mask & kVisibleAll) : kVisibleAll;
         rec.holdout = holdout > 0 && holdout <= int(HoldoutMode::Background) ? HoldoutMode(holdout) : HoldoutMode::None;
+        rec.outline = resolveObjectOutline(m_defaultOutline, rec.outlineSettings); // Karma's outlines (M11 P9a)
         m_anyHoldouts |= rec.holdout != HoldoutMode::None;
         anyBackground |= rec.holdout == HoldoutMode::Background;
         // Visible to the shadow rays but not to some scattered ray, or the
@@ -456,6 +457,37 @@ void Scene::setDefaultVisibility(const ObjectVisibility &visibility) {
     ++m_version;
 }
 
+void Scene::setMeshOutline(MeshId id, const OutlineOverrides &outline) {
+    std::lock_guard lock(m_mutex);
+    if (id >= m_meshes.size() || !m_meshes[id].alive || m_meshes[id].outlineSettings == outline)
+        return;
+    m_meshes[id].outlineSettings = outline;
+    ++m_version;
+}
+
+void Scene::setDefaultOutline(const ObjectOutline &outline) {
+    std::lock_guard lock(m_mutex);
+    if (m_defaultOutline == outline)
+        return;
+    m_defaultOutline = outline;
+    ++m_version;
+}
+
+void Scene::setLightOverride(LightOverride mode, bool autoHeadlight, const Mat4 &cameraToWorld) {
+    std::lock_guard lock(m_mutex);
+    // The camera orients the headlight only where there may be one.
+    const bool head = mode == LightOverride::Headlight || (mode == LightOverride::Off && autoHeadlight);
+    const Mat4 toWorld = head ? cameraToWorld : Mat4::identity();
+    if (m_lightOverride == mode && m_autoHeadlight == autoHeadlight &&
+        std::memcmp(&m_headlightToWorld, &toWorld, sizeof(Mat4)) == 0)
+        return;
+    m_lightOverride = mode;
+    m_autoHeadlight = autoHeadlight;
+    m_headlightToWorld = toWorld;
+    m_lightsDirty = true;
+    ++m_version;
+}
+
 void Scene::setBackgroundOccludesShadows(bool on) {
     std::lock_guard lock(m_mutex);
     if (m_bgOccludeShadow == on)
@@ -537,8 +569,10 @@ void Scene::rebuildBindings() {
     std::vector<MaterialId> used;
     for (MeshRecord &rec : m_meshes) {
         rec.bindings.clear();
+        rec.displayColor = AttributeRef{};
         if (!rec.alive)
             continue;
+        rec.displayColor = bindNames(rec, "displayColor|Cd"); // Karma's simplified shading (M11 P9a)
         used.clear();
         if (rec.materialSlots.empty())
             used.push_back(kDefaultMaterialId);
@@ -1047,9 +1081,35 @@ bool Scene::commit() {
         m_lightFilterLinks.clear();
         m_portalTriangles.clear();
         std::vector<uint32_t> filterBegin, portalBegin;
-        for (const std::optional<LightDesc> &light : m_lights) { // id order keeps sampling deterministic
-            if (!light || !light->visible)
-                continue;
+        // Karma's look-dev light overrides (core/integrator/lookdev.h): the
+        // stage's lights give way to a headlight or a white dome (emissive
+        // geometry, the emitters after these, stays).
+        bool stageLights = false;
+        for (const std::optional<LightDesc> &light : m_lights)
+            stageLights |= light && light->visible;
+        std::vector<LightDesc> overrides;
+        if (m_lightOverride == LightOverride::Headlight ||
+            (m_lightOverride == LightOverride::Off && m_autoHeadlight && !stageLights)) {
+            LightDesc head;
+            head.type = LightType::Distant;
+            head.intensity = kHeadlightIrradiance;
+            head.angleDeg = 0.0f;       // a delta light along the camera's view
+            head.castsShadows = false;  // Karma's headlight casts none (measured)
+            head.transform = m_headlightToWorld;
+            overrides.push_back(head);
+        } else if (m_lightOverride == LightOverride::Dome) {
+            LightDesc dome;
+            dome.type = LightType::Dome;
+            dome.intensity = kOverrideDomeRadiance;
+            overrides.push_back(dome);
+        }
+        std::vector<const LightDesc *> descs;
+        for (const std::optional<LightDesc> &light : m_lights) // id order keeps sampling deterministic
+            if (light && light->visible && m_lightOverride == LightOverride::Off)
+                descs.push_back(&*light);
+        for (const LightDesc &d : overrides)
+            descs.push_back(&d);
+        for (const LightDesc *light : descs) {
             LightData data = makeLightData(*light);
             filterBegin.push_back(uint32_t(m_lightFilterData.size()));
             for (const std::string &key : light->filters) {

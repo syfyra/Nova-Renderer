@@ -470,7 +470,8 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
             case Kind::Utility: {
                 const float *v = plane->data.data() + src * plane->width;
                 if (source.perSample) {
-                    // A bake's maps: coverage averages (docs/design/M11-P8.md).
+                    // A bake's maps: coverage averages (docs/design/M11-P8.md);
+                    // Karma's outline planes: the samples' mean (M11-P9a.md).
                     float o[4];
                     for (int c = 0; c < plane->width && c < 4; ++c)
                         o[c] = v[c] * inv;
