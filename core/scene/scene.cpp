@@ -9,6 +9,7 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 
@@ -172,6 +173,7 @@ bool Scene::OpacityFilter::accept(const HitCandidate &c, const RayBatch &rays) c
 void Scene::updateFilterFlags(bool &geometryChanged) {
     m_anyFiltered = false;
     m_anyFakeCaustics = false;
+    int lowestPriority = 255, highestPriority = -1;
     // Ray visibility and holdouts (core/scene/visibility.h): the effective
     // settings; a partial mask or a background holdout (which shadow rays
     // from background points cross) goes through the filter, and with
@@ -210,6 +212,8 @@ void Scene::updateFilterFlags(bool &geometryChanged) {
                 want |= material(m).hasOpacity;
         }
         rec.shading = resolveObjectShading(m_objectDefaults, rec.rayLimits);
+        lowestPriority = std::min(lowestPriority, int(rec.shading.dielectricPriority));
+        highestPriority = std::max(highestPriority, int(rec.shading.dielectricPriority));
         rec.fakeCaustics = rec.shading.fakeCaustics;
         want |= rec.fakeCaustics || m_shadowLinking;
         m_anyFakeCaustics |= rec.fakeCaustics;
@@ -220,6 +224,7 @@ void Scene::updateFilterFlags(bool &geometryChanged) {
         }
         m_anyFiltered |= want;
     }
+    m_nestedDielectrics = highestPriority > lowestPriority;
 }
 Scene::~Scene() = default;
 
@@ -610,6 +615,62 @@ void Scene::removeLightFilter(const std::string &key) {
     ++m_version;
 }
 
+void Scene::setPortal(const std::string &key, const PortalDesc &desc) {
+    std::lock_guard lock(m_mutex);
+    m_portals[key] = desc;
+    m_lightsDirty = true; // the domes' records are rebuilt with their portals
+    ++m_version;
+}
+
+void Scene::removePortal(const std::string &key) {
+    std::lock_guard lock(m_mutex);
+    if (m_portals.erase(key) == 0)
+        return;
+    m_lightsDirty = true;
+    ++m_version;
+}
+
+namespace {
+
+// A glob with * and ? (the whole text).
+bool globMatch(const char *pattern, const char *text) {
+    const char *star = nullptr, *resume = nullptr;
+    while (*text) {
+        if (*pattern == '?' || *pattern == *text) {
+            ++pattern;
+            ++text;
+        } else if (*pattern == '*') {
+            star = pattern++;
+            resume = text;
+        } else if (star) {
+            pattern = star + 1;
+            text = ++resume;
+        } else {
+            return false;
+        }
+    }
+    while (*pattern == '*')
+        ++pattern;
+    return *pattern == 0;
+}
+
+} // namespace
+
+bool portalServes(const std::string &domeLights, const std::string &path) {
+    size_t i = 0;
+    while (i < domeLights.size()) {
+        while (i < domeLights.size() && std::isspace(static_cast<unsigned char>(domeLights[i])))
+            ++i;
+        size_t j = i;
+        while (j < domeLights.size() && !std::isspace(static_cast<unsigned char>(domeLights[j])))
+            ++j;
+        if (j > i && globMatch(domeLights.substr(i, j - i).c_str(), path.c_str()))
+            return true;
+        i = j;
+    }
+    return false;
+}
+
 VolumeId Scene::createVolume(std::optional<uint64_t> key) {
     std::lock_guard lock(m_mutex);
     VolumeId id;
@@ -711,6 +772,82 @@ void Scene::buildVolume(VolumeRecord &rec) const {
     const MaterialRecord *material =
         m < m_materials.size() && m_materials[m] && m_materials[m]->hasVolume() ? &*m_materials[m] : nullptr;
     buildVolumeRecord(rec, material, m_shadeFrame, m_shadeFps);
+}
+
+// The planetary sky atmosphere (docs/design/M11-P7.md): the first visible
+// volume that carries one, and the altitude levels its quadrature splits rays
+// at: sea level, every 2 Mie scale heights while the Mie layer is above e^-8
+// of its sea-level density, then every 2 Rayleigh scale heights, and the
+// ozone tent's corners (levels closer than a quarter step to one of those
+// are dropped). Inside a band the exponential layers change by at most e^2
+// and the tent is linear, where 4-point Gauss-Legendre is exact to 1e-5.
+void Scene::buildAtmosphere() {
+    m_atmosphere = AtmosphereView{};
+    m_atmosphereLevels.clear();
+    m_atmosphereCount = 0;
+    const AtmosphereDesc *desc = nullptr;
+    for (VolumeId id = 0; id < m_volumes.size(); ++id) {
+        const VolumeRecord &v = m_volumes[id];
+        if (!v.alive || !v.desc.visible || !v.desc.atmosphere)
+            continue;
+        // "First" in the order of the volumes' keys, not of their ids (which
+        // follow the host's sync order: docs/bug-audit-2026-11.md D-1).
+        if (m_atmosphereCount++ == 0 || v.key < m_volumes[m_atmosphere.volume].key) {
+            desc = v.desc.atmosphere.get();
+            m_atmosphere.volume = id;
+        }
+    }
+    if (!desc)
+        return;
+    AtmosphereView &a = m_atmosphere;
+    for (int k = 0; k < 3; ++k)
+        a.center[k] = desc->center[k];
+    a.seaLevel = desc->seaLevel;
+    a.groundRadius = desc->seaLevel - std::max(desc->groundOffset, 0.0);
+    a.topAltitude = desc->topAltitude();
+    const auto nonNegative = [](Spectrum s) { return componentMax(s, spectrum(0.0f)); };
+    a.rayleigh = nonNegative(desc->rayleigh);
+    a.mieScatter = nonNegative(desc->mieScatter);
+    a.mieExtinction = a.mieScatter + nonNegative(desc->mieAbsorb);
+    a.ozone = nonNegative(desc->ozone);
+    a.rayleighInvHeight = desc->rayleighHeight > 0.0f ? 1.0f / desc->rayleighHeight : 0.0f;
+    a.mieInvHeight = desc->mieHeight > 0.0f ? 1.0f / desc->mieHeight : 0.0f;
+    a.ozoneAltitude = desc->ozoneAltitude;
+    a.ozoneHalfWidth = desc->ozoneWidth > 0.0f ? 0.5f * desc->ozoneWidth : 0.0f;
+    a.mieG = std::clamp(desc->mieG, -0.99f, 0.99f);
+    a.groundAlbedo = nonNegative(desc->groundAlbedo);
+    a.groundVisibility = desc->groundVisibility;
+    a.groundShadows = desc->groundShadows ? 1 : 0;
+    a.backside = desc->backside ? 1 : 0;
+    a.ignoreClip = desc->ignoreCameraClip ? 1 : 0;
+    // The levels.
+    const float top = a.topAltitude;
+    const float hm = desc->mieHeight > 0.0f ? desc->mieHeight : top;
+    const float hr = desc->rayleighHeight > 0.0f ? desc->rayleighHeight : top;
+    std::vector<float> fixed{0.0f};
+    if (a.ozoneHalfWidth > 0.0f && !isBlack(a.ozone))
+        for (float h : {a.ozoneAltitude - a.ozoneHalfWidth, a.ozoneAltitude, a.ozoneAltitude + a.ozoneHalfWidth})
+            if (h > 0.0f && h < top)
+                fixed.push_back(h);
+    std::vector<float> levels = fixed;
+    const float mieEnd = std::min(8.0f * hm, top);
+    float h = 0.0f;
+    for (int guard = 0; guard < 64; ++guard) {
+        const float step = 2.0f * (h < mieEnd ? std::min(hm, hr) : hr);
+        h += std::max(step, top / 32.0f);
+        if (!(h < top))
+            break;
+        bool near = false;
+        for (float f : fixed)
+            near |= std::fabs(f - h) < 0.25f * step;
+        if (!near)
+            levels.push_back(h);
+    }
+    std::sort(levels.begin(), levels.end());
+    levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
+    m_atmosphereLevels = std::move(levels);
+    a.levels = m_atmosphereLevels.data();
+    a.levelCount = uint32_t(m_atmosphereLevels.size());
 }
 
 Affine3f Scene::volumeToWorld(VolumeId id, float time) const {
@@ -905,10 +1042,11 @@ bool Scene::commit() {
         m_lightTags.clear();
         m_lightLinks.clear();
         // Light filters (M11-P4): each light's records in order, pointed at
-        // once the array is complete.
+        // once the array is complete; so are the domes' portals (M11-P9b).
         m_lightFilterData.clear();
         m_lightFilterLinks.clear();
-        std::vector<uint32_t> filterBegin;
+        m_portalTriangles.clear();
+        std::vector<uint32_t> filterBegin, portalBegin;
         // The lights in the order of their keys (object_key.h): the light
         // tree and the selection distributions are then the same whatever
         // order the host created the lights in.
@@ -931,6 +1069,32 @@ bool Scene::commit() {
                 m_lightFilterLinks.push_back(it->second.link);
             }
             data.filterCount = uint32_t(m_lightFilterData.size()) - filterBegin.back();
+            // Light portals (docs/design/M11-P9b.md): every portal whose list
+            // names this dome.
+            portalBegin.push_back(uint32_t(m_portalTriangles.size()));
+            if (data.type == LightType::Dome) {
+                for (const auto &[key, portal] : m_portals) {
+                    if (!portalServes(portal.domeLights, light->path))
+                        continue;
+                    for (size_t t = 0; t + 2 < portal.triangles.size(); t += 3) {
+                        PortalTriangle tri;
+                        tri.v0 = portal.triangles[t];
+                        tri.e1 = portal.triangles[t + 1] - tri.v0;
+                        tri.e2 = portal.triangles[t + 2] - tri.v0;
+                        const Vec3f n = cross(tri.e1, tri.e2);
+                        const float len = length(n);
+                        if (!(len > 0.0f) || !std::isfinite(len))
+                            continue; // degenerate
+                        tri.n = n * (1.0f / len);
+                        tri.area = 0.5f * len;
+                        m_portalTriangles.push_back(tri);
+                        data.portalArea += tri.area;
+                    }
+                }
+                data.portalCount = uint32_t(m_portalTriangles.size()) - portalBegin.back();
+                const float bias = std::isfinite(light->portalMisBias) ? light->portalMisBias : 0.0f;
+                data.portalMix = 0.5f * (1.0f + std::clamp(bias, -1.0f, 1.0f));
+            }
             if (data.texels && (data.type == LightType::Dome || data.type == LightType::Rect)) {
                 TextureData &t = textureData(light->texture);
                 if (data.type == LightType::Dome) {
@@ -939,6 +1103,11 @@ bool Scene::commit() {
                         buildDomeDistribution(*t.image, *t.distribution);
                     }
                     data.distribution = t.distribution->view(); // stable: the distribution lives on the heap
+                    if (data.portalCount > 0) { // the power through the portals (lightPower)
+                        if (t.meanLuminance < 0.0f)
+                            t.meanLuminance = textureMeanLuminance(*t.image);
+                        data.texMeanLuminance = t.meanLuminance;
+                    }
                 } else {
                     if (t.meanLuminance < 0.0f)
                         t.meanLuminance = textureMeanLuminance(*t.image);
@@ -949,8 +1118,11 @@ bool Scene::commit() {
             m_lightTags.push_back(light->lpeTag);
             m_lightLinks.emplace_back(light->lightLink, light->shadowLink);
         }
-        for (size_t i = 0; i < m_lightData.size(); ++i)
+        for (size_t i = 0; i < m_lightData.size(); ++i) {
             m_lightData[i].filters = m_lightData[i].filterCount > 0 ? m_lightFilterData.data() + filterBegin[i] : nullptr;
+            m_lightData[i].portals =
+                m_lightData[i].portalCount > 0 ? m_portalTriangles.data() + portalBegin[i] : nullptr;
+        }
         m_hostLightCount = m_lightData.size();
         m_textures = std::move(textures);
         m_lightsDirty = false;
@@ -979,6 +1151,7 @@ bool Scene::commit() {
         m_levelDependentVolumes = false;
         for (VolumeId id : m_activeVolumes)
             m_levelDependentVolumes |= m_volumes[id].levelDependent;
+        buildAtmosphere();
     }
     // Emissive volumes that are light sources follow the host's lights
     // (docs/design/M8.md D13).
@@ -1080,7 +1253,10 @@ bool Scene::commit() {
                 // (LightData::illuminates(), as Karma): no tree entry.
                 infiniteLight[i] = atInfinity(i) || l.outsideTree;
                 if (infiniteLight[i]) {
-                    infiniteE[i] = power[i] / disk;
+                    // A dome with portals: its mean radiance, which the
+                    // tree multiplies by the portals' solid angle at the
+                    // receiver (LightTreeView::portalTris).
+                    infiniteE[i] = l.portalCount > 0 ? power[i] / (kPi * l.portalArea) : power[i] / disk;
                     if (l.type == LightType::Distant)
                         infiniteDir[i] = l.direction;
                     continue;
@@ -1092,6 +1268,11 @@ bool Scene::commit() {
             m_lightTree.update(bounds, infiniteLight, power, infiniteE, infiniteDir,
                                m_linking ? m_lightLinkMask : std::vector<uint64_t>{},
                                m_linking ? m_receiverCategories : std::vector<uint64_t>{});
+            std::vector<std::vector<PortalTriangle>> portals(n);
+            for (size_t i = 0; i < n; ++i)
+                if (m_lightData[i].portalCount > 0)
+                    portals[i].assign(m_lightData[i].portals, m_lightData[i].portals + m_lightData[i].portalCount);
+            m_lightTree.setPortals(portals);
         }
         // A large scene (e.g. a huge ground plane) inflates the power of the
         // lights at infinity until local lights get no samples; cap them at

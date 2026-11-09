@@ -37,6 +37,8 @@ TF_DEFINE_PRIVATE_TOKENS(_tokens,
     ((samplingMode, "inputs:karma:light:samplingmode"))
     ((novaSamplingMode, "inputs:nova:light:samplingMode"))
     ((illumBackground, "inputs:karma:light:illumbackground"))
+    ((portalMisBias, "inputs:karma:light:portalmisbias"))
+    ((novaPortalMisBias, "inputs:nova:light:portalMisBias"))
     ((legacyCategory, "inputs:karma:light:category"))
     ((legacyShadowSet, "inputs:karma:light:shadowtraceset"))
     ((flipNone, "None"))
@@ -261,6 +263,12 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     // Background holdouts (docs/design/M11-P2.md): the light lights them and
     // its shadows stay out of the holdout shadow outputs (Karma's, off).
     desc.illumBackground = lightParam<bool>(sd, id, _tokens->illumBackground, false);
+    // Light portals (docs/design/M11-P9b.md): the path the portals' dome
+    // lists name, and the balance of portal against environment samples
+    // (Nova's, else Karma's portalmisbias, 0).
+    desc.path = id.GetString();
+    desc.portalMisBias = lightParam<float>(sd, id, _tokens->novaPortalMisBias,
+                                           lightParam<float>(sd, id, _tokens->portalMisBias, 0.0f));
     // Karma's per-light sampling mode (D18): Uniform (1, "uniform") keeps the
     // light out of the tree; Auto (0) and Light Tree (2) put it in.
     for (TfToken const &key : {_tokens->novaSamplingMode, _tokens->samplingMode}) {

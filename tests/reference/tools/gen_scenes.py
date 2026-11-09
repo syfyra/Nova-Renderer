@@ -358,6 +358,49 @@ def karma_sky():
     return scene(b, (144, 96), 4)
 
 
+def karma_atmosphere():
+    """The Karma Sky Atmosphere as its LOP authors it at its defaults
+    (tests/husk/karma_atmosphere/sa_a30.usda: the KarmaSkyAtmosphere prim and
+    its primvars, docs/design/M11-P7.md) under a sun of irradiance 1 at
+    altitude 30, azimuth 30: the camera, 100 m above the planet's sea level,
+    sees the sky up to 40 degrees, the horizon and the scene's objects (the
+    planet's ground is invisible to it, Karma's default). Karma's
+    transmittance reads a few percent dark (the blue channel most, section
+    2.3), hence the scene's tolerances."""
+    b = quads("ground", [[(-20, 0, 20), (20, 0, 20), (20, 0, -20), (-20, 0, -20)]], (0.6, 0.6, 0.6))
+    b += sphere("ballA", (-0.7, 0.5, 0.0), 0.5, (0.8, 0.3, 0.2))
+    b += sphere("ballB", (0.6, 0.35, 0.4), 0.35, (0.3, 0.5, 0.8))
+    b += quads("cube", box_quads((0.5, 0.4, -0.7), (0.8, 0.8, 0.8), 25), (0.7, 0.7, 0.6))
+    primvars = [("bool", "enableatmosphere", "1"), ("color3f", "extraabsorpcoeff", "(6.5e-7, 0.00000188, 8.6e-8)"),
+                ("float", "extraaltitude", "25000"), ("float", "extrawidth", "30000"),
+                ("color3f", "groundalbedo", "(0.2, 0.2, 0.2)"), ("float", "groundoffset", "0"),
+                ("bool", "groundreceiveshadow", "0"), ("string", "groundvisibility", '"-primary"'),
+                ("bool", "ignorecameraclip", "1"), ('string', "karma:object:lpetag", '""'),
+                ("int", "karma:object:volumelimit", "1"), ("float2", "lutdim", "(256, 256)"),
+                ("color3f", "mieabsorpcoeff", "(0.0000045, 0.0000045, 0.0000045)"), ("float", "miedist", "1200"),
+                ("float", "miephase", "0.8"), ("color3f", "miescattercoeff", "(0.000004, 0.000004, 0.000004)"),
+                ("string", "ociofrom", '""'), ("vector3f", "planetcenter", "(0, -6371000, 0)"),
+                ("color3f", "rayleighcoeff", "(0.000006, 0.000012, 0.000027)"), ("float", "rayleighdist", "8000"),
+                ("bool", "renderbackside", "0"), ("float", "sealevel", "6370900"), ("bool", "solidalphainipr", "1"),
+                ("float", "stepsizemax", "2500"), ("float", "stepsizemin", "250")]
+    b += '    def KarmaSkyAtmosphere "atmosphere"\n    {\n'
+    for kind, name, value in primvars:
+        b += f'        {kind} primvars:{name} = {value} (\n            interpolation = "constant"\n        )\n'
+    b += "    }\n"
+    b += """    def DistantLight "sun"
+    {
+        float inputs:angle = 0.53
+        float inputs:intensity = 1
+        bool inputs:normalize = 1
+        double xformOp:rotateX:altitude = -30
+        double xformOp:rotateY:azimuth = 150
+        uniform token[] xformOpOrder = ["xformOp:rotateY:azimuth", "xformOp:rotateX:altitude"]
+    }
+"""
+    b += camera((0, 1.0, 3.5), (12, 0, 0), aperture=(36, 24))
+    return scene(b, (144, 96), 4)
+
+
 def dome_plane():
     b = quads("ground", [[(-1000, 0, 1000), (1000, 0, 1000), (1000, 0, -1000), (-1000, 0, -1000)]], (0.5, 0.5, 0.5))
     b += light("DomeLight", "sky", ["float inputs:intensity = 1", "asset inputs:texture:file = @./assets/sky_soft.exr@",
@@ -1668,7 +1711,7 @@ def main():
     os.makedirs(os.path.join(out, "assets"), exist_ok=True)
     files = {"assets/sphere.usda": sphere_asset(), "assets/sphere_st.usda": sphere_asset(st=True),
              "assets/sphere_uv.usda": sphere_asset(st=True, uv=True),
-             "cornell_rect.usda": cornell_rect(), "dome_sky.usda": dome_sky(), "karma_sky.usda": karma_sky(),
+             "cornell_rect.usda": cornell_rect(), "dome_sky.usda": dome_sky(), "karma_sky.usda": karma_sky(), "karma_atmosphere.usda": karma_atmosphere(),
              "dome_plane.usda": dome_plane(), "furnace_rectbox.usda": furnace_rectbox(),
              "instancer.usda": instancer(), "subdiv.usda": subdiv(), "subdiv_karma.usda": subdiv(karma=True),
              "dof.usda": dof(),

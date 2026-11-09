@@ -335,10 +335,18 @@ NOVA_INLINE void pushTransmission(ClosureList &cl, const ClosureContext &ctx, ui
 
 // Interior absorption of transmission_depth (Beer; Karma's mapping: the
 // transmission color is reached at the depth).
+NOVA_INLINE Spectrum absorptionColorOf(Spectrum color) {
+    return {nova::fmin(nova::fmax(color.x, 1e-5f), 1.0f), nova::fmin(nova::fmax(color.y, 1e-5f), 1.0f),
+            nova::fmin(nova::fmax(color.z, 1e-5f), 1.0f)};
+}
 NOVA_INLINE Spectrum absorptionFromDepth(Spectrum color, float depth) {
-    const Spectrum c = {nova::fmin(nova::fmax(color.x, 1e-5f), 1.0f), nova::fmin(nova::fmax(color.y, 1e-5f), 1.0f),
-                        nova::fmin(nova::fmax(color.z, 1e-5f), 1.0f)};
+    const Spectrum c = absorptionColorOf(color);
     return Spectrum{-std::log(c.x), -std::log(c.y), -std::log(c.z)} * (1.0f / depth);
+}
+// The interior absorption and the colour it stands for (ClosureList).
+NOVA_INLINE void setAbsorption(ClosureList &cl, Spectrum color, float depth) {
+    cl.sigmaA = absorptionFromDepth(color, depth);
+    cl.absorptionColor = absorptionColorOf(color);
 }
 
 NOVA_INLINE Spectrum pushSchlickLayer(ClosureList &cl, const ClosureContext &ctx, uint8_t frame, Spectrum weight,
@@ -423,7 +431,7 @@ NOVA_INLINE void buildStandardSurface(const SurfaceInputs &in, const ShadingGeom
         pushTransmission(cl, ctx, 0, spectrum(X), gg, gg, 1.0f / ior, false, spectrum(1.0f),
                          absorbing ? spectrum(1.0f) : nonNegative(in.c(sf::transmissionColor)), mu);
         if (absorbing)
-            cl.sigmaA = absorptionFromDepth(in.c(sf::transmissionColor), in.f(sf::transmissionDepth));
+            setAbsorption(cl, in.c(sf::transmissionColor), in.f(sf::transmissionDepth));
         w *= 1.0f - X;
     } else if (C > kCut) {
         const Vec2f ac = alphaStandardSurface(in.f(sf::coatRoughness), in.f(sf::coatAnisotropy));
@@ -485,7 +493,7 @@ NOVA_INLINE void buildStandardSurface(const SurfaceInputs &in, const ShadingGeom
                          (absorbing ? spectrum(1.0f) : nonNegative(in.c(sf::transmissionColor))) * tScale, mu,
                          thin ? s : 1.0f);
         if (absorbing)
-            cl.sigmaA = absorptionFromDepth(in.c(sf::transmissionColor), in.f(sf::transmissionDepth));
+            setAbsorption(cl, in.c(sf::transmissionColor), in.f(sf::transmissionDepth));
         w *= 1.0f - X;
     }
     if (s > kCut) {
@@ -751,7 +759,7 @@ NOVA_INLINE void buildOpenPbr(const SurfaceInputs &in, const ShadingGeometry &g,
         pushTransmission(cl, ctx, 0, w * X, gs, gs, inside ? 1.0f / eta : eta, thin, inside ? spectrum(1.0f) : specColor,
                          tintT, mu);
         if (absorbing)
-            cl.sigmaA = absorptionFromDepth(in.c(sf::transmissionColor), in.f(sf::transmissionDepth));
+            setAbsorption(cl, in.c(sf::transmissionColor), in.f(sf::transmissionDepth));
         w *= 1.0f - X;
     }
     {

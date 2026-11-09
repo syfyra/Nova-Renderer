@@ -100,8 +100,12 @@ NOVA_INLINE uint32_t sampleShadowLinkedDome(const LightData *lights, const uint3
         w = 0.0f;
         if (!pmf.links(i))
             return Spectrum{0.0f, 0.0f, 0.0f};
-        w = bsdfSampleWeight(strategy, bsdfPdf,
-                             misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * domePdf(light, dir) : 0.0f);
+        // With portals, only through them (docs/design/M11-P9b.md).
+        bool seen = true;
+        const float pdf = domeSamplePdf(light, site.p, dir, seen);
+        if (!seen)
+            return Spectrum{0.0f, 0.0f, 0.0f};
+        w = bsdfSampleWeight(strategy, bsdfPdf, misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * pdf : 0.0f);
         if (!(w > 0.0f))
             return Spectrum{0.0f, 0.0f, 0.0f};
         const Spectrum L = domeRadiance(light, dir) * (lightMultiplier(light, diffuseShare) * w);

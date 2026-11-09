@@ -439,6 +439,7 @@ void HdNovaBasisCurves::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
     }
     if (rebuild) { // DirtyPrimvar rebuilds
         scene.setMeshRayLimits(_meshId, HdNovaObjectOverrides(sd, id));
+        HdNovaWarnPortalPrim(sd, id, "curves"); // light portals are meshes only (M11 P9b)
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
         scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (M6 D10)

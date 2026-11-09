@@ -39,11 +39,14 @@ add_executable(nova_tests
     test_ray_limits.cpp
     test_fake_caustics.cpp
     test_karma_shading.cpp
+    test_nested_dielectrics.cpp
+    test_portals.cpp
     test_volume.cpp
     test_volume_shader.cpp
     test_volume_render.cpp
     test_volume_scatter.cpp
     test_volume_shell.cpp
+    test_atmosphere.cpp
     test_curves.cpp
     test_subsurface.cpp
     test_hair.cpp
@@ -191,6 +194,13 @@ if(EXISTS "${HFS}/bin/hython.exe")
                 -Script "${CMAKE_CURRENT_SOURCE_DIR}/houdini/test_karma_sky_lops.py" -Hfs "${HFS}"
                 "${CMAKE_CURRENT_BINARY_DIR}/houdini_karma_sky_lops/$<CONFIG>")
     set_tests_properties(houdini_karma_sky_lops PROPERTIES LABELS houdini TIMEOUT 600)
+    # The Karma Sky Atmosphere and Physical Sky LOPs (M11 P7) still author the
+    # scenes husk_karma_atmosphere was measured with.
+    add_test(NAME houdini_karma_atmosphere_lops
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/houdini/run_hython.ps1"
+                -Script "${CMAKE_CURRENT_SOURCE_DIR}/houdini/test_karma_atmosphere_lops.py" -Hfs "${HFS}"
+                "${CMAKE_CURRENT_BINARY_DIR}/houdini_karma_atmosphere_lops/$<CONFIG>")
+    set_tests_properties(houdini_karma_atmosphere_lops PROPERTIES LABELS houdini TIMEOUT 600)
     # The Karma Texture Baker LOP baked by Nova through husk (M11 P8): the
     # LOP's settings, UDIM tiles and PNG products.
     add_test(NAME houdini_karma_texture_baker
@@ -305,6 +315,13 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_sky/$<CONFIG>")
     set_tests_properties(husk_karma_sky PROPERTIES LABELS husk TIMEOUT 900)
+    # The Karma Sky Atmosphere (docs/design/M11-P7.md): scenes built by the
+    # Karma LOPs, Nova CPU and XPU against Karma's values and the model.
+    add_test(NAME husk_karma_atmosphere
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_atmosphere.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_atmosphere/$<CONFIG>")
+    set_tests_properties(husk_karma_atmosphere PROPERTIES LABELS husk TIMEOUT 1200)
     # Karma's Texture Baker (docs/design/M11-P8.md): bake scenes written by
     # husk/karma_bake/make_scenes.py, Karma's maps stored in the script.
     add_test(NAME husk_karma_bake
@@ -330,6 +347,12 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_props/$<CONFIG>")
     set_tests_properties(husk_karma_props PROPERTIES LABELS husk TIMEOUT 900)
+    # Nested dielectrics and light portals (docs/design/M11-P9b.md).
+    add_test(NAME husk_karma_p9b
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_p9b.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_p9b/$<CONFIG>")
+    set_tests_properties(husk_karma_p9b PROPERTIES LABELS husk TIMEOUT 900)
     add_test(NAME husk_subdiv
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_subdiv.py"
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" --scenes "${CMAKE_CURRENT_SOURCE_DIR}/scenes"
