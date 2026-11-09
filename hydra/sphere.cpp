@@ -355,6 +355,7 @@ void HdNovaSphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         // Per-object ray limits and shading properties (Nova's, then Karma's
         // constant primvars; docs/design/M11-P1.md).
         scene.setMeshRayLimits(_meshId, HdNovaObjectOverrides(sd, id));
+        HdNovaWarnPortalPrim(sd, id, "spheres"); // light portals are meshes only (M11 P9b)
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
         scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         scene.setMeshOutline(_meshId, HdNovaObjectOutline(sd, id));       // M11 P9a

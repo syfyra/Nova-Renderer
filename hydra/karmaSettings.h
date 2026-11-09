@@ -23,6 +23,9 @@ std::optional<double> HdNovaNumber(VtValue const &value);
 std::optional<bool> HdNovaFlag(VtValue const &value);
 // A string or token (empty otherwise).
 std::string HdNovaText(VtValue const &value);
+// A string or token, or an array of them joined by spaces (a list such as
+// karma:object:portaldomelights).
+std::string HdNovaTextList(VtValue const &value);
 // A menu entry: its index as a number, or one of `labels` (case and
 // surrounding blanks ignored); -1 for neither.
 int HdNovaMenuIndex(VtValue const &value, std::initializer_list<const char *> labels);
@@ -55,6 +58,9 @@ struct HdNovaObjectDefaults {
     int dicingDepth = -2;        // karma:object:dicingdepthmin = max (-1: off, -2: not set)
     int displacement = -1;       // karma:object:truedisplace: 0 Disable Displacement Shader, else 1
     int motionBlur = -1;         // karma:object:mblur
+    int isPortal = -1;           // karma:object:isportal (docs/design/M11-P9b.md)
+    std::string portalDomeLights; // karma:object:portaldomelights, if portalDomeLightsSet
+    bool portalDomeLightsSet = false;
 
     bool operator==(const HdNovaObjectDefaults &) const = default;
 };

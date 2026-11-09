@@ -112,6 +112,14 @@ private:
     nova::MediumShellPtr _BuildShell(HdSceneDelegate *sceneDelegate, HdNovaRenderParam &param);
     HdNovaMedium _medium;
     bool _warnedMediumMotion = false, _warnedMediumInstances = false;
+    // A light portal (docs/design/M11-P9b.md) instead of a surface: whether
+    // the mesh is one (nova:object:isPortal, karma:object:isportal, the
+    // render settings'), the dome lights it serves, and whether the scene
+    // holds it (Scene::setPortal under the prim's path).
+    bool _portal = false;
+    std::string _portalDomes = "*";
+    bool _portalActive = false;
+    bool _SyncPortal(HdSceneDelegate *sceneDelegate, HdNovaRenderParam &param, HdDirtyBits bits);
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

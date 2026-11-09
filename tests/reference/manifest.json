@@ -103,6 +103,22 @@
       }
     },
     {
+      "name": "karma_atmosphere",
+      "file": "scenes/karma_atmosphere.usda",
+      "settings": "/Render/ref",
+      "cli": false,
+      "test": {
+        "spp": 256
+      },
+      "reference": {
+        "type": "karma"
+      },
+      "compare": {
+        "block_rel_tol": 0.05,
+        "global_rel_tol": 0.03
+      }
+    },
+    {
       "name": "dome_plane",
       "file": "scenes/dome_plane.usda",
       "settings": "/Render/ref",

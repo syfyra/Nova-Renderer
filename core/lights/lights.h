@@ -96,6 +96,15 @@ struct LightData {
     // sampling (constant or nearly constant environments).
     Vec3f domeX{1.0f, 0.0f, 0.0f}, domeY{0.0f, 1.0f, 0.0f}, domeZ{0.0f, 0.0f, 1.0f};
     Distribution2DView distribution;
+    // Light portals of a dome (Karma's isportal, docs/design/M11-P9b.md):
+    // its light arrives only along lines through them (Karma, measured).
+    // Next-event estimation samples the portals with probability portalMix
+    // (Karma's portalmisbias b: (1 + b) / 2; always without a distribution),
+    // the distribution otherwise. Scene-owned triangles; none: no portals.
+    const PortalTriangle *portals = nullptr;
+    uint32_t portalCount = 0;
+    float portalArea = 0.0f;
+    float portalMix = 0.5f;
 
     // Volume lights (docs/design/M8.md D13): the volume, whose cells the
     // integrator samples (VolumeRecord::lightCells), and its power.
@@ -296,6 +305,39 @@ NOVA_INLINE float domePdf(const LightData &light, Vec3f dir) {
     return sinTheta > 0.0f ? light.distribution.pdf(uv) / (2.0f * kPi * kPi * sinTheta) : 0.0f;
 }
 
+// Light portals (LightData::portals): the probability of sampling the
+// portals rather than the dome's distribution.
+NOVA_INLINE float domePortalMix(const LightData &light) {
+    return light.distribution.integral > 0.0f ? light.portalMix : 1.0f;
+}
+
+// The solid-angle density with which next-event estimation from P produces
+// `dir` towards a dome (without the selection probability), and whether
+// the dome is seen along it: everywhere without portals, through them with.
+NOVA_INLINE float domeSamplePdf(const LightData &light, Vec3f P, Vec3f dir, bool &seen) {
+    seen = true;
+    if (light.portalCount == 0)
+        return domePdf(light, dir);
+    const float mix = domePortalMix(light);
+    const float total = portalWeightTotal(light.portals, light.portalCount, light.portalArea, P);
+    const float portal = portalDirectionPdf(light.portals, light.portalCount, total, P, dir, seen);
+    if (!seen)
+        return 0.0f;
+    return mix * portal + (mix < 1.0f ? (1.0f - mix) * domePdf(light, dir) : 0.0f);
+}
+
+// Whether a dome is seen from P along dir (through a portal, if it has any).
+NOVA_INLINE bool domeSeen(const LightData &light, Vec3f P, Vec3f dir) {
+    if (light.portalCount == 0)
+        return true;
+    for (uint32_t i = 0; i < light.portalCount; ++i) {
+        float t;
+        if (intersectPortalTriangle(light.portals[i], P, dir, t))
+            return true;
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // Rect lights
 // ---------------------------------------------------------------------------
@@ -404,11 +446,67 @@ NOVA_INLINE LightSample noLightSample() {
     return s;
 }
 
+// A dome with portals (docs/design/M11-P9b.md): with probability
+// domePortalMix a point on a portal triangle (chosen by portalTriangleWeight,
+// placed by sampleTriangle), else a direction from the distribution; light
+// only along lines through the portals, the density of both strategies
+// (one-sample MIS between them).
+NOVA_INLINE LightSample samplePortalDome(const LightData &light, Vec3f P, Vec2f u) {
+    const float mix = domePortalMix(light);
+    const uint32_t n = light.portalCount;
+    const float total = portalWeightTotal(light.portals, n, light.portalArea, P);
+    Vec3f wi;
+    if (u.x < mix) {
+        if (!(total > 0.0f))
+            return noLightSample();
+        // The triangle, and u.x rescaled to the rest of its span.
+        const float target = nova::fmin(u.x / mix, 0.99999994f) * total;
+        float acc = 0.0f, weight = 0.0f;
+        uint32_t j = 0;
+        for (; j < n; ++j) {
+            weight = portalTriangleWeight(light.portals[j], n, P);
+            if (target < acc + weight || j + 1 == n)
+                break;
+            acc += weight;
+        }
+        const PortalTriangle &t = light.portals[j];
+        const float ux = weight > 0.0f ? nova::fmin(nova::fmax((target - acc) / weight, 0.0f), 0.99999994f) : 0.5f;
+        Vec2f bary;
+        const ShapeSample ss = sampleTriangle(t.v0, t.e1, t.e2, P, {ux, u.y}, bary);
+        const Vec3f d = ss.p - P;
+        const float len = length(d);
+        if (!(ss.pdf > 0.0f) || !(len > 0.0f))
+            return noLightSample();
+        wi = d * (1.0f / len);
+    } else {
+        float pdfUv = 0.0f, sinTheta = 0.0f;
+        const Vec2f uv = light.distribution.sample({nova::fmin((u.x - mix) / (1.0f - mix), 0.99999994f), u.y}, pdfUv);
+        wi = domeDirection(light, uv, sinTheta);
+        if (!(pdfUv > 0.0f) || !(sinTheta > 0.0f))
+            return noLightSample();
+    }
+    bool seen = false;
+    const float portal = portalDirectionPdf(light.portals, n, total, P, wi, seen);
+    if (!seen)
+        return noLightSample(); // a direction of the distribution outside the portals: no light
+    LightSample s;
+    s.wi = wi;
+    s.pdf = mix * portal + (mix < 1.0f ? (1.0f - mix) * domePdf(light, wi) : 0.0f);
+    if (!(s.pdf > 0.0f))
+        return noLightSample();
+    s.Li = domeRadiance(light, wi);
+    s.distance = kInf;
+    s.delta = false;
+    return s;
+}
+
 // Light sample for next-event estimation from P, the origin of the shadow
 // ray (the surface point offset by offsetRayOrigin()), without filters.
 NOVA_INLINE LightSample sampleLightUnfiltered(const LightData &light, Vec3f P, Vec2f u) {
     if (light.type == LightType::Distant)
         return sampleDistantLight(light, u);
+    if (light.type == LightType::Dome && light.portalCount > 0)
+        return samplePortalDome(light, P, u);
     if (light.type == LightType::Dome) {
         if (!(light.distribution.integral > 0.0f))
             return noLightSample(); // left to BSDF sampling
@@ -579,8 +677,13 @@ NOVA_INLINE Spectrum escapedRadiance(const LightData *lights, const Pmf &pmf, ui
         if (!light.illuminates() || !pmf.links(i) || (light.shadowLinked() && bsdfPdf >= 0.0f))
             continue;
         if (light.type == LightType::Dome) {
-            const float weight =
-                bsdfSampleWeight(strategy, bsdfPdf, misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * domePdf(light, dir) : 0.0f);
+            // With portals, only through them (seen from the ray's site).
+            bool seen = true;
+            const bool mis = misNeedsPmf(strategy, bsdfPdf);
+            const float pdf = mis || light.portalCount > 0 ? domeSamplePdf(light, site.p, dir, seen) : 0.0f;
+            if (!seen)
+                continue;
+            const float weight = bsdfSampleWeight(strategy, bsdfPdf, mis ? pmf(i) * pdf : 0.0f);
             if (weight > 0.0f) {
                 Spectrum Li = domeRadiance(light, dir) * (lightMultiplier(light, diffuseShare) * weight);
                 if (light.filterCount > 0)
@@ -616,9 +719,11 @@ NOVA_INLINE Spectrum cameraEnvironment(const LightData *lights, uint32_t count, 
         if (!light.cameraVisible)
             continue;
         Spectrum Li;
-        if (light.type == LightType::Dome)
+        if (light.type == LightType::Dome) {
+            if (!domeSeen(light, o, dir)) // portals: seen through them only
+                continue;
             Li = domeRadiance(light, dir);
-        else if (light.type == LightType::Distant && !light.delta && inDistantCone(light, dir))
+        } else if (light.type == LightType::Distant && !light.delta && inDistantCone(light, dir))
             Li = light.emission;
         else
             continue;

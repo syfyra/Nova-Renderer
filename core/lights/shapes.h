@@ -492,4 +492,83 @@ NOVA_INLINE float triangleSamplePdf(Vec3f v0, Vec3f e1, Vec3f e2, Vec3f n, float
     return area > 0.0f ? areaToSolidAngle(1.0f / area, ref, p, n) : 0.0f;
 }
 
+// ---------------------------------------------------------------------------
+// Light portals (Karma's isportal, docs/design/M11-P9b.md): the triangles a
+// dome's light comes through. Up to kPortalSolidAngleTriangles of them a
+// sample picks one by the solid angle it subtends at the reference point,
+// beyond that by area; the point on it as sampleTriangle() places it.
+// ---------------------------------------------------------------------------
+
+struct PortalTriangle {
+    Vec3f v0, e1, e2; // corners v0, v0 + e1, v0 + e2 (world space)
+    Vec3f n;          // unit normal (either side lets light through)
+    float area;
+};
+
+constexpr uint32_t kPortalSolidAngleTriangles = 16;
+
+// The selection weight of a portal triangle at ref among `count`.
+NOVA_INLINE float portalTriangleWeight(const PortalTriangle &t, uint32_t count, Vec3f ref) {
+    return count <= kPortalSolidAngleTriangles ? triangleSolidAngle(t.v0, t.e1, t.e2, ref) : t.area;
+}
+
+// Where the line o + t d (t > 0) crosses the triangle (either side).
+NOVA_INLINE bool intersectPortalTriangle(const PortalTriangle &t, Vec3f o, Vec3f d, float &tHit) {
+    const Vec3f p = cross(d, t.e2);
+    const float det = dot(t.e1, p);
+    if (det == 0.0f)
+        return false;
+    const float inv = 1.0f / det;
+    const Vec3f s = o - t.v0;
+    const float b1 = dot(s, p) * inv;
+    if (!(b1 >= 0.0f && b1 <= 1.0f))
+        return false;
+    const Vec3f q = cross(s, t.e1);
+    const float b2 = dot(d, q) * inv;
+    if (!(b2 >= 0.0f && b1 + b2 <= 1.0f))
+        return false;
+    tHit = dot(t.e2, q) * inv;
+    return tHit > 0.0f;
+}
+
+// The solid-angle density at ref with which portal sampling (a triangle by
+// portalTriangleWeight, a point on it by sampleTriangle) produces the
+// direction d, over every triangle the line crosses; `crosses` tells whether
+// it crosses any (a dome with portals is seen along such lines only).
+// `total`: the triangles' summed weight at ref (portalWeightTotal).
+NOVA_INLINE float portalDirectionPdf(const PortalTriangle *tris, uint32_t count, float total, Vec3f ref, Vec3f d,
+                                     bool &crosses) {
+    crosses = false;
+    float pdf = 0.0f;
+    for (uint32_t i = 0; i < count; ++i) {
+        const PortalTriangle &t = tris[i];
+        float tHit;
+        if (!intersectPortalTriangle(t, ref, d, tHit))
+            continue;
+        crosses = true;
+        if (total > 0.0f)
+            pdf += portalTriangleWeight(t, count, ref) / total *
+                   triangleSamplePdf(t.v0, t.e1, t.e2, t.n, t.area, ref, ref + d * tHit);
+    }
+    return pdf;
+}
+
+NOVA_INLINE float portalWeightTotal(const PortalTriangle *tris, uint32_t count, float area, Vec3f ref) {
+    if (count > kPortalSolidAngleTriangles)
+        return area;
+    float total = 0.0f;
+    for (uint32_t i = 0; i < count; ++i)
+        total += portalTriangleWeight(tris[i], count, ref);
+    return total;
+}
+
+// The solid angle the portals subtend at ref (an estimate: overlapping
+// triangles count twice).
+NOVA_INLINE float portalSolidAngle(const PortalTriangle *tris, uint32_t count, Vec3f ref) {
+    float omega = 0.0f;
+    for (uint32_t i = 0; i < count; ++i)
+        omega += triangleSolidAngle(tris[i].v0, tris[i].e1, tris[i].e2, ref);
+    return omega;
+}
+
 } // namespace nova

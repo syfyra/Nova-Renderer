@@ -68,6 +68,11 @@ struct LightDesc {
     // Light filters (docs/design/M11-P4.md): the keys of the light's filters
     // (Scene::setLightFilter), in order; keys without a filter are skipped.
     std::vector<std::string> filters;
+    // The light's path for light portals' dome lists (PortalDesc::domeLights),
+    // and Karma's portalmisbias: the balance of portal against environment
+    // sampling (-1: environment only, 1: portals only; docs/design/M11-P9b.md).
+    std::string path;
+    float portalMisBias = 0.0f;
 
     // Dome light: latlong environment (UsdLux/OpenEXR orientation: +Y is the
     // pole, the image center looks down +Z, u = 0.25 down +X). Rect light:
@@ -99,5 +104,18 @@ struct LightFilterDesc {
 
 // The integrator's record of a filter (light_filter.h).
 LightFilterData makeLightFilterData(const LightFilterDesc &desc);
+
+// Host-side light portal (Karma's isportal, docs/design/M11-P9b.md): an
+// object that renders nothing and through which the dome lights it serves
+// shine (only through it, with portals). Triangles in world space, three
+// corners each; the dome lights as a space-separated list of light paths
+// with * and ? wildcards ("*": every dome light).
+struct PortalDesc {
+    std::vector<Vec3f> triangles;
+    std::string domeLights = "*";
+};
+
+// Whether a portal's dome list names the light at `path`.
+bool portalServes(const std::string &domeLights, const std::string &path);
 
 } // namespace nova

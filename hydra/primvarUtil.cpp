@@ -181,7 +181,8 @@ nova::RayLimitOverrides HdNovaObjectOverrides(HdSceneDelegate *sd, SdfPath const
         fakeColor("karma:object:fakecausticscolor"), fakeOpacity("karma:object:fakecausticsopacity"),
         fakeDarken("karma:object:fakecausticsfresneldarken"), internal("nova:object:internalReflection"),
         karmaInternal("karma:object:internalreflectenable"), clamp("nova:object:causticsRoughnessClamp"),
-        karmaClamp("karma:object:causticsroughnessclamp");
+        karmaClamp("karma:object:causticsroughnessclamp"), priority("nova:object:dielectricPriority"),
+        karmaPriority("karma:object:dielectricpriority");
     // One pass over the constant primvars; values fetched on demand.
     std::vector<TfToken> names;
     for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant))
@@ -236,6 +237,9 @@ nova::RayLimitOverrides HdNovaObjectOverrides(HdSceneDelegate *sd, SdfPath const
         o.internalReflection = *v ? 1 : 0;
     if (const auto v = number(clamp, karmaClamp))
         o.causticsRoughnessClamp = float(std::clamp(*v, 0.0, 1.0));
+    // Nested dielectrics (docs/design/M11-P9b.md).
+    if (const auto v = number(priority, karmaPriority))
+        o.dielectricPriority = int16_t(std::lround(std::clamp(*v, 0.0, 254.0)));
     return o;
 }
 
@@ -266,6 +270,16 @@ void warnOnce(std::string const &message) {
 }
 
 } // namespace
+
+void HdNovaWarnPortalPrim(HdSceneDelegate *sd, SdfPath const &id, char const *kind) {
+    static const TfToken nova("nova:object:isPortal"), karma("karma:object:isportal");
+    std::optional<bool> portal = HdNovaFlag(HdNovaConstantPrimvar(sd, id, nova));
+    if (!portal)
+        portal = HdNovaFlag(HdNovaConstantPrimvar(sd, id, karma));
+    if (portal && *portal)
+        warnOnce("light portals must be meshes: " + id.GetString() + " (" + kind +
+                 ") has isportal on and renders as itself");
+}
 
 int HdNovaRenderVisibilityValue(VtValue const &value, std::string const &where) {
     std::string text;

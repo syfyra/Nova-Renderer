@@ -28,6 +28,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -592,4 +594,67 @@ def Points "moving"
         Rig rig(TfStringPrintf(body, ""), {{"karma:object:mblur", VtValue(false)}});
         CHECK(rig.record(nova::MeshShape::Points).motionSteps == 1);
     }
+}
+
+// Nested dielectrics and light portals (docs/design/M11-P9b.md): the
+// priority from Nova's primvar, Karma's, the render settings'; a mesh with
+// isportal is no scene mesh but the openings of the dome lights its list
+// names (prim paths, * for all); portals on other prims warn.
+TEST_CASE("Karma's dielectric priority and light portals through Hydra", "[hydra][karma][nested][portal]") {
+    const char *quad = R"(
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points = [(%g, 0, 0), (%g, 0, 0), (%g, 1, 0), (%g, 1, 0)]
+    uniform token subdivisionScheme = "none"
+)";
+    const auto mesh = [&](char const *name, double x, char const *primvars) {
+        return TfStringPrintf("def Mesh \"%s\"\n{", name) + TfStringPrintf(quad, x, x + 1, x + 1, x) + primvars + "}\n";
+    };
+    {
+        Rig rig(mesh("karma", 0.0, "    int primvars:karma:object:dielectricpriority = 2 (interpolation = \"constant\")\n") +
+                    mesh("nova", 5.0,
+                         "    int primvars:karma:object:dielectricpriority = 2 (interpolation = \"constant\")\n"
+                         "    int primvars:nova:object:dielectricPriority = 1 (interpolation = \"constant\")\n") +
+                    mesh("plain", 10.0, ""),
+                {{"karma:object:dielectricpriority", VtValue(3)}});
+        std::map<float, int> priority; // by the first point's x
+        for (uint32_t id = 0; id < rig.scene().meshCount(); ++id) {
+            nova::MeshRecord const &r = rig.scene().meshRecord(id);
+            if (r.alive && !r.desc.points.empty())
+                priority[r.desc.points[0].x] = r.shading.dielectricPriority;
+        }
+        CHECK(priority[0.0f] == 2);
+        CHECK(priority[5.0f] == 1);
+        CHECK(priority[10.0f] == 3); // the render settings' Karma value
+        CHECK(rig.scene().nestedDielectrics());
+    }
+    WarningCatcher catcher;
+    Rig rig(mesh("window", 0.0,
+                 "    bool primvars:karma:object:isportal = 1 (interpolation = \"constant\")\n"
+                 "    string primvars:karma:object:portaldomelights = \"/domeR\" (interpolation = \"constant\")\n") +
+            mesh("wall", 5.0, "") + R"(
+def DomeLight "domeR"
+{
+}
+def DomeLight "domeB"
+{
+}
+def Points "dots"
+{
+    point3f[] points = [(9, 0, 0)]
+    float[] widths = [1] (interpolation = "vertex")
+    bool primvars:karma:object:isportal = 1 (interpolation = "constant")
+}
+)");
+    int meshes = 0;
+    for (uint32_t id = 0; id < rig.scene().meshCount(); ++id)
+        meshes += rig.scene().meshRecord(id).alive && rig.scene().meshRecord(id).desc.shape == nova::MeshShape::Triangles;
+    CHECK(meshes == 1); // the wall; the window is a portal
+    std::vector<uint32_t> portals;
+    for (nova::LightData const &l : rig.scene().lights())
+        if (l.type == nova::LightType::Dome)
+            portals.push_back(l.portalCount);
+    std::sort(portals.begin(), portals.end());
+    CHECK(portals == std::vector<uint32_t>{0, 2}); // domeR through the window, domeB everywhere
+    CHECK(catcher.count("light portals must be meshes: /dots") == 1);
 }

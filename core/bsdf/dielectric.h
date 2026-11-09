@@ -39,9 +39,35 @@ struct DielectricLobe {
     uint8_t noInternal;
     ThinFilm film;          // optional film on the outside (film.active())
     const float *xyzToRgb;  // the film's color conversion
+    // Nested dielectrics (core/integrator/nested.h, docs/design/M11-P9b.md):
+    // the ratio of the indices of the media on both sides (eta's convention),
+    // which bends the transmission and alone decides total internal
+    // reflection; 0: eta itself. The reflectance keeps the surface's own
+    // index, as in Karma (measured): its outside value at the microfacet
+    // angle. Last and 0-neutral, so aggregate initializers leave it unset.
+    float etaMedia;
+
+    // The index ratio that bends the transmission.
+    NOVA_INLINE float mediaEta() const { return etaMedia > 0.0f ? etaMedia : eta; }
 
     // Reflection-only lobes sample with the bounded cap.
     NOVA_INLINE bool bounded() const { return mode == kReflect; }
+
+    // The scalar reflectance at the microfacet cosine om and the cosine of
+    // the transmission: exact Fresnel for the relative index e (seen from
+    // wo); between nested media (index ratio g) the outside reflectance of
+    // the surface's own index, with total reflection only where g has it.
+    NOVA_INLINE float reflectance(float om, float e, float g, float &cosT) const {
+        if (!(etaMedia > 0.0f))
+            return fresnelDielectric(om, e, cosT);
+        const float s2t = (1.0f - om * om) / (g * g);
+        if (s2t >= 1.0f) {
+            cosT = 0.0f;
+            return 1.0f;
+        }
+        cosT = std::sqrt(1.0f - s2t);
+        return fresnelDielectric(om, e >= 1.0f ? e : 1.0f / e);
+    }
 
     // The reflectance at the microfacet cosine om for the relative index e
     // (seen from wo): exact Fresnel, blended with the film's when wo is on
@@ -69,19 +95,20 @@ struct DielectricLobe {
     NOVA_INLINE Spectrum eval(Vec3f wo, Vec3f wi, float &pdf) const {
         pdf = 0.0f;
         const Spectrum black{0.0f, 0.0f, 0.0f};
-        float e = eta;
+        float e = eta, g = mediaEta();
         if (wo.z < 0.0f) {
             wo.z = -wo.z;
             wi.z = -wi.z;
             e = 1.0f / e;
+            g = 1.0f / g;
         }
-        if (ggx.smooth() || wo.z == 0.0f || wi.z == 0.0f || std::fabs(e - 1.0f) < kIndexMatched)
+        if (ggx.smooth() || wo.z == 0.0f || wi.z == 0.0f || std::fabs(g - 1.0f) < kIndexMatched)
             return black;
         const bool reflect = wi.z > 0.0f;
         if (!(mode & (reflect ? kReflect : kTransmit)))
             return black;
         const bool noReflection = noInternal != 0;
-        const float etap = reflect ? 1.0f : e;
+        const float etap = reflect ? 1.0f : g;
         Vec3f m = wo + wi * etap;
         if (dot(m, m) == 0.0f)
             return black;
@@ -92,7 +119,7 @@ struct DielectricLobe {
         if (om <= 0.0f || im * wi.z <= 0.0f)
             return black; // back-facing microfacet
         float cosT;
-        const float F = fresnelDielectric(om, e, cosT);
+        const float F = reflectance(om, e, g, cosT);
         const Spectrum Fs = noReflection ? spectrum(F >= 1.0f ? 1.0f : 0.0f) : fresnel(om, e, F);
         const float pR = reflectProbability(Fs);
         if (reflect) {
@@ -111,17 +138,18 @@ struct DielectricLobe {
     NOVA_INLINE bool sample(Vec3f wo, Vec2f u, float uc, LobeSample &s) const {
         const bool flip = wo.z < 0.0f;
         const float e = flip ? 1.0f / eta : eta;
+        const float g = flip ? 1.0f / mediaEta() : mediaEta();
         const Vec3f w{wo.x, wo.y, std::fabs(wo.z)};
         if (w.z == 0.0f)
             return false;
-        if (std::fabs(e - 1.0f) < kIndexMatched) { // straight through, F = 0
+        if (std::fabs(g - 1.0f) < kIndexMatched) { // straight through, F = 0
             if (!(mode & kTransmit))
                 return false;
             s.wi = -wo;
             s.transmit = true;
             s.delta = true;
             s.pdf = 0.0f;
-            s.fcos = tintT * (1.0f / (e * e));
+            s.fcos = tintT * (1.0f / (g * g));
             return true;
         }
         const Vec3f m = ggx.smooth() ? Vec3f{0.0f, 0.0f, 1.0f} : ggx.sampleVisible(w, u, bounded());
@@ -129,7 +157,7 @@ struct DielectricLobe {
         if (om <= 0.0f)
             return false;
         float cosT;
-        const float F = fresnelDielectric(om, e, cosT);
+        const float F = reflectance(om, e, g, cosT);
         const bool noReflection = noInternal != 0;
         const Spectrum Fs = noReflection ? spectrum(F >= 1.0f ? 1.0f : 0.0f) : fresnel(om, e, F);
         const float pR = reflectProbability(Fs);
@@ -142,7 +170,7 @@ struct DielectricLobe {
         } else {
             if (F >= 1.0f || !(pR < 1.0f))
                 return false;
-            wi = refract(w, m, e, om, cosT);
+            wi = refract(w, m, g, om, cosT);
             if (wi.z >= 0.0f)
                 return false;
             s.transmit = true;
@@ -151,7 +179,7 @@ struct DielectricLobe {
         if (ggx.smooth()) {
             s.delta = true;
             s.pdf = 0.0f;
-            s.fcos = s.transmit ? tintT * (spectrum(1.0f) - Fs) * (1.0f / ((1.0f - pR) * e * e)) : tintR * Fs * (1.0f / pR);
+            s.fcos = s.transmit ? tintT * (spectrum(1.0f) - Fs) * (1.0f / ((1.0f - pR) * g * g)) : tintR * Fs * (1.0f / pR);
             return true;
         }
         s.delta = false;

@@ -310,6 +310,12 @@ float lightPower(const LightData &light, float sceneRadius) {
         break;
     }
     case LightType::Dome:
+        if (light.portalCount > 0) {
+            // Through its portals (docs/design/M11-P9b.md): the flux of their
+            // area under the dome's mean radiance (texMeanLuminance).
+            power = luminance(light.emission) * light.texMeanLuminance * kPi * light.portalArea;
+            break;
+        }
         // Only the part the distribution covers is light-sampled: its
         // radiance integral over the sphere is 2 pi^2 times the (u, v) integral.
         power = luminance(light.emission) * 2.0f * kPi * kPi * light.distribution.integral * kPi * sceneRadius *
