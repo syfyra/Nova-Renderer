@@ -171,9 +171,19 @@ Render products: Nova renders the render vars Karma's LOPs author (see AOVs belo
 
 Light properties (on UsdLux lights, Karma's names; Nova's own `inputs:nova:light:*` win where both are authored): `inputs:karma:light:samplingquality` (`samplingQuality`) multiplies the light's share of light samples; `inputs:karma:light:equiangular` (`equiangular`) adds equiangular sampling along rays in volumes for point, spot, sphere and area lights. Light linking and shadow linking use UsdLux's `collection:lightLink` / `collection:shadowLink` (the Light Linker LOP authors them).
 
-## Current scope (M10 done)
+## Current scope (M11 done)
 
 After M10 a bug audit fixed 71 verified defects across the renderer, Hydra, the bridges and the installer; the findings, fixes, tests and remaining limitations are in `docs/bug-audit-2026-11.md`.
+
+Karma's Solaris nodes (M11, `docs/design/M11.md`, one design note per package `docs/design/M11-P1.md` ... `M11-P9c.md`): scenes built with the twelve visible Karma LOP types render in Nova as in Karma, on CPU and XPU, each feature measured against Karma CPU first and checked by a `tests/husk/check_karma_*.py` test:
+
+- **Karma Render Settings:** every parameter with a Nova equivalent is read as a fallback (Nova's own setting wins only if it is authored): sampling and the variance oracle, seed, pixel filter, ray limits, fake caustics with Karma's factor and controls, internal reflection, roughness constraint, colour limits, dicing, texture settings, motion blur and DOF switches, curve/point styles, emission as light. Also outlines (contour, depth and crease lines with their AOVs), the look-dev overrides (headlight, dome, emissive only, simplified shading with AO and depth-cue fog), nested dielectric priorities, light portals and path guiding (Nova's own guiding field on CPU and XPU; Karma XPU ignores guiding). Settings Nova does not support warn once per stage.
+- **Karma Shadow Catcher, Background Plate:** holdouts (Matte, Background) with Karma's shadow alpha and holdout LPE planes, per-ray-type render visibility on surfaces and volumes, the background plate composite (`use_background`), `.pic` images, `transformvector` spaces.
+- **Karma Sky Dome Light, Physical Sky, Sky Atmosphere:** Karma's sky model as a textured dome, the sun, and the planetary atmosphere (Rayleigh, Mie, ozone, ground) as a medium in the path tracer.
+- **Karma Blocker Light Filter, Fog Box:** light filters on every light sampling path; media bounded by closed surfaces.
+- **Karma Render Products, Standard Render Vars, Cryptomatte:** per-var sample filters (`minmax`, `stats`, `ubox`, ...), raw ray sources, checkpoints with resume, deep EXR output, per-instance primvar cryptomattes.
+- **Karma Texture Baker:** UV-space bakes (low/high/cage, UDIMs) of the tangent normal (MikkTSpace), displacement, occlusion, cavity, curvature, thickness, rounded normals and edges, position and shader exports, with the image filters; Nova XPU bakes on the CPU.
+- Renders are reproducible run to run (stable object keys from prim paths, `docs/bug-audit-2026-11.md` section 7).
 
 Nova XPU (M10, `docs/design/M10.md`):
 
@@ -193,7 +203,7 @@ Hair, curves, SSS and many lights (M9, `docs/design/M9.md`):
 - **Light linking and shadow linking** through UsdLux collections; **instanced lights** (lights under point instancers) are one light per instance.
 - **Emissive meshes as lights:** `treat_as_lightsource` turns every emitting triangle into a two-sided light: the same image as without, with 15-24x less noise far from the emitter (Karma: 12-18x), `L` events also for the camera, the light multipliers. Moving meshes and VEX materials stay plain emitters.
 - **Equiangular sampling** per light in volumes (opt-in), MIS-combined with free flights.
-- Not yet: Karma Hair coat, fur medulla, `sss_traceset`, two-level light trees for heavily instanced emitters, light filters.
+- Not yet: Karma Hair coat, fur medulla, `sss_traceset`, two-level light trees for heavily instanced emitters. (Light filters: the Karma blocker since M11.)
 
 Volumes (M8, `docs/design/M8.md`):
 
@@ -207,7 +217,8 @@ Volumes (M8, `docs/design/M8.md`):
 - **AOVs:** alpha is the volumes' opacity; light path expressions see volume scattering as `V` (no scattering class, as in Karma), volume emission as `O` (`L` for volume lights), `A` after `V`. Volumes stay transparent to the first-hit AOVs (Karma averages its sampled volume events into P and depth).
 - **Matches Karma CPU** on the calibration cubes, furnaces, single scattering, the modifiers, volume lights and the research's pyro sim with and without the Pyro Material, fire included, within 0.1-1.8 % (`tests/houdini/test_volume_karma.py`; emitters against Karma at a fine step rate: at its default step rate Karma renders absorbing emitters up to 10 % bright). One documented difference: smoke lit by a volume light at volume limit 0 is 4.5 % darker than Karma's.
 - **Speed:** on the pyro sim 2.3-4.2x faster than Karma CPU at equal accuracy (docs/benchmarks.md); scenes without volumes are unchanged.
-- Not yet: mesh-bounded volumes (uniform volume materials on meshes), Karma's lattice-deformation velocity blur (renders as lookup offset), `volumefilter` other than box of width 1 (warns).
+- Mesh-bounded volumes (uniform volume materials on closed meshes, the Karma Fog Box) since M11 P5.
+- Not yet: Karma's lattice-deformation velocity blur (renders as lookup offset), `volumefilter` other than box of width 1 (warns).
 
 Look-dev and IPR (M7, `docs/design/M7.md`):
 
