@@ -707,6 +707,80 @@ void Scene::buildVolume(VolumeRecord &rec) const {
     buildVolumeRecord(rec, material, m_shadeFrame, m_shadeFps);
 }
 
+// The planetary sky atmosphere (docs/design/M11-P7.md): the first visible
+// volume that carries one, and the altitude levels its quadrature splits rays
+// at: sea level, every 2 Mie scale heights while the Mie layer is above e^-8
+// of its sea-level density, then every 2 Rayleigh scale heights, and the
+// ozone tent's corners (levels closer than a quarter step to one of those
+// are dropped). Inside a band the exponential layers change by at most e^2
+// and the tent is linear, where 4-point Gauss-Legendre is exact to 1e-5.
+void Scene::buildAtmosphere() {
+    m_atmosphere = AtmosphereView{};
+    m_atmosphereLevels.clear();
+    m_atmosphereCount = 0;
+    const AtmosphereDesc *desc = nullptr;
+    for (VolumeId id = 0; id < m_volumes.size(); ++id) {
+        const VolumeRecord &v = m_volumes[id];
+        if (!v.alive || !v.desc.visible || !v.desc.atmosphere)
+            continue;
+        if (m_atmosphereCount++ == 0) {
+            desc = v.desc.atmosphere.get();
+            m_atmosphere.volume = id;
+        }
+    }
+    if (!desc)
+        return;
+    AtmosphereView &a = m_atmosphere;
+    for (int k = 0; k < 3; ++k)
+        a.center[k] = desc->center[k];
+    a.seaLevel = desc->seaLevel;
+    a.groundRadius = desc->seaLevel - std::max(desc->groundOffset, 0.0);
+    a.topAltitude = desc->topAltitude();
+    const auto nonNegative = [](Spectrum s) { return componentMax(s, spectrum(0.0f)); };
+    a.rayleigh = nonNegative(desc->rayleigh);
+    a.mieScatter = nonNegative(desc->mieScatter);
+    a.mieExtinction = a.mieScatter + nonNegative(desc->mieAbsorb);
+    a.ozone = nonNegative(desc->ozone);
+    a.rayleighInvHeight = desc->rayleighHeight > 0.0f ? 1.0f / desc->rayleighHeight : 0.0f;
+    a.mieInvHeight = desc->mieHeight > 0.0f ? 1.0f / desc->mieHeight : 0.0f;
+    a.ozoneAltitude = desc->ozoneAltitude;
+    a.ozoneHalfWidth = desc->ozoneWidth > 0.0f ? 0.5f * desc->ozoneWidth : 0.0f;
+    a.mieG = std::clamp(desc->mieG, -0.99f, 0.99f);
+    a.groundAlbedo = nonNegative(desc->groundAlbedo);
+    a.groundVisibility = desc->groundVisibility;
+    a.groundShadows = desc->groundShadows ? 1 : 0;
+    a.backside = desc->backside ? 1 : 0;
+    a.ignoreClip = desc->ignoreCameraClip ? 1 : 0;
+    // The levels.
+    const float top = a.topAltitude;
+    const float hm = desc->mieHeight > 0.0f ? desc->mieHeight : top;
+    const float hr = desc->rayleighHeight > 0.0f ? desc->rayleighHeight : top;
+    std::vector<float> fixed{0.0f};
+    if (a.ozoneHalfWidth > 0.0f && !isBlack(a.ozone))
+        for (float h : {a.ozoneAltitude - a.ozoneHalfWidth, a.ozoneAltitude, a.ozoneAltitude + a.ozoneHalfWidth})
+            if (h > 0.0f && h < top)
+                fixed.push_back(h);
+    std::vector<float> levels = fixed;
+    const float mieEnd = std::min(8.0f * hm, top);
+    float h = 0.0f;
+    for (int guard = 0; guard < 64; ++guard) {
+        const float step = 2.0f * (h < mieEnd ? std::min(hm, hr) : hr);
+        h += std::max(step, top / 32.0f);
+        if (!(h < top))
+            break;
+        bool near = false;
+        for (float f : fixed)
+            near |= std::fabs(f - h) < 0.25f * step;
+        if (!near)
+            levels.push_back(h);
+    }
+    std::sort(levels.begin(), levels.end());
+    levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
+    m_atmosphereLevels = std::move(levels);
+    a.levels = m_atmosphereLevels.data();
+    a.levelCount = uint32_t(m_atmosphereLevels.size());
+}
+
 Affine3f Scene::volumeToWorld(VolumeId id, float time) const {
     const VolumeRecord &rec = m_volumes[id];
     if (rec.motionSteps > 1)
@@ -960,6 +1034,7 @@ bool Scene::commit() {
         m_levelDependentVolumes = false;
         for (VolumeId id : m_activeVolumes)
             m_levelDependentVolumes |= m_volumes[id].levelDependent;
+        buildAtmosphere();
     }
     // Emissive volumes that are light sources follow the host's lights
     // (docs/design/M8.md D13).

@@ -398,6 +398,14 @@ public:
     bool anyLevelDependentVolume() const { return m_levelDependentVolumes; }
     // A volume's object-to-world transform at a ray time.
     Affine3f volumeToWorld(VolumeId id, float time) const;
+    // The planetary sky atmosphere (docs/design/M11-P7.md): the first visible
+    // volume with VolumeDesc::atmosphere (null: none), and how many visible
+    // volumes carry one (Karma renders only one; the host warns).
+    const AtmosphereView *atmosphere() const { return m_atmosphere.volume != kInvalidId ? &m_atmosphere : nullptr; }
+    uint32_t atmosphereCount() const { return m_atmosphereCount; }
+    const std::vector<float> &atmosphereLevels() const { return m_atmosphereLevels; }
+    // Rays may meet media: active volumes or the atmosphere.
+    bool anyMedia() const { return !m_activeVolumes.empty() || atmosphere() != nullptr; }
 
     // Mean curvature at a hit relative to its Ng (ray cones; 0 for flat
     // shading): from the corner normals, 1/radius on spheres. Computed on
@@ -454,6 +462,10 @@ private:
     bool m_volumesDirty = false; // added, removed, moved or hidden: the active list and bounds change
     std::vector<VolumeId> m_activeVolumes;
     bool m_levelDependentVolumes = false;
+    AtmosphereView m_atmosphere;
+    std::vector<float> m_atmosphereLevels;
+    uint32_t m_atmosphereCount = 0;
+    void buildAtmosphere();
     float m_shadeFrame = 1.0f, m_shadeFps = 24.0f; // setShadeFrame
     void buildVolume(VolumeRecord &rec) const;
     void markVolumesOf(MaterialId material);

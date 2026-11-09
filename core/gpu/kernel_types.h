@@ -191,6 +191,9 @@ struct GpuScene {
     const uint32_t *activeVolumes = nullptr;
     uint32_t activeVolumeCount = 0;
     uint8_t levelDependent = 0;
+    // The sky atmosphere (docs/design/M11-P7.md; volume kInvalidId: none).
+    AtmosphereView atmosphere;
+    NOVA_INLINE bool anyMedia() const { return activeVolumeCount > 0 || atmosphere.volume != 0xFFFFFFFFu; }
     // Equiangular sampling (M9 D17): the lights that opted in, chosen by power
     // (table slot -> light), each light's probability of being chosen.
     const uint32_t *eqLights = nullptr;

@@ -5,10 +5,12 @@
 // the volume bridge, D1); the scene builds the majorants at commit().
 
 #include "core/scene/material.h"
+#include "core/volume/atmosphere.h"
 #include "core/volume/grid.h"
 #include "core/volume/shell.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -21,6 +23,31 @@ using VolumeId = uint32_t;
 struct VolumeConstant {
     std::string name;
     std::vector<float> values; // 1 to 4
+};
+
+// A planetary sky atmosphere (docs/design/M11-P7.md, the Karma Sky
+// Atmosphere): world-space lengths, coefficients per world unit.
+struct AtmosphereDesc {
+    double center[3] = {0.0, -6371000.0, 0.0};
+    double seaLevel = 6370900.0;
+    double groundOffset = 0.0;                   // the ground sphere's radius is seaLevel - groundOffset
+    Spectrum rayleigh{6e-6f, 12e-6f, 27e-6f};    // scattering at sea level
+    float rayleighHeight = 8000.0f;              // scale height
+    Spectrum mieScatter{4e-6f, 4e-6f, 4e-6f};
+    Spectrum mieAbsorb{4.5e-6f, 4.5e-6f, 4.5e-6f};
+    float mieHeight = 1200.0f;
+    float mieG = 0.8f;                           // Henyey-Greenstein anisotropy
+    Spectrum ozone{6.5e-7f, 1.88e-6f, 8.6e-8f};  // absorption at the layer's peak
+    float ozoneAltitude = 25000.0f, ozoneWidth = 30000.0f; // the tent's centre and full width
+    Spectrum groundAlbedo{0.2f, 0.2f, 0.2f};
+    uint8_t groundVisibility = 0x7E;             // kVisible* mask (Karma's "-primary")
+    bool groundShadows = false;                  // the scene's objects shadow the ground
+    bool backside = false;                       // the medium continues behind the planet
+    bool ignoreCameraClip = true;                // camera rays see it past the far clipping plane
+
+    // The medium's top above sea level: 7 scale heights of the thicker
+    // exponential layer, or the ozone layer's top if higher (Karma, measured).
+    float topAltitude() const;
 };
 
 struct VolumeField {
@@ -60,6 +87,11 @@ struct VolumeDesc {
     // volume material: white, density 1 (Karma, measured).
     MediumShellPtr shell;
     std::vector<VolumeConstant> constants;
+    // A planetary sky atmosphere (docs/design/M11-P7.md): the volume has no
+    // fields; the scene's one atmosphere (Scene::atmosphere()) is the first
+    // visible volume that carries one. Its record holds the atmosphere's
+    // volume limit and LPE tag.
+    std::shared_ptr<const AtmosphereDesc> atmosphere;
 
     // The field a material reads as `name` (D5): a binding name or field
     // name; null if there is none with a grid.
@@ -76,6 +108,12 @@ NOVA_INLINE Affine3f compose(const Affine3f &a, const Affine3f &b) {
     return r;
 }
 
+
+inline float AtmosphereDesc::topAltitude() const {
+    const float exponential = 7.0f * (rayleighHeight > mieHeight ? rayleighHeight : mieHeight);
+    const float layer = ozoneWidth > 0.0f && !isBlack(ozone) ? ozoneAltitude + 0.5f * ozoneWidth : 0.0f;
+    return exponential > layer ? exponential : layer;
+}
 
 inline Affine3f VolumeField::indexToObject() const {
     return grid ? compose(grid->indexToObject(), fieldToObject) : Affine3f{};
