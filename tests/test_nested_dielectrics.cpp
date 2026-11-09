@@ -126,11 +126,14 @@ Spectrum renderStack(const Stack &st, RenderDevice device = RenderDevice::Cpu) {
     return filmMean(renderer.film());
 }
 
+// Red: the interfaces' loss, within the noise of the reflect / transmit
+// choices; green and blue over red: the lengths inside A and B, exact (every
+// path that reaches the emitter crossed the same media).
 void checkStack(Spectrum got, float red, float lengthA, float lengthB) {
     INFO("got " << got.x << " " << got.y << " " << got.z);
-    CHECK_THAT(got.x, WithinAbs(red, 3e-3));
-    CHECK_THAT(got.y, WithinAbs(red * std::pow(0.5f, lengthA), 3e-3));
-    CHECK_THAT(got.z, WithinAbs(red * std::pow(0.5f, lengthB), 3e-3));
+    CHECK_THAT(got.x, WithinAbs(red, 0.006 * red));
+    CHECK_THAT(got.y / got.x, WithinAbs(std::pow(0.5f, lengthA), 1e-4));
+    CHECK_THAT(got.z / got.x, WithinAbs(std::pow(0.5f, lengthB), 1e-4));
 }
 
 } // namespace

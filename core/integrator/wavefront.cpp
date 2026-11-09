@@ -2537,6 +2537,8 @@ static uint64_t generateBakePaths(const Scene &scene, const Camera &camera, cons
         q.etaScale[slot] = 1.0f;
         q.sigmaA[slot] = spectrum(0.0f);
         q.inMedium[slot] = 0;
+        q.nested[slot].clear();
+        q.pathAlpha[slot] = 0.0f;
         q.coneWidth[slot] = 0.0f;
         q.coneSpread[slot] = 0.0f;
         q.eventCounts[slot] = 0;
