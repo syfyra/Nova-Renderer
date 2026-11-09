@@ -2,10 +2,19 @@
 
 // Scenes of the path guiding tests (docs/design/M11-P9c.md), CPU and XPU.
 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4702) // unreachable code in NanoVDB's grid builder templates
+#endif
+
 #include "test_helpers.h"
 
 #include "core/bsdf/surface.h"
 #include "core/scene/scene.h"
+#include "core/shading/compiler.h"
+#include "core/volume/shader.h"
+
+#include <nanovdb/util/CreateNanoGrid.h>
+#include <nanovdb/util/GridBuilder.h>
 
 #include <algorithm>
 #include <cstring>
@@ -26,8 +35,7 @@ inline MeshDesc guideQuad(Vec3f o, Vec3f e1, Vec3f e2, float grey) {
 // A closed grey room [-1, 1] x [0, 2] x [-1, 1] lit only by a sun through a
 // 0.4 x 0.4 window in its +x wall (y 1..1.4, z -0.2..0.2), shining down at
 // 45 degrees onto a patch of the floor: the rest is lit by light bounced off
-// that patch. With `fog`, a homogeneous scattering medium fills the room
-// (density `fog`, white, isotropic).
+// that patch.
 inline void guideRoom(Scene &scene, float grey = 0.7f) {
     const auto add = [&](const MeshDesc &m) { scene.updateMesh(scene.createMesh(), m); };
     add(guideQuad({-1, 0, -1}, {2, 0, 0}, {0, 0, 2}, grey));  // floor
@@ -52,6 +60,58 @@ inline void guideRoom(Scene &scene, float grey = 0.7f) {
     m.m[2][0] = a, m.m[2][1] = a, m.m[2][2] = 0.0f;
     sun.transform = m;
     scene.updateLight(scene.createLight(), sun);
+}
+
+// Fog lit by one sphere light: a white isotropic medium of scattering
+// `sigma` fills [-2.75, 2.75]^3; the light (radius 0.5, intensity 4, not
+// seen by the camera) at (0.6, 0.3, 0) samples its distances
+// equiangularly. guideFogCamera looks through it along -z.
+inline void guideFog(Scene &scene, float sigma) {
+    nanovdb::build::Grid<float> grid(0.0f, "density", nanovdb::GridClass::FogVolume);
+    grid.setTransform(0.25, nanovdb::Vec3d(0.0));
+    grid([](const nanovdb::Coord &) { return 1.0f; }, nanovdb::CoordBBox(nanovdb::Coord(-12), nanovdb::Coord(11)));
+    const nanovdb::GridHandle<nanovdb::HostBuffer> handle = nanovdb::createNanoGrid(grid);
+    shading::IrGraph graph;
+    shading::IrBuilder b(graph);
+    const shading::Ref d = b.primvar("density", 1, b.constant(0.0f));
+    const auto out = [](uint16_t f) { return uint16_t(volume_field::kBase + f); };
+    b.output(out(volume_field::scattering), 3, b.mul(d, b.constant(sigma, sigma, sigma)));
+    b.output(out(volume_field::absorption), 3, b.constant(0.0f, 0.0f, 0.0f));
+    b.output(out(volume_field::emission), 3, b.constant(0.0f, 0.0f, 0.0f));
+    b.output(out(volume_field::anisotropy), 1, b.constant(0.0f));
+    MaterialDesc medium;
+    medium.program = shading::compile(graph).program;
+    const MaterialId material = scene.createMaterial();
+    scene.updateMaterial(material, medium);
+    VolumeDesc volume;
+    volume.fields.push_back({"density", "density", VolumeGrid::copyOf(handle.data(), handle.size()), Affine3f{}});
+    volume.material = material;
+    scene.updateVolume(scene.createVolume(), volume);
+    LightDesc light;
+    light.type = LightType::Sphere;
+    light.radius = 0.5f;
+    light.intensity = 4.0f;
+    light.equiangular = true;
+    light.transform = translation({0.6f, 0.3f, 0.0f});
+    scene.updateLight(scene.createLight(), light);
+}
+
+inline Camera guideFogCamera(int width, int height) {
+    return makeOrthoCamera({0.0f, 0.0f, 5.0f}, 2.0f, width, height);
+}
+
+// Render settings of the fog: four volume bounces (the guided continuation
+// is open), clamping off.
+inline RenderSettings guideFogSettings(uint32_t spp, bool guided, uint32_t seed) {
+    RenderSettings s;
+    s.maxSamples = spp;
+    s.maxDepth = 8;
+    s.pixelFilterScale = 0.0f;
+    s.clampIndirect = 0.0f;
+    s.limits.limit[int(LimitClass::Volume)] = 4.0f;
+    s.seed = seed;
+    s.guiding.enable = guided;
+    return s;
 }
 
 // The camera inside the room near the window wall, looking at the far

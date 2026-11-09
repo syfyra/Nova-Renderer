@@ -347,6 +347,88 @@ __device__ void attachParts(const GpuWave &w, uint32_t i, const GpuLpeParts &par
     }
 }
 
+// Path guiding (guiding.h): records a guided vertex of path p whose
+// continuation wi of density pdf left it with throughput beta; the jitter
+// from its own stream. Out of line: the shading kernels stay lean.
+__device__ __noinline__ void guideRecordAt(const ShadeArgs &a, uint32_t p, Vec3f P, Vec3f wi, float pdf, Spectrum beta) {
+    const GpuWave &w = a.wave;
+    Rng rng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], stream::guideRecord(a.depth));
+    const float jx = rng.next(), jy = rng.next(), jz = rng.next();
+    guideRecordVertex(a.scene.guide, w.guide, p, P, wi, pdf, beta, Vec3f{jx, jy, jz});
+}
+
+// The guided lobes of a surface hit and the field there (guiding.h).
+__device__ __noinline__ GuideSite guideSurfaceAt(const ShadeArgs &a, ClosureList &cl, Vec3f P, uint32_t p,
+                                                 const RayLimitOverrides &limits) {
+    const GpuWave &w = a.wave;
+    return guideSurfaceSite(a.scene.guide, cl, P,
+                            guideOpenClasses(w.eventCounts[p], limits, a.settings.limits, w.limitDither[p]));
+}
+
+// The guided mixture's density of a light sample's direction (its MIS).
+__device__ __noinline__ float guidedPdfAt(const ShadeArgs &a, const GuideSite &site, const ClosureEval &e, Vec3f wi) {
+    return guidedPdf(a.scene.guide, site, e, wi);
+}
+
+// The same for a volume event or a walk exit (one lobe of density `own`),
+// its guide, and a direction from the field.
+__device__ __noinline__ GuideSite guidePointAt(const ShadeArgs &a, Vec3f P, uint8_t component, bool open) {
+    return guidePointSite(a.scene.guide, P, component, open);
+}
+__device__ __noinline__ float guidedPointPdfAt(const ShadeArgs &a, const GuideSite &site, float own, Vec3f wi) {
+    return guidedPointPdf(a.scene.guide, site, own, wi);
+}
+__device__ __noinline__ Vec3f guideSampleAt(const ShadeArgs &a, const GuideSite &site, Vec2f u, float &pdf) {
+    return guideSample(a.scene.guide, site.root, u, pdf);
+}
+
+// Whether path p may still take a full continuation from a scattering
+// event in volume v (its volume limit, or the render's).
+__device__ __noinline__ bool guideVolumeOpen(const ShadeArgs &a, uint32_t volume, uint32_t p) {
+    constexpr int kVolumeClass = int(LimitClass::Volume);
+    const float volumeLimit = a.scene.volumes[volume].volumeLimit;
+    const uint32_t allowed = pathLimit(volumeLimit >= 0.0f ? volumeLimit : a.settings.limits.limit[kVolumeClass],
+                                       a.wave.limitDither[p]);
+    return (uint32_t(a.wave.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu) < allowed;
+}
+
+// A volume event's guide: the volume component, its class open.
+__device__ __noinline__ GuideSite guideVolumeAt(const ShadeArgs &a, uint32_t volume, uint32_t p, Vec3f x) {
+    return guidePointSite(a.scene.guide, x, guide::kVolume, guideVolumeOpen(a, volume, p));
+}
+
+// A volume event's continuation from the mixture of its phase function and
+// the field: the direction, the mixture's density and phase / density.
+__device__ __noinline__ Vec3f guidedPhaseAt(const ShadeArgs &a, const GuideSite &site, const PhaseFunction &phase,
+                                            Vec3f d, Vec3f u, float uGuide, float &pdf, float &weight) {
+    Vec3f wi;
+    float ph = 0.0f;
+    if (uGuide < site.alpha) {
+        float pg = 0.0f;
+        wi = guideSample(a.scene.guide, site.root, {u.x, u.y}, pg);
+        ph = pg > 0.0f ? phase.eval(d, wi) : 0.0f;
+        pdf = (1.0f - site.alpha) * ph + site.alpha * pg;
+    } else {
+        wi = phase.sample(d, u, ph);
+        pdf = ph > 0.0f ? guidedPointPdf(a.scene.guide, site, ph, wi) : 0.0f;
+    }
+    weight = pdf > 0.0f ? ph / pdf : 0.0f;
+    return wi;
+}
+
+// The continuation of a guided surface vertex, with or without the lobes'
+// values (lpe_path.h).
+__device__ __noinline__ bool sampleGuidedAt(const ShadeArgs &a, const ClosureList &cl, Vec3f wo, Vec3f u, float uGuide,
+                                            const GuideSite &site, ClosureSample &s, Spectrum *lobeF, uint32_t &mask,
+                                            bool perLobe) {
+    if (!perLobe)
+        return sampleClosureGuided(cl, wo, u, uGuide, a.scene.guide, site, s);
+    return sampleClosureGuided(cl, wo, u, uGuide, a.scene.guide, site, s, [&](int i, const Spectrum &f) {
+        lobeF[i] = f;
+        mask |= 1u << i;
+    });
+}
+
 // Equiangular sampling (equiangularSample, M9 D17) on ray k's medium segment
 // [eqA, eqB), for a ray that may scatter: one light of those that opted in
 // (by power), a distance in proportion to 1 / r^2 to it, and a light sample
@@ -393,11 +475,18 @@ __device__ void equiangularSample(const ShadeArgs &a, uint32_t k, const MediumRa
         return;
     const float wT = pEq * pEq / (pEq * pEq + pFree * pFree);
     const float lightPdf = pTree * ls.pdf;
+    // Path guiding: an event here continues from the mixture of its phase
+    // function and the field where its volume's class has room
+    // (novaVolumes), so that mixture's density weighs the light sample.
+    const GuideSite guided = sc.guide.active() ? guidePointAt(a, x, guide::kVolume, true) : GuideSite{};
     Spectrum f{0.0f, 0.0f, 0.0f}, fUnit{0.0f, 0.0f, 0.0f};
     for (int i = 0; i < n; ++i) {
         const float ph = parts[i].phase.eval(ray.d, ls.wi);
+        const float continuation = guided.alpha > 0.0f && guideVolumeOpen(a, parts[i].volume, p)
+                                       ? guidedPointPdfAt(a, guided, ph, ls.wi)
+                                       : ph;
         f += parts[i].scattering *
-             (ph * lightSampleWeight(st.lightStrategy, lightPdf, ph, ls.delta || light.neeOnly()));
+             (ph * lightSampleWeight(st.lightStrategy, lightPdf, continuation, ls.delta || light.neeOnly()));
         fUnit += parts[i].scattering * ph;
     }
     // The throughput to the point: the medium as the ray's own flight sees
@@ -614,83 +703,6 @@ __device__ void shadePrelit(const ShadeArgs &a, uint32_t k, const SurfaceHit &hi
 }
 
 // Pass C for one surface hit (shadeHit).
-// Path guiding (guiding.h): records a guided vertex of path p whose
-// continuation wi of density pdf left it with throughput beta; the jitter
-// from its own stream. Out of line: the shading kernels stay lean.
-__device__ __noinline__ void guideRecordAt(const ShadeArgs &a, uint32_t p, Vec3f P, Vec3f wi, float pdf, Spectrum beta) {
-    const GpuWave &w = a.wave;
-    Rng rng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], stream::guideRecord(a.depth));
-    const float jx = rng.next(), jy = rng.next(), jz = rng.next();
-    guideRecordVertex(a.scene.guide, w.guide, p, P, wi, pdf, beta, Vec3f{jx, jy, jz});
-}
-
-// The guided lobes of a surface hit and the field there (guiding.h).
-__device__ __noinline__ GuideSite guideSurfaceAt(const ShadeArgs &a, ClosureList &cl, Vec3f P, uint32_t p,
-                                                 const RayLimitOverrides &limits) {
-    const GpuWave &w = a.wave;
-    return guideSurfaceSite(a.scene.guide, cl, P,
-                            guideOpenClasses(w.eventCounts[p], limits, a.settings.limits, w.limitDither[p]));
-}
-
-// The guided mixture's density of a light sample's direction (its MIS).
-__device__ __noinline__ float guidedPdfAt(const ShadeArgs &a, const GuideSite &site, const ClosureEval &e, Vec3f wi) {
-    return guidedPdf(a.scene.guide, site, e, wi);
-}
-
-// The same for a volume event or a walk exit (one lobe of density `own`),
-// its guide, and a direction from the field.
-__device__ __noinline__ GuideSite guidePointAt(const ShadeArgs &a, Vec3f P, uint8_t component, bool open) {
-    return guidePointSite(a.scene.guide, P, component, open);
-}
-__device__ __noinline__ float guidedPointPdfAt(const ShadeArgs &a, const GuideSite &site, float own, Vec3f wi) {
-    return guidedPointPdf(a.scene.guide, site, own, wi);
-}
-__device__ __noinline__ Vec3f guideSampleAt(const ShadeArgs &a, const GuideSite &site, Vec2f u, float &pdf) {
-    return guideSample(a.scene.guide, site.root, u, pdf);
-}
-
-// A volume event's guide: the volume component, its class open.
-__device__ __noinline__ GuideSite guideVolumeAt(const ShadeArgs &a, uint32_t volume, uint32_t p, Vec3f x) {
-    constexpr int kVolumeClass = int(LimitClass::Volume);
-    const float volumeLimit = a.scene.volumes[volume].volumeLimit;
-    const uint32_t allowed = pathLimit(volumeLimit >= 0.0f ? volumeLimit : a.settings.limits.limit[kVolumeClass],
-                                       a.wave.limitDither[p]);
-    const uint32_t n = uint32_t(a.wave.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu;
-    return guidePointSite(a.scene.guide, x, guide::kVolume, n < allowed);
-}
-
-// A volume event's continuation from the mixture of its phase function and
-// the field: the direction, the mixture's density and phase / density.
-__device__ __noinline__ Vec3f guidedPhaseAt(const ShadeArgs &a, const GuideSite &site, const PhaseFunction &phase,
-                                            Vec3f d, Vec3f u, float uGuide, float &pdf, float &weight) {
-    Vec3f wi;
-    float ph = 0.0f;
-    if (uGuide < site.alpha) {
-        float pg = 0.0f;
-        wi = guideSample(a.scene.guide, site.root, {u.x, u.y}, pg);
-        ph = pg > 0.0f ? phase.eval(d, wi) : 0.0f;
-        pdf = (1.0f - site.alpha) * ph + site.alpha * pg;
-    } else {
-        wi = phase.sample(d, u, ph);
-        pdf = ph > 0.0f ? guidedPointPdf(a.scene.guide, site, ph, wi) : 0.0f;
-    }
-    weight = pdf > 0.0f ? ph / pdf : 0.0f;
-    return wi;
-}
-
-// The continuation of a guided surface vertex, with or without the lobes'
-// values (lpe_path.h).
-__device__ __noinline__ bool sampleGuidedAt(const ShadeArgs &a, const ClosureList &cl, Vec3f wo, Vec3f u, float uGuide,
-                                            const GuideSite &site, ClosureSample &s, Spectrum *lobeF, uint32_t &mask,
-                                            bool perLobe) {
-    if (!perLobe)
-        return sampleClosureGuided(cl, wo, u, uGuide, a.scene.guide, site, s);
-    return sampleClosureGuided(cl, wo, u, uGuide, a.scene.guide, site, s, [&](int i, const Spectrum &f) {
-        lobeF[i] = f;
-        mask |= 1u << i;
-    });
-}
-
 __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     const GpuWave &w = a.wave;
     const GpuSettings &st = a.settings;

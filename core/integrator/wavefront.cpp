@@ -776,6 +776,16 @@ void equiangularDensities(const ShadeContext &c, WaveQueues &q, uint32_t k, uint
     }
 }
 
+// Whether path p may still take a full continuation from a scattering event
+// in volume v (its volume limit, or the render's).
+bool volumeClassOpen(const ShadeContext &c, const WaveQueues &q, uint32_t p, VolumeId v) {
+    constexpr int kVolumeClass = int(LimitClass::Volume);
+    const float volumeLimit = c.scene.volumeRecord(v).desc.volumeLimit;
+    const uint32_t allowed =
+        pathLimit(volumeLimit >= 0.0f ? volumeLimit : c.settings.limits.limit[kVolumeClass], q.limitDither[p]);
+    return (uint32_t(q.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu) < allowed;
+}
+
 // Equiangular sampling (D17) on ray k's medium segment [a, b), for a ray
 // that may scatter: one light of those that opted in (by power), a distance
 // in proportion to 1 / r^2 to it, and a light sample there with its shadow
@@ -821,11 +831,18 @@ void equiangularSample(const ShadeContext &c, WaveQueues &q, uint32_t k) {
         return;
     const float wT = pEq * pEq / (pEq * pEq + pFree * pFree);
     const float lightPdf = pTree * ls.pdf;
+    // Path guiding: an event here continues from the mixture of its phase
+    // function and the field where its volume's class has room (shadeVolumes),
+    // so that mixture's density weighs the light sample against it.
+    const GuideSite guided = c.guide ? guidePointSite(*c.guide, x, guide::kVolume, true) : GuideSite{};
     Spectrum f{0.0f, 0.0f, 0.0f}, fUnit{0.0f, 0.0f, 0.0f};
     for (int i = 0; i < n; ++i) {
         const float ph = parts[i].phase.eval(ray.d, ls.wi);
+        const float continuation = guided.alpha > 0.0f && volumeClassOpen(c, q, p, parts[i].volume)
+                                       ? guidedPointPdf(*c.guide, guided, ph, ls.wi)
+                                       : ph;
         f += parts[i].scattering *
-             (ph * lightSampleWeight(c.settings.lightStrategy, lightPdf, ph, ls.delta || light.neeOnly()));
+             (ph * lightSampleWeight(c.settings.lightStrategy, lightPdf, continuation, ls.delta || light.neeOnly()));
         fUnit += parts[i].scattering * ph;
     }
     // The throughput to the point: the medium as the ray's own flight sees

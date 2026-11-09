@@ -1,6 +1,7 @@
 #include "core/integrator/guide_field.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 namespace nova {
@@ -8,6 +9,13 @@ namespace nova {
 namespace {
 
 float nodeTotal(const GuideDirNode &n) { return n.sum[0] + n.sum[1] + n.sum[2] + n.sum[3]; }
+
+// Generations unique across fields: a field made after another was dropped
+// never matches the GPU's copy of the old one.
+uint64_t newGeneration() {
+    static std::atomic<uint64_t> next{1};
+    return next.fetch_add(1, std::memory_order_relaxed) + 1;
+}
 
 } // namespace
 
@@ -36,7 +44,7 @@ void PathGuide::reset(Vec3f lower, Vec3f upper, const GuidingSettings &settings,
     // The first building quadtree: uniform (no energy known yet).
     refine(true);
     m_iterations = 0;
-    ++m_generation;
+    m_generation = newGeneration();
 }
 
 GuideView PathGuide::view() const {
@@ -87,7 +95,7 @@ bool PathGuide::endPass(uint32_t spp) {
         buildChild.clear();
         buildLeaf.clear();
         buildSum.clear();
-        ++m_generation;
+        m_generation = newGeneration();
         return true;
     }
     if (done >= iterationLength()) {

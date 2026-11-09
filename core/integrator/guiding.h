@@ -384,11 +384,76 @@ NOVA_INLINE float guidedPointPdf(const GuideView &g, const GuideSite &site, floa
     return (1.0f - site.alpha) * own + site.alpha * guidePdf(g, site.root, wi);
 }
 
+// The lobe whose event a non-delta sample in direction wi is (its class for
+// ray limits and fake caustics, its roughness, whether it refracts): lobe i
+// with probability p_i pdf_i(wi) / p_bsdf(wi), as the closure's own sampling
+// would have picked it for that direction (u: a uniform number). Picking by
+// the strategy that drew wi instead would shift the classes' shares with the
+// guide (a reflection-only lobe would own guided transmissions). -1: no lobe
+// has density there.
+NOVA_INLINE int guideEventLobe(const ClosureList &cl, Vec3f wo, Vec3f wi, float u) {
+    const bool geometricTransmit = dot(wo, cl.ng) * dot(wi, cl.ng) < 0.0f;
+    float density[ClosureList::kMaxLobes];
+    float total = 0.0f;
+    for (int i = 0; i < cl.count; ++i) {
+        density[i] = 0.0f;
+        if (!(cl.nonDeltaMask & (1u << i)))
+            continue;
+        const Lobe &l = cl.lobe[i];
+        if (geometricTransmit ? !l.transmits() : !l.reflects())
+            continue;
+        const Frame &f = cl.frame[l.frame];
+        float pdf = 0.0f;
+        if (l.lambertian()) { // as evalClosure
+            const float cosI = dot(wi, f.n);
+            if ((cosI < 0.0f) != geometricTransmit)
+                continue;
+            l.lambert.eval({0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, cosI}, pdf);
+        } else {
+            const Vec3f woL = f.toLocal(wo), wiL = f.toLocal(wi);
+            if (l.type != LobeType::Hair && (woL.z * wiL.z < 0.0f) != geometricTransmit)
+                continue;
+            l.eval(woL, wiL, pdf);
+        }
+        density[i] = l.pick * nova::fmax(pdf, 0.0f);
+        total += density[i];
+    }
+    if (!(total > 0.0f))
+        return -1;
+    const float target = u * total;
+    float sum = 0.0f;
+    int last = -1;
+    for (int i = 0; i < cl.count; ++i) {
+        if (!(density[i] > 0.0f))
+            continue;
+        sum += density[i];
+        last = i;
+        if (target < sum)
+            return i;
+    }
+    return last;
+}
+
+// A non-delta sample's event as lobe j's (sampleClosure's flags for it).
+NOVA_INLINE void guideSetEventLobe(const ClosureList &cl, int j, Vec3f wo, ClosureSample &s) {
+    const Lobe &l = cl.lobe[j];
+    const bool transmit = dot(wo, cl.ng) * dot(s.wi, cl.ng) < 0.0f;
+    s.lobe = int8_t(j);
+    s.transmit = transmit;
+    s.rayClass = l.eventClass(transmit);
+    s.roughness = l.roughness();
+    s.refract = transmit && l.type == LobeType::Dielectric && std::fabs(l.dielectric.mediaEta() - 1.0f) >= kIndexMatched;
+    s.eta = s.refract ? l.dielectric.mediaEta() : 1.0f;
+}
+
 // The continuation at a surface vertex: sampleClosure, with the guided lobes
 // taking the guide's direction with probability alpha (uGuide decides). The
 // weight is f |cos| over the mixture's density for every non-delta sample;
-// delta and unguided lobes keep their probabilities. Without a guide (alpha
-// 0) exactly sampleClosure, drawing nothing more.
+// delta and unguided lobes keep their probabilities, and a guided lobe's
+// delta part (a thin sheet smooth on one side) its weight for them. The
+// event of a non-delta sample is the lobe the closure's own sampling would
+// have given that direction (guideEventLobe), from the rest of uGuide.
+// Without a guide (alpha 0) exactly sampleClosure, drawing nothing more.
 template <typename PerLobe = NoLobeSink>
 NOVA_INLINE bool sampleClosureGuided(const ClosureList &cl, Vec3f wo, Vec3f u, float uGuide, const GuideView &g,
                                      const GuideSite &site, ClosureSample &s, const PerLobe &perLobe = PerLobe{}) {
@@ -398,7 +463,12 @@ NOVA_INLINE bool sampleClosureGuided(const ClosureList &cl, Vec3f wo, Vec3f u, f
     if (cl.count > 1)
         while (j + 1 < cl.count && u.z >= cl.cdf[j])
             ++j;
-    if (((cl.guideMask >> j) & 1u) && uGuide < site.alpha) {
+    const bool guidedLobe = ((cl.guideMask >> j) & 1u) != 0;
+    // The decision's remainder: uniform whatever the branch.
+    const float uEvent = !guidedLobe              ? uGuide
+                         : uGuide < site.alpha    ? uGuide / site.alpha
+                                                  : (uGuide - site.alpha) / (1.0f - site.alpha);
+    if (guidedLobe && uGuide < site.alpha) {
         float pg = 0.0f;
         const Vec3f wi = guideSample(g, site.root, {u.x, u.y}, pg);
         if (!(pg > 0.0f))
@@ -407,33 +477,40 @@ NOVA_INLINE bool sampleClosureGuided(const ClosureList &cl, Vec3f wo, Vec3f u, f
         const float pdf = e.pdf + site.alpha * (site.share * pg - e.pdfGuided);
         if (!(pdf > 0.0f) || isBlack(e.fcos))
             return false;
-        const Lobe &l = cl.lobe[j];
-        const bool transmit = dot(wo, cl.ng) * dot(wi, cl.ng) < 0.0f;
+        const int event = cl.count > 1 ? guideEventLobe(cl, wo, wi, nova::fmin(uEvent, 0.99999994f)) : 0;
+        if (event < 0)
+            return false;
         s.wi = wi;
         s.weight = e.fcos * (1.0f / pdf);
         s.pdf = pdf;
         s.pdfGuided = e.pdfGuided;
         s.delta = false;
         s.walk = false;
-        s.lobe = int8_t(j);
-        s.transmit = transmit;
-        s.rayClass = l.eventClass(transmit);
-        s.roughness = l.roughness();
-        s.refract = transmit && l.type == LobeType::Dielectric && std::fabs(l.dielectric.eta - 1.0f) >= kIndexMatched;
-        s.eta = s.refract ? l.dielectric.eta : 1.0f;
+        guideSetEventLobe(cl, event, wo, s);
         const float total = luminance(e.fcos);
         s.diffuseShare = total > 0.0f ? saturate(luminance(e.fcosDiffuse) / total) : 0.0f;
         return isFinite(s.weight);
     }
     if (!sampleClosure(cl, wo, u, s, perLobe))
         return false;
-    if (s.delta || s.walk)
+    if (s.walk)
         return true;
+    if (s.delta) {
+        // A guided lobe reaches its delta part only on its own strategy.
+        if (guidedLobe)
+            s.weight *= 1.0f / (1.0f - site.alpha);
+        return isFinite(s.weight);
+    }
     const float pdf = s.pdf + site.alpha * (site.share * guidePdf(g, site.root, s.wi) - s.pdfGuided);
     if (!(pdf > 0.0f))
         return false;
     s.weight *= s.pdf / pdf;
     s.pdf = pdf;
+    if (cl.count > 1) {
+        const int event = guideEventLobe(cl, wo, s.wi, nova::fmin(uEvent, 0.99999994f));
+        if (event >= 0)
+            guideSetEventLobe(cl, event, wo, s);
+    }
     return isFinite(s.weight);
 }
 

@@ -1,14 +1,18 @@
 // Path guiding (docs/design/M11-P9c.md): the quadtree's density and its
-// sampling, unbiased one-sample MIS of guided closures and of guided renders
-// (an analytic furnace), the field's training and refinement, deterministic
-// renders whatever the thread count, the controls (components, training
-// samples, clearbuffers) and the noise drop on an indirect-lit room. Karma's
-// measured behaviour is compared in tests/husk/check_karma_guiding.py; the
-// XPU in test_gpu_guiding.cpp.
+// sampling, unbiased one-sample MIS of guided closures (their event classes
+// and thin sheets smooth on one side too) and of guided renders (an analytic
+// furnace, fog with equiangular light samples), the field's training and
+// refinement, deterministic renders whatever the thread count, the controls
+// (components, training samples, clearbuffers), the noise drop on an
+// indirect-lit room, and the film's sample numbers across every restart
+// (IPR, resize, frames, checkpoints, guiding off). Karma's measured
+// behaviour is compared in tests/husk/check_karma_guiding.py; the XPU in
+// test_gpu_guiding.cpp.
 
 #include "guiding_scenes.h"
 
 #include "core/bsdf/surface.h"
+#include "core/film/lpe_compile.h"
 #include "core/integrator/guide_field.h"
 #include "core/integrator/guiding.h"
 #include "core/math/frame.h"
@@ -22,6 +26,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <vector>
 
 using namespace nova;
@@ -183,6 +188,135 @@ TEST_CASE("Guided closure sampling is unbiased one-sample MIS", "[guiding]") {
     }
 }
 
+namespace {
+
+// E[weight x h x 1{event}] of a closure's samples with and without the guide
+// (alpha 0.5), within four standard errors of each other, per event.
+template <typename Event>
+void checkEvents(const ClosureList &cl, const ClosureList &guidedList, const GuideView &view, const GuideSite &site,
+                 Vec3f wo, int events, Event event, uint32_t seed) {
+    const auto h = [](Vec3f d) { return 1.0 + 2.0 * d.x * d.x + d.y; };
+    const int n = 600000;
+    std::vector<double> sum(size_t(events) * 2, 0.0), sq(size_t(events) * 2, 0.0);
+    Rng rng = Rng::make(seed, 3);
+    for (int i = 0; i < n; ++i) {
+        const Vec3f u{rng.next(), rng.next(), rng.next()};
+        const float ug = rng.next();
+        for (int k = 0; k < 2; ++k) {
+            ClosureSample s;
+            const bool ok =
+                k == 0 ? sampleClosure(cl, wo, u, s) : sampleClosureGuided(guidedList, wo, u, ug, view, site, s);
+            if (!ok)
+                continue;
+            const int e = event(s);
+            if (e < 0)
+                continue;
+            const double v = luminance(s.weight) * h(s.wi);
+            sum[size_t(e) * 2 + size_t(k)] += v;
+            sq[size_t(e) * 2 + size_t(k)] += v * v;
+        }
+    }
+    for (int e = 0; e < events; ++e) {
+        const double a = sum[size_t(e) * 2] / n, b = sum[size_t(e) * 2 + 1] / n;
+        const double ea = std::sqrt(std::fmax(sq[size_t(e) * 2] / n - a * a, 0.0) / n);
+        const double eb = std::sqrt(std::fmax(sq[size_t(e) * 2 + 1] / n - b * b, 0.0) / n);
+        INFO("event " << e << ": unguided " << a << " +- " << ea << ", guided " << b << " +- " << eb);
+        CHECK(std::fabs(a - b) < 4.0 * std::sqrt(ea * ea + eb * eb) + 1e-4);
+    }
+}
+
+} // namespace
+
+TEST_CASE("Guided closure samples keep the closure's event classes", "[guiding]") {
+    // A guided sample's event is the lobe the closure's own sampling gives
+    // its direction (not the lobe whose guide drew it): the classes' shares
+    // of the weight (ray limits, fake caustics) and refractions stay.
+    const HandGuide g(5);
+    const ShadingGeometry geo{{0, 0, 1}, {0, 0, 1}, {1, 0, 0}, false, 0.0f};
+    const Vec3f wo = normalize(Vec3f{0.3f, -0.2f, 0.9f});
+    const ClosureContext ctx{&bsdfTables(), kXyzToRec709Grey};
+    SECTION("a plastic: diffuse guided, the specular lobe not") {
+        SurfaceInputs in = standardSurfaceDefaults();
+        in.set(sf::baseColor, Spectrum{0.6f, 0.5f, 0.4f});
+        in.set(sf::specularRoughness, 0.3f);
+        ClosureList cl;
+        buildClosure(in, geo, wo, ctx, cl);
+        ClosureList guidedList = cl;
+        const GuideSite site = guideSurfaceSite(g.view, guidedList, {0, 0, 0}, 0x0F);
+        REQUIRE(site.alpha > 0.0f);
+        REQUIRE(guidedList.guideMask != (1u << guidedList.count) - 1u);
+        checkEvents(cl, guidedList, g.view, site, wo, 2,
+                    [](const ClosureSample &s) { return s.rayClass == RayClass::Diffuse ? 0 : 1; }, 21);
+    }
+    SECTION("diffuse over rough glass: guided transmissions refract") {
+        SurfaceInputs in = standardSurfaceDefaults();
+        in.set(sf::baseColor, Spectrum{0.6f, 0.5f, 0.4f});
+        in.set(sf::specularRoughness, 0.3f);
+        in.set(sf::transmissionWeight, 0.5f);
+        ClosureList cl;
+        buildClosure(in, geo, wo, ctx, cl);
+        ClosureList guidedList = cl;
+        const GuideSite site = guideSurfaceSite(g.view, guidedList, {0, 0, 0}, 0x0F);
+        REQUIRE(site.alpha > 0.0f);
+        int glass = -1;
+        for (int i = 0; i < cl.count; ++i)
+            if (cl.lobe[i].type == LobeType::Dielectric && cl.lobe[i].transmits())
+                glass = i;
+        REQUIRE(glass >= 0);
+        REQUIRE_FALSE(guidedList.guideMask & (1u << glass)); // only the diffuse lobe is guided
+        // Every transmitted sample is the glass's refraction into it.
+        Rng rng = Rng::make(9, 3);
+        int transmitted = 0, refracted = 0;
+        for (int i = 0; i < 200000; ++i) {
+            ClosureSample s;
+            if (!sampleClosureGuided(guidedList, wo, {rng.next(), rng.next(), rng.next()}, rng.next(), g.view, site,
+                                     s) ||
+                s.delta || !s.transmit)
+                continue;
+            ++transmitted;
+            refracted += s.refract && s.lobe == glass && s.rayClass == RayClass::Refract &&
+                         std::fabs(s.eta - cl.lobe[glass].dielectric.mediaEta()) < 1e-6f;
+        }
+        CHECK(transmitted > 1000);
+        CHECK(refracted == transmitted);
+        checkEvents(cl, guidedList, g.view, site, wo, 3,
+                    [](const ClosureSample &s) {
+                        return s.refract ? 2 : s.rayClass == RayClass::Diffuse ? 0 : 1;
+                    },
+                    22);
+    }
+}
+
+TEST_CASE("Guided thin sheets smooth on one side keep their value", "[guiding]") {
+    // A thin dielectric whose reflection is rough and whose transmission is
+    // smooth (and the other way round): its delta part is reached on the
+    // lobe's own strategy only (probability 1 - alpha) and weighs for it.
+    HandGuide g(6);
+    g.view.components = guide::kReflect | guide::kRefract;
+    const Vec3f wo = normalize(Vec3f{0.3f, -0.2f, 0.9f});
+    for (const bool roughReflection : {true, false}) {
+        INFO((roughReflection ? "rough reflection, smooth transmission" : "smooth reflection, rough transmission"));
+        ClosureList cl;
+        cl.clear();
+        cl.ng = {0, 0, 1};
+        cl.frame[0] = Frame::fromNormal({0, 0, 1});
+        Lobe *l = cl.push(LobeType::ThinDielectric, 0, spectrum(1.0f), 1.0f, false);
+        REQUIRE(l);
+        const GgxDistribution rough = GgxDistribution::make(0.3f, 0.3f), smooth = GgxDistribution::make(0.0f, 0.0f);
+        l->thin = ThinDielectricLobe{roughReflection ? rough : smooth, roughReflection ? smooth : rough, 1.5f,
+                                     spectrum(1.0f), spectrum(1.0f)};
+        l->thin.tBoost = l->thin.tBoostSmooth = 0.0f;
+        cl.finalize();
+        REQUIRE(cl.nonDeltaMask == 1u);
+        ClosureList guidedList = cl;
+        const GuideSite site = guideSurfaceSite(g.view, guidedList, {0, 0, 0}, 0x0F);
+        REQUIRE(site.alpha > 0.0f);
+        REQUIRE(guidedList.guideMask == 1u);
+        checkEvents(cl, guidedList, g.view, site, wo, 2, [](const ClosureSample &s) { return s.delta ? 1 : 0; },
+                    roughReflection ? 31u : 32u);
+    }
+}
+
 TEST_CASE("Guide field: training refines the spatial tree and the quadtrees", "[guiding]") {
     PathGuide guide;
     GuidingSettings settings;
@@ -295,14 +429,14 @@ TEST_CASE("Guided renders: the room keeps its mean, its noise drops", "[guiding]
         s.guiding.enable = true;
         on.push_back(pixelLuminance(renderGuided(scene, cam, 96, 72, s).film));
         // 32 samples with the field trained on 32 others, frozen: the film
-        // restarts after the training samples and continues their sample
-        // numbers (the same numbers again would correlate with the field).
+        // restarts after the training samples' numbers (the same numbers
+        // again would correlate with the field), at the next block of 64.
         s.guiding.trainingSamples = 32;
         s.guiding.clearBuffers = true;
         s.maxSamples = 64;
         const GuideRun run = renderGuided(scene, cam, 96, 72, s);
         CHECK(run.discarded == 32u);
-        CHECK(run.film.sampleOffset == 32u);
+        CHECK(run.film.sampleOffset == 64u);
         frozen.push_back(pixelLuminance(run.film));
     }
     const SeedStats a = seedStats(off), b = seedStats(on), f = seedStats(frozen);
@@ -389,10 +523,10 @@ TEST_CASE("Guiding across IPR restarts", "[guiding][render][ipr]") {
     CHECK(trained == 8u);
     CHECK(renderer.guide()->iterations() == 3u);
     // A camera move restarts the film, not the field: its samples continue
-    // after the ones the field learned from.
+    // after the ones the field learned from (at the next block of 64).
     renderer.setCamera(guideRoomCamera(32, 24));
     renderer.reset();
-    CHECK(renderer.film().sampleOffset == 8u);
+    CHECK(renderer.film().sampleOffset == 64u);
     renderer.renderPass({});
     CHECK(renderer.guide()->trainedSamples() == 9u);
     // A scene edit (the sun brighter) retrains from scratch.
@@ -413,6 +547,161 @@ TEST_CASE("Guiding across IPR restarts", "[guiding][render][ipr]") {
     renderer.reset();
     renderer.renderPass({});
     CHECK(renderer.film().count[0] == 1u);
+}
+
+TEST_CASE("Guiding: every film restart starts past the field's sample numbers", "[guiding][render][ipr]") {
+    Scene scene;
+    guideRoom(scene);
+    scene.commit();
+    Renderer renderer;
+    renderer.setScene(&scene);
+    renderer.setSettings(guided(64));
+    renderer.setCamera(guideRoomCamera(32, 24));
+    renderer.resize(32, 24);
+    for (int pass = 0; pass < 8; ++pass)
+        renderer.renderPass({});
+    REQUIRE(renderer.guide());
+    REQUIRE(renderer.guide()->sampling());
+    SECTION("a resize, then a reset (Hydra's order)") {
+        renderer.resize(40, 30);
+        CHECK(renderer.film().sampleOffset == 64u);
+        renderer.reset();
+        CHECK(renderer.film().sampleOffset == 64u); // nothing drawn from 64 yet
+        for (int pass = 0; pass < 3; ++pass)
+            renderer.renderPass({});
+        renderer.reset();
+        CHECK(renderer.film().sampleOffset == 128u);
+        CHECK(renderer.guide()->trainedSamples() == 11u); // the same field throughout
+    }
+    SECTION("a cancelled pass's numbers count too (its records may be in the field)") {
+        renderer.reset();
+        REQUIRE(renderer.film().sampleOffset == 64u);
+        renderer.renderPass([] { return true; });
+        renderer.reset();
+        CHECK(renderer.film().sampleOffset == 128u);
+    }
+    SECTION("guiding off: no field, numbers from 0; on again: a new field") {
+        const uint64_t generation = renderer.guide()->generation();
+        renderer.setSettings(guided(64, false));
+        renderer.reset();
+        CHECK(renderer.film().sampleOffset == 0u);
+        renderer.renderPass({});
+        CHECK_FALSE(renderer.guide());
+        renderer.reset();
+        CHECK(renderer.film().sampleOffset == 0u);
+        renderer.setSettings(guided(64));
+        renderer.reset();
+        renderer.renderPass({});
+        REQUIRE(renderer.guide());
+        CHECK(renderer.guide()->trainedSamples() == 1u);
+        CHECK(renderer.guide()->generation() != generation);
+        CHECK(renderer.film().sampleOffset == 0u);
+    }
+    SECTION("another frame: a new field (a sequence's frames are independent)") {
+        RenderSettings next = guided(64);
+        next.frame = 2.0f;
+        renderer.setSettings(next);
+        renderer.reset();
+        renderer.renderPass({});
+        CHECK(renderer.guide()->trainedSamples() == 1u);
+        CHECK(renderer.film().sampleOffset == 0u);
+    }
+}
+
+TEST_CASE("Guiding with clearbuffers: per-sample planes and checkpoints", "[guiding][render][checkpoint]") {
+    Scene scene;
+    guideRoom(scene);
+    scene.commit();
+    RenderSettings s = guided(16);
+    s.guiding.trainingSamples = 4;
+    s.guiding.clearBuffers = true;
+    s.lpe = std::make_shared<const lpe::Compiled>(lpe::compile({"C<RD>.*L"}));
+    s.utility = std::make_shared<const std::vector<UtilityRequest>>(std::vector<UtilityRequest>{
+        {UtilityKind::Lpe, "C<RD>.*L", SampleFilter::Accumulate, 0.0f, 0, 0},
+        {UtilityKind::PixelSamples, {}, SampleFilter::Max}});
+    const auto setup = [&](Renderer &r) {
+        r.setScene(&scene);
+        r.setSettings(s);
+        r.setCamera(guideRoomCamera(16, 12));
+        r.resize(16, 12);
+    };
+    const auto resolvedAt = [](const Film &film, UtilityKind kind, size_t i) {
+        for (const UtilityPlane &p : film.utility)
+            if (p.request.kind == kind) {
+                std::vector<float> out(size_t(p.width));
+                resolveFilteredSample(p, i, film.count[i], out.data());
+                return out[0];
+            }
+        return -1.0f;
+    };
+    const auto checkPlanes = [&](const Film &film) {
+        for (const size_t i : {size_t(0), size_t(77), size_t(16 * 12 - 1)}) {
+            // The samples' numbers count within the film; the filtered LPE
+            // plane took each pass's sample from the film's own sums.
+            CHECK(resolvedAt(film, UtilityKind::PixelSamples, i) == float(film.count[i]));
+            CHECK_THAT(resolvedAt(film, UtilityKind::Lpe, i), WithinAbs(film.lpe(0)[i].x, 1e-4 + 1e-4 * film.lpe(0)[i].x));
+        }
+    };
+    Renderer full;
+    setup(full);
+    while (!full.converged())
+        full.renderPass({});
+    CHECK(full.discardedSamples() == 4u);
+    CHECK(full.film().sampleOffset == 64u);
+    CHECK(full.film().count[0] == 12u);
+    checkPlanes(full.film());
+
+    // A checkpoint after the clear: the resumed render keeps the dropped
+    // training samples' count and the film's sample numbers.
+    Renderer first;
+    setup(first);
+    for (int pass = 0; pass < 6; ++pass)
+        first.renderPass({});
+    REQUIRE(first.discardedSamples() == 4u);
+    std::vector<uint8_t> bytes;
+    first.saveCheckpoint(bytes);
+    Renderer resumed;
+    setup(resumed);
+    REQUIRE(resumed.loadCheckpoint(bytes.data(), bytes.size()));
+    CHECK(resumed.discardedSamples() == 4u);
+    CHECK(resumed.film().sampleOffset == 64u);
+    while (!resumed.converged())
+        resumed.renderPass({});
+    CHECK(resumed.discardedSamples() == 4u);
+    CHECK(resumed.film().sampleOffset == 64u);
+    CHECK(resumed.film().count[0] == 12u);
+    // A checkpoint without the guiding trailer (older files) still loads.
+    Renderer old;
+    setup(old);
+    CHECK(old.loadCheckpoint(bytes.data(), bytes.size() - 12));
+    CHECK(old.discardedSamples() == 0u);
+    CHECK(old.film().sampleOffset == 0u);
+}
+
+TEST_CASE("Guided fog: equiangular light samples weigh against the guided continuation", "[guiding][render][volume]") {
+    // The light samples at equiangular distances take their MIS weight
+    // against the density a scattering event there continues with: the
+    // guided mixture where the volume class is open. (Guards the guided
+    // equiangular path; the bias of weighing against the phase function
+    // alone is far below this test's resolution here: sphere-light sampling
+    // densities dwarf the guided continuation's towards the light, which the
+    // field learns only 1.1 to 1.4 times the phase function's.)
+    Scene scene;
+    guideFog(scene, 0.5f);
+    scene.commit();
+    const Camera cam = guideFogCamera(24, 24);
+    std::vector<std::vector<double>> off, on;
+    for (uint32_t seed = 0; seed < 8; ++seed) {
+        off.push_back(pixelLuminance(renderGuided(scene, cam, 24, 24, guideFogSettings(64, false, seed)).film));
+        const GuideRun run = renderGuided(scene, cam, 24, 24, guideFogSettings(64, true, seed));
+        CHECK(run.iterations >= 5);
+        on.push_back(pixelLuminance(run.film));
+    }
+    const SeedStats a = seedStats(off), b = seedStats(on);
+    INFO("off: mean " << a.mean << " +- " << a.error << " noise " << a.noise << "; on: mean " << b.mean << " +- "
+                      << b.error << " noise " << b.noise);
+    CHECK(a.error < 0.01 * a.mean);
+    CHECK(std::fabs(a.mean - b.mean) < 4.0 * std::sqrt(a.error * a.error + b.error * b.error) + 1e-6);
 }
 
 namespace {
