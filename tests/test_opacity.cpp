@@ -249,3 +249,125 @@ TEST_CASE("Filter decisions repeat for the same ray", "[opacity]") {
     CHECK(hits > 0);
     CHECK(hits < n);
 }
+
+namespace {
+
+// 1 where the render camera sees the hit in front of it (Pndc's depth > 0),
+// 0 without a camera (Pndc 0).
+sh::Ref seenByCamera(sh::IrBuilder &b) {
+    const sh::Ref depth = b.component(b.global(sh::Global::Pndc), 2);
+    return b.binary(sh::Op::GreaterEq, depth, b.constant(1e-3f));
+}
+
+} // namespace
+
+// Every shading of a render knows the render camera (Karma's space:ndc,
+// Global::Pndc): also the opacity of shadow rays' blockers and the emission
+// at their ends (an emissive mesh treated as a light). Before, the CPU
+// evaluated both without the camera (Pndc 0) and the XPU with it.
+TEST_CASE("Shadow rays see the render camera's NDC positions", "[opacity][render][emitters]") {
+    SECTION("the opacity of a blocker") {
+        // A sun straight down on a ground; a blocker above it that is
+        // transparent wherever the camera sees it (always, with a camera).
+        const auto ground = [](bool blocker) {
+            Scene scene;
+            MeshDesc g = makeQuad(4.0f);
+            g.setDisplayColor(spectrum(0.5f));
+            scene.updateMesh(scene.createMesh(), g);
+            if (blocker) {
+                MeshDesc q = makeQuad(4.0f);
+                q.transform = translation({0.0f, 0.0f, 1.0f});
+                const MeshId id = scene.createMesh();
+                scene.updateMesh(id, q);
+                sh::IrGraph graph;
+                graph.model = SurfaceModel::StandardSurface;
+                sh::IrBuilder b(graph);
+                b.output(surface_field::opacity, 3, b.convert(b.sub(b.constant(1.0f), seenByCamera(b)), 3));
+                MaterialDesc m;
+                m.inputs = standardSurfaceDefaults();
+                m.program = sh::compile(graph).program;
+                REQUIRE(m.program);
+                REQUIRE(m.program->opacity);
+                const MaterialId mid = scene.createMaterial();
+                scene.updateMaterial(mid, m);
+                scene.setMeshMaterials(id, {mid});
+            }
+            LightDesc sun; // along -Z
+            sun.type = LightType::Distant;
+            sun.angleDeg = 0.0f;
+            scene.updateLight(scene.createLight(), sun);
+            scene.commit();
+            const Frame2D img = render(scene, 8, 4, 1);
+            double sum = 0.0;
+            for (const Spectrum &c : img.color)
+                sum += c.y;
+            return sum / double(img.color.size());
+        };
+        const double open = ground(false), blocked = ground(true);
+        REQUIRE(open > 0.1);
+        CHECK_THAT(blocked, WithinAbs(open, 1e-6 * open));
+    }
+    SECTION("the emission of a light") {
+        // An emissive quad over a ground, treated as a light: emission 1,
+        // plus 2 where the camera sees it. Light samples (the emission at
+        // their shadow rays' ends) and BSDF samples (the emission at the
+        // hit) light the ground alike.
+        const auto ground = [](LightStrategy strategy) {
+            Scene scene;
+            MeshDesc g = makeQuad(4.0f);
+            g.setDisplayColor(spectrum(0.5f));
+            scene.updateMesh(scene.createMesh(), g);
+            MeshDesc q = makeQuad(1.0f);
+            q.transform = translation({0.0f, 0.0f, 1.0f});
+            const MeshId id = scene.createMesh();
+            scene.updateMesh(id, q);
+            sh::IrGraph graph;
+            graph.model = SurfaceModel::StandardSurface;
+            sh::IrBuilder b(graph);
+            const sh::Ref glow = b.add(b.constant(1.0f), b.mul(b.constant(2.0f), seenByCamera(b)));
+            b.output(surface_field::emissionColor, 3, b.convert(glow, 3));
+            MaterialDesc m;
+            m.inputs = standardSurfaceDefaults();
+            m.inputs.set(surface_field::baseWeight, 0.0f);
+            m.inputs.set(surface_field::specularWeight, 0.0f);
+            m.inputs.set(surface_field::emissionWeight, 1.0f);
+            m.program = sh::compile(graph).program;
+            REQUIRE(m.program);
+            const MaterialId mid = scene.createMaterial();
+            scene.updateMaterial(mid, m);
+            scene.setMeshMaterials(id, {mid});
+            MeshLightSource treat;
+            treat.mode = 1;
+            scene.setMeshLightSource(id, treat);
+            scene.commit();
+            REQUIRE(scene.material(mid).emission == MaterialRecord::Emission::Varying);
+            Renderer renderer;
+            RenderSettings settings;
+            settings.maxSamples = 256;
+            settings.maxDepth = 1;
+            settings.clampIndirect = 0.0f;
+            settings.lightStrategy = strategy;
+            renderer.setScene(&scene);
+            renderer.setSettings(settings);
+            renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 5.0f}, 2.0f, 16, 16));
+            renderer.resize(16, 16);
+            renderToConvergence(renderer);
+            // The ground outside the quad's footprint.
+            double sum = 0.0;
+            int n = 0;
+            for (int y = 0; y < 16; ++y)
+                for (int x = 0; x < 16; ++x) {
+                    const float wx = -2.0f + (float(x) + 0.5f) / 4.0f, wy = -2.0f + (float(y) + 0.5f) / 4.0f;
+                    if (std::fabs(wx) < 1.3f && std::fabs(wy) < 1.3f)
+                        continue;
+                    sum += pixelMean(renderer.film(), x, y).y;
+                    ++n;
+                }
+            return sum / n;
+        };
+        const double light = ground(LightStrategy::LightOnly), bsdf = ground(LightStrategy::BsdfOnly);
+        INFO("light samples " << light << ", BSDF samples " << bsdf);
+        REQUIRE(bsdf > 0.0);
+        CHECK_THAT(light / bsdf, WithinAbs(1.0, 0.03));
+    }
+}

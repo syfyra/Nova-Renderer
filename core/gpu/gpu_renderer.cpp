@@ -893,8 +893,10 @@ bool GpuRenderer::setFilm(const Film &film) {
 
 bool GpuRenderer::reserveWave(uint32_t paths) {
     // Pre-lit background holdouts with illumbackground lights use the walk
-    // exits' kind (kernels.cu shadePrelit).
-    const uint32_t slots = (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u);
+    // exits' kind (kernels.cu shadePrelit); the sky atmosphere's ground with
+    // groundreceiveshadow has a kind of its own (shadeGround).
+    const uint32_t slots = (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u) +
+                           (groundShadows() ? 1u : 0u);
     const bool nested = m_view.nestedDielectrics != 0;
     if (paths <= m_capacity && slots <= m_shadowSlots && (!nested || m_nestedReserved))
         return true;
@@ -915,6 +917,7 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
         field(r.filterSeed, n);
         field(r.rayType, n);
         r.count = m_counts.as<uint32_t>() + countSlot;
+        r.capacity = uint32_t(n);
     };
     GpuWave &w = m_wave;
     field(w.pixel, paths);
@@ -957,7 +960,10 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     // Up to two light samples per path and depth: at the hit or volume
     // event, and an equiangular one along the ray's medium segment; with
     // subsurface walks a third at a walk's exit; with shadow-linked domes
-    // one more, a dome's BSDF sample at the event or the exit (path.h).
+    // one more, a dome's BSDF sample at the event or the exit (path.h); with
+    // the atmosphere's ground shadowed one at the ground (one per path: the
+    // shadow kernel's runs, kernel_types.h shadowSlot). A push past the
+    // budget is dropped (pushRay).
     const size_t shadows = size_t(paths) * slots;
     rays(w.shadow, 2, shadows);
     field(w.shadowContribution, shadows);
@@ -1038,8 +1044,9 @@ bool GpuRenderer::uploadLpe(const LpeTables &tables, uint64_t generation) {
 
 bool GpuRenderer::reserveLpe(uint32_t paths) {
     // Per shadow ray its parts' range, as many rays as the shadow queue holds
-    // (reserveWave ran first: m_shadowSlots per path, 2 to 4 with walks and
-    // shadow-linked domes); up to 4 parts per shadow ray on average, more are
+    // (reserveWave ran first: m_shadowSlots per path, 2 to 5 with walks,
+    // shadow-linked domes and the atmosphere's ground); up to 4 parts per
+    // shadow ray on average, more are
     // dropped (lpe_path.h).
     const size_t rays = size_t(paths) * m_shadowSlots;
     if (paths > m_lpeCapacity || rays > m_lpeRayCapacity) {
@@ -1187,6 +1194,7 @@ bool GpuRenderer::reserveFake(uint32_t paths) {
         r.filterSeed = b[5].as<float>();
         r.rayType = b[6].as<uint8_t>();
         r.count = m_counts.as<uint32_t>() + 5 + q;
+        r.capacity = m_fakeCapacity;
     }
     return true;
 }
@@ -1524,6 +1532,11 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             }
             if (view.shadowDomeCount > 0) { // shadow-linked domes' BSDF samples: a fourth run
                 sh.slot = 3;
+                if (!launch(m_shadow, shadows, &sh))
+                    return false;
+            }
+            if (groundShadows()) { // the sky atmosphere's ground's (shadeGround): a fifth run
+                sh.slot = 4;
                 if (!launch(m_shadow, shadows, &sh))
                     return false;
             }

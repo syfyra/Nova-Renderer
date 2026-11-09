@@ -322,3 +322,61 @@ TEST_CASE("A resumed checkpoint equals the uninterrupted render", "[render][chec
     CHECK(!mismatch.loadCheckpoint(bytes.data(), bytes.size()));
     CHECK(!resumed.loadCheckpoint(bytes.data(), bytes.size() - 1));
 }
+
+// A checkpoint resumes only into the same planes: a plane of the same kind
+// but another source (a primvar's name, an LPE output, holdout prefixes, the
+// default value, a cryptomatte's primvar, the deep map's settings) is
+// another plane.
+TEST_CASE("Checkpoints refuse other planes of the same kind", "[render][checkpoint]") {
+    using U = UtilityKind;
+    using F = SampleFilter;
+    const auto film = [](const std::vector<UtilityRequest> &utility, const std::vector<CryptoRequest> &crypto,
+                         const DeepRequest *deep) {
+        Film f;
+        f.resize(4, 4);
+        f.setLpeOutputs(2);
+        f.setUtility(utility);
+        f.setCrypto(crypto);
+        f.setDeep(deep);
+        return f;
+    };
+    const UtilityRequest primvar{U::Primvar, "Cd", F::Box};
+    UtilityRequest lpe{U::Lpe, "C.*L", F::Accumulate};
+    lpe.index = 0;
+    const CryptoRequest crypto{CryptoSource::Primvar, "name"};
+    DeepRequest deep;
+    deep.extras = {{U::Primvar, "a"}};
+    Film saved = film({primvar, lpe}, {crypto}, &deep);
+    saved.colorSum[3] = Spectrum{1.0f, 2.0f, 3.0f};
+    std::vector<uint8_t> bytes;
+    saved.save(bytes);
+    {
+        Film same = film({primvar, lpe}, {crypto}, &deep);
+        REQUIRE(same.load(bytes.data(), bytes.size()));
+        CHECK(same.colorSum[3].y == 2.0f);
+    }
+    const auto refused = [&](std::vector<UtilityRequest> utility, std::vector<CryptoRequest> cryptos,
+                             const DeepRequest &d) {
+        Film other = film(utility, cryptos, &d);
+        return !other.load(bytes.data(), bytes.size());
+    };
+    UtilityRequest r = primvar;
+    r.name = "N";
+    CHECK(refused({r, lpe}, {crypto}, deep));
+    r = primvar;
+    r.defaultValue = 1.0f;
+    CHECK(refused({r, lpe}, {crypto}, deep));
+    r = primvar;
+    r.holdouts = 1;
+    CHECK(refused({r, lpe}, {crypto}, deep));
+    r = lpe;
+    r.index = 1;
+    CHECK(refused({primvar, r}, {crypto}, deep));
+    CHECK(refused({primvar, lpe}, {CryptoRequest{CryptoSource::Primvar, "path"}}, deep));
+    DeepRequest d = deep;
+    d.extras = {{U::Primvar, "b"}};
+    CHECK(refused({primvar, lpe}, {crypto}, d));
+    d = deep;
+    d.zbias = 0.5f;
+    CHECK(refused({primvar, lpe}, {crypto}, d));
+}

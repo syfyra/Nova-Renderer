@@ -38,6 +38,7 @@
 using namespace nova;
 using namespace nova::test;
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 
 namespace {
 
@@ -2149,4 +2150,326 @@ TEST_CASE("XPU sky atmosphere", "[gpu][render][atmosphere]") {
         ga += gpu.film.alphaSum[i] / gpu.film.count[i];
     }
     CHECK_THAT(ga, WithinAbs(ca, 1e-3 * ca));
+}
+
+// --- M11 review (docs/bug-audit-2026-11.md, section 8) ----------------------
+
+namespace {
+
+// Karma's default planet (+Z up, the origin 100 m above sea level), its
+// ground visible to every ray.
+std::shared_ptr<AtmosphereDesc> reviewAtmosphere(bool absorbingOnly) {
+    auto d = std::make_shared<AtmosphereDesc>();
+    d->center[0] = 0.0;
+    d->center[1] = 0.0;
+    d->center[2] = -6371000.0;
+    d->seaLevel = 6370900.0;
+    d->groundVisibility = kVisibleAll;
+    d->groundAlbedo = Spectrum{0.5f, 0.3f, 0.2f};
+    if (absorbingOnly) {
+        d->rayleigh = spectrum(0.0f);
+        d->mieScatter = spectrum(0.0f);
+        d->mieAbsorb = Spectrum{3e-5f, 6e-5f, 1e-4f};
+    }
+    return d;
+}
+
+void reviewAddAtmosphere(Scene &scene, std::shared_ptr<AtmosphereDesc> desc) {
+    VolumeDesc v;
+    v.atmosphere = std::move(desc);
+    scene.updateVolume(scene.createVolume(), v);
+}
+
+void reviewAddSun(Scene &scene, float altDeg, float azDeg, float intensity) {
+    const float a = altDeg * kPi / 180.0f, z = azDeg * kPi / 180.0f;
+    LightDesc sun;
+    sun.type = LightType::Distant;
+    sun.normalize = true;
+    sun.angleDeg = 0.0f;
+    sun.intensity = intensity;
+    const Frame f = Frame::fromNormal({std::sin(z) * std::cos(a), std::cos(z) * std::cos(a), std::sin(a)});
+    const Vec3f axes[3] = {f.t, f.b, f.n};
+    for (int r = 0; r < 3; ++r) {
+        sun.transform.m[r][0] = axes[r].x;
+        sun.transform.m[r][1] = axes[r].y;
+        sun.transform.m[r][2] = axes[r].z;
+    }
+    scene.updateLight(scene.createLight(), sun);
+}
+
+// A shell box of constant coefficients (a light source with `light`).
+void reviewMediumBox(Scene &scene, Vec3f lo, Vec3f hi, Spectrum absorption, Spectrum scattering,
+                     Spectrum emission = spectrum(0.0f), bool light = false) {
+    using namespace shading;
+    IrGraph g;
+    IrBuilder b(g);
+    const auto field = [](uint16_t f) { return uint16_t(volume_field::kBase + f); };
+    b.output(field(volume_field::scattering), 3, b.constant(scattering.x, scattering.y, scattering.z));
+    b.output(field(volume_field::absorption), 3, b.constant(absorption.x, absorption.y, absorption.z));
+    b.output(field(volume_field::emission), 3, b.constant(emission.x, emission.y, emission.z));
+    MaterialDesc m;
+    m.program = compile(g).program;
+    MeshDesc c = box(lo, hi);
+    VolumeDesc v;
+    v.shell = makeTriangleShell(c.points.data(), c.pointCount(), c.indices.data(), c.triangleCount());
+    v.material = scene.createMaterial();
+    v.light = light;
+    scene.updateMaterial(v.material, m);
+    const VolumeId id = scene.createVolume();
+    scene.updateVolume(id, v);
+    scene.updateVolumeMotion(id, {Mat4::identity()});
+}
+
+Spectrum reviewMean(const Film &film) {
+    Spectrum s{0.0f, 0.0f, 0.0f};
+    for (size_t i = 0; i < film.colorSum.size(); ++i)
+        s += film.colorSum[i] / float(film.count[i]);
+    return s / float(film.colorSum.size());
+}
+
+} // namespace
+
+// The sky atmosphere's visible ground on the XPU: several suns with
+// groundreceiveshadow (one shadow ray per path and slot: the ground picks a
+// sun; before, one slot-0 ray per sun raced on the path's radiance and
+// overran the shadow queue), a fog box half behind the ground (it neither
+// dims the ground nor takes paths), and a volume light in front of it (rays
+// that only gather lights still collect it): the CPU's images.
+TEST_CASE("XPU atmosphere ground with several suns and volumes", "[gpu][render][atmosphere]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 0.0f}, 0.1f, 4, 4);
+    SECTION("several suns with groundreceiveshadow") {
+        Scene scene;
+        auto desc = reviewAtmosphere(true);
+        desc->groundShadows = true;
+        reviewAddAtmosphere(scene, desc);
+        reviewAddSun(scene, 40.0f, 0.0f, 1.0f);
+        reviewAddSun(scene, 40.0f, 120.0f, 0.5f);
+        reviewAddSun(scene, 40.0f, 240.0f, 2.0f);
+        reviewAddSun(scene, 25.0f, 60.0f, 1.0f);
+        reviewAddSun(scene, 60.0f, 200.0f, 1.5f);
+        reviewAddSun(scene, -10.0f, 90.0f, 3.0f);
+        scene.commit();
+        const Render cpu = render(scene, camera, 4, 4, 256, RenderDevice::Cpu, 4);
+        const Render gpu = render(scene, camera, 4, 4, 256, RenderDevice::Xpu, 4);
+        REQUIRE(gpu.gpu);
+        const Spectrum a = reviewMean(cpu.film), b = reviewMean(gpu.film);
+        INFO("CPU " << a.x << " " << a.y << " " << a.z << ", XPU " << b.x << " " << b.y << " " << b.z);
+        for (int c = 0; c < 3; ++c)
+            CHECK_THAT(double(b[c]), WithinRel(double(a[c]), 1e-3));
+        // Two XPU renders are bit-identical (no race on the radiance).
+        const Render again = render(scene, camera, 4, 4, 256, RenderDevice::Xpu, 4);
+        CHECK(std::memcmp(again.film.colorSum.data(), gpu.film.colorSum.data(),
+                          gpu.film.colorSum.size() * sizeof(Spectrum)) == 0);
+    }
+    SECTION("a fog box half behind the ground") {
+        Scene scene;
+        reviewAddAtmosphere(scene, reviewAtmosphere(true));
+        reviewAddSun(scene, 40.0f, 0.0f, 1.0f);
+        reviewMediumBox(scene, {-5.0f, -5.0f, -110.0f}, {5.0f, 5.0f, -90.0f}, spectrum(0.05f), spectrum(0.0f));
+        scene.commit();
+        const Render cpu = render(scene, camera, 4, 4, 1024, RenderDevice::Cpu, 1);
+        const Render gpu = render(scene, camera, 4, 4, 1024, RenderDevice::Xpu, 1);
+        REQUIRE(gpu.gpu);
+        const Spectrum a = reviewMean(cpu.film), b = reviewMean(gpu.film);
+        INFO("CPU " << a.x << " " << a.y << " " << a.z << ", XPU " << b.x << " " << b.y << " " << b.z);
+        for (int c = 0; c < 3; ++c)
+            CHECK_THAT(double(b[c]), WithinRel(double(a[c]), 0.01));
+    }
+    SECTION("a volume light in front of the ground") {
+        Scene scene;
+        auto desc = reviewAtmosphere(true);
+        desc->mieAbsorb = spectrum(0.0f);
+        desc->ozone = spectrum(0.0f);
+        reviewAddAtmosphere(scene, desc);
+        reviewMediumBox(scene, {-1.0f, -1.0f, -60.0f}, {1.0f, 1.0f, -40.0f}, spectrum(0.0f), spectrum(0.0f),
+                        Spectrum{0.1f, 0.05f, 0.025f}, true);
+        scene.commit();
+        RenderSettings base;
+        base.clampDirect = 0.0f;
+        const Render gpu = render(scene, camera, 4, 4, 64, RenderDevice::Xpu, 0, false, base);
+        REQUIRE(gpu.gpu);
+        const Spectrum b = reviewMean(gpu.film);
+        INFO("XPU " << b.x << " " << b.y << " " << b.z);
+        CHECK_THAT(double(b.x), WithinRel(2.0, 0.01));
+        CHECK_THAT(double(b.z), WithinRel(0.5, 0.01));
+    }
+}
+
+// Light and BSDF sampling agree on the XPU where (a) lights past a surface
+// that shadow rays do not see are lit through the volumes behind it (the
+// light query), and (b) constrain-roughness meets a fake-caustic
+// pass-through (the clamp leaves its transmittance as the shadow rays'); and
+// (c) the CPU's light samples of an emitter whose emission reads the render
+// camera's NDC position match the XPU's.
+TEST_CASE("XPU light and BSDF samples agree past shadow-invisible surfaces and fake caustics", "[gpu][render][mis]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    SECTION("lights past a shadow-invisible surface, fog behind it") {
+        Scene scene;
+        MeshDesc ground = makeQuad(4.0f);
+        ground.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), ground);
+        MeshDesc ceiling = makeQuad(4.0f);
+        ceiling.transform = translation({0.0f, 0.0f, 1.0f});
+        ceiling.setDisplayColor(spectrum(0.0f));
+        const MeshId c = scene.createMesh();
+        scene.updateMesh(c, ceiling);
+        ObjectVisibility v;
+        v.mask = int16_t(kVisibleAll & ~kVisibleShadow);
+        scene.setMeshVisibility(c, v);
+        reviewMediumBox(scene, {-4.0f, -4.0f, 1.0f}, {4.0f, 4.0f, 2.0f}, spectrum(0.7f), spectrum(0.0f));
+        LightDesc rect;
+        rect.type = LightType::Rect;
+        rect.width = rect.height = 2.0f;
+        rect.transform = translation({0.0f, 0.0f, 2.0f});
+        scene.updateLight(scene.createLight(), rect);
+        scene.commit();
+        const Camera camera = makeOrthoCamera({0.0f, 0.0f, 0.5f}, 0.5f, 8, 8);
+        RenderSettings base;
+        base.clampIndirect = 0.0f;
+        base.lightStrategy = LightStrategy::LightOnly;
+        const Render light = render(scene, camera, 8, 8, 1024, RenderDevice::Xpu, 1, false, base);
+        base.lightStrategy = LightStrategy::BsdfOnly;
+        const Render bsdf = render(scene, camera, 8, 8, 1024, RenderDevice::Xpu, 1, false, base);
+        REQUIRE(light.gpu);
+        const double l = luminanceMean(light.film), b = luminanceMean(bsdf.film);
+        INFO("light samples " << l << ", BSDF samples " << b);
+        CHECK_THAT(b / l, WithinAbs(1.0, 0.03));
+    }
+    SECTION("constrained roughness through fake-caustic glass") {
+        Scene scene;
+        scene.setDefaultFakeCaustics(true);
+        MeshDesc ground = makeQuad(4.0f);
+        ground.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), ground);
+        const auto glassPlane = [&](float z, float roughness, Spectrum tint, bool thin) {
+            MeshDesc m = makeQuad(4.0f);
+            m.transform = translation({0.0f, 0.0f, z});
+            const MeshId id = scene.createMesh();
+            scene.updateMesh(id, m);
+            MaterialDesc d;
+            d.inputs = standardSurfaceDefaults();
+            d.inputs.set(surface_field::baseWeight, 0.0f);
+            d.inputs.set(surface_field::transmissionWeight, 1.0f);
+            d.inputs.set(surface_field::transmissionColor, tint);
+            d.inputs.set(surface_field::specularRoughness, roughness);
+            d.inputs.set(surface_field::thinWalled, thin ? 1.0f : 0.0f);
+            const MaterialId mat = scene.createMaterial();
+            scene.updateMaterial(mat, d);
+            scene.setMeshMaterials(id, {mat});
+        };
+        glassPlane(0.3f, 1.0f, spectrum(1.0f), true);
+        glassPlane(0.5f, 0.0f, {1.0f, 0.5f, 0.25f}, false);
+        LightDesc rect; // a uniform dome is not light-sampled
+        rect.type = LightType::Rect;
+        rect.width = rect.height = 6.0f;
+        rect.transform = translation({0.0f, 0.0f, 1.5f});
+        scene.updateLight(scene.createLight(), rect);
+        scene.commit();
+        const Camera camera = makeOrthoCamera({0.0f, 0.0f, 0.4f}, 0.75f, 8, 8);
+        RenderSettings base;
+        base.clampIndirect = 0.0f;
+        base.constrainRoughness = true;
+        RayLimits limits;
+        limits.limit[int(LimitClass::Diffuse)] = 0.0f;
+        base.limits = limits;
+        base.lightStrategy = LightStrategy::LightOnly;
+        const Render light = render(scene, camera, 8, 8, 512, RenderDevice::Xpu, 8, false, base);
+        base.lightStrategy = LightStrategy::BsdfOnly;
+        const Render bsdf = render(scene, camera, 8, 8, 512, RenderDevice::Xpu, 8, false, base);
+        REQUIRE(light.gpu);
+        const double l = luminanceMean(light.film), b = luminanceMean(bsdf.film);
+        INFO("light samples " << l << ", BSDF samples " << b);
+        CHECK_THAT(b / l, WithinAbs(1.0, 0.02));
+    }
+    SECTION("an emitter whose emission reads the camera's NDC position") {
+        using namespace shading;
+        Scene scene;
+        MeshDesc ground = makeQuad(4.0f);
+        ground.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), ground);
+        MeshDesc q = makeQuad(1.0f);
+        q.transform = translation({0.0f, 0.0f, 1.0f});
+        const MeshId id = scene.createMesh();
+        scene.updateMesh(id, q);
+        IrGraph graph;
+        graph.model = SurfaceModel::StandardSurface;
+        IrBuilder b(graph);
+        const Ref seen = b.binary(Op::GreaterEq, b.component(b.global(Global::Pndc), 2), b.constant(1e-3f));
+        b.output(surface_field::emissionColor, 3, b.convert(b.add(b.constant(1.0f), b.mul(b.constant(2.0f), seen)), 3));
+        MaterialDesc m;
+        m.inputs = standardSurfaceDefaults();
+        m.inputs.set(surface_field::baseWeight, 0.0f);
+        m.inputs.set(surface_field::specularWeight, 0.0f);
+        m.inputs.set(surface_field::emissionWeight, 1.0f);
+        m.program = compile(graph).program;
+        const MaterialId mid = scene.createMaterial();
+        scene.updateMaterial(mid, m);
+        scene.setMeshMaterials(id, {mid});
+        MeshLightSource treat;
+        treat.mode = 1;
+        scene.setMeshLightSource(id, treat);
+        scene.commit();
+        const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 2.0f, 16, 16);
+        RenderSettings base;
+        base.clampIndirect = 0.0f;
+        base.lightStrategy = LightStrategy::LightOnly;
+        const Render cpu = render(scene, camera, 16, 16, 256, RenderDevice::Cpu, 1, false, base);
+        const Render gpu = render(scene, camera, 16, 16, 256, RenderDevice::Xpu, 1, false, base);
+        REQUIRE(gpu.gpu);
+        const double a = luminanceMean(cpu.film), g = luminanceMean(gpu.film);
+        INFO("CPU " << a << ", XPU " << g);
+        CHECK_THAT(g, WithinRel(a, 0.01));
+    }
+}
+
+// Per-sample records on the XPU take the sample numbers the device used,
+// over several passes without the film read in between: Even and Odd sample
+// filters and the pixel-samples var match the CPU's.
+TEST_CASE("XPU per-sample records over several passes", "[gpu][render][aov]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    cornellBox(scene);
+    const Camera camera = makePerspectiveCamera({0.0f, 1.0f, 3.6f}, 0.05, 0.036, 24, 24);
+    using U = UtilityKind;
+    using F = SampleFilter;
+    const auto run = [&](RenderDevice device) {
+        Renderer renderer;
+        RenderSettings s;
+        s.device = device;
+        s.maxSamples = 24;
+        s.maxDepth = 2;
+        s.utility = std::make_shared<const std::vector<UtilityRequest>>(std::vector<UtilityRequest>{
+            {U::Z, {}, F::Even}, {U::Z, {}, F::Odd}, {U::P, {}, F::Odd}, {U::PixelSamples, {}, F::Max},
+            {U::PixelSamples, {}, F::Even}});
+        renderer.setScene(&scene);
+        renderer.setSettings(s);
+        renderer.setCamera(camera);
+        renderer.resize(24, 24);
+        bool gpu = true;
+        int passes = 0;
+        for (; !renderer.converged(); ++passes) {
+            renderer.renderPass({});
+            gpu = gpu && renderer.lastPassOnGpu();
+        }
+        CHECK(passes > 2);
+        CHECK(gpu == (device == RenderDevice::Xpu));
+        return renderer.film();
+    };
+    const Film cpu = run(RenderDevice::Cpu), xpu = run(RenderDevice::Xpu);
+    REQUIRE(cpu.utility.size() == xpu.utility.size());
+    for (size_t k = 0; k < cpu.utility.size(); ++k) {
+        const UtilityPlane &a = cpu.utility[k], &b = xpu.utility[k];
+        size_t far = 0;
+        for (size_t i = 0; i < a.data.size(); ++i)
+            far += std::fabs(a.data[i] - b.data[i]) > 1e-3f * std::max(1.0f, std::fabs(a.data[i]));
+        INFO("plane " << k);
+        CHECK(far <= a.data.size() / 200);
+    }
 }

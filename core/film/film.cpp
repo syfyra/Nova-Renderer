@@ -398,7 +398,8 @@ void Film::clear() {
 
 namespace {
 
-constexpr char kFilmMagic[8] = {'N', 'O', 'V', 'A', 'F', 'L', 'M', '1'};
+// Version 2: each plane's key holds its whole request (planeKey).
+constexpr char kFilmMagic[8] = {'N', 'O', 'V', 'A', 'F', 'L', 'M', '2'};
 
 struct Writer {
     std::vector<uint8_t> &out;
@@ -407,6 +408,11 @@ struct Writer {
         out.insert(out.end(), b, b + n);
     }
     void u64(uint64_t v) { bytes(&v, sizeof(v)); }
+    void f32(float v) { bytes(&v, sizeof(v)); }
+    void str(const std::string &s) {
+        u64(s.size());
+        bytes(s.data(), s.size());
+    }
     template <typename T>
     void array(const std::vector<T> &v) {
         u64(v.size());
@@ -414,6 +420,42 @@ struct Writer {
             bytes(v.data(), v.size() * sizeof(T));
     }
 };
+
+// What tells planes of one kind apart (a checkpoint resumes only into the
+// same planes): a utility plane's kind, filter, width, source name, LPE
+// output, holdout prefixes and default value; a cryptomatte's source and
+// primvar; the deep map's settings and extras.
+void utilityKey(Writer &w, const UtilityRequest &r, uint8_t width) {
+    w.u64(uint64_t(r.kind) | uint64_t(r.filter) << 8 | uint64_t(width) << 16 | uint64_t(r.holdouts) << 24);
+    w.u64(uint64_t(int64_t(r.index)));
+    w.f32(r.defaultValue);
+    w.str(r.name);
+}
+std::vector<uint8_t> planeKey(const UtilityPlane &p) {
+    std::vector<uint8_t> key;
+    Writer w{key};
+    utilityKey(w, p.request, p.width);
+    return key;
+}
+std::vector<uint8_t> planeKey(const CryptoPlane &p) {
+    std::vector<uint8_t> key;
+    Writer w{key};
+    w.u64(uint64_t(p.request.source));
+    w.str(p.request.primvar);
+    return key;
+}
+std::vector<uint8_t> planeKey(const DeepPlane &p) {
+    std::vector<uint8_t> key;
+    Writer w{key};
+    const DeepRequest &r = p.request;
+    w.u64(p.stride);
+    w.f32(r.zbias);
+    w.u64(uint64_t(int64_t(r.compression)) ^ uint64_t(r.hitDistance) << 62 ^ uint64_t(r.excludeHoldouts) << 63);
+    w.u64(r.extras.size());
+    for (const UtilityRequest &e : r.extras)
+        utilityKey(w, e, utilityWidth(e.kind));
+    return key;
+}
 
 struct Reader {
     const uint8_t *p;
@@ -438,6 +480,11 @@ struct Reader {
             return ok = false;
         v.resize(expected);
         return expected == 0 || bytes(v.data(), expected * sizeof(T));
+    }
+    // Reads a plane's key: true if it equals `key` (planeKey).
+    bool key(const std::vector<uint8_t> &key) {
+        std::vector<uint8_t> k;
+        return array(k, key.size()) && k == key;
     }
 };
 
@@ -464,19 +511,19 @@ void Film::save(std::vector<uint8_t> &out) const {
     w.array(lpeLit);
     w.u64(utility.size());
     for (const UtilityPlane &p : utility) {
-        w.u64(uint64_t(p.request.kind) | uint64_t(p.request.filter) << 8 | uint64_t(p.width) << 16);
+        w.array(planeKey(p));
         w.array(p.data);
         w.array(p.aux);
     }
     w.u64(crypto.size());
     for (const CryptoPlane &p : crypto) {
-        w.u64(uint64_t(p.request.source));
+        w.array(planeKey(p));
         w.array(p.ids);
         w.array(p.weights);
     }
     w.u64(deep.size());
     for (const DeepPlane &p : deep) {
-        w.u64(p.stride);
+        w.array(planeKey(p));
         for (const std::vector<float> &list : p.pixels)
             w.array(list);
     }
@@ -508,7 +555,7 @@ bool Film::load(const uint8_t *data, size_t size) {
     if (r.u64() != utility.size())
         return false;
     for (UtilityPlane &p : f.utility) {
-        if (r.u64() != (uint64_t(p.request.kind) | uint64_t(p.request.filter) << 8 | uint64_t(p.width) << 16))
+        if (!r.key(planeKey(p)))
             return false;
         r.array(p.data, p.data.size());
         r.array(p.aux, p.aux.size());
@@ -516,7 +563,7 @@ bool Film::load(const uint8_t *data, size_t size) {
     if (r.u64() != crypto.size())
         return false;
     for (CryptoPlane &p : f.crypto) {
-        if (r.u64() != uint64_t(p.request.source))
+        if (!r.key(planeKey(p)))
             return false;
         r.array(p.ids, p.ids.size());
         r.array(p.weights, p.weights.size());
@@ -524,7 +571,7 @@ bool Film::load(const uint8_t *data, size_t size) {
     if (r.u64() != deep.size())
         return false;
     for (DeepPlane &p : f.deep) {
-        if (r.u64() != p.stride)
+        if (!r.key(planeKey(p)))
             return false;
         for (std::vector<float> &list : p.pixels) {
             const uint64_t k = r.u64();

@@ -255,6 +255,9 @@ struct GpuRays {
     float *filterSeed = nullptr;
     uint8_t *rayType = nullptr;
     uint32_t *count = nullptr;
+    // The rays the buffers hold: a push past them is dropped (kernels.cu
+    // pushRay), so a miscounted budget cannot write past the buffers.
+    uint32_t capacity = 0xFFFFFFFFu;
 };
 
 // Subsurface walks (pass C'', WaveQueues::Walk): per walk the shading queued
@@ -343,9 +346,9 @@ struct GpuWave {
     float *shadowClamp = nullptr;
     // Per shadow ray its kind (0: the hit's or event's light sample, 1: an
     // equiangular sample, 2: a walk exit's, 3: a shadow-linked dome's BSDF
-    // sample, core/integrator/path.h): the shadow kernel runs once per kind,
-    // so a path adds at most one ray per run (deterministic sums, no
-    // atomics).
+    // sample, core/integrator/path.h, 4: the sky atmosphere's ground's,
+    // chooseGroundLight): the shadow kernel runs once per kind, so a path
+    // adds at most one ray per run (deterministic sums, no atomics).
     uint8_t *shadowSlot = nullptr;
     // The ambient occlusion AOV (M6.4): per path its unoccluded rays, the
     // rays at the camera hits and whether each points below the surface.

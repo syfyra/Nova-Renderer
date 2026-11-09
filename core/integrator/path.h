@@ -143,6 +143,60 @@ NOVA_INLINE uint32_t sampleShadowLinkedDome(const LightData *lights, const uint3
     return domes[last];
 }
 
+// The sky atmosphere's ground with groundreceiveshadow (docs/design/
+// M11-P7.md): a Lambert surface of normal n lit by the distant lights above
+// its horizon, each seen through its own shadow ray (the scene's objects,
+// the volumes and the atmosphere). A path keeps one light sample per event
+// (the GPU runs one shadow ray per path and slot, the CPU's shadow queue
+// holds a few per path), so the ground point takes one of those lights,
+// chosen in proportion to the magnitude of its unshadowed light: with the
+// throughput `beta` (the albedo included) beta E cos / pi times the light's
+// diffuse multiplier (u: a uniform number, read only with several lit
+// lights). Returns the light (kInvalidId: none lights the point) with that
+// light divided by the choice probability in `unit`; one lit light is
+// taken as it is.
+NOVA_INLINE uint32_t chooseGroundLight(const LightData *lights, uint32_t count, Vec3f n, const Spectrum &beta,
+                                       float u, Spectrum &unit) {
+    const auto light = [&](uint32_t i) -> Spectrum {
+        const LightData &l = lights[i];
+        const float cosI = l.type == LightType::Distant ? dot(n, l.direction) : 0.0f;
+        if (!(cosI > 0.0f))
+            return Spectrum{0.0f, 0.0f, 0.0f};
+        const Spectrum E = l.delta ? l.emission : l.emission * (kTwoPi * l.oneMinusCosThetaMax);
+        return beta * E * (cosI * kInvPi * l.diffuse);
+    };
+    float total = 0.0f;
+    uint32_t lit = 0, last = kInvalidId;
+    for (uint32_t i = 0; i < count; ++i) {
+        const float m = maxComponent(absolute(light(i)));
+        if (m > 0.0f) {
+            total += m;
+            ++lit;
+            last = i;
+        }
+    }
+    if (lit == 0 || !(total > 0.0f))
+        return kInvalidId;
+    if (lit == 1) {
+        unit = light(last);
+        return last;
+    }
+    const float target = u * total;
+    float sum = 0.0f;
+    for (uint32_t i = 0; i < count; ++i) {
+        const Spectrum L = light(i);
+        const float m = maxComponent(absolute(L));
+        if (!(m > 0.0f))
+            continue;
+        sum += m;
+        if (target < sum || i == last) { // rounding past the last lit light: that one
+            unit = L * (total / m);
+            return i;
+        }
+    }
+    return kInvalidId;
+}
+
 // The opacity seed of a hit's shadow rays: they decide independently of the
 // ray that found the surface (the same surface may be crossed again).
 NOVA_INLINE float shadowRaySeed(float seed) { return seed + 0.5f - std::floor(seed + 0.5f); }

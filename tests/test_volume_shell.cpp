@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 using namespace nova;
@@ -553,4 +554,123 @@ TEST_CASE("Shell volume lights emit inside their shell only", "[volume][shell][l
     INFO("collisions " << collisions << ", light samples + MIS " << sampled);
     REQUIRE(collisions > 0.0);
     CHECK_THAT(sampled, WithinRel(collisions, 0.04));
+}
+
+namespace {
+
+// `count` unit boxes in a row along +X (box i over x in [3i, 3i + 1]) as
+// one mesh; with `open` the last box lacks its +Z face (an open mesh).
+BoxMesh boxRow(int count, bool open) {
+    BoxMesh row;
+    for (int i = 0; i < count; ++i) {
+        const float x = 3.0f * float(i);
+        const BoxMesh b = boxMesh({x, -0.5f, -0.5f}, {x + 1.0f, 0.5f, 0.5f}, open && i == count - 1);
+        const uint32_t base = uint32_t(row.points.size());
+        row.points.insert(row.points.end(), b.points.begin(), b.points.end());
+        for (const uint32_t v : b.indices)
+            row.indices.push_back(base + v);
+    }
+    return row;
+}
+
+} // namespace
+
+// More crossings along a ray than a shell keeps at once (32): its inside is
+// still exact. Closed: 20 boxes in one mesh (40 crossings; the 17th box and
+// beyond were lost). Open: the same row with one face missing follows the
+// faces' orientation over the whole line, from an origin in the middle of
+// the row (the crossings ahead were dropped for those behind).
+TEST_CASE("Shells with more crossings than they keep at once", "[volume][shell]") {
+    constexpr int kBoxes = 20;
+    for (const bool open : {false, true}) {
+        const BoxMesh row = boxRow(kBoxes, open);
+        const MediumShellPtr shell =
+            makeTriangleShell(row.points.data(), row.points.size(), row.indices.data(), row.indices.size() / 3);
+        REQUIRE(shell);
+        CHECK(shell->view().closed == (open ? 0 : 1));
+        for (const float x0 : {-2.0f, 31.5f}) {
+            INFO((open ? "open" : "closed") << " row from x = " << x0);
+            std::vector<std::pair<float, float>> spans;
+            shellIntervals(shell->view(), {x0, 0.1f, 0.05f}, {1.0f, 0.0f, 0.0f}, 0.0f, 1000.0f,
+                           [&](float a, float b) {
+                               if (!spans.empty() && spans.back().second == a)
+                                   spans.back().second = b; // adjacent intervals (open shells) merge
+                               else
+                                   spans.emplace_back(a, b);
+                           });
+            // The boxes ahead of the origin, each its own interval.
+            std::vector<std::pair<float, float>> expected;
+            for (int i = 0; i < kBoxes; ++i) {
+                const float a = 3.0f * float(i) - x0, b = a + 1.0f;
+                if (b > 0.0f)
+                    expected.emplace_back(std::max(a, 0.0f), b);
+            }
+            REQUIRE(spans.size() == expected.size());
+            for (size_t i = 0; i < spans.size(); ++i) {
+                CHECK_THAT(spans[i].first, WithinAbs(expected[i].first, 1e-4));
+                CHECK_THAT(spans[i].second, WithinAbs(expected[i].second, 1e-4));
+            }
+            // Point queries agree: inside every box, outside between them.
+            for (int i = 0; i < kBoxes; ++i) {
+                const float inside = 3.0f * float(i) + 0.5f - x0, gap = inside + 1.5f;
+                if (inside > 0.0f)
+                    CHECK(shellInsideAt(shell->view(), {x0, 0.1f, 0.05f}, {1.0f, 0.0f, 0.0f}, inside));
+                if (gap > 0.0f)
+                    CHECK(!shellInsideAt(shell->view(), {x0, 0.1f, 0.05f}, {1.0f, 0.0f, 0.0f}, gap));
+            }
+        }
+    }
+}
+
+// Scattered rays find their lights as shadow rays where shadow visibility
+// differs (the light query): past a surface shadow rays do not see, a light
+// is lit through the volumes behind that surface as well, the same as its
+// light samples see it. A ground under a rect light, a ceiling between them
+// that shadow rays pass (black, -shadow), and a fog box between the ceiling
+// and the light: light and BSDF sampling agree.
+TEST_CASE("Lights past a shadow-invisible surface see the volumes behind it", "[volume][shell][visibility][mis]") {
+    const auto render = [](LightStrategy strategy, bool fog) {
+        Scene scene;
+        MeshDesc ground = makeQuad(4.0f);
+        ground.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), ground);
+        MeshDesc ceiling = makeQuad(4.0f);
+        ceiling.transform = translation({0.0f, 0.0f, 1.0f});
+        ceiling.setDisplayColor(spectrum(0.0f));
+        const MeshId c = scene.createMesh();
+        scene.updateMesh(c, ceiling);
+        ObjectVisibility v;
+        v.mask = int16_t(kVisibleAll & ~kVisibleShadow);
+        scene.setMeshVisibility(c, v);
+        if (fog)
+            addShell(scene, boxShell({-4.0f, -4.0f, 1.0f}, {4.0f, 4.0f, 2.0f}),
+                     addMaterial(scene, constantMedium(spectrum(0.0f), spectrum(0.7f))));
+        LightDesc rect; // emits along its -Z: down
+        rect.type = LightType::Rect;
+        rect.width = rect.height = 2.0f;
+        rect.transform = translation({0.0f, 0.0f, 2.0f});
+        scene.updateLight(scene.createLight(), rect);
+        scene.commit();
+        REQUIRE(scene.shadowVisibilityDiffers());
+        Renderer renderer;
+        RenderSettings settings;
+        settings.maxSamples = 1024;
+        settings.maxDepth = 1;
+        settings.clampIndirect = 0.0f;
+        settings.lightStrategy = strategy;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 0.5f}, 0.5f, 8, 8)); // under the ceiling
+        renderer.resize(8, 8);
+        renderToConvergence(renderer);
+        return meanOf(renderer.film(), 0, 0, 8, 8).color.y;
+    };
+    const float clear = render(LightStrategy::LightOnly, false);
+    const float light = render(LightStrategy::LightOnly, true), bsdf = render(LightStrategy::BsdfOnly, true);
+    INFO("light samples " << light << ", BSDF samples " << bsdf << ", without fog " << clear);
+    REQUIRE(clear > 0.0f);
+    // The fog's transmittance: e^-0.7 straight up, less on slanted paths.
+    CHECK(light < float(std::exp(-0.7)) * clear);
+    CHECK(light > float(std::exp(-0.7 * 1.5)) * clear);
+    CHECK_THAT(bsdf / light, WithinAbs(1.0, 0.03));
 }

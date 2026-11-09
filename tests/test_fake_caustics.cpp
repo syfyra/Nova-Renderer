@@ -13,6 +13,7 @@
 
 #include "core/bsdf/fresnel.h"
 #include "core/scene/scene.h"
+#include "core/shading/compiler.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -397,4 +398,79 @@ TEST_CASE("Karma's fake-caustic controls", "[render][causticsfake][karma]") {
     FakeCausticsStyle nova = c;
     nova.karma = false;
     CHECK_THAT(ratio(nova), WithinAbs(0.5 * (1.0 - fresnelDielectric(kCos45, 1.5f)), 1e-4));
+}
+
+// The render camera's NDC position (Karma's space:ndc, Global::Pndc) is
+// known to every shading of a render: also to the shadow rays' crossings of
+// fake-caustic surfaces (before, the CPU evaluated them without a camera,
+// the position 0; the XPU with it). A tint of 1 where the camera sees the
+// point in front of it (depth > 0), else 0, shadows as a constant tint of 1.
+TEST_CASE("Fake-caustic shadows see the render camera", "[render][causticsfake]") {
+    const auto ratio = [](bool ndc) {
+        Setup s(true);
+        s.ground();
+        const MeshId g = s.plane(1.0f, 2.0f, 3.0f, glass());
+        if (ndc) {
+            using namespace shading;
+            IrGraph graph;
+            graph.model = SurfaceModel::StandardSurface;
+            IrBuilder b(graph);
+            const Ref depth = b.component(b.global(Global::Pndc), 2);
+            b.output(sf::transmissionColor, 3, b.convert(b.binary(Op::GreaterEq, depth, b.constant(1e-3f)), 3));
+            MaterialDesc d;
+            d.inputs = glass();
+            d.program = compile(graph).program;
+            REQUIRE(d.program);
+            const MaterialId m = s.scene.createMaterial();
+            s.scene.updateMaterial(m, d);
+            s.scene.setMeshMaterials(g, {m});
+        }
+        s.sun();
+        return s.shadowRatio();
+    };
+    const Spectrum constant = ratio(false), ndc = ratio(true);
+    REQUIRE(constant.x > 0.5f);
+    CHECK_THAT(ndc.x, WithinAbs(constant.x, 1e-5));
+    CHECK_THAT(ndc.z, WithinAbs(constant.z, 1e-5));
+}
+
+// Karma's constrain-roughness keeps a path's glossy roughness for its later
+// events; a fake-caustic pass-through (a path after a diffuse event crossing
+// the glass) must still weigh as its shadow rays do, which have no path
+// roughness: the clamp leaves the pass-through's transmittance alone. The
+// camera looks down through a rough thin sheet (path roughness 1) at a
+// ground under smooth fake-caustic glass and a large rect light (a uniform
+// dome is not light-sampled, both strategies would take its BSDF samples):
+// light and BSDF sampling agree.
+TEST_CASE("Constrained roughness leaves fake-caustic pass-throughs as their shadow rays",
+          "[render][causticsfake][mis]") {
+    auto render = [](LightStrategy strategy) {
+        Setup s(true);
+        s.ground();
+        s.plane(0.3f, -4.0f, 4.0f, glass(1.0f, spectrum(1.0f), true)); // the rough sheet under the camera
+        s.plane(0.5f, -4.0f, 4.0f, glass(0.0f, {1.0f, 0.5f, 0.25f})); // smooth glass over everything
+        LightDesc rect; // emits along its -Z: down
+        rect.type = LightType::Rect;
+        rect.width = rect.height = 6.0f;
+        rect.transform = translation({0.0f, 0.0f, 1.5f});
+        s.scene.updateLight(s.scene.createLight(), rect);
+        s.scene.commit();
+        RenderSettings settings;
+        settings.maxSamples = 512;
+        settings.maxDepth = 8;
+        settings.clampIndirect = 0.0f;
+        settings.pixelFilterScale = 0.0f;
+        settings.lightStrategy = strategy;
+        settings.constrainRoughness = true;
+        RayLimits limits;
+        limits.limit[int(LimitClass::Diffuse)] = 0.0f; // the ground's ray only gathers lights
+        settings.limits = limits;
+        return imageMean(s.scene, settings, makeOrthoCamera({0.0f, 0.0f, 0.4f}, 0.75f, 8, 8));
+    };
+    const Spectrum light = render(LightStrategy::LightOnly), bsdf = render(LightStrategy::BsdfOnly);
+    INFO("light " << light.x << " " << light.y << " " << light.z << ", BSDF " << bsdf.x << " " << bsdf.y << " "
+                  << bsdf.z);
+    REQUIRE(light.x > 0.0f);
+    CHECK_THAT(bsdf.x / light.x, WithinAbs(1.0, 0.02));
+    CHECK_THAT(bsdf.z / light.z, WithinAbs(1.0, 0.02));
 }

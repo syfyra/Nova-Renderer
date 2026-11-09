@@ -726,7 +726,9 @@ NOVA_INLINE float atmosphereRayEnd(const AtmosphereView &a, const AtmosphereRay 
 }
 
 // trackMedia with the atmosphere: the transmittance of the volumes (ratio
-// tracking) times the atmosphere's; zero where a visible ground blocks.
+// tracking) times the atmosphere's; zero where a visible ground blocks. The
+// volumes are tracked up to a visible ground: the lights crossed and the
+// emission gathered in front of it count.
 template <class Media, class Spans, class Actives>
 NOVA_INLINE Spectrum trackAtmosphere(Media &media, Spans &spans, Actives &active, const MediumRay &ray, float u0,
                                      Rng &rng, EmissionGather *gather, const float *crossT = nullptr,
@@ -739,8 +741,8 @@ NOVA_INLINE Spectrum trackAtmosphere(Media &media, Spans &spans, Actives &active
     float groundT = kInf;
     bool ground = false;
     const float end = atmosphereRayEnd(*a, r, ray, groundT, ground);
-    if (ground && crossCount == 0)
-        return Spectrum{0.0f, 0.0f, 0.0f};
+    if (ground && crossCount == 0 && (!gather || media.activeCount() == 0))
+        return Spectrum{0.0f, 0.0f, 0.0f}; // nothing reaches past the ground, nothing to collect in front
     AtmosphereSegment seg;
     float s0 = 0.0f, s1 = 0.0f;
     if (atmosphereShell(*a, r, end, s0, s1))
@@ -754,7 +756,10 @@ NOVA_INLINE Spectrum trackAtmosphere(Media &media, Spans &spans, Actives &active
     outer.ground = ground ? groundT : kInf;
     Spectrum T{1.0f, 1.0f, 1.0f};
     if (media.activeCount() > 0) {
-        T = trackMedia(media, spans, active, ray, u0, rng, gather, crossT, crossOut, crossCount, outer);
+        MediumRay vr = ray;
+        if (ground)
+            vr.tEnd = groundT;
+        T = trackMedia(media, spans, active, vr, u0, rng, gather, crossT, crossOut, crossCount, outer);
     } else {
         for (int i = 0; i < crossCount; ++i)
             crossOut[i] = outer(crossT[i]);
@@ -822,9 +827,11 @@ NOVA_INLINE MediumFlight flyAtmosphere(Media &media, Spans &spans, Actives &acti
         *alphaT *= X;
     };
     if (volumes) {
+        // The volumes end at a visible ground: nothing behind it scatters,
+        // dims what reaches the ground or counts for alpha.
+        const float volumeEnd = ground ? groundT : ray.tEnd;
         MediumRay vr = ray;
-        if (attempt)
-            vr.tEnd = ta;
+        vr.tEnd = attempt ? ta : volumeEnd;
         f = flyMedia(media, spans, active, parts, vr, beta, u0, rng, gather, alphaT, crossT, crossOut, crossCount,
                      alphaV, outer);
         if (f.scattered) {
@@ -832,10 +839,10 @@ NOVA_INLINE MediumFlight flyAtmosphere(Media &media, Spans &spans, Actives &acti
             if (alphaT) {
                 // The volumes' opacity past the flight's end (flyMedia tracks
                 // it up to vr.tEnd), then the atmosphere's.
-                if (vr.tEnd < ray.tEnd) {
+                if (vr.tEnd < volumeEnd) {
                     MediumRay rest = ray;
                     rest.o = ray.o + ray.d * vr.tEnd;
-                    rest.tEnd = ray.tEnd - vr.tEnd;
+                    rest.tEnd = volumeEnd - vr.tEnd;
                     layer(trackMedia(media, spans, active, rest, rng.next(), rng, nullptr));
                 }
                 layer(ground ? Spectrum{0.0f, 0.0f, 0.0f} : Tend);
@@ -843,10 +850,10 @@ NOVA_INLINE MediumFlight flyAtmosphere(Media &media, Spans &spans, Actives &acti
             return f;
         }
         Fv = f.weight;
-        if (alphaT && attempt && ta < ray.tEnd) {
+        if (alphaT && attempt && ta < volumeEnd) {
             MediumRay rest = ray;
             rest.o = ray.o + ray.d * ta;
-            rest.tEnd = ray.tEnd - ta;
+            rest.tEnd = volumeEnd - ta;
             layer(trackMedia(media, spans, active, rest, rng.next(), rng, nullptr));
         }
     } else {
