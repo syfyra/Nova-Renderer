@@ -323,7 +323,8 @@ void HdNovaComputeInstances(HdSceneDelegate *sd, SdfPath const &id, HdNovaInstan
                       std::vector<nova::SrtTransform> &keys, uint32_t &steps) {
     HdNovaTransformSamples prototypeXf;
     HdNovaSampleTransformSamples(sd, id, shutter, &prototypeXf);
-    const unsigned n = std::max(instancer.GetMotionStepCount(maxSteps), prototypeXf.StepCount(shutter, maxSteps));
+    const unsigned n =
+        std::max(instancer.GetMotionStepCount(shutter, maxSteps), prototypeXf.StepCount(shutter, maxSteps));
     steps = 1;
     if (n > 1) {
         std::vector<GfMatrix4d> xf;
@@ -331,7 +332,7 @@ void HdNovaComputeInstances(HdSceneDelegate *sd, SdfPath const &id, HdNovaInstan
         bool moving = false;
         for (unsigned s = 0; s < n; ++s) {
             const float t = shutter.TimeAt(float(s) / float(n - 1));
-            instancer.ComputeInstanceTransformsAt(id, prototypeXf.At(t), t, xf);
+            instancer.ComputeInstanceTransformsAt(id, prototypeXf.At(t), shutter, t, xf);
             if (s == 0) {
                 count = xf.size();
                 keys.resize(count * n);
@@ -354,7 +355,7 @@ void HdNovaComputeInstances(HdSceneDelegate *sd, SdfPath const &id, HdNovaInstan
         }
         keys.clear();
     }
-    instancer.ComputeInstanceTransforms(id, prototypeXf.At(shutter.FrameOffset()), instances);
+    instancer.ComputeInstanceTransforms(id, prototypeXf.At(shutter.FrameOffset()), shutter, instances);
 }
 
 int HdNovaMesh::_ResolveSubdivLevel(HdNovaRenderParam const &param) const {
@@ -921,6 +922,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         if (_meshId != nova::kInvalidId) {
             param->AcquireSceneForEdit().removeMesh(_meshId);
             _meshId = nova::kInvalidId;
+            param->ForgetMeshPath(id); // no scene mesh to bake
         }
         param->ForgetDisplacedMesh(id);
         if (_medium.Active())
@@ -956,7 +958,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
             const bool shellDirty = fresh || newShutter || (bits & (HdChangeTracker::DirtyTopology | HdChangeTracker::DirtyPoints));
             _medium.Sync(sd, *param, id, GetMaterialId(), IsVisible(), GetPrimId(),
                          shellDirty ? _BuildShell(sd, *param) : nullptr,
-                         fresh || newShutter || (bits & HdChangeTracker::DirtyTransform));
+                         fresh || newShutter || (bits & HdChangeTracker::DirtyTransform), shutter);
         }
         _sampledShutter = shutter;
         _sampledMaxSteps = maxSteps;
@@ -1043,8 +1045,12 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         param->ForgetDisplacedMesh(id);
 
     const bool categoriesDirty = bits & HdChangeTracker::DirtyCategories;
+    // Settings that can change without a change of the prim's primvars (the
+    // render settings' per-object defaults, docs/design/M11-P1.md); a change
+    // of its own primvars rebuilds the geometry (_GeometryUnchanged).
+    const bool settingsDirty = !(_lightSource == _appliedLightSource) || _lpeTag != _appliedLpeTag;
     if (!(geometryDirty || instancesDirty || visibilityDirty || primIdDirty || materialsDirty || limitsDirty ||
-          categoriesDirty)) {
+          categoriesDirty || settingsDirty)) {
         *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
         return; // nothing that affects the image: keep rendering
     }
@@ -1060,7 +1066,6 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     if (instancesDirty && instanced) {
         auto *instancer = static_cast<HdNovaInstancer *>(sd->GetRenderIndex().GetInstancer(GetInstancerId()));
         if (TF_VERIFY(instancer)) {
-            instancer->SyncShutter(shutter);
             HdNovaComputeInstances(sd, id, *instancer, shutter, maxSteps, instances, instanceKeys, instanceSteps);
             const size_t count = instanceSteps > 1 ? instanceKeys.size() / instanceSteps : instances.size();
             instancer->ComputeInstanceAttributes(id, instanceAttributes);
@@ -1141,7 +1146,9 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     if (first || (bits & (HdChangeTracker::DirtyCategories | HdChangeTracker::DirtyInstancer |
                           HdChangeTracker::DirtyInstanceIndex)))
         HdNovaSyncCategories(sd, id, GetInstancerId(), scene, _meshId); // light linking (M9 D15)
-    if (first || (bits & (HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyInstancer))) {
+    // Per-instance names follow the instance indices (animated protoIndices).
+    if (first || (bits & (HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyInstancer |
+                          HdChangeTracker::DirtyInstanceIndex))) {
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
                             HdNovaCryptoAttributes(sd, id, names, GetInstancerId()));
@@ -1160,10 +1167,10 @@ void HdNovaMesh::Finalize(HdRenderParam *renderParam) {
     auto *param = static_cast<HdNovaRenderParam *>(renderParam);
     param->GetMaterials().BindMesh(GetId(), {});
     param->ForgetDisplacedMesh(GetId());
+    param->ForgetMeshPath(GetId()); // also if a portal or a medium removed the scene mesh before
     if (_meshId != nova::kInvalidId) {
         param->AcquireSceneForEdit().removeMesh(_meshId);
         _meshId = nova::kInvalidId;
-        param->ForgetMeshPath(GetId());
     }
     _medium.Remove(*param);
     if (_portalActive) {
@@ -1205,7 +1212,7 @@ bool HdNovaMesh::_SyncPortal(HdSceneDelegate *sd, HdNovaRenderParam &param, HdDi
     const GfMatrix4d xf = sd->GetTransform(id);
     if (!GetInstancerId().IsEmpty()) {
         if (auto *instancer = static_cast<HdNovaInstancer *>(sd->GetRenderIndex().GetInstancer(GetInstancerId())))
-            instancer->ComputeInstanceTransforms(id, xf, xforms);
+            instancer->ComputeInstanceTransforms(id, xf, _shutter, xforms);
     } else {
         xforms.push_back(nova::toXform34(toNova(xf)));
     }
@@ -1230,7 +1237,8 @@ bool HdNovaMesh::_SyncPortal(HdSceneDelegate *sd, HdNovaRenderParam &param, HdDi
 nova::MediumShellPtr HdNovaMesh::_BuildShell(HdSceneDelegate *sd, HdNovaRenderParam &param) {
     const SdfPath &id = GetId();
     std::vector<VtVec3fArray> steps;
-    if (!HdNovaSampleVec3fArray(sd, id, HdTokens->points, param.GetShutter(), param.GetMaxMotionSteps(), &steps) ||
+    // The prim's shutter (the frame alone with Karma's per-object motion blur off).
+    if (!HdNovaSampleVec3fArray(sd, id, HdTokens->points, _shutter, param.GetMaxMotionSteps(), &steps) ||
         steps.empty())
         return nullptr;
     // One shape (transform motion is the volume's): the shutter's middle.

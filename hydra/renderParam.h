@@ -23,6 +23,8 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+class HdNovaLightFilter;
+
 // Shared state handed to every prim during Sync().
 class HdNovaRenderParam final : public HdRenderParam {
 public:
@@ -168,6 +170,28 @@ public:
         return out;
     }
 
+    // The visible Karma Sky Atmospheres of this delegate (Karma renders one
+    // and warns about the rest, docs/design/M11-P7.md): adds `delta`,
+    // returns the new count. Atmospheres sync in parallel.
+    int AddVisibleAtmospheres(int delta) { return _visibleAtmospheres += delta; }
+    int VisibleAtmospheres() const { return _visibleAtmospheres.load(); }
+
+    // Light filters whose space is another prim (docs/design/M11-P4.md):
+    // the render pass re-resolves their spaces before every render, as
+    // that prim may move without the filter being synced (an animated
+    // camera or light, a frame of a husk sequence).
+    void NoteSpaceFilter(HdNovaLightFilter *filter, bool foreignSpace) {
+        std::lock_guard lock(_spaceFilterMutex);
+        if (foreignSpace)
+            _spaceFilters.insert(filter);
+        else
+            _spaceFilters.erase(filter);
+    }
+    std::vector<HdNovaLightFilter *> SpaceFilters() const {
+        std::lock_guard lock(_spaceFilterMutex);
+        return {_spaceFilters.begin(), _spaceFilters.end()};
+    }
+
     // The render settings' per-object defaults (Karma's karma:object:*,
     // docs/design/M11-P1.md). Prims read them during sync (in parallel);
     // the delegate sets them between syncs. Returns whether they changed
@@ -213,6 +237,9 @@ private:
     mutable std::mutex _defaultsMutex;
     HdNovaObjectDefaults _objectDefaults;
     mutable bool _defaultsUsed = false;
+    std::atomic<int> _visibleAtmospheres{0};
+    mutable std::mutex _spaceFilterMutex;
+    std::set<HdNovaLightFilter *> _spaceFilters;
 };
 
 class HdSceneDelegate;

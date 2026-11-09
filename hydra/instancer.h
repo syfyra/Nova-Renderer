@@ -17,6 +17,8 @@
 #include <pxr/imaging/hd/instancer.h>
 #include <pxr/pxr.h>
 
+#include <atomic>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -42,23 +44,25 @@ public:
     // which is Hydra's flattened instance index (HdxPrimOriginInfo decodes
     // it the same way), so k is the value of the instanceId AOV.
     // An invisible instancer anywhere in the chain yields no instances.
-    // Read-only, so rprims may call it concurrently once the chain is synced.
-    // Evaluated at the frame (clamped into the shutter).
+    // Rprims may call it concurrently once the chain is synced. Evaluated at
+    // the frame (clamped into `shutter`, the calling prim's).
     void ComputeInstanceTransforms(SdfPath const &prototypeId, GfMatrix4d const &prototypeXf,
-                                   std::vector<nova::Xform34> &out) const;
+                                   HdNovaShutter const &shutter, std::vector<nova::Xform34> &out) const;
 
-    // Motion blur. A shutter change dirties the rprims but not the instancers,
-    // so every rprim calls this after _SyncInstancerAndParents(): it resamples
-    // this instancer and its parents if they were sampled for another shutter.
-    // Safe to call from concurrent rprim syncs.
-    void SyncShutter(HdNovaShutter const &shutter);
-    // Uniform shutter steps this instancer and its parents need (1 if
-    // nothing moves).
-    unsigned GetMotionStepCount(unsigned maxSteps) const;
-    // The flattened transforms (as ComputeInstanceTransforms) at the shutter
-    // time `time` (frames relative to the current one).
-    void ComputeInstanceTransformsAt(SdfPath const &prototypeId, GfMatrix4d const &prototypeXf, float time,
-                                     std::vector<GfMatrix4d> &out) const;
+    // Motion blur. Every prim samples the instancer chain over its own
+    // shutter (Karma's per-object motion blur: the prototypes of one
+    // instancer may differ, docs/design/M11-P1.md), and they sync in
+    // parallel. So each level keeps its samples per shutter: built on first
+    // use (locked), immutable after, held by the readers while they compute;
+    // a Sync with a dirty transform or primvars drops them (a new render
+    // shutter dirties the instancers).
+    // Uniform shutter steps this instancer and its parents need over
+    // `shutter` (1 if nothing moves).
+    unsigned GetMotionStepCount(HdNovaShutter const &shutter, unsigned maxSteps) const;
+    // The flattened transforms (as ComputeInstanceTransforms) at the time
+    // `time` of `shutter` (frames relative to the current one).
+    void ComputeInstanceTransformsAt(SdfPath const &prototypeId, GfMatrix4d const &prototypeXf,
+                                     HdNovaShutter const &shutter, float time, std::vector<GfMatrix4d> &out) const;
 
     // Instance-rate shading primvars of every level (PointInstancer
     // primvars, primvars on native instances), flattened in the same order as
@@ -79,26 +83,38 @@ private:
         std::vector<VtValue> values;
         bool empty() const { return values.empty(); }
     };
-    void _SampleTransform(HdSceneDelegate *delegate);
-    void _SamplePrimvars(HdSceneDelegate *delegate);
+    // This level's samples over one shutter; never changed once built.
+    struct ShutterSamples {
+        HdNovaShutter shutter;
+        HdNovaTransformSamples xf;
+        // Instance-rate primvars. Any of them may be empty.
+        Samples translations; // VtVec3fArray (positions), also Vec3d/Vec3h
+        Samples rotations;    // VtQuathArray (orientations) or VtQuatfArray (orientationsf), also Quatd, Vec4f
+        Samples scales;       // VtVec3fArray, also Vec3d/Vec3h
+        Samples transforms;   // VtMatrix4dArray (native instancing), also Matrix4f
+    };
+    using ShutterSamplesPtr = std::shared_ptr<const ShutterSamples>;
+    // Instance-rate shading primvars (name, value at the frame).
+    using ShadingPrimvars = std::vector<std::pair<TfToken, VtValue>>;
+
+    // The samples over `shutter`, sampled now if this level has none yet.
+    ShutterSamplesPtr _SamplesFor(HdNovaShutter const &shutter) const;
+    ShutterSamplesPtr _Sample(HdNovaShutter const &shutter) const;
+    std::shared_ptr<const ShadingPrimvars> _Shading() const;
     // The flattened transforms at `time` without a prototype transform, in
     // double precision (also the parent level of a nested instancer).
-    void _ComputeAt(SdfPath const &prototypeId, float time, std::vector<GfMatrix4d> &out) const;
+    void _ComputeAt(SdfPath const &prototypeId, HdNovaShutter const &shutter, float time,
+                    std::vector<GfMatrix4d> &out) const;
     // Number of flattened instances of `prototypeId` (0 if invisible).
     size_t _FlattenedCount(SdfPath const &prototypeId) const;
     HdNovaInstancer *_Parent() const;
 
-    std::mutex _mutex;      // Sync() and SyncShutter()
-    HdNovaShutter _shutter; // the shutter the samples cover
-    HdNovaTransformSamples _xf;
-    // Instance-rate primvars. Any of them may be empty.
-    Samples _translations; // VtVec3fArray (positions), also Vec3d/Vec3h
-    Samples _rotations;    // VtQuathArray (orientations) or VtQuatfArray (orientationsf), also Quatd, Vec4f
-    Samples _scales;       // VtVec3fArray, also Vec3d/Vec3h
-    Samples _transforms;   // VtMatrix4dArray (native instancing), also Matrix4f
-    // Instance-rate shading primvars (name, value at the frame).
-    std::vector<std::pair<TfToken, VtValue>> _shadingPrimvars;
-    bool _visible = true;
+    mutable std::mutex _mutex; // the members below
+    // Per shutter, the most recently built last (a few: the render's and the
+    // frame alone of prims with motion blur off).
+    mutable std::vector<ShutterSamplesPtr> _samples;
+    std::shared_ptr<const ShadingPrimvars> _shading;
+    std::atomic<bool> _visible{true};
 };
 
 // The instances of an instanced prim: static transforms in `instances`, or,

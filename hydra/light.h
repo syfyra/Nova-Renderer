@@ -39,6 +39,7 @@ private:
     int _skyWidth = 0;
     std::shared_ptr<const nova::Image> _skyImage;
     bool _warnedUnsupported = false;
+    bool _warnedNonlinear = false; // the Karma sky in a nonlinear rendering space
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

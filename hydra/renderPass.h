@@ -79,6 +79,10 @@ private:
     // A batch render (husk) whose camera is not in the stage: reported once
     // and converged at once, so the render ends instead of waiting forever.
     bool _missingCamera = false;
+    // The render settings' per-object defaults changed when this pass was
+    // created, after prims had used the old ones (a pass recreated in a
+    // session): the first execute re-syncs them.
+    bool _defaultsChanged = false;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

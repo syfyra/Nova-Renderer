@@ -143,10 +143,12 @@ void HdNovaLight::_SyncKarmaSky(HdSceneDelegate *sd, nova::LightDesc &desc) {
     const HdNovaColorTransform toRendering = HdNovaGetColorTransform("lin_rec709");
     if (toRendering.kind == HdNovaColorTransform::Kind::Matrix)
         std::copy(std::begin(toRendering.matrix), std::end(toRendering.matrix), std::begin(sky.skyToRendering));
-    else if (toRendering.kind == HdNovaColorTransform::Kind::Nonlinear)
+    else if (toRendering.kind == HdNovaColorTransform::Kind::Nonlinear && !_warnedNonlinear) {
         HD_NOVA_WARN("the rendering space is not a linear transform of Linear Rec.709; the Karma sky %s is not "
                      "converted to it",
                      id.GetText());
+        _warnedNonlinear = true; // once per light, not on every edit
+    }
 
     // Latlong width (height: half). 2048 keeps the bilinear lookup within
     // 0.05 % of the model away from the horizon and resolves the default
@@ -350,9 +352,8 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
         HdRenderIndex &index = sd->GetRenderIndex();
         HdInstancer::_SyncInstancerAndParents(index, instancerId);
         if (auto *instancer = static_cast<HdNovaInstancer *>(index.GetInstancer(instancerId))) {
-            auto *param = static_cast<HdNovaRenderParam *>(renderParam);
-            instancer->SyncShutter(param->GetShutter());
-            instancer->ComputeInstanceTransformsAt(id, xf, param->GetShutter().TimeAt(0.5f), instanceXf);
+            const HdNovaShutter shutter = static_cast<HdNovaRenderParam *>(renderParam)->GetShutter();
+            instancer->ComputeInstanceTransformsAt(id, xf, shutter, shutter.TimeAt(0.5f), instanceXf);
         }
     }
     if (instancerId.IsEmpty()) {

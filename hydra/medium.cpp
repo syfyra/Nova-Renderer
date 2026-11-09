@@ -75,7 +75,8 @@ bool HdNovaIsMedium(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &mater
 }
 
 void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath const &id, SdfPath const &material,
-                        bool visible, int primId, nova::MediumShellPtr shell, bool transformDirty) {
+                        bool visible, int primId, nova::MediumShellPtr shell, bool transformDirty,
+                        HdNovaShutter const &shutter) {
     if (shell)
         _shell = std::move(shell);
     if (!_shell) { // nothing inside: no volume
@@ -99,7 +100,7 @@ void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath c
     std::vector<GfMatrix4d> sampled;
     const bool first = _volumeId == nova::kInvalidId;
     if (first || transformDirty)
-        HdNovaSampleTransform(sd, id, param.GetShutter(), param.GetMaxMotionSteps(), &sampled);
+        HdNovaSampleTransform(sd, id, shutter, param.GetMaxMotionSteps(), &sampled);
 
     nova::Scene &scene = param.AcquireSceneForEdit();
     if (first)
