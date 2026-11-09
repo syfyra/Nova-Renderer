@@ -53,11 +53,12 @@ add_executable(nova_tests
     test_light_filter.cpp
     test_sky.cpp
     test_bake.cpp
+    test_guiding.cpp
 )
 target_link_libraries(nova_tests PRIVATE nova_core Catch2::Catch2WithMain)
 # The GPU backend's tests (docs/design/M10.md); they skip without a device.
 if(TARGET nova_gpu_programs)
-    target_sources(nova_tests PRIVATE test_gpu_accel.cpp test_gpu_render.cpp test_gpu_fixes.cpp)
+    target_sources(nova_tests PRIVATE test_gpu_accel.cpp test_gpu_render.cpp test_gpu_fixes.cpp test_gpu_guiding.cpp)
     target_link_libraries(nova_tests PRIVATE Nova::OptiX)
 endif()
 target_compile_definitions(nova_tests PRIVATE NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
@@ -313,6 +314,11 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_props/$<CONFIG>")
     set_tests_properties(husk_karma_props PROPERTIES LABELS husk TIMEOUT 900)
+    add_test(NAME husk_karma_guiding
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_guiding.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_guiding/$<CONFIG>")
+    set_tests_properties(husk_karma_guiding PROPERTIES LABELS husk TIMEOUT 900)
     add_test(NAME husk_subdiv
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_subdiv.py"
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" --scenes "${CMAKE_CURRENT_SOURCE_DIR}/scenes"

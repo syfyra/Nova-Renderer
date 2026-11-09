@@ -10,6 +10,8 @@
 #include "hydra/renderParam.h"
 #include "hydra/velocitySceneIndex.h"
 
+#include "core/integrator/guiding.h"
+
 #include <pxr/base/tf/diagnosticMgr.h>
 #include <pxr/base/tf/stringUtils.h>
 #include <pxr/imaging/hd/engine.h>
@@ -514,5 +516,62 @@ def Points "moving"
     {
         Rig rig(TfStringPrintf(body, ""), {{"karma:object:mblur", VtValue(false)}});
         CHECK(rig.record(nova::MeshShape::Points).motionSteps == 1);
+    }
+}
+
+TEST_CASE("Karma's path guiding settings", "[hydra][karma][settings][guiding]") {
+    WarningCatcher catcher;
+    {
+        // Path Traced: training samples are paths; every control read, no
+        // warning (Nova guides).
+        HdNovaRenderDelegate d;
+        set(d, "karma:global:convergence_mode", VtValue(TfToken("Path Traced")));
+        set(d, "karma:global:guiding_enable", VtValue(true));
+        set(d, "karma:global:guiding_samples", VtValue(8));
+        set(d, "karma:global:guiding_components", VtValue(std::string("diffuse volume")));
+        set(d, "karma:global:guiding_deterministic", VtValue(true));
+        set(d, "karma:global:guiding_clearbuffers", VtValue(true));
+        const nova::RenderSettings s = d.GetNovaSettings();
+        CHECK(s.guiding.enable);
+        CHECK(s.guiding.trainingSamples == 8u);
+        CHECK(s.guiding.components == (nova::guide::kDiffuse | nova::guide::kVolume));
+        CHECK(s.guiding.deterministic);
+        CHECK(s.guiding.clearBuffers);
+        CHECK(catcher.count("guiding") == 0);
+    }
+    {
+        // Variance (Karma's default mode): primary samples, each up to
+        // varianceaa_maxsamples of Nova's; the default components.
+        HdNovaRenderDelegate d;
+        set(d, "karma:global:guiding_enable", VtValue(true));
+        set(d, "karma:global:guiding_samples", VtValue(4));
+        set(d, "karma:object:varianceaa_maxsamples", VtValue(6));
+        const nova::RenderSettings s = d.GetNovaSettings();
+        CHECK(s.guiding.trainingSamples == 24u);
+        CHECK(s.guiding.components == nova::guide::kDefaultComponents);
+        CHECK_FALSE(s.guiding.clearBuffers);
+    }
+    {
+        // Nova's settings win, also off over Karma's on; unknown component
+        // names warn once.
+        HdNovaRenderDelegate d;
+        set(d, "karma:global:guiding_enable", VtValue(true));
+        set(d, "nova:guiding", VtValue(false));
+        CHECK_FALSE(d.GetNovaSettings().guiding.enable);
+        set(d, "nova:guiding", VtValue(true));
+        set(d, "nova:guidingSamples", VtValue(3));
+        set(d, "nova:guidingComponents", VtValue(std::string("reflect,refract glossy")));
+        set(d, "karma:global:guiding_samples", VtValue(50));
+        nova::RenderSettings s = d.GetNovaSettings();
+        s = d.GetNovaSettings();
+        CHECK(s.guiding.enable);
+        CHECK(s.guiding.trainingSamples == 3u);
+        CHECK(s.guiding.components == (nova::guide::kReflect | nova::guide::kRefract));
+        CHECK(catcher.count("unknown component 'glossy'") == 1);
+    }
+    {
+        // Off by default.
+        HdNovaRenderDelegate d;
+        CHECK_FALSE(d.GetNovaSettings().guiding.enable);
     }
 }

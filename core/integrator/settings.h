@@ -22,6 +22,22 @@ struct BakeSettings;
 // the CPU as fallback (Nova XPU).
 enum class RenderDevice : uint8_t { Cpu, Xpu };
 
+// Path guiding (docs/design/M11-P9c.md, Karma's guiding_*): the field trains
+// on the first `trainingSamples` samples per pixel (0: throughout the render)
+// and guides the listed components (guide::kDiffuse ..., guiding.h; the
+// default diffuse, volume and SSS); with clearBuffers the film drops the
+// training samples when training ends. Nova's guiding is always
+// deterministic (`deterministic`, Karma's switch, changes nothing).
+struct GuidingSettings {
+    bool enable = false;
+    uint32_t trainingSamples = 0;
+    uint8_t components = 1 | 16 | 32;
+    bool clearBuffers = false;
+    bool deterministic = false;
+
+    bool operator==(const GuidingSettings &) const = default;
+};
+
 struct RenderSettings {
     RenderDevice device = RenderDevice::Cpu;
     // The GPU's texture memory in MB (docs/design/M10.md D10; 0: half the
@@ -76,6 +92,7 @@ struct RenderSettings {
     std::shared_ptr<const std::vector<UtilityRequest>> utility;
     // Cryptomattes to render (core/film/crypto.h); null: none.
     std::shared_ptr<const std::vector<CryptoRequest>> crypto;
+    GuidingSettings guiding;
     // Texture baking (core/bake/bake.h, docs/design/M11-P8.md): the film is
     // a texture tile of the bake meshes; rendered on the CPU. Null: a camera
     // render.

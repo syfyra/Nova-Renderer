@@ -23,6 +23,7 @@ add_library(nova_core STATIC
     lights/sky.cpp
     integrator/wavefront.cpp
     integrator/renderer.cpp
+    integrator/guide_field.cpp
     film/film.cpp
     film/filter.cpp
     film/lpe_compile.cpp

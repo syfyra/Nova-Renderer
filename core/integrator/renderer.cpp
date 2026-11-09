@@ -181,10 +181,24 @@ void Renderer::resetPasses() {
     m_oracleReady = false; // initOracle() at the next pass
 }
 
+uint32_t Renderer::restartOffset() const {
+    // While a path guiding field lives, a restarted film continues after the
+    // sample numbers it rendered: the field learned from those, and paths
+    // drawn with the same numbers again would correlate with it (biased).
+    if (!m_guide || !m_guide->valid())
+        return 0;
+    uint32_t most = 0;
+    for (const uint32_t c : m_film.count)
+        most = std::max(most, c);
+    return m_film.sampleOffset + most;
+}
+
 void Renderer::reset() {
+    m_film.sampleOffset = restartOffset();
     m_film.clear();
     m_gpuFilm = false;
     m_filmStale = false;
+    m_discarded = 0;
     resetPasses();
 }
 
@@ -194,6 +208,7 @@ void Renderer::resize(int width, int height) {
     m_film.resize(width, height);
     m_gpuFilm = false;
     m_filmStale = false;
+    m_discarded = 0;
     resetPasses();
     m_region = {0, 0, m_film.width, m_film.height};
     buildTiles();
@@ -222,7 +237,7 @@ void Renderer::buildTiles() {
 }
 
 uint32_t Renderer::oracleMinSamples() const {
-    const uint32_t maxSamples = std::max(1u, m_settings.maxSamples);
+    const uint32_t maxSamples = std::max(1u, targetSamples());
     const uint32_t m = m_settings.oracleMinSamples > 0
                            ? m_settings.oracleMinSamples
                            : std::max(16u, uint32_t(std::ceil(std::sqrt(double(maxSamples)))));
@@ -346,7 +361,7 @@ void Renderer::updateOracle() {
 }
 
 void Renderer::selectPixels(int stride) {
-    const uint32_t maxSamples = m_settings.maxSamples;
+    const uint32_t maxSamples = targetSamples();
     const bool adaptive = m_settings.adaptive;
     m_tilePixels.resize(m_tiles.size());
     m_queues->arena.execute([&] {
@@ -383,7 +398,7 @@ void Renderer::syncFilm() {
 #endif
 }
 
-bool Renderer::gpuPass(bool lists, uint32_t spp, const LpeTables *lpe) {
+bool Renderer::gpuPass(bool lists, uint32_t spp, const LpeTables *lpe, const PathGuide *guide) {
 #if NOVA_HAS_GPU
     if (m_gpuFailed || !m_scene)
         return false;
@@ -434,7 +449,7 @@ bool Renderer::gpuPass(bool lists, uint32_t spp, const LpeTables *lpe) {
     }
     if (!sceneOk || (!m_gpuFilm && !m_gpu->setFilm(m_film)) ||
         !m_gpu->renderPass(m_camera, m_settings, m_filter, m_region, spp, m_film, rays, lpe,
-                           lists ? &m_gpuPixels : nullptr, m_lpeGeneration)) {
+                           lists ? &m_gpuPixels : nullptr, m_lpeGeneration, guide)) {
         std::fprintf(stderr, "[Nova] XPU: GPU error (%s): continuing on the CPU\n", m_gpu->lastError().c_str());
         m_gpu.reset();
         m_gpuFailed = true;
@@ -454,6 +469,7 @@ bool Renderer::gpuPass(bool lists, uint32_t spp, const LpeTables *lpe) {
     (void)lists;
     (void)spp;
     (void)lpe;
+    (void)guide;
     if (!m_gpuFailed) {
         m_gpuFailed = true;
         std::fprintf(stderr, "[Nova] XPU: this build has no GPU backend: rendering on the CPU\n");
@@ -523,7 +539,7 @@ bool Renderer::renderPass(const std::function<bool()> &cancel) {
     // A proxy pass renders one pixel per stride x stride block; after them,
     // pixels with extra proxy samples reach the maximum first and drop out.
     const int stride = int(m_pass) < m_proxyDepth ? 1 << (m_proxyDepth - int(m_pass)) : 1;
-    const uint32_t maxSamples = m_settings.maxSamples;
+    const uint32_t maxSamples = targetSamples();
     const bool capped = m_level + (m_pass - m_fullPasses) >= maxSamples;
     const bool adaptive = m_settings.adaptive;
     if (!m_oracleReady)
@@ -543,7 +559,9 @@ bool Renderer::renderPass(const std::function<bool()> &cancel) {
     if (lists && m_scene && !m_tiles.empty())
         selectPixels(stride);
     const LpeTables *lpe = lpeTables();
-    const bool gpu = m_settings.device == RenderDevice::Xpu && gpuPass(lists, spp, lpe);
+    GuideView guideView;
+    const GuideView *guide = prepareGuide(guideView);
+    const bool gpu = m_settings.device == RenderDevice::Xpu && gpuPass(lists, spp, lpe, guide ? m_guide.get() : nullptr);
     m_lastPassGpu = gpu;
 
     if (!gpu && m_scene && !m_tiles.empty()) {
@@ -582,7 +600,7 @@ bool Renderer::renderPass(const std::function<bool()> &cancel) {
                     const WorkItem &item = m_items[i];
                     const uint32_t *pixels = item.count ? m_tilePixels[item.tile].data() + item.begin : nullptr;
                     m_rays.fetch_add(renderWave(*m_scene, m_camera, m_settings, m_filter, m_tiles[item.tile], pixels,
-                                                item.count, m_film, queues, lpe, spp),
+                                                item.count, m_film, queues, lpe, spp, nullptr, guide),
                                      std::memory_order_relaxed);
                 }
             });
@@ -600,7 +618,67 @@ bool Renderer::renderPass(const std::function<bool()> &cancel) {
             updateOracle();
     }
     m_fillStride = stride;
+    // Path guiding: proxy passes record too but count no samples.
+    if (guide)
+        finishGuidePass(stride == 1 ? spp : 0u, gpu);
     return true;
+}
+
+const GuideView *Renderer::prepareGuide(GuideView &view) {
+    if (!m_settings.guiding.enable || !m_scene || m_settings.bake)
+        return nullptr;
+    if (!m_guide)
+        m_guide = std::make_unique<PathGuide>();
+    if (!m_guide->matches(m_settings.guiding, m_scene->version())) {
+        // A new field over the scene's surfaces and volumes: the scene (or
+        // the guiding settings) changed, so what was learned is stale.
+        Vec3f lo, hi;
+        m_scene->accel().bounds(lo, hi);
+        for (const VolumeId v : m_scene->activeVolumes()) {
+            const VolumeRecord &r = m_scene->volumeRecord(v);
+            if (!(r.lower.x <= r.upper.x && r.lower.y <= r.upper.y && r.lower.z <= r.upper.z))
+                continue;
+            if (!(lo.x <= hi.x && lo.y <= hi.y && lo.z <= hi.z)) {
+                lo = r.lower;
+                hi = r.upper;
+                continue;
+            }
+            lo = Vec3f{std::min(lo.x, r.lower.x), std::min(lo.y, r.lower.y), std::min(lo.z, r.lower.z)};
+            hi = Vec3f{std::max(hi.x, r.upper.x), std::max(hi.y, r.upper.y), std::max(hi.z, r.upper.z)};
+        }
+        m_guide->reset(lo, hi, m_settings.guiding, m_scene->version());
+        if (m_pass == 0) // a new film: nothing it renders has trained the new field
+            m_film.sampleOffset = 0;
+    }
+    view = m_guide->view();
+    return view.active() ? &view : nullptr;
+}
+
+void Renderer::finishGuidePass(uint32_t spp, bool gpu) {
+    // The device's records of this iteration join the host's before it ends
+    // (they stay on the device until then).
+    m_gpuGuide = m_gpuGuide || gpu;
+    if (m_gpuGuide && m_guide->iterationEnds(spp)) {
+#if NOVA_HAS_GPU
+        if (!m_gpu || !m_gpu->downloadGuide(*m_guide))
+            std::fprintf(stderr, "[Nova] XPU: the GPU's path guiding records are lost\n");
+#endif
+        m_gpuGuide = false;
+    }
+    if (!m_guide->endPass(spp))
+        return;
+    // Training ended. With clearBuffers its samples leave the film and the
+    // render goes on to its total (Karma: the training samples count towards
+    // it); training through the whole render drops nothing.
+    if (m_settings.guiding.clearBuffers && m_level < m_settings.maxSamples && m_discarded == 0) {
+        const uint32_t discarded = m_level;
+        m_film.sampleOffset = restartOffset();
+        m_film.clear();
+        m_gpuFilm = false;
+        m_filmStale = false;
+        resetPasses();
+        m_discarded = discarded;
+    }
 }
 
 void Renderer::parallelRows(int y0, int y1, const std::function<void(int, int)> &body) const {

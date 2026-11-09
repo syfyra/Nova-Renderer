@@ -1,0 +1,32 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    timeCodesPerSecond = 24
+    subLayers = [
+        @./geo_room.usda@
+    ]
+)
+
+# geo_room.usda filled with fog (docs/design/M11-P9c.md): the Karma Fog Box of
+# tests/husk/fogbox/scatter.usda (what the karmafogbox LOP authors), scaled
+# to the inside of the room, thinner. The sun's beam through the window lights
+# a slab of it; the rest of the fog is lit by light bounced off the floor
+# patch and scattered in the fog itself.
+def Xform "fog" (
+    prepend references = @../fogbox/scatter.usda@</fogA>
+)
+{
+    matrix4d xformOp:transform:karmafogbox1 = ( (5.8, 0, 0, 0), (0, 2.8, 0, 0), (0, 0, 5.8, 0), (0, 1.5, 0, 1) )
+
+    over "geo"
+    {
+        over "render"
+        {
+            float[] primvars:karma:object:volumeuniformdensity = [0.08] (
+                interpolation = "constant"
+            )
+        }
+    }
+}

@@ -90,6 +90,11 @@ PLACE = {
     'nova:oracleMinSamples': ('Advanced', 'Sampling'),
     'nova:oracleThreshold': ('Advanced', 'Sampling'),
     'nova:iprProxyDepth': ('Advanced', 'Sampling'),
+    # Path guiding, where Karma's LOP has it (Advanced, Sampling).
+    'nova:guiding': ('Advanced', 'Sampling', 'Indirect Guiding'),
+    'nova:guidingSamples': ('Advanced', 'Sampling', 'Indirect Guiding'),
+    'nova:guidingComponents': ('Advanced', 'Sampling', 'Indirect Guiding'),
+    'nova:guidingClearBuffers': ('Advanced', 'Sampling', 'Indirect Guiding'),
     'nova:lightStrategy': ('Advanced', 'Debug'),
 }
 TABS = (('Rendering', ('Sampling', 'Limits', 'Camera Effects', 'Geometry and Shading')),

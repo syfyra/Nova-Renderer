@@ -81,6 +81,10 @@ struct Film {
     // Samples per pixel (D5): every sum below is normalized by its pixel's
     // count. `samples` counts the finished passes.
     std::vector<uint32_t> count;
+    // A pixel's sample numbers are sampleOffset + its count: a film that
+    // restarts while a path guiding field lives continues the sequence the
+    // field learned from (docs/design/M11-P9c.md). clear() keeps it.
+    uint32_t sampleOffset = 0;
 
     // First-hit AOVs, written by the first sample of each pixel (pixel center).
     std::vector<float> depth;       // planar camera-space depth, 0 = background

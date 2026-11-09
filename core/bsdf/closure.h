@@ -242,12 +242,14 @@ struct ClosureEval {
     Spectrum fcos;
     Spectrum fcosDiffuse;
     float pdf;
+    float pdfGuided; // the guided lobes' part of pdf (ClosureList::guideMask)
 };
 
 struct ClosureSample {
     Vec3f wi;
     Spectrum weight;    // f |cos| / pdf (delta: the event weight)
     float pdf;          // mixture density; 0 for delta events
+    float pdfGuided;    // the guided lobes' part of pdf (ClosureList::guideMask)
     float diffuseShare; // diffuse-class share of the weight (light multipliers)
     float roughness;    // of the sampled lobe (ray cones)
     float eta;          // relative index of a refraction (n_transmitted / n_incident), else 1
@@ -288,6 +290,9 @@ struct ClosureList {
     uint8_t count;
     bool overflow;         // a lobe was dropped or replaced (more than kMaxLobes)
     uint16_t nonDeltaMask; // lobes that can be evaluated (light sampling)
+    // Lobes whose directions path guiding mixes with its own (core/
+    // integrator/guiding.h): evaluation reports their share of the density.
+    uint16_t guideMask;
     // Sum of the lobes' estimates at the last finalize() (before the
     // normalization): a finalized closure's absolute scale, which appending
     // it to another needs (its albedo misses lobes without one, e.g. unlit).
@@ -298,6 +303,7 @@ struct ClosureList {
         count = 0;
         overflow = false;
         nonDeltaMask = 0;
+        guideMask = 0;
         estimateSum = 0.0f;
         emission = albedo = sigmaA = spectrum(0.0f);
         external.active = false;
@@ -595,7 +601,7 @@ struct NoLobeSink {
 // expressions split it by component, docs/design/M6.md D5).
 template <typename PerLobe = NoLobeSink>
 NOVA_INLINE ClosureEval evalClosure(const ClosureList &cl, Vec3f wo, Vec3f wi, const PerLobe &perLobe = PerLobe{}) {
-    ClosureEval e{spectrum(0.0f), spectrum(0.0f), 0.0f};
+    ClosureEval e{spectrum(0.0f), spectrum(0.0f), 0.0f, 0.0f};
     if (cl.external.active) {
         // Only the direction the bridge evaluated (VEX's eval has no
         // diffuse/specular split: all of it takes the light's diffuse share).
@@ -633,6 +639,8 @@ NOVA_INLINE ClosureEval evalClosure(const ClosureList &cl, Vec3f wo, Vec3f wi, c
         if (l.diffuse)
             e.fcosDiffuse += c;
         e.pdf += l.pick * pdf;
+        if (cl.guideMask & (1u << i))
+            e.pdfGuided += l.pick * pdf;
         perLobe(i, c);
     }
     return e;
@@ -654,6 +662,7 @@ NOVA_INLINE bool sampleClosure(const ClosureList &cl, Vec3f wo, Vec3f u, Closure
         s.weight = x.weight;
         s.delta = !(x.pdf > 0.0f);
         s.pdf = s.delta ? 0.0f : x.pdf;
+        s.pdfGuided = 0.0f;
         s.transmit = dot(wo, cl.ng) * dot(x.dir, cl.ng) < 0.0f;
         s.rayClass = x.rayClass;
         s.roughness = x.rayClass == RayClass::Diffuse || x.rayClass == RayClass::Sss ? 1.0f : 0.5f;
@@ -679,6 +688,7 @@ NOVA_INLINE bool sampleClosure(const ClosureList &cl, Vec3f wo, Vec3f u, Closure
     const Frame &f = cl.frame[l.frame];
     s.lobe = int8_t(j);
     s.walk = false;
+    s.pdfGuided = 0.0f;
     if (l.type == LobeType::Subsurface) {
         // A walk into the surface: its weight, picked with probability p; the
         // walk and its exit do the rest (one SSS event, like a delta event
@@ -725,6 +735,7 @@ NOVA_INLINE bool sampleClosure(const ClosureList &cl, Vec3f wo, Vec3f u, Closure
         if (!(ls.pdf > 0.0f))
             return false;
         s.pdf = ls.pdf;
+        s.pdfGuided = (cl.guideMask & 1u) ? ls.pdf : 0.0f;
         // Lambert: f |cos| / pdf is the albedo itself.
         s.weight = l.lambertian() ? l.weight * l.lambert.albedo : l.weight * ls.fcos * (1.0f / ls.pdf);
         s.diffuseShare = l.diffuse ? 1.0f : 0.0f;
@@ -734,6 +745,7 @@ NOVA_INLINE bool sampleClosure(const ClosureList &cl, Vec3f wo, Vec3f u, Closure
     if (!(e.pdf > 0.0f))
         return false;
     s.pdf = e.pdf;
+    s.pdfGuided = e.pdfGuided;
     s.weight = e.fcos * (1.0f / e.pdf);
     const float total = luminance(e.fcos);
     s.diffuseShare = total > 0.0f ? saturate(luminance(e.fcosDiffuse) / total) : 0.0f;
