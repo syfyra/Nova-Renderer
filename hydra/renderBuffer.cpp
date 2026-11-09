@@ -192,6 +192,31 @@ bool HdNovaRenderBuffer::ReadRgba(std::vector<float> &rgba) const {
     return true;
 }
 
+bool HdNovaRenderBuffer::ReadFloats(std::vector<float> &values, int &channels) const {
+    const HdFormat component = HdGetComponentFormat(_format);
+    channels = int(HdGetComponentCount(_format));
+    if ((component != HdFormatFloat32 && component != HdFormatFloat16) || _data.empty())
+        return false;
+    const size_t count = size_t(_width) * _height;
+    values.resize(count * size_t(channels));
+    for (size_t i = 0; i < count; ++i) {
+        const uint8_t *p = _data.data() + i * _pixelSize;
+        for (int c = 0; c < channels; ++c)
+            values[i * size_t(channels) + size_t(c)] = component == HdFormatFloat32
+                                                           ? reinterpret_cast<const float *>(p)[c]
+                                                           : float(reinterpret_cast<const GfHalf *>(p)[c]);
+    }
+    return true;
+}
+
+void HdNovaRenderBuffer::WriteFloats(const float *values) {
+    const HdFormat component = HdGetComponentFormat(_format);
+    const int n = int(HdGetComponentCount(_format));
+    const size_t count = size_t(_width) * _height;
+    for (size_t i = 0; i < count; ++i)
+        _WritePixel(i, values + i * size_t(n), n, component, n);
+}
+
 void HdNovaRenderBuffer::WriteRgba(const float *rgba) {
     const HdFormat component = HdGetComponentFormat(_format);
     const int n = int(HdGetComponentCount(_format));
@@ -286,7 +311,7 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
         return; // the expression failed: keeps the clear value
     // Accumulated kinds change every pass, the others after the first.
     const bool perPass = kind == Kind::Beauty || kind == Kind::Lpe || kind == Kind::Crypto || kind == Kind::SampleCount ||
-                         (kind == Kind::Utility && source.utility.kind == nova::UtilityKind::Ao);
+                         (kind == Kind::Utility && (source.utility.kind == nova::UtilityKind::Ao || source.perSample));
     if (kind == Kind::Crypto && (source.cryptoIndex < 0 || size_t(source.cryptoIndex) >= film.crypto.size()))
         return;
     if (!perPass && !firstHitAovs)
@@ -400,7 +425,13 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
                 break;
             case Kind::Utility: {
                 const float *v = plane->data.data() + src * plane->width;
-                if (plane->request.kind == nova::UtilityKind::Ao) {
+                if (source.perSample) {
+                    // A bake's maps: coverage averages (docs/design/M11-P8.md).
+                    float o[4];
+                    for (int c = 0; c < plane->width && c < 4; ++c)
+                        o[c] = v[c] * inv;
+                    _WritePixel(i, o, std::min(int(plane->width), 4), component, componentCount);
+                } else if (plane->request.kind == nova::UtilityKind::Ao) {
                     const float a = v[0] * inv;
                     const float o[4] = {a, a, a, 1.0f};
                     _WritePixel(i, o, 4, component, componentCount);

@@ -7,6 +7,7 @@ add_library(hdNova_objects OBJECT
     renderDelegate.cpp
     renderPass.cpp
     aov.cpp
+    bake.cpp
     crypto.cpp
     denoise.cpp
     renderBuffer.cpp

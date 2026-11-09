@@ -53,6 +53,7 @@ add_executable(nova_tests
     test_holdouts.cpp
     test_light_filter.cpp
     test_sky.cpp
+    test_bake.cpp
 )
 target_link_libraries(nova_tests PRIVATE nova_core Catch2::Catch2WithMain)
 # The GPU backend's tests (docs/design/M10.md); they skip without a device.
@@ -196,6 +197,14 @@ if(EXISTS "${HFS}/bin/hython.exe")
                 -Script "${CMAKE_CURRENT_SOURCE_DIR}/houdini/test_karma_atmosphere_lops.py" -Hfs "${HFS}"
                 "${CMAKE_CURRENT_BINARY_DIR}/houdini_karma_atmosphere_lops/$<CONFIG>")
     set_tests_properties(houdini_karma_atmosphere_lops PROPERTIES LABELS houdini TIMEOUT 600)
+    # The Karma Texture Baker LOP baked by Nova through husk (M11 P8): the
+    # LOP's settings, UDIM tiles and PNG products.
+    add_test(NAME houdini_karma_texture_baker
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/houdini/run_hython.ps1"
+                -Script "${CMAKE_CURRENT_SOURCE_DIR}/houdini/test_karma_texture_baker.py" -Hfs "${HFS}"
+                -Stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                "${CMAKE_CURRENT_BINARY_DIR}/houdini_karma_texture_baker/$<CONFIG>")
+    set_tests_properties(houdini_karma_texture_baker PROPERTIES LABELS houdini TIMEOUT 600)
     # Volume data paths (M8.0): in-memory SOP volumes, .bgeo.sc, husk on a
     # USD-ROP-saved stage, Hydra in the cooking process.
     add_test(NAME houdini_volumes
@@ -301,6 +310,13 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_atmosphere/$<CONFIG>")
     set_tests_properties(husk_karma_atmosphere PROPERTIES LABELS husk TIMEOUT 1200)
+    # Karma's Texture Baker (docs/design/M11-P8.md): bake scenes written by
+    # husk/karma_bake/make_scenes.py, Karma's maps stored in the script.
+    add_test(NAME husk_karma_bake
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_bake.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_bake/$<CONFIG>")
+    set_tests_properties(husk_karma_bake PROPERTIES LABELS husk TIMEOUT 900)
     add_test(NAME husk_emitters
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_emitters.py"
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
