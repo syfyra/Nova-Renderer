@@ -1914,10 +1914,12 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                 q.beta[p] = beta;
                 if (lpe)
                     q.lpeState[p] = next;
-                if (next && lpe->unit && !intoSolid) { // as light samples: none into solid glass
+                // As light samples: none into solid glass. At a background
+                // point by its rule (D14), the whole light even where this
+                // lobe's state leads to no output.
+                if (lpe && (next || backgroundPoint) && lpe->unit && !intoSolid) {
                     // Gathered at this hit with the receiver set the
-                    // continuation will carry (gatherSite()). At a
-                    // background point by its rule (D14).
+                    // continuation will carry (gatherSite()).
                     const uint32_t set = !s.delta                          ? receiverSet
                                          : (q.prevSet[p] & kPrevSetDelta) ? c.scene.receiverSet(hit.mesh, q.hitInstance[k])
                                                                           : prevLinkSet(q.prevSet[p]);
@@ -2103,11 +2105,10 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
                 const Spectrum contribution = unit * weight;
                 if (lpe)
                     lpePartsClear(q);
-                if (scattered && (weight > 0.0f || lpe->unit)) {
+                if (scattered && (weight > 0.0f || lpe->unit))
                     lpePartsAdd(*lpe, q, lpeLightStep(*lpe, scattered, choice.light), contribution, unit);
-                    if (backgroundPoint && lpe->unit)
-                        backgroundLightParts(c, q, p, light, unit);
-                }
+                if (backgroundPoint && lpe && lpe->unit) // whatever the event's state (D14)
+                    backgroundLightParts(c, q, p, light, unit);
                 if ((weight > 0.0f && !isBlack(contribution)) || (lpe && lpe->unit && !q.lpePartState.empty())) {
                     const float shadowSeed = shadowRaySeed(q.rays.filterSeed[k]);
                     pushShadowRay(c, q, x, ls.wi, shadowRayLength(ls.distance, c.tolerance), p, contribution, time,
@@ -2143,7 +2144,7 @@ void shadeVolumes(const ShadeContext &c, WaveQueues &q) {
         q.beta[p] = beta;
         if (lpe)
             q.lpeState[p] = scattered;
-        if (scattered && lpe->unit) // volume events are receiver set 0
+        if (lpe && (scattered || backgroundPoint) && lpe->unit) // volume events are receiver set 0
             lpeUnoccludedEnvironment(c, q.pixel[p], scattered, wi, LightFilterSite{x, c.links.categories(0u)}, 1.0f,
                                      beta, true, backgroundPoint ? &beta : nullptr);
         q.bsdfPdf[p] = pdf;

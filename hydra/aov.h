@@ -57,7 +57,6 @@ struct HdNovaAovSource {
     // HdNovaPlate, docs/design/M11-P2.md D16): the plate, the shadow AOV's
     // output, lit and holdout slots, the extras' outputs.
     std::shared_ptr<const HdNovaPlate> plate;
-    bool plateDecode = false; // the viewport's: stored values as sRGB
     int plateShadowOutput = -1, plateShadowSlot = -1, plateHoldoutSlot = -1;
     std::vector<int> plateExtras;
     nova::UtilityRequest utility; // Utility

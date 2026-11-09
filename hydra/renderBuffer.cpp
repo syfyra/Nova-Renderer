@@ -342,7 +342,7 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
                     // C + (1 - alpha) (plate (1 - shadows) + extras), opaque.
                     float plate[3];
                     source.plate->lookup((float(x) + 0.5f) / float(film.width), (float(y) + 0.5f) / float(film.height),
-                                         plate, source.plateDecode);
+                                         plate);
                     nova::Spectrum s{0.0f, 0.0f, 0.0f};
                     if (source.plateShadowOutput >= 0 && uint32_t(source.plateShadowSlot) < film.lpeShadowOutputs) {
                         nova::Spectrum u = film.lpe(uint32_t(source.plateShadowOutput))[src];

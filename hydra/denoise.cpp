@@ -107,7 +107,8 @@ HdNovaBackgroundFilter HdNovaParseKarmaBackgroundFilter(std::string const &json)
     return out;
 }
 
-void HdNovaPlate::lookup(float x, float y, float out[3], bool decode) const {
+void HdNovaPlate::lookup(float x, float y, float out[3]) const {
+    const bool decode = srgb;
     out[0] = out[1] = out[2] = 0.0f;
     if (width <= 0 || height <= 0)
         return;
@@ -131,11 +132,21 @@ std::shared_ptr<const HdNovaPlate> HdNovaLoadPlate(HdNovaBackgroundFilter const 
     const std::filesystem::path file = std::filesystem::absolute(
         std::filesystem::path(std::u8string(filter.plateFile.begin(), filter.plateFile.end())), ec);
     const std::u8string utf8 = file.u8string();
+    const std::string path(utf8.begin(), utf8.end());
     // .pic and .rat through imaketx (their stored values), others as they are.
-    const std::string readable =
-        HdNovaReadableTexture(std::string(utf8.begin(), utf8.end()), HdNovaTextureOptions{}, true, error);
+    const std::string readable = HdNovaReadableTexture(path, HdNovaTextureOptions{}, true, error);
     if (readable.empty())
         return nullptr;
+    // Integer images hold sRGB values (Houdini's .pic and .rat are 8-bit);
+    // floating-point ones linear values.
+    std::string ext = file.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    bool srgb = ext == ".pic" || ext == ".rat";
+    if (!srgb)
+        if (auto source = OIIO::ImageInput::open(path)) {
+            const OIIO::TypeDesc f = source->spec().format;
+            srgb = !(f == OIIO::TypeDesc::FLOAT || f == OIIO::TypeDesc::HALF || f == OIIO::TypeDesc::DOUBLE);
+        }
     auto in = OIIO::ImageInput::open(readable);
     if (!in) {
         error = OIIO::geterror();
@@ -158,6 +169,7 @@ std::shared_ptr<const HdNovaPlate> HdNovaLoadPlate(HdNovaBackgroundFilter const 
         plate->scale[i] = filter.scale[i] != 0.0f ? filter.scale[i] : 1.0f;
         plate->translate[i] = filter.translate[i];
     }
+    plate->srgb = srgb;
     return plate;
 }
 

@@ -397,7 +397,6 @@ void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bi
         if (bindings[i].aovName.GetString() == comp->destination && _aovSources[i].kind == HdNovaAovKind::Beauty) {
             HdNovaAovSource &s = _aovSources[i];
             s.plate = _plate ? _plate : std::make_shared<const HdNovaPlate>(); // unread: black
-            s.plateDecode = viewport; // Karma's viewport shows the plate as an sRGB image (measured)
             s.plateShadowOutput = shadows ? shadows->output : -1;
             s.plateShadowSlot = shadows ? shadows->shadowSlot : -1;
             s.plateHoldoutSlot = shadows ? shadows->holdoutSlot : -1;

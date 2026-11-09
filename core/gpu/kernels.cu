@@ -932,10 +932,12 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     w.beta[p] = beta;
     if (state) {
         w.lpeState[p] = next;
-        if (next && lpe.unit && !intoSolid) { // as light samples: none into solid glass
+        // As light samples: none into solid glass. At a background point by
+        // its rule (D14), the whole light even where this lobe's state leads
+        // to no output.
+        if ((next || backgroundPoint) && lpe.unit && !intoSolid) {
             // Gathered at this hit with the receiver set the continuation
-            // will carry (gatherSite()); at a background point by its rule
-            // (D14).
+            // will carry (gatherSite()).
             const uint32_t set = !s.delta                          ? receiverSet
                                  : (w.prevSet[p] & kPrevSetDelta) ? mesh.receiverSet(hit.instance)
                                                                   : prevLinkSet(w.prevSet[p]);
@@ -1620,19 +1622,19 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
                 const Spectrum unit = w.beta[p] * ls.Li * (f * share / lightPdf);
                 const Spectrum contribution = unit * weight;
                 GpuLpeParts parts;
-                if (scattered && (weight > 0.0f || lpe.unit)) {
+                if (scattered && (weight > 0.0f || lpe.unit))
                     lpePartsAdd(lpe, parts, lpeLightStep(lpe, scattered, li), contribution, unit);
-                    if (backgroundPoint && lpe.unit) { // D14, as novaShade's background points
-                        if (light.illumBackground) {
-                            for (uint32_t j = 0; j < parts.size(); ++j) {
-                                lpeDepositBackgroundUnit(lpe, film, pixel, parts.state[j], parts.unitValue[j],
-                                                         spectrum(0.0f), false);
-                                parts.unitValue[j] = spectrum(0.0f);
-                            }
-                        } else {
-                            lpeDepositHoldoutTotal(lpe, film, pixel,
-                                                   light.type == LightType::Triangle ? unit * light.emission : unit);
+                // D14, as novaShade's background points, whatever the event's state.
+                if (backgroundPoint && w.lpeState && lpe.unit) {
+                    if (light.illumBackground) {
+                        for (uint32_t j = 0; j < parts.size(); ++j) {
+                            lpeDepositBackgroundUnit(lpe, film, pixel, parts.state[j], parts.unitValue[j],
+                                                     spectrum(0.0f), false);
+                            parts.unitValue[j] = spectrum(0.0f);
                         }
+                    } else {
+                        lpeDepositHoldoutTotal(lpe, film, pixel,
+                                               light.type == LightType::Triangle ? unit * light.emission : unit);
                     }
                 }
                 if ((weight > 0.0f && !isBlack(contribution)) || (state && lpe.unit && parts.size() > 0)) {
@@ -1688,7 +1690,7 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     w.beta[p] = beta;
     if (state) {
         w.lpeState[p] = scattered;
-        if (scattered && lpe.unit) // volume events are receiver set 0
+        if ((scattered || backgroundPoint) && lpe.unit) // volume events are receiver set 0
             lpeUnoccludedEnvironment(lpe, sc.lights, sc.lightCount, sc.lightSampler.pmf, film, pixel, scattered, wi,
                                      LightFilterSite{x, sc.links.categories(0u)}, 1.0f, beta, true,
                                      backgroundPoint ? &beta : nullptr);

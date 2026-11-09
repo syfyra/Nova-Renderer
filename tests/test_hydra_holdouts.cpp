@@ -241,14 +241,15 @@ TEST_CASE("The background plate sits on the frame as the Background Plate's shad
     CHECK(v[0] == 10.0f);
     plate.lookup(0.25f, 0.25f, v); // u -0.25: black
     CHECK(v[0] == 0.0f);
-    // The viewport's composite takes the stored values as sRGB.
+    // An integer image's stored values are sRGB: decoded.
     HdNovaPlate grey;
     grey.width = grey.height = 1;
     grey.rgb = {0.5f, 0.5f, 0.5f};
-    grey.lookup(0.5f, 0.5f, v, true);
-    CHECK(std::fabs(v[0] - 0.21404f) < 1e-4f);
     grey.lookup(0.5f, 0.5f, v);
     CHECK(v[0] == 0.5f);
+    grey.srgb = true;
+    grey.lookup(0.5f, 0.5f, v);
+    CHECK(std::fabs(v[0] - 0.21404f) < 1e-4f);
 }
 
 TEST_CASE("Volumes and media read Karma's rendervisibility and holdoutmode", "[hydra][holdout][volume]") {

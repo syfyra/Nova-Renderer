@@ -67,14 +67,16 @@ struct HdNovaPlate {
     int width = 0, height = 0;
     std::vector<float> rgb;
     float scale[2] = {1.0f, 1.0f}, translate[2] = {0.0f, 0.0f};
+    // The stored values are sRGB-encoded (an integer image: 8-bit .pic,
+    // .rat, PNG ...): the composite decodes them (Karma, measured).
+    bool srgb = false;
     // The texel under NDC (x, y) (y up), as the Background Plate's shader
-    // places it: (ndc - 0.5 - translate) / scale + 0.5, nearest; black
-    // outside the image. `decode`: its stored values taken as sRGB (Karma's
-    // viewport composite, measured; husk's keeps them).
-    void lookup(float x, float y, float out[3], bool decode = false) const;
+    // places it: (ndc - 0.5 - translate) / scale + 0.5, nearest, decoded if
+    // srgb; black outside the image.
+    void lookup(float x, float y, float out[3]) const;
 };
-// Reads `file` (Houdini .pic and .rat through imaketx) with its stored
-// values; null (with `error`) if it cannot.
+// Reads `file` (Houdini .pic and .rat through imaketx, with their stored
+// values); null (with `error`) if it cannot.
 std::shared_ptr<const HdNovaPlate> HdNovaLoadPlate(HdNovaBackgroundFilter const &filter, std::string &error);
 
 // Splits Nova's nova:denoiseAovs ("C diffuse", commas allowed).
