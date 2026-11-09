@@ -19,13 +19,13 @@ check_karma_props.py does:
 - step: depth lines of a step in one object (and the crease the plane test
   finds on its far side) and crease lines of a convex 45 degree fold, in
   their line-type AOVs;
-- look: the lighting overrides (Emissive Objects, Headlight, Dome Light,
-  autoheadlight) and the simplified shading (occlusion on, off, limited,
-  depth cue fog) over cards turned to the camera, a floor, a wall and an
-  emissive panel.
+- look: the lighting overrides (Emissive Objects, also with the panel
+  treated as a light, Headlight, Dome Light, autoheadlight) and the
+  simplified shading (occlusion on, off, limited, depth cue fog) over cards
+  turned to the camera, a floor, a wall and an emissive panel.
 
-A check passes within 3 % of Karma's value (plus a small absolute margin),
-or within the stated tolerance.
+A check passes within 3 % of Karma's value (plus an absolute margin of
+0.002), or within the stated tolerance (and margin).
 
 Needs numpy and OpenImageIO, so run it with Houdini's Python:
 $HFS/python313/python.exe -I check_karma_looks.py --hfs ... --stage ... --out ...
@@ -102,8 +102,23 @@ KARMA = [
     # headlight (= autoheadlight without lights), a white dome.
     ("look_base", "q0", 0.28790), ("look_base", "q30", 0.19559), ("look_base", "q45", 0.13961),
     ("look_base", "q60", 0.08712), ("look_base", "floor", 0.36239), ("look_base", "wall", 0.31383),
-    ("look_emissive", "q0", 0.0), ("look_emissive", "q45", 0.0), ("look_emissive", "floor", 0.00825, 0.25),
-    ("look_emissive", "wall", 0.00208, 0.25), ("look_emissive", "panel", 2.0),
+    # Emissive Objects: the untreated panel lights the floor and wall behind
+    # it through BSDF rays only, which at 64 samples are expected to hit it
+    # 7.7 times in the floor's region and 2.2 times in the wall's (Karma's
+    # render: 11 and 1 hits, 0.00825 and 0.00208; Nova's 8 and 1). The floor
+    # is checked against Karma's converged mean (2048 samples: 0.00609, the
+    # wall 0.00495; the panel's direct light alone, analytic: 0.00574 and
+    # 0.00467) within that noise (docs/design/M11-P9a.md 6.1).
+    ("look_emissive", "q0", 0.0), ("look_emissive", "q45", 0.0), ("look_emissive", "floor", 0.00609, 0.35),
+    ("look_emissive", "panel", 2.0),
+    # The panel treated as a light: its samples light the floor, wall and
+    # the cards (through the floor, at the diffuse limit) with little noise;
+    # Karma's 64 samples are within 3 % of its 2048 (0.01063, 0.00686,
+    # cards 0.00148 / 0.00199).
+    ("look_emissive_light", "q0", 0.00153, 0.08, 1e-4), ("look_emissive_light", "q30", 0.00278, 0.08, 1e-4),
+    ("look_emissive_light", "q45", 0.00201, 0.08, 1e-4), ("look_emissive_light", "q60", 0.00099, 0.08, 1e-4),
+    ("look_emissive_light", "floor", 0.01057, 0.04, 1e-4), ("look_emissive_light", "wall", 0.00684, 0.04, 1e-4),
+    ("look_emissive_light", "panel", 2.0),
     ("look_headlight", "q0", 0.38196), ("look_headlight", "q30", 0.33402), ("look_headlight", "q45", 0.27926),
     ("look_headlight", "q60", 0.21134), ("look_headlight", "floor", 0.11904), ("look_headlight", "wall", 0.38404),
     ("look_auto", "q0", 0.38196), ("look_auto", "q45", 0.27926), ("look_auto", "floor", 0.11904),
@@ -219,10 +234,11 @@ def main():
     for entry in KARMA:
         case, name, value = entry[:3]
         tolerance = entry[3] if len(entry) > 3 else 0.03
+        margin = entry[4] if len(entry) > 4 else 2e-3
         got = values.get((case, name))
         if got is None or karma:
             continue
-        ok = abs(got - value) <= tolerance * abs(value) + 2e-3
+        ok = abs(got - value) <= tolerance * abs(value) + margin
         check(ok, f"{case} {name}: Nova {got:.5f}, Karma {value:.5f}")
     shutil.rmtree(prefs, ignore_errors=True)
     print(f"{len(FAILURES)} failure(s)")
