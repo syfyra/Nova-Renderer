@@ -72,6 +72,9 @@ PXR_NAMESPACE_OPEN_SCOPE
     ((fakeCaustics, "nova:object:fakeCaustics"))  \
     ((internalReflection, "nova:object:internalReflection")) \
     ((causticsRoughnessClamp, "nova:object:causticsRoughnessClamp")) \
+    ((dielectricPriority, "nova:object:dielectricPriority")) \
+    ((isPortal, "nova:object:isPortal"))          \
+    ((portalDomeLights, "nova:object:portalDomeLights")) \
     ((constrainRoughness, "nova:constrainRoughness")) \
     ((clampDirect, "nova:clampDirect"))           \
     (mis)                                         \

@@ -239,6 +239,31 @@
             parmtag { "usdvaluetype" "bool" }
             disablewhen "{ xn__primvarsnovaobjectinternalReflection_control_sdceg == block } { xn__primvarsnovaobjectinternalReflection_control_sdceg == none }"
         }
+        parm {
+            name    "xn__primvarsnovaobjectdielectricPriority_control_sdceg"
+            label   "Dielectric Priority"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectdielectricPriority_rzbeg"
+            label   "Dielectric Priority"
+            type    int
+            size    1
+            default { 0 }
+            range   { 0 16 }
+            help    "Where refracting objects overlap (liquid in a glass, ice in the liquid), the inside belongs to the one with the highest priority: 0 is the highest, larger numbers lose. Surfaces of lower priority inside a higher one are passed through unseen; the others bend light by the ratio of the indices on both sides. Equal priorities nest nothing. Unset: Karma's dielectricpriority."
+            parmtag { "spare_category" "Shading" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "int" }
+            disablewhen "{ xn__primvarsnovaobjectdielectricPriority_control_sdceg == block } { xn__primvarsnovaobjectdielectricPriority_control_sdceg == none }"
+        }
     }
     groupcollapsible {
         name    "nova_geo_light"
@@ -272,6 +297,54 @@
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "int" }
             disablewhen "{ xn__primvarsnovaobjectlightSource_control_e1beg == block } { xn__primvarsnovaobjectlightSource_control_e1beg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectisPortal_control_iwbeg"
+            label   "Is Portal"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectisPortal_hjbeg"
+            label   "Is Portal"
+            type    toggle
+            size    1
+            default { 0 }
+            help    "The mesh becomes a light portal: it renders nothing, and the dome lights it serves shine only through their portals (light from directions that pass no portal is shut out, as in Karma), sampled through them: much less noise in interiors lit through windows. Cover every opening a dome should light through. Unset: Karma's isportal."
+            parmtag { "spare_category" "Light" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "bool" }
+            disablewhen "{ xn__primvarsnovaobjectisPortal_control_iwbeg == block } { xn__primvarsnovaobjectisPortal_control_iwbeg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectportalDomeLights_control_j9beg"
+            label   "Portal Dome Lights"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'string')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectportalDomeLights_iwbeg"
+            label   "Portal Dome Lights"
+            type    string
+            size    1
+            default { "*" }
+            help    "The dome lights the portal serves: their paths, separated by spaces, with * and ? wildcards (* serves every dome light). Unset: Karma's portaldomelights."
+            parmtag { "spare_category" "Light" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "string" }
+            disablewhen "{ xn__primvarsnovaobjectportalDomeLights_control_j9beg == block } { xn__primvarsnovaobjectportalDomeLights_control_j9beg == none }"
         }
     }
     groupcollapsible {

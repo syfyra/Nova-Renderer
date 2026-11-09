@@ -684,6 +684,8 @@ bool GpuRenderer::setScene(const Scene &scene) {
             l.texels = put(l.texels, size_t(l.texWidth) * l.texHeight).ptr;
         if (l.filters)
             l.filters = put(l.filters, l.filterCount).ptr;
+        if (l.portals) // a dome's light portals (M11-P9b)
+            l.portals = put(l.portals, l.portalCount).ptr;
         Distribution2DView &d = l.distribution;
         if (d.func) {
             const size_t nu = d.nu, nv = d.nv;
@@ -716,6 +718,12 @@ bool GpuRenderer::setScene(const Scene &scene) {
     t.infiniteTable.alias = put(tree.infiniteTable.alias, tree.infiniteTable.count).ptr;
     t.infiniteSlot = put(tree.infiniteSlot, treeLights).ptr;
     t.cut = put(tree.cut, tree.cutCount).ptr;
+    if (tree.portalCount && tree.infiniteCount > 0) { // domes with light portals (M11-P9b)
+        const uint32_t last = tree.infiniteCount - 1;
+        t.portalTris = put(tree.portalTris, size_t(tree.portalBegin[last]) + tree.portalCount[last]).ptr;
+        t.portalBegin = put(tree.portalBegin, tree.infiniteCount).ptr;
+        t.portalCount = put(tree.portalCount, tree.infiniteCount).ptr;
+    }
     t.links.light = put(tree.links.light, treeLights).ptr;
     t.links.receiver = put(tree.links.receiver, tree.receiverSetCount).ptr;
     m_view.links = t.links; // over every light, as Scene::lightLinks()
@@ -828,6 +836,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
     m_view.eqPmf = put(eq.pmf, scene.analyticLightCount()).ptr;
     m_view.tolerance = scene.intersectionTolerance();
     m_view.anyFiltered = uint8_t(scene.anyFiltered());
+    m_view.nestedDielectrics = uint8_t(scene.nestedDielectrics());
     // Holdouts (core/integrator/holdout.h).
     m_view.anyHoldouts = uint8_t(scene.anyHoldouts());
     m_view.shadowVisibilityDiffers = uint8_t(scene.shadowVisibilityDiffers());
@@ -857,7 +866,8 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     // Pre-lit background holdouts with illumbackground lights use the walk
     // exits' kind (kernels.cu shadePrelit).
     const uint32_t slots = (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u);
-    if (paths <= m_capacity && slots <= m_shadowSlots)
+    const bool nested = m_view.nestedDielectrics != 0;
+    if (paths <= m_capacity && slots <= m_shadowSlots && (!nested || m_nestedReserved))
         return true;
     m_waveBuffers.clear();
     bool ok = true;
@@ -889,6 +899,11 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.etaScale, paths);
     field(w.sigmaA, paths);
     field(w.inMedium, paths);
+    // Only scenes with nested dielectrics carry the media (72 bytes a path).
+    if (nested)
+        field(w.nested, paths);
+    else
+        w.nested = nullptr;
     field(w.eventCounts, paths);
     field(w.limitDither, paths);
     field(w.lightOnly, paths);
@@ -940,6 +955,7 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     rays(m_rays[1], 1, paths);
     m_capacity = ok ? paths : 0;
     m_shadowSlots = ok ? slots : 0;
+    m_nestedReserved = ok && nested;
     return ok;
 }
 

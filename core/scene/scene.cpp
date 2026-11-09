@@ -9,6 +9,7 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 
@@ -170,6 +171,7 @@ bool Scene::OpacityFilter::accept(const HitCandidate &c, const RayBatch &rays) c
 void Scene::updateFilterFlags(bool &geometryChanged) {
     m_anyFiltered = false;
     m_anyFakeCaustics = false;
+    int lowestPriority = 255, highestPriority = -1;
     // Ray visibility and holdouts (core/scene/visibility.h): the effective
     // settings; a partial mask or a background holdout (which shadow rays
     // from background points cross) goes through the filter, and with
@@ -208,6 +210,8 @@ void Scene::updateFilterFlags(bool &geometryChanged) {
                 want |= material(m).hasOpacity;
         }
         rec.shading = resolveObjectShading(m_objectDefaults, rec.rayLimits);
+        lowestPriority = std::min(lowestPriority, int(rec.shading.dielectricPriority));
+        highestPriority = std::max(highestPriority, int(rec.shading.dielectricPriority));
         rec.fakeCaustics = rec.shading.fakeCaustics;
         want |= rec.fakeCaustics || m_shadowLinking;
         m_anyFakeCaustics |= rec.fakeCaustics;
@@ -218,6 +222,7 @@ void Scene::updateFilterFlags(bool &geometryChanged) {
         }
         m_anyFiltered |= want;
     }
+    m_nestedDielectrics = highestPriority > lowestPriority;
 }
 Scene::~Scene() = default;
 
@@ -605,6 +610,62 @@ void Scene::removeLightFilter(const std::string &key) {
     ++m_version;
 }
 
+void Scene::setPortal(const std::string &key, const PortalDesc &desc) {
+    std::lock_guard lock(m_mutex);
+    m_portals[key] = desc;
+    m_lightsDirty = true; // the domes' records are rebuilt with their portals
+    ++m_version;
+}
+
+void Scene::removePortal(const std::string &key) {
+    std::lock_guard lock(m_mutex);
+    if (m_portals.erase(key) == 0)
+        return;
+    m_lightsDirty = true;
+    ++m_version;
+}
+
+namespace {
+
+// A glob with * and ? (the whole text).
+bool globMatch(const char *pattern, const char *text) {
+    const char *star = nullptr, *resume = nullptr;
+    while (*text) {
+        if (*pattern == '?' || *pattern == *text) {
+            ++pattern;
+            ++text;
+        } else if (*pattern == '*') {
+            star = pattern++;
+            resume = text;
+        } else if (star) {
+            pattern = star + 1;
+            text = ++resume;
+        } else {
+            return false;
+        }
+    }
+    while (*pattern == '*')
+        ++pattern;
+    return *pattern == 0;
+}
+
+} // namespace
+
+bool portalServes(const std::string &domeLights, const std::string &path) {
+    size_t i = 0;
+    while (i < domeLights.size()) {
+        while (i < domeLights.size() && std::isspace(static_cast<unsigned char>(domeLights[i])))
+            ++i;
+        size_t j = i;
+        while (j < domeLights.size() && !std::isspace(static_cast<unsigned char>(domeLights[j])))
+            ++j;
+        if (j > i && globMatch(domeLights.substr(i, j - i).c_str(), path.c_str()))
+            return true;
+        i = j;
+    }
+    return false;
+}
+
 VolumeId Scene::createVolume() {
     std::lock_guard lock(m_mutex);
     VolumeId id;
@@ -973,10 +1034,11 @@ bool Scene::commit() {
         m_lightTags.clear();
         m_lightLinks.clear();
         // Light filters (M11-P4): each light's records in order, pointed at
-        // once the array is complete.
+        // once the array is complete; so are the domes' portals (M11-P9b).
         m_lightFilterData.clear();
         m_lightFilterLinks.clear();
-        std::vector<uint32_t> filterBegin;
+        m_portalTriangles.clear();
+        std::vector<uint32_t> filterBegin, portalBegin;
         for (const std::optional<LightDesc> &light : m_lights) { // id order keeps sampling deterministic
             if (!light || !light->visible)
                 continue;
@@ -990,6 +1052,32 @@ bool Scene::commit() {
                 m_lightFilterLinks.push_back(it->second.link);
             }
             data.filterCount = uint32_t(m_lightFilterData.size()) - filterBegin.back();
+            // Light portals (docs/design/M11-P9b.md): every portal whose list
+            // names this dome.
+            portalBegin.push_back(uint32_t(m_portalTriangles.size()));
+            if (data.type == LightType::Dome) {
+                for (const auto &[key, portal] : m_portals) {
+                    if (!portalServes(portal.domeLights, light->path))
+                        continue;
+                    for (size_t t = 0; t + 2 < portal.triangles.size(); t += 3) {
+                        PortalTriangle tri;
+                        tri.v0 = portal.triangles[t];
+                        tri.e1 = portal.triangles[t + 1] - tri.v0;
+                        tri.e2 = portal.triangles[t + 2] - tri.v0;
+                        const Vec3f n = cross(tri.e1, tri.e2);
+                        const float len = length(n);
+                        if (!(len > 0.0f) || !std::isfinite(len))
+                            continue; // degenerate
+                        tri.n = n * (1.0f / len);
+                        tri.area = 0.5f * len;
+                        m_portalTriangles.push_back(tri);
+                        data.portalArea += tri.area;
+                    }
+                }
+                data.portalCount = uint32_t(m_portalTriangles.size()) - portalBegin.back();
+                const float bias = std::isfinite(light->portalMisBias) ? light->portalMisBias : 0.0f;
+                data.portalMix = 0.5f * (1.0f + std::clamp(bias, -1.0f, 1.0f));
+            }
             if (data.texels && (data.type == LightType::Dome || data.type == LightType::Rect)) {
                 TextureData &t = textureData(light->texture);
                 if (data.type == LightType::Dome) {
@@ -998,6 +1086,11 @@ bool Scene::commit() {
                         buildDomeDistribution(*t.image, *t.distribution);
                     }
                     data.distribution = t.distribution->view(); // stable: the distribution lives on the heap
+                    if (data.portalCount > 0) { // the power through the portals (lightPower)
+                        if (t.meanLuminance < 0.0f)
+                            t.meanLuminance = textureMeanLuminance(*t.image);
+                        data.texMeanLuminance = t.meanLuminance;
+                    }
                 } else {
                     if (t.meanLuminance < 0.0f)
                         t.meanLuminance = textureMeanLuminance(*t.image);
@@ -1008,8 +1101,11 @@ bool Scene::commit() {
             m_lightTags.push_back(light->lpeTag);
             m_lightLinks.emplace_back(light->lightLink, light->shadowLink);
         }
-        for (size_t i = 0; i < m_lightData.size(); ++i)
+        for (size_t i = 0; i < m_lightData.size(); ++i) {
             m_lightData[i].filters = m_lightData[i].filterCount > 0 ? m_lightFilterData.data() + filterBegin[i] : nullptr;
+            m_lightData[i].portals =
+                m_lightData[i].portalCount > 0 ? m_portalTriangles.data() + portalBegin[i] : nullptr;
+        }
         m_hostLightCount = m_lightData.size();
         m_textures = std::move(textures);
         m_lightsDirty = false;
@@ -1136,7 +1232,10 @@ bool Scene::commit() {
                 // (LightData::illuminates(), as Karma): no tree entry.
                 infiniteLight[i] = atInfinity(i) || l.outsideTree;
                 if (infiniteLight[i]) {
-                    infiniteE[i] = power[i] / disk;
+                    // A dome with portals: its mean radiance, which the
+                    // tree multiplies by the portals' solid angle at the
+                    // receiver (LightTreeView::portalTris).
+                    infiniteE[i] = l.portalCount > 0 ? power[i] / (kPi * l.portalArea) : power[i] / disk;
                     if (l.type == LightType::Distant)
                         infiniteDir[i] = l.direction;
                     continue;
@@ -1148,6 +1247,11 @@ bool Scene::commit() {
             m_lightTree.update(bounds, infiniteLight, power, infiniteE, infiniteDir,
                                m_linking ? m_lightLinkMask : std::vector<uint64_t>{},
                                m_linking ? m_receiverCategories : std::vector<uint64_t>{});
+            std::vector<std::vector<PortalTriangle>> portals(n);
+            for (size_t i = 0; i < n; ++i)
+                if (m_lightData[i].portalCount > 0)
+                    portals[i].assign(m_lightData[i].portals, m_lightData[i].portals + m_lightData[i].portalCount);
+            m_lightTree.setPortals(portals);
         }
         // A large scene (e.g. a huge ground plane) inflates the power of the
         // lights at infinity until local lights get no samples; cap them at

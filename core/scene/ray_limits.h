@@ -56,6 +56,10 @@ struct RayLimits {
     // causticsroughnessclamp): at hits after a diffuse event on objects
     // without fake caustics.
     float causticsRoughnessClamp = 0.0f;
+    // Nested dielectrics (Karma's dielectricpriority, docs/design/M11-P9b.md):
+    // the priority of an object's refracting interior where it overlaps
+    // others; 0 is the highest, larger numbers lose.
+    int dielectricPriority = 0;
 
     bool operator==(const RayLimits &) const = default;
 };
@@ -75,6 +79,7 @@ struct RayLimitOverrides {
     float fakeDarken = -1.0f;
     int8_t internalReflection = -1;
     float causticsRoughnessClamp = -1.0f;
+    int16_t dielectricPriority = -1;
 
     bool any() const {
         for (float l : limit)
@@ -82,7 +87,7 @@ struct RayLimitOverrides {
                 return true;
         return thinWallAtRefractLimit >= 0 || fakeCaustics >= 0 || fakeKarma >= 0 || fakeBsdf >= 0 ||
                fakeColor[0] >= 0.0f || fakeOpacity[0] >= 0.0f || fakeDarken >= 0.0f || internalReflection >= 0 ||
-               causticsRoughnessClamp >= 0.0f;
+               causticsRoughnessClamp >= 0.0f || dielectricPriority >= 0;
     }
     bool operator==(const RayLimitOverrides &) const = default;
 };
@@ -94,6 +99,7 @@ struct ObjectShading {
     bool internalReflection = true;
     float causticsRoughnessClamp = 0.0f;
     FakeCausticsStyle fake;
+    uint8_t dielectricPriority = 0; // nested dielectrics (core/integrator/nested.h)
 
     bool operator==(const ObjectShading &) const = default;
 };
@@ -103,6 +109,8 @@ NOVA_INLINE ObjectShading resolveObjectShading(const RayLimits &d, const RayLimi
     s.fakeCaustics = o.fakeCaustics >= 0 ? o.fakeCaustics != 0 : d.fakeCaustics;
     s.internalReflection = o.internalReflection >= 0 ? o.internalReflection != 0 : d.internalReflection;
     s.causticsRoughnessClamp = o.causticsRoughnessClamp >= 0.0f ? o.causticsRoughnessClamp : d.causticsRoughnessClamp;
+    const int priority = o.dielectricPriority >= 0 ? o.dielectricPriority : d.dielectricPriority;
+    s.dielectricPriority = uint8_t(priority < 0 ? 0 : priority > 254 ? 254 : priority);
     s.fake = d.fakeStyle;
     if (o.fakeKarma >= 0)
         s.fake.karma = o.fakeKarma != 0;

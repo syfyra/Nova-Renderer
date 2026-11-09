@@ -674,6 +674,31 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     const uint32_t pixel = w.pixel[p];
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
     const uint32_t tag = state ? lpe.objectTag(meshId, materialIdOf(mesh, hit.prim)) : 0u;
+
+    // Nested dielectrics (core/integrator/nested.h): a false interface is
+    // crossed without an event, at a real one the transmission bends by the
+    // media's indices. Fake-caustic and light-only rays cross every surface,
+    // as shadow rays do.
+    const uint8_t priority = shading.dielectricPriority;
+    const bool entering = dot(wo, hit.Ng) > 0.0f;
+    float ownIor = 1.0f;
+    const bool refracting = sc.nestedDielectrics && !fake && !lightsOnly && refractingIndex(cl, entering, ownIor);
+    if (refracting) {
+        NestedMedia &media = w.nested[p];
+        if (media.falseInterface(priority)) {
+            if (entering)
+                media.enter(priority, ownIor, cl.sigmaA);
+            else
+                media.leave(priority);
+            w.sigmaA[p] = media.absorption();
+            w.inMedium[p] = !isBlack(w.sigmaA[p]);
+            w.coneWidth[p] += w.coneSpread[p] * hit.t;
+            pushRay(a.next, leave(-wo), -wo, kInf, p, time, a.rays.filterSeed[k], RayClass(a.rays.rayType[k]));
+            return;
+        }
+        setMediaIndex(cl, entering, media.otherIndex(priority));
+    }
+
     if (state && lpe.albedo && !lightsOnly)
         lpeAlbedoEvents(lpe, film, pixel, state, tag, cl, w.beta[p]);
     // Emission, reached by BSDF sampling: an O event of weight 1, or for an
@@ -894,12 +919,18 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         wk.medium[j] = cl.lobe[s.lobe].subsurface;
         return;
     }
+    // A transmission through a refracting interface changes the medium, also
+    // as a thin-wall pass-through (Karma, measured), which tints like a thin
+    // wall.
+    const bool crossed =
+        s.refract || (refracting && s.transmit && s.lobe >= 0 && cl.lobe[s.lobe].type == LobeType::Dielectric);
     if (passThrough) {
         s.wi = -wo;
         s.delta = true;
         s.pdf = 0.0f;
         s.refract = false;
         s.diffuseShare = 0.0f;
+        s.weight *= cl.absorptionColor;
     }
     Spectrum beta = w.beta[p] * s.weight;
     float etaScale = w.etaScale[p];
@@ -945,9 +976,17 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         w.prevSet[p] = kPrevSetDelta | mesh.receiverSet(hit.instance);
     }
     w.etaScale[p] = etaScale;
-    if (s.refract) {
+    if (crossed && refracting) {
+        // Into or out of the object's level (nested.h).
+        NestedMedia &media = w.nested[p];
+        if (entering)
+            media.enter(priority, ownIor, cl.sigmaA);
+        else
+            media.leave(priority);
+        w.sigmaA[p] = media.absorption();
+        w.inMedium[p] = !isBlack(w.sigmaA[p]);
+    } else if (crossed) {
         // Entering or leaving: by the authored orientation.
-        const bool entering = dot(wo, hit.Ng) > 0.0f;
         w.inMedium[p] = entering && !isBlack(cl.sigmaA);
         w.sigmaA[p] = entering ? cl.sigmaA : spectrum(0.0f);
     }
@@ -1001,6 +1040,8 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
     w.etaScale[slot] = 1.0f;
     w.sigmaA[slot] = spectrum(0.0f);
     w.inMedium[slot] = 0;
+    if (w.nested)
+        w.nested[slot].clear();
     w.eventCounts[slot] = 0;
     w.limitDither[slot] = sampler.get1D(stream::kLimit);
     w.lightOnly[slot] = 0;
