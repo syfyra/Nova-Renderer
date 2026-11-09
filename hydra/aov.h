@@ -76,6 +76,15 @@ struct HdNovaAovSource {
 // `bake`: the render is a texture bake (docs/design/M11-P8.md): the
 // Texture Baker's raw sources (Nt, Af, __bake_P, N, export_*, ...) are its
 // maps, and every utility plane is filtered per sample.
-HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool bake = false);
+// Otherwise Karma's per-var sample filter (driver:parameters:aov:karma:filter,
+// docs/design/M11-P6.md 2) makes a utility plane per-sample; a beauty or LPE
+// var whose filter is not ubox becomes a per-sample utility plane too.
+// `primIdChannel`: a var named PrimId is bound (Karma's object coverage
+// modes depend on it).
+HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool bake = false,
+                                 bool primIdChannel = false);
+
+// Whether the bindings hold a var named PrimId.
+bool HdNovaHasPrimIdChannel(HdRenderPassAovBindingVector const &bindings);
 
 PXR_NAMESPACE_CLOSE_SCOPE

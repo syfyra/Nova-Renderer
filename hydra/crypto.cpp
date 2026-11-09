@@ -1,10 +1,14 @@
 #include "crypto.h"
 
+#include "instancer.h"
+
 #include <pxr/base/vt/array.h>
 #include <pxr/imaging/hd/instancerTopologySchema.h>
 #include <pxr/imaging/hd/primOriginSchema.h>
 #include <pxr/imaging/hd/renderIndex.h>
 #include <pxr/imaging/hd/sceneIndex.h>
+
+#include <algorithm>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -78,7 +82,7 @@ bool primvarStrings(VtValue const &v, std::vector<std::string> &out) {
 } // namespace
 
 std::vector<nova::CryptoAttribute> HdNovaCryptoAttributes(HdSceneDelegate *sd, SdfPath const &id,
-                                                          HdNovaCryptoNames &names) {
+                                                          HdNovaCryptoNames &names, SdfPath const &instancerId) {
     std::vector<nova::CryptoAttribute> out;
     std::vector<std::string> values;
     for (HdInterpolation interp : {HdInterpolationConstant, HdInterpolationUniform}) {
@@ -100,6 +104,29 @@ std::vector<nova::CryptoAttribute> HdNovaCryptoAttributes(HdSceneDelegate *sd, S
             }
             out.push_back(std::move(a));
         }
+    }
+    if (instancerId.IsEmpty())
+        return out;
+    auto const *instancer = dynamic_cast<HdNovaInstancer const *>(sd->GetRenderIndex().GetInstancer(instancerId));
+    if (!instancer)
+        return out;
+    std::vector<std::pair<std::string, std::vector<std::string>>> perInstance;
+    instancer->ComputeInstanceStrings(id, perInstance);
+    for (auto const &[name, values] : perInstance) {
+        if (std::any_of(out.begin(), out.end(), [&](nova::CryptoAttribute const &a) { return a.name == name; }))
+            continue; // the gprim's own value wins
+        nova::CryptoAttribute a;
+        a.name = name;
+        a.perInstance = true;
+        a.ids.reserve(values.size());
+        std::unordered_map<std::string, uint32_t> seen;
+        for (std::string const &value : values) {
+            auto [it, fresh] = seen.try_emplace(value, 0u);
+            if (fresh)
+                it->second = value.empty() ? 0u : names.Note(name, value);
+            a.ids.push_back(it->second);
+        }
+        out.push_back(std::move(a));
     }
     return out;
 }

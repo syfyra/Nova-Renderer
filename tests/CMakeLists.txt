@@ -34,6 +34,7 @@ add_executable(nova_tests
     test_lpe.cpp
     test_lpe_render.cpp
     test_utility_aovs.cpp
+    test_sample_aovs.cpp
     test_crypto.cpp
     test_ray_limits.cpp
     test_fake_caustics.cpp
@@ -274,6 +275,14 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_nodes/$<CONFIG>")
     set_tests_properties(husk_karma_nodes PROPERTIES LABELS husk TIMEOUT 900)
+    # Karma's Render Products, Standard Render Vars and Cryptomatte details
+    # (docs/design/M11-P6.md): sample filters, raw sources, per-instance
+    # cryptomattes, deep camera maps and checkpoints against Karma's values.
+    add_test(NAME husk_karma_products
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_products.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_products/$<CONFIG>")
+    set_tests_properties(husk_karma_products PROPERTIES LABELS husk TIMEOUT 900)
     # Karma's Fog Box (docs/design/M11-P5.md): scenes built by the LOP
     # (husk/fogbox), Karma's values and analytic ones; CPU and Nova XPU.
     add_test(NAME husk_karma_fogbox

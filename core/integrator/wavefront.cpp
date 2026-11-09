@@ -11,6 +11,7 @@
 #include "core/integrator/wavefront.h"
 
 #include "core/bake/bake.h"
+#include "core/integrator/camera_samples.h"
 #include "core/bsdf/surface.h"
 #include "core/integrator/holdout.h"
 #include "core/integrator/material_eval.h"
@@ -263,120 +264,6 @@ ExternalLane externalLane(const SurfaceHit &h, Vec3f dir, float time, Vec3f wi, 
     return lane;
 }
 
-// A point of a hit surface at another shutter time: the same barycentrics
-// (spheres: the object-space point moved with the transform).
-Vec3f hitPointAt(const Scene &scene, const SurfaceHit &hit, Vec2f uv, float t, Vec3f org, Vec3f dir, float time) {
-    if (scene.meshRecord(hit.mesh).desc.isSphere())
-        return scene.objectToWorld(hit.mesh, hit.instance, time).point(hit.Pobject);
-    return scene.resolveHit(hit.mesh, hit.prim, uv, t, hit.instance, time, org, dir).P;
-}
-
-// The utility planes at a first hit (D9): the surface hit (null: a
-// camera-visible light at P), its shading and geometric normals as authored
-// (Karma's ray:hitN and hitNg are not turned to the viewer), the eye ray.
-struct FirstHitUtility {
-    const Scene &scene;
-    const Camera &camera;
-    Mat4 viewToNdc;
-    Vec3f eye;
-    bool ortho;
-
-    void write(Film &film, uint32_t pix, const SurfaceHit *hit, Vec2f uv, float tHit, Vec3f P, Vec3f n, Vec3f ng,
-               Vec3f org, Vec3f dir, const SurfaceInputs *inputs, MaterialId material) const {
-        bool moved = false;
-        Vec3f P0, P1;
-        const auto motion = [&] {
-            if (!moved && hit) {
-                P0 = hitPointAt(scene, *hit, uv, tHit, org, dir, 0.0f);
-                P1 = hitPointAt(scene, *hit, uv, tHit, org, dir, 1.0f);
-                moved = true;
-            }
-            return moved;
-        };
-        const auto set3 = [](float *o, Vec3f v) {
-            o[0] = v.x;
-            o[1] = v.y;
-            o[2] = v.z;
-        };
-        for (UtilityPlane &plane : film.utility) {
-            float *o = plane.data.data() + size_t(pix) * plane.width;
-            switch (plane.request.kind) {
-            case UtilityKind::P:
-                set3(o, P);
-                break;
-            case UtilityKind::PCamera:
-                set3(o, camera.worldToView.transformAffine(P));
-                break;
-            case UtilityKind::N:
-                set3(o, n);
-                break;
-            case UtilityKind::Ng:
-                set3(o, ng);
-                break;
-            case UtilityKind::NCamera:
-                set3(o, normalize(camera.worldToView.transformDir(n)));
-                break;
-            case UtilityKind::NgCamera:
-                set3(o, normalize(camera.worldToView.transformDir(ng)));
-                break;
-            case UtilityKind::FacingN:
-                o[0] = std::fabs(dot(n, dir));
-                break;
-            case UtilityKind::FacingNg:
-                o[0] = std::fabs(dot(ng, dir));
-                break;
-            case UtilityKind::HitDist: // from the eye (Karma's ray:origin), not from the near plane
-                o[0] = ortho ? camera.viewDepth(P) : length(P - eye);
-                break;
-            case UtilityKind::Face:
-                if (hit) {
-                    // Curves: the curve, not its segment (Karma's ray:primid, M9 D3).
-                    const MeshDesc &d = scene.meshRecord(hit->mesh).desc;
-                    o[0] = d.isCurves() ? float(hit->prim < d.segmentCurve.size() ? d.segmentCurve[hit->prim] : 0u)
-                           : float(hit->prim < d.triangleFaces.size() ? d.triangleFaces[hit->prim] : int32_t(hit->prim));
-                }
-                break;
-            case UtilityKind::MotionVector:
-                if (motion()) {
-                    const Vec2f r0 = camera.worldToRaster(P0, 0.0f, viewToNdc);
-                    const Vec2f r1 = camera.worldToRaster(P1, 1.0f, viewToNdc);
-                    set3(o, {r1.x - r0.x, r1.y - r0.y, 0.0f});
-                }
-                break;
-            case UtilityKind::Velocity:
-                if (motion())
-                    set3(o, P1 - P0);
-                break;
-            case UtilityKind::Primvar:
-                if (hit) {
-                    const AttributeRef ref = scene.attributeRef(hit->mesh, plane.request.name);
-                    const MeshDesc &d = scene.meshRecord(hit->mesh).desc;
-                    const uint32_t none[3] = {0, 0, 0};
-                    const uint32_t *tri = size_t(hit->prim) * 3 + 2 < d.indices.size() ? &d.indices[size_t(hit->prim) * 3]
-                                                                                       : none;
-                    fetchAttribute(ref, tri, hit->prim, hit->instance, hit->uv.x, hit->uv.y, 4, o);
-                }
-                break;
-            case UtilityKind::BaseColor:
-                if (inputs && inputs->model != SurfaceModel::External)
-                    set3(o, inputs->c(surface_field::baseColor));
-                break;
-            case UtilityKind::ShaderAov:
-                if (inputs && hit) {
-                    const shading::Program *p = scene.material(material).desc.program.get();
-                    if (p)
-                        for (const auto &[name, field] : p->aovs)
-                            if (name == plane.request.name)
-                                set3(o, inputs->c(field));
-                }
-                break;
-            case UtilityKind::Ao: // per sample (traceAoRays)
-                break;
-            }
-        }
-    }
-};
-
 // Calls f(x, y, slot) for the film pixels of a wave: every pixel of `tile`
 // in rows, or the listed film pixels in their order.
 template <typename F>
@@ -423,10 +310,17 @@ void renderFirstHitAovs(const Scene &scene, const Camera &camera, const TileRect
     bool hasVisibleAreaLights = false;
     for (uint32_t i = 0; i < lightCount; ++i)
         hasVisibleAreaLights |= isAreaLight(lights[i].type) && !lights[i].delta && lights[i].cameraVisible;
-    const auto &pm = camera.ndcToView.m;
-    const FirstHitUtility utility{scene, camera, film.utility.empty() ? Mat4::identity() : inverse(camera.ndcToView),
-                                  camera.viewToWorld.transformAffine({0.0f, 0.0f, 0.0f}),
-                                  pm[0][3] == 0.0 && pm[1][3] == 0.0 && pm[2][3] == 0.0};
+    // The utility planes at a first hit (D9): the surface hit (null: a
+    // camera-visible light at P), its shading and geometric normals as
+    // authored (Karma's ray:hitN and hitNg are not turned to the viewer), the
+    // eye ray. Planes with a sample filter take each sample instead
+    // (core/integrator/camera_samples.h).
+    const UtilityContext utilityCtx = UtilityContext::make(scene, camera);
+    const auto writeUtility = [&](uint32_t pix, const UtilityHit &h) {
+        for (UtilityPlane &plane : film.utility)
+            if (plane.request.filter == SampleFilter::Center)
+                utilityCtx.value(plane.request, h, plane.data.data() + size_t(pix) * plane.width);
+    };
 
     for (uint32_t k = 0; k < q.rays.size; ++k) {
         const bool miss = q.hitMesh[k] == kInvalidId;
@@ -450,9 +344,16 @@ void renderFirstHitAovs(const Scene &scene, const Camera &camera, const TileRect
             film.albedo[pix] = spectrum(0.0f);
             film.primId[pix] = -1;
             film.instanceId[pix] = -1;
-            if (!film.utility.empty())
-                utility.write(film, pix, nullptr, {}, tLight, P, nLight, nLight, q.rays.org[k], q.rays.dir[k], nullptr,
-                              kDefaultMaterialId);
+            if (!film.utility.empty()) {
+                UtilityHit h;
+                h.tHit = tLight;
+                h.P = P;
+                h.n = h.ng = nLight;
+                h.org = q.rays.org[k];
+                h.dir = q.rays.dir[k];
+                h.time = camera.frameTime;
+                writeUtility(pix, h);
+            }
             continue;
         }
         if (miss)
@@ -486,9 +387,21 @@ void renderFirstHitAovs(const Scene &scene, const Camera &camera, const TileRect
         film.albedo[pix] = albedo;
         film.primId[pix] = scene.meshRecord(hit.mesh).desc.userId;
         film.instanceId[pix] = int32_t(hit.instance);
-        if (!film.utility.empty())
-            utility.write(film, pix, &hit, q.hitUv[k], q.hitT[k], hit.P, hit.N, hit.Ng, q.rays.org[k],
-                          q.rays.dir[k], inputs, material);
+        if (!film.utility.empty()) {
+            UtilityHit h;
+            h.hit = &hit;
+            h.uv = q.hitUv[k];
+            h.tHit = q.hitT[k];
+            h.P = hit.P;
+            h.n = hit.N;
+            h.ng = hit.Ng;
+            h.org = q.rays.org[k];
+            h.dir = q.rays.dir[k];
+            h.inputs = inputs;
+            h.material = material;
+            h.time = camera.frameTime;
+            writeUtility(pix, h);
+        }
     }
 }
 
@@ -544,6 +457,15 @@ void generateCameraRays(const Camera &camera, const PixelFilter &filter, uint32_
             q.prevN[slot] = Vec3f{0.0f, 0.0f, 0.0f};
             q.prevReceiver[slot] = uint8_t(Receiver::None);
             q.prevSet[slot] = kPrevSetDelta;
+            if (q.records) {
+                CameraSampleRecords &r = q.camera;
+                r.mesh[slot] = kInvalidId;
+                r.eventT[slot] = kInf;
+                r.org[slot] = ray.org;
+                r.dir[slot] = ray.dir;
+                r.time[slot] = time;
+                r.alpha[slot] = 0.0f;
+            }
             q.rays.push(ray.org, ray.dir, ray.tMax, slot, time,
                         filterSeeds ? sampler.get1D(stream::bounce(0, stream::kOpacity)) : 0.0f, RayClass::Camera);
         }
@@ -696,10 +618,20 @@ NOVA_NOINLINE bool sampleLobesOutOfLine(const ClosureList &cl, Vec3f wo, Vec3f u
     return nova::sampleClosureLobes(cl, wo, u, s, lobeF, mask);
 }
 
+// A camera ray's surface hit into its path's sample record (M11 P6).
+void recordCameraHit(WaveQueues &q, uint32_t p, uint32_t k) {
+    CameraSampleRecords &r = q.camera;
+    r.mesh[p] = q.hitMesh[k];
+    r.prim[p] = q.hitPrim[k];
+    r.instance[p] = q.hitInstance[k];
+    r.uv[p] = q.hitUv[k];
+    r.t[p] = q.hitT[k];
+}
+
 // The cryptomatte ids of a camera sample's first surface, weight 1 each
 // (docs/design/M6.md D10). Stochastic opacity already picked the surface,
 // so each id's coverage is its opacity share in expectation.
-void cryptoAccumulate(const Scene &scene, Film &film, uint32_t pixel, MeshId mesh, uint32_t prim) {
+void cryptoAccumulate(const Scene &scene, Film &film, uint32_t pixel, MeshId mesh, uint32_t prim, uint32_t instance) {
     const MeshRecord &rec = scene.meshRecord(mesh);
     for (CryptoPlane &plane : film.crypto) {
         switch (plane.request.source) {
@@ -720,7 +652,9 @@ void cryptoAccumulate(const Scene &scene, Film &film, uint32_t pixel, MeshId mes
                     i = d.isCurves() ? (prim < d.segmentCurve.size() ? size_t(d.segmentCurve[prim]) : size_t(prim))
                                      : (prim < d.triangleFaces.size() ? size_t(d.triangleFaces[prim]) : size_t(prim));
                 }
-                if (i < a.ids.size())
+                if (a.perInstance) // instance-rate primvars of the instancers (M11 P6)
+                    i = instance;
+                if (i < a.ids.size() && (!a.perInstance || a.ids[i] != 0)) // 0: an instance without a value
                     plane.add(pixel, a.ids[i], 1.0f);
                 break;
             }
@@ -1088,6 +1022,12 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
             q.beta[p] *= q.mediumT[k];
 
         if (c.depth == 0) {
+            // The sample's alpha into the film (and its record, M11 P6).
+            const auto addAlpha = [&](float a) {
+                film.alphaSum[q.pixel[p]] += a;
+                if (q.records)
+                    q.camera.alpha[p] += a;
+            };
             // Camera rays see camera-visible lights only, which are opaque.
             if (hasVisibleAreaLights) {
                 // Ties with the surface hit use the hit triangle's extent.
@@ -1106,7 +1046,7 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                     addRadiance(q, p, contribution);
                     if (state)
                         lpeDepositAll(*lpe, film, q.pixel[p], lpeLightStep(*lpe, state, light), contribution);
-                    film.alphaSum[q.pixel[p]] += 1.0f;
+                    addAlpha(1.0f);
                     continue;
                 }
             }
@@ -1137,9 +1077,13 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 } else {
                     alpha = surfaceAlpha();
                     if (!film.crypto.empty()) // volumes are transparent to cryptomattes
-                        cryptoAccumulate(c.scene, film, q.pixel[p], q.hitMesh[k], q.hitPrim[k]);
+                        cryptoAccumulate(c.scene, film, q.pixel[p], q.hitMesh[k], q.hitPrim[k], q.hitInstance[k]);
+                    if (q.records)
+                        recordCameraHit(q, p, k);
                 }
-                film.alphaSum[q.pixel[p]] += alpha;
+                if (q.records)
+                    q.camera.eventT[p] = q.volumeT[k];
+                addAlpha(alpha);
                 q.volumeShade[q.volumeShadeCount++] = k;
                 continue;
             }
@@ -1151,28 +1095,31 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
                 const Spectrum Le = state ? cameraEnvironmentLpe(c, q, p, state, q.rays.org[k], dir, visible)
                                           : cameraEnvironment(c.lights, c.lightCount, q.rays.org[k], dir, visible);
                 addRadiance(q, p, clampContribution(beta * Le, c.clampLight));
-                film.alphaSum[q.pixel[p]] += heldOut   ? alphaOver(visible ? 1.0f : 0.0f)
-                                             : visible ? 1.0f
-                                             : q.media ? volumeAlpha()
-                                                       : 0.0f;
+                addAlpha(heldOut   ? alphaOver(visible ? 1.0f : 0.0f)
+                         : visible ? 1.0f
+                         : q.media ? volumeAlpha()
+                                   : 0.0f);
                 continue;
             }
             if (!film.crypto.empty())
-                cryptoAccumulate(c.scene, film, q.pixel[p], q.hitMesh[k], q.hitPrim[k]);
+                cryptoAccumulate(c.scene, film, q.pixel[p], q.hitMesh[k], q.hitPrim[k], q.hitInstance[k]);
+            if (q.records) {
+                recordCameraHit(q, p, k);
+                q.camera.eventT[p] = q.hitT[k];
+            }
             const HoldoutMode holdout =
                 c.scene.anyHoldouts() ? c.scene.meshRecord(q.hitMesh[k]).holdout : HoldoutMode::None;
             if (holdout != HoldoutMode::None) {
                 // A holdout (core/integrator/holdout.h): transparent to alpha
                 // but for the volumes in front, its light to holdout; outputs.
-                film.alphaSum[q.pixel[p]] += heldOut ? alphaOver(0.0f) : q.media ? volumeAlpha() : 0.0f;
+                addAlpha(heldOut ? alphaOver(0.0f) : q.media ? volumeAlpha() : 0.0f);
                 q.holdout[p] = uint8_t(holdout);
                 if (lpe)
                     q.lpeState[p] = lpeHoldoutState(lpe->program, q.lpeState[p]);
                 if (!c.holdoutShading)
                     continue; // nothing takes its light
             } else {
-                // Surfaces are opaque to alpha (transmission included).
-                film.alphaSum[q.pixel[p]] += surfaceAlpha();
+                addAlpha(surfaceAlpha()); // surfaces are opaque to alpha (transmission included)
             }
         } else {
             // Rays scattered by a surface collect the area lights they crossed
@@ -2642,6 +2589,10 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
                            settings.textureFilterWidth, globals);
         rays += q.firstHitPixels.size();
     }
+    // Per-sample records of the camera hits (not in bakes: no camera).
+    q.records = !baker && film.wantsSampleRecords();
+    if (q.records)
+        q.camera.reserve(paths);
     if (baker)
         rays += generateBakePaths(scene, camera, settings, filter, tile, pixels, pixelCount, samplesPerPixel, film, q,
                                   *baker);
@@ -2676,6 +2627,10 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
             film.colorSum[q.pixel[slot]] += L;
         ++film.count[q.pixel[slot]];
     }
+    if (q.records) // filtered utility planes and the deep map (camera_samples.h)
+        accumulateCameraSamples(scene, camera, globals, film,
+                                CameraSampleView::of(q.camera, paths, q.pixel.data(), q.sampleIndex.data(),
+                                                     q.radiance.data()));
     if (q.walksDone > 0) {
         g_walks.fetch_add(q.walksDone, std::memory_order_relaxed);
         g_walksCapped.fetch_add(q.walksCapped, std::memory_order_relaxed);
@@ -2701,8 +2656,8 @@ uint64_t renderFirstHits(const Scene &scene, const Camera &camera, const RenderS
     return q.firstHitPixels.size();
 }
 
-void accumulateCrypto(const Scene &scene, Film &film, uint32_t pixel, MeshId mesh, uint32_t prim) {
-    cryptoAccumulate(scene, film, pixel, mesh, prim);
+void accumulateCrypto(const Scene &scene, Film &film, uint32_t pixel, MeshId mesh, uint32_t prim, uint32_t instance) {
+    cryptoAccumulate(scene, film, pixel, mesh, prim, instance);
 }
 
 ShadeGlobals shadeGlobals(const RenderSettings &settings, const Camera &camera) {

@@ -1,0 +1,117 @@
+# Geometry of crypto_instances.usda (karma_products_scenes.py adds the render prims): a point
+# instancer with per-instance string and int primvars (one prototype with its own value), a nested
+# instancer, native instances with constant primvars on their roots and a plain mesh.
+class "_proto"
+{
+    def Mesh "ball"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-0.4, -0.4, 0), (0.4, -0.4, 0), (0.4, 0.4, 0), (-0.4, 0.4, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+}
+
+def Xform "World"
+{
+    def PointInstancer "inst"
+    {
+        rel prototypes = [</World/inst/protos/pebble>, </World/inst/protos/rock>]
+        int[] protoIndices = [0, 1, 0, 1]
+        point3f[] positions = [(-3.0, 1.0, 0), (-1.6, 1.0, 0), (-0.2, 1.0, 0), (1.2, 1.0, 0)]
+        string[] primvars:instname = ["i0", "i1", "i2", "i3"] (interpolation = "vertex")
+        int[] primvars:piece = [10, 11, 12, 13] (interpolation = "vertex")
+        string primvars:group = "pi_const" (interpolation = "constant")
+        def Scope "protos"
+        {
+            def Mesh "pebble"
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(-0.5, -0.5, 0), (0.5, -0.5, 0), (0.5, 0.5, 0), (-0.5, 0.5, 0)]
+                uniform token subdivisionScheme = "none"
+                string primvars:instname = "proto_pebble" (interpolation = "constant")
+            }
+            def Mesh "rock"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(-0.5, -0.5, 0), (0.5, -0.5, 0), (0, 0.5, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def PointInstancer "nested"
+    {
+        rel prototypes = [</World/nested/protos/inner>]
+        int[] protoIndices = [0, 0]
+        point3f[] positions = [(2.6, 1.0, 0), (2.6, -1.0, 0)]
+        string[] primvars:instname = ["outerA", "outerB"] (interpolation = "vertex")
+        def Scope "protos"
+        {
+            def PointInstancer "inner"
+            {
+                rel prototypes = [</World/nested/protos/inner/protos/chip>]
+                int[] protoIndices = [0, 0]
+                point3f[] positions = [(-0.25, 0, 0), (0.25, 0, 0)]
+                string[] primvars:instname = ["innerX", "innerY"] (interpolation = "vertex")
+                def Scope "protos"
+                {
+                    def Mesh "chip"
+                    {
+                        int[] faceVertexCounts = [4]
+                        int[] faceVertexIndices = [0, 1, 2, 3]
+                        point3f[] points = [(-0.2, -0.2, 0), (0.2, -0.2, 0), (0.2, 0.2, 0), (-0.2, 0.2, 0)]
+                        uniform token subdivisionScheme = "none"
+                    }
+                }
+            }
+        }
+    }
+
+    def Xform "refA" (
+        instanceable = true
+        prepend references = </_proto>
+    )
+    {
+        string primvars:instname = "native_A" (interpolation = "constant")
+        int primvars:piece = 21 (interpolation = "constant")
+        double3 xformOp:translate = (-2.0, -1.0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "refB" (
+        instanceable = true
+        prepend references = </_proto>
+    )
+    {
+        string primvars:instname = "native_B" (interpolation = "constant")
+        double3 xformOp:translate = (-0.6, -1.0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "plain"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0.4, -1.4, 0), (1.2, -1.4, 0), (1.2, -0.6, 0), (0.4, -0.6, 0)]
+        uniform token subdivisionScheme = "none"
+        string primvars:instname = "plain_mesh" (interpolation = "constant")
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 80
+        float verticalAperture = 40
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
