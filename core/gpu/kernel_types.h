@@ -13,6 +13,7 @@
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_lane.h"
 #include "core/integrator/medium_track.h"
+#include "core/integrator/nested.h"
 #include "core/lights/light_sampler.h"
 #include "core/lights/light_tree.h"
 #include "core/lights/lights.h"
@@ -179,6 +180,7 @@ struct GpuScene {
     float tolerance = 0.0f;
     uint8_t hasAreaLights = 0, hasVisibleAreaLights = 0;
     uint8_t anyFiltered = 0; // some mesh is filtered: rays carry opacity seeds (Scene::anyFiltered)
+    uint8_t nestedDielectrics = 0; // Scene::nestedDielectrics
     // Holdouts (core/integrator/holdout.h): some mesh is a holdout; some light
     // has illumbackground and some mesh is a background holdout.
     uint8_t anyHoldouts = 0, illumBackground = 0;
@@ -196,6 +198,9 @@ struct GpuScene {
     uint8_t holdoutVolumes = 0;
     uint8_t backgroundVolumes = 0;
     uint8_t volumeShadowVisibility = 0;
+    // The sky atmosphere (docs/design/M11-P7.md; volume kInvalidId: none).
+    AtmosphereView atmosphere;
+    NOVA_INLINE bool anyMedia() const { return activeVolumeCount > 0 || atmosphere.volume != 0xFFFFFFFFu; }
     // Equiangular sampling (M9 D17): the lights that opted in, chosen by power
     // (table slot -> light), each light's probability of being chosen.
     const uint32_t *eqLights = nullptr;
@@ -287,6 +292,7 @@ struct GpuWave {
     float *etaScale = nullptr;
     Spectrum *sigmaA = nullptr;
     uint8_t *inMedium = nullptr;
+    NestedMedia *nested = nullptr; // the media by priority (nested dielectrics, core/integrator/nested.h)
     uint64_t *eventCounts = nullptr;
     float *limitDither = nullptr;
     uint8_t *lightOnly = nullptr;

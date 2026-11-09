@@ -1,5 +1,6 @@
 #include "renderDelegate.h"
 
+#include "atmosphere.h"
 #include "camera.h"
 #include "diagnostics.h"
 #include "field.h"
@@ -65,6 +66,7 @@ const TfTokenVector HdNovaRenderDelegate::SUPPORTED_RPRIM_TYPES = {
     HdPrimTypeTokens->basisCurves,
     HdPrimTypeTokens->points,
     HdPrimTypeTokens->volume,
+    HdNovaAtmosphere::TypeToken(), // the Karma Sky Atmosphere (docs/design/M11-P7.md)
 };
 
 const TfTokenVector HdNovaRenderDelegate::SUPPORTED_SPRIM_TYPES = {
@@ -970,6 +972,9 @@ TF_DEFINE_PRIVATE_TOKENS(_karma,
     ((fakeOpacity, "karma:object:fakecausticsopacity"))
     ((fakeDarken, "karma:object:fakecausticsfresneldarken"))
     ((internalReflect, "karma:object:internalreflectenable"))
+    ((dielectricPriority, "karma:object:dielectricpriority"))
+    ((isPortal, "karma:object:isportal"))
+    ((portalDomeLights, "karma:object:portaldomelights"))
     ((imageWidth, "karma:global:mtlx_imagewidth"))
     ((imageBlur, "karma:global:mtlx_imageblur"))
     ((abortMissing, "karma:global:abortmissingtexture"))
@@ -1114,6 +1119,10 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
         s.limits.causticsRoughnessClamp = float(
             std::clamp(number(HdNovaSettingsTokens->causticsRoughnessClamp, _karma->causticsClamp, karmaScene ? 0.2 : 0.0),
                        0.0, 1.0));
+        // Nested dielectrics (docs/design/M11-P9b.md): the objects' priority
+        // where they author none (0, the highest).
+        s.limits.dielectricPriority = int(std::lround(
+            std::clamp(number(HdNovaSettingsTokens->dielectricPriority, _karma->dielectricPriority, 0.0), 0.0, 254.0)));
     }
     s.constrainRoughness = flag(HdNovaSettingsTokens->constrainRoughness, _karma->constrainMaxRough, karmaScene);
     // Ray visibility and holdouts of objects without their own (M11 P2):
@@ -1272,6 +1281,21 @@ HdNovaObjectDefaults HdNovaRenderDelegate::GetObjectDefaults() const {
     d.displacement = trueDisplace < 0 ? -1 : trueDisplace == 2 ? 0 : 1;
     if (const auto v = HdNovaFlag(karma(_karma->motionBlur)))
         d.motionBlur = *v ? 1 : 0;
+    // Light portals (docs/design/M11-P9b.md): Nova's names, else Karma's.
+    {
+        std::optional<bool> portal = HdNovaFlag(karma(HdNovaSettingsTokens->isPortal));
+        if (!portal)
+            portal = HdNovaFlag(karma(_karma->isPortal));
+        if (portal)
+            d.isPortal = *portal ? 1 : 0;
+        VtValue domes = karma(HdNovaSettingsTokens->portalDomeLights);
+        if (domes.IsEmpty())
+            domes = karma(_karma->portalDomeLights);
+        if (!domes.IsEmpty()) {
+            d.portalDomeLights = HdNovaTextList(domes);
+            d.portalDomeLightsSet = true;
+        }
+    }
     return d;
 }
 
@@ -1339,9 +1363,6 @@ void HdNovaRenderDelegate::_WarnUnsupportedKarmaSettings() const {
              const auto c = color3(v);
              return c && ((*c)[0] != 0.0f || (*c)[1] != 0.0f || (*c)[2] != 0.0f);
          }},
-        {"karma:object:dielectricpriority", "nested dielectrics",
-         [](VtValue const &v) { return HdNovaNumber(v).value_or(0.0) != 0.0; }},
-        {"karma:object:isportal", "light portals", on},
         {"karma:object:bumpshadowterminator", "the bump shadow terminator",
          [](VtValue const &v) { return HdNovaNumber(v).value_or(0.0) != 0.0; }},
         {"karma:object:smoothp", "smoothed shadow positions off", off},
@@ -1604,6 +1625,8 @@ HdRprim *HdNovaRenderDelegate::CreateRprim(TfToken const &typeId, SdfPath const 
         return new HdNovaPoints(rprimId);
     if (typeId == HdPrimTypeTokens->volume)
         return new HdNovaVolume(rprimId);
+    if (typeId == HdNovaAtmosphere::TypeToken())
+        return new HdNovaAtmosphere(rprimId);
     TF_CODING_ERROR("Nova: unknown Rprim type %s", typeId.GetText());
     return nullptr;
 }

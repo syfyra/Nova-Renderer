@@ -85,6 +85,26 @@ std::string HdNovaText(VtValue const &value) {
     return {};
 }
 
+std::string HdNovaTextList(VtValue const &value) {
+    std::string text;
+    const auto add = [&](std::string const &s) {
+        if (!text.empty())
+            text += ' ';
+        text += s;
+    };
+    if (value.IsHolding<VtArray<std::string>>()) {
+        for (std::string const &s : value.UncheckedGet<VtArray<std::string>>())
+            add(s);
+        return text;
+    }
+    if (value.IsHolding<VtArray<TfToken>>()) {
+        for (TfToken const &t : value.UncheckedGet<VtArray<TfToken>>())
+            add(t.GetString());
+        return text;
+    }
+    return HdNovaText(value);
+}
+
 int HdNovaMenuIndex(VtValue const &value, std::initializer_list<const char *> labels) {
     if (value.IsEmpty())
         return -1;

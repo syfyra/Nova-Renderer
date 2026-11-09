@@ -1,0 +1,189 @@
+#usda 1.0
+(
+    doc = "Built by tests/husk/karma_atmosphere/make_scenes.py (sa_disc)"
+    framesPerSecond = 24
+    metersPerUnit = 1
+    timeCodesPerSecond = 24
+)
+
+def Xform "atmosphere"
+{
+    def KarmaSkyAtmosphere "sky"
+    {
+        bool primvars:enableatmosphere = 1 (
+            interpolation = "constant"
+        )
+        color3f primvars:extraabsorpcoeff = (6.5e-7, 0.00000188, 8.6e-8) (
+            interpolation = "constant"
+        )
+        float primvars:extraaltitude = 25000 (
+            interpolation = "constant"
+        )
+        float primvars:extrawidth = 30000 (
+            interpolation = "constant"
+        )
+        color3f primvars:groundalbedo = (0.2, 0.2, 0.2) (
+            interpolation = "constant"
+        )
+        float primvars:groundoffset = 0 (
+            interpolation = "constant"
+        )
+        bool primvars:groundreceiveshadow = 0 (
+            interpolation = "constant"
+        )
+        string primvars:groundvisibility = "-primary" (
+            interpolation = "constant"
+        )
+        bool primvars:ignorecameraclip = 1 (
+            interpolation = "constant"
+        )
+        string primvars:karma:object:lpetag = "" (
+            interpolation = "constant"
+        )
+        int primvars:karma:object:volumelimit = 0 (
+            interpolation = "constant"
+        )
+        float2 primvars:lutdim = (256, 256) (
+            interpolation = "constant"
+        )
+        color3f primvars:mieabsorpcoeff = (0.0000045, 0.0000045, 0.0000045) (
+            interpolation = "constant"
+        )
+        float primvars:miedist = 1200 (
+            interpolation = "constant"
+        )
+        float primvars:miephase = 0.8 (
+            interpolation = "constant"
+        )
+        color3f primvars:miescattercoeff = (0.000004, 0.000004, 0.000004) (
+            interpolation = "constant"
+        )
+        string primvars:ociofrom = "" (
+            interpolation = "constant"
+        )
+        vector3f primvars:planetcenter = (0, -6371000, 0) (
+            interpolation = "constant"
+        )
+        color3f primvars:rayleighcoeff = (0.000006, 0.000012, 0.000027) (
+            interpolation = "constant"
+        )
+        float primvars:rayleighdist = 8000 (
+            interpolation = "constant"
+        )
+        bool primvars:renderbackside = 0 (
+            interpolation = "constant"
+        )
+        float primvars:sealevel = 6370900 (
+            interpolation = "constant"
+        )
+        bool primvars:solidalphainipr = 1 (
+            interpolation = "constant"
+        )
+        float primvars:stepsizemax = 2500 (
+            interpolation = "constant"
+        )
+        float primvars:stepsizemin = 250 (
+            interpolation = "constant"
+        )
+    }
+}
+
+def "rig"
+{
+    def Camera "sun"
+    {
+        float2 clippingRange = (0.01, 1000000)
+        float focalLength = 10
+        float horizontalAperture = 0.3491013
+        float verticalAperture = 0.3491013
+        matrix4d xformOp:transform = ( (1, -0, 0, 0), (0, 0.9848077530122078, 0.17364817766693028, 0), (0, -0.17364817766693028, 0.9848077530122078, 0), (0, 0, 0, 1) )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+
+    def "mtl"
+    {
+        def Material "white"
+        {
+            token outputs:mtlx:surface.connect = </rig/mtl/white/s.outputs:out>
+
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 1
+                color3f inputs:base_color = (1, 1, 1)
+                float inputs:specular = 0
+                token outputs:out
+            }
+        }
+
+        def Material "black"
+        {
+            token outputs:mtlx:surface.connect = </rig/mtl/black/s.outputs:out>
+
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                float inputs:base = 0
+                color3f inputs:base_color = (1, 1, 1)
+                float inputs:specular = 0
+                token outputs:out
+            }
+        }
+    }
+}
+
+def "lights"
+{
+    def DistantLight "sun"
+    {
+        float inputs:angle = 0.53
+        float inputs:intensity = 1
+        custom bool inputs:karma:light:renderlightgeo = 1
+        bool inputs:normalize = 1
+        matrix4d xformOp:transform = ( (-1, 0, 0, 0), (0, 0.9848077530122082, 0.17364817766693036, 0), (0, 0.17364817766693036, -0.9848077530122082, 0), (0, 0, 0, 1) )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+}
+
+def "Render"
+{
+    def RenderSettings "sun"
+    {
+        rel camera = </rig/sun>
+        custom float karma:global:colorlimit = 1000000
+        custom float karma:global:indirectcolorlimit = 1000000
+        custom int karma:global:pathtracedsamples = 256
+        custom string karma:global:pixelfilter = "box"
+        custom float karma:global:pixelfilterscale = 0.000001
+        custom string karma:global:pixeloracle = "uniform"
+        custom int karma:global:samplesperpixel = 256
+        custom float nova:clampIndirect = 0
+        custom token nova:pixelFilter = "box"
+        custom float nova:pixelFilterScale = 0
+        custom int nova:samples = 256
+        rel products = </Render/Products/sun>
+        uniform int2 resolution = (32, 32)
+    }
+
+    def "Products"
+    {
+        def RenderProduct "sun"
+        {
+            rel orderedVars = </Render/Products/Vars/C>
+            token productName = "sun.exr"
+        }
+
+        def "Vars"
+        {
+            def RenderVar "C"
+            {
+                uniform token dataType = "color4f"
+                custom token driver:parameters:aov:format = "color4f"
+                custom string driver:parameters:aov:name = "C"
+                uniform string sourceName = "C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+        }
+    }
+}
+

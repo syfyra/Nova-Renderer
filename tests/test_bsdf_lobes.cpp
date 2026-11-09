@@ -157,6 +157,14 @@ TEST_CASE("Lobes sample their pdfs (chi-square)", "[bsdf][chi2]") {
             const std::string name = "glass eta " + std::to_string(eta) + " alpha " + std::to_string(alpha);
             runChi2(name.c_str(), adapt(dielectric(alpha, eta, DielectricLobe::kBoth)), {0.1f, 0.5f, 0.9f}, 3);
         }
+    // Between nested media (docs/design/M11-P9b.md): the media's ratio bends
+    // the transmission, the surface's own index reflects.
+    for (const float eta : {1.5f, 1.0f / 1.5f}) {
+        DielectricLobe nested = dielectric(0.3f, eta, DielectricLobe::kBoth);
+        nested.etaMedia = eta >= 1.0f ? 1.5f / 1.33f : 2.0f / 1.5f;
+        runChi2(eta >= 1.0f ? "glass from water 0.3" : "glass into a denser medium 0.3", adapt(nested),
+                {0.1f, 0.5f, 0.9f}, 3);
+    }
     runChi2("dielectric reflection 0.3", adapt(dielectric(0.3f, 1.5f, DielectricLobe::kReflect)), {0.2f, 0.8f}, 2);
     runChi2("dielectric transmission 0.3", adapt(dielectric(0.3f, 1.5f, DielectricLobe::kTransmit)), {0.2f, 0.8f}, 2);
     runChi2("thin-walled 0.3", adapt(thinDielectric(0.3f, 1.5f)), {0.2f, 0.8f}, 2);

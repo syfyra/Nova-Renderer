@@ -13,6 +13,7 @@ add_library(hdNova_objects OBJECT
     products.cpp
     denoise.cpp
     renderBuffer.cpp
+    atmosphere.cpp
     medium.cpp
     mesh.cpp
     sphere.cpp

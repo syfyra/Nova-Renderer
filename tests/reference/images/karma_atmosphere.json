@@ -1,0 +1,25 @@
+{
+  "scene": "karma_atmosphere",
+  "created": "2026-11-08",
+  "inputs": {
+    "scenes/karma_atmosphere.usda": "742d3ed1060ad93c4594669b53788cf0229df590",
+    "scenes/assets/sphere.usda": "b336716c1e95bd445ea9ebfee6bffe7555da0627",
+    "scenes/common.usda": "f80c223b95fe6f3944c03a62ad7e1caa4b48cbe3"
+  },
+  "karma": "karma 22.0.466",
+  "pixelfilter": "gauss",
+  "spp": 4096,
+  "image": "images/karma_atmosphere.exr",
+  "sigma": "images/karma_atmosphere.sigma.exr",
+  "karma_floor": {
+    "flip_mean": 0.006194,
+    "flip_test_pair": 0.009684,
+    "relmse": 9e-06,
+    "global_z": [
+      -0.668,
+      -1.367,
+      -1.058,
+      1.182
+    ]
+  }
+}

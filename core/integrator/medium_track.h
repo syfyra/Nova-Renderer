@@ -26,6 +26,7 @@
 #include "core/math/rng.h"
 #include "core/scene/motion.h"
 #include "core/scene/visibility.h"
+#include "core/volume/atmosphere.h"
 #include "core/volume/majorant.h"
 #include "core/volume/phase.h"
 #include "core/volume/shell.h"
@@ -80,6 +81,12 @@ struct MediumRay {
     // A shadow ray from a background point: background holdout volumes do
     // not shadow it (Karma, as background holdout surfaces).
     bool fromBackground = false;
+    // What the ray sees at its end, for the sky atmosphere's choice between
+    // in-scattering and passing (docs/design/M11-P7.md): 0 nothing (it
+    // escapes and no light at infinity lies in its direction), 1 a surface,
+    // an environment or crossed lights, 2 a small bright light at infinity
+    // (a sun disc in its direction).
+    uint8_t behind = 1;
 };
 
 // Volume ray visibility and holdouts (docs/design/M11-P2.md D15): whether
@@ -149,6 +156,9 @@ struct MediumFlight {
     PhaseFunction phase;
     Spectrum weight{1.0f, 1.0f, 1.0f};
     int crossings = 0; // the crossT before the event (all without one)
+    // The ray ends on the sky atmosphere's ground (docs/design/M11-P7.md) at
+    // distance t: the segment's weight reaches it, nothing behind it.
+    bool ground = false;
 };
 
 // The medium at distance t along the ray (a point query, D17): each covering
@@ -177,6 +187,14 @@ struct MediumHit {
     VolumeId volume;
     const MediumActive *active;
     PhaseFunction phase;
+};
+
+// A factor on what the trackers hand out at distance t (the transmittance in
+// front of crossed lights, collected emission): the sky atmosphere around
+// the volumes (AtmosphereOuter). NoOuter: none (the trackers' own values).
+struct NoOuter {
+    static constexpr bool active = false;
+    NOVA_INLINE Spectrum operator()(float) const { return Spectrum{1.0f, 1.0f, 1.0f}; }
 };
 
 // A list of at most N elements in place (the GPU's lists; more are dropped).
@@ -460,15 +478,20 @@ NOVA_INLINE bool mediumExtent(const Media &media, Spans &spans, const MediumRay 
 // `crossT` (ascending distances, may be empty) receive in `crossOut` the
 // transmittance in front of each. `u0` is the first uniform (a Sobol
 // sample), `rng` gives the rest.
-template <class Media, class Spans, class Actives>
+template <class Media, class Spans, class Actives, class Outer = NoOuter>
 NOVA_INLINE Spectrum trackMedia(Media &media, Spans &spans, Actives &active, const MediumRay &ray, float u0,
                                 Rng &rng, EmissionGather *gather, const float *crossT = nullptr,
-                                Spectrum *crossOut = nullptr, int crossCount = 0) {
+                                Spectrum *crossOut = nullptr, int crossCount = 0, const Outer &outer = Outer{}) {
     Spectrum T{1.0f, 1.0f, 1.0f};
     int nextCross = 0;
     const auto flush = [&](float t) {
-        while (nextCross < crossCount && crossT[nextCross] < t)
-            crossOut[nextCross++] = T;
+        while (nextCross < crossCount && crossT[nextCross] < t) {
+            if constexpr (Outer::active)
+                crossOut[nextCross] = T * outer(crossT[nextCross]);
+            else
+                crossOut[nextCross] = T;
+            ++nextCross;
+        }
     };
     MediaWalker<Media, Spans, Actives> walk(media, spans, active, ray, gather);
     bool first = true;
@@ -488,8 +511,12 @@ NOVA_INLINE Spectrum trackMedia(Media &media, Spans &spans, Actives &active, con
             Spectrum e{0.0f, 0.0f, 0.0f};
             walk.forEachAt(t, [&](const MediumActive &w, const VolumePoint &p) {
                 e += p.extinction();
-                if (gather && !mediumAbsorbsOnly(w.vol, ray))
-                    gatherEmission(*gather, w.vol, w.cell, p.emission, T, inv, ray.o + ray.d * t);
+                if (gather && !mediumAbsorbsOnly(w.vol, ray)) {
+                    if constexpr (Outer::active)
+                        gatherEmission(*gather, w.vol, w.cell, p.emission, T * outer(t), inv, ray.o + ray.d * t);
+                    else
+                        gatherEmission(*gather, w.vol, w.cell, p.emission, T, inv, ray.o + ray.d * t);
+                }
             });
             media.violation(e, sigma);
             T *= Spectrum{1.0f - e.x * inv, 1.0f - e.y * inv, 1.0f - e.z * inv};
@@ -523,11 +550,11 @@ NOVA_INLINE Spectrum trackMedia(Media &media, Spans &spans, Actives &active, con
 // of alphaT times their share of the majorant at each collision: holdout
 // volumes leave alpha, docs/design/M11-P2.md D15). crossT / crossOut as for
 // trackMedia.
-template <class Media, class Spans, class Actives, class Hits>
+template <class Media, class Spans, class Actives, class Hits, class Outer = NoOuter>
 NOVA_INLINE MediumFlight flyMedia(Media &media, Spans &spans, Actives &active, Hits &parts, const MediumRay &ray,
                                   Spectrum beta, float u0, Rng &rng, EmissionGather *gather, Spectrum *alphaT,
                                   const float *crossT = nullptr, Spectrum *crossOut = nullptr, int crossCount = 0,
-                                  Spectrum *alphaV = nullptr) {
+                                  Spectrum *alphaV = nullptr, const Outer &outer = Outer{}) {
     MediumFlight f;
     Spectrum &F = f.weight;
     bool flying = true;             // no event yet, not ended by roulette
@@ -538,8 +565,13 @@ NOVA_INLINE MediumFlight flyMedia(Media &media, Spans &spans, Actives &active, H
         *alphaV = spectrum(0.0f);
     int nextCross = 0;
     const auto flush = [&](float t) {
-        while (nextCross < crossCount && crossT[nextCross] < t)
-            crossOut[nextCross++] = F;
+        while (nextCross < crossCount && crossT[nextCross] < t) {
+            if constexpr (Outer::active)
+                crossOut[nextCross] = F * outer(crossT[nextCross]);
+            else
+                crossOut[nextCross] = F;
+            ++nextCross;
+        }
     };
     // Roulette once an estimate is small (as trackMedia); false: it ended.
     const auto roulette = [&](Spectrum &w) {
@@ -597,9 +629,13 @@ NOVA_INLINE MediumFlight flyMedia(Media &media, Spans &spans, Actives &active, H
             }
             if (!flying)
                 continue;
-            if (gather)
+            if (gather) {
+                Spectrum Fe = F;
+                if constexpr (Outer::active)
+                    Fe = F * outer(t);
                 for (size_t i = 0; i < parts.size(); ++i)
-                    gatherEmission(*gather, parts[i].active->vol, parts[i].active->cell, parts[i].emission, F, inv, ray.o + ray.d * t);
+                    gatherEmission(*gather, parts[i].active->vol, parts[i].active->cell, parts[i].emission, Fe, inv, ray.o + ray.d * t);
+            }
             // Scatter or null, by the throughput-weighted coefficients. The
             // weights are magnitudes: after a majorant violation (a negative
             // null coefficient, D8) F turns negative, and the probabilities
@@ -639,6 +675,227 @@ NOVA_INLINE MediumFlight flyMedia(Media &media, Spans &spans, Actives &active, H
     if (!f.scattered) {
         flush(kInf);
         f.crossings = crossCount;
+    }
+    return f;
+}
+
+// --- The sky atmosphere (docs/design/M11-P7.md) ----------------------------
+//
+// Media may hold one planetary atmosphere (Media::atmosphere(), null: none),
+// tracked apart from the volumes: its transmittance is computed along the
+// ray (core/volume/atmosphere.h), and a ray that may scatter decides once
+// per segment, with probability P, to scatter in it at a distance drawn from
+// the segment's proposal (a point process with at most one point, of
+// density P q(t)), or to pass. The volumes' own tracker runs up to that
+// distance; a volume event before it wins and is divided by the probability
+// S(t) = 1 - P Q(t) that the atmosphere's point lay behind it, as are the
+// lights crossed and the emission collected. Passing has probability 1 - P =
+// S(end). Everything handed out in the volumes also carries the atmosphere's
+// transmittance (AtmosphereOuter). Unbiased up to the quadrature.
+
+// The atmosphere's factor at distance t: its transmittance from the ray's
+// origin over the survival of the in-scattering choice; nothing behind a
+// visible ground.
+struct AtmosphereOuter {
+    static constexpr bool active = true;
+    const AtmosphereView *a = nullptr;
+    const AtmosphereRay *r = nullptr;
+    const AtmosphereSegment *seg = nullptr;
+    float attempt = 0.0f; // P (0: transmittance only)
+    float ground = kInf;  // the visible ground's distance
+
+    NOVA_INLINE Spectrum operator()(float t) const {
+        if (!(t < ground))
+            return Spectrum{0.0f, 0.0f, 0.0f};
+        Spectrum T = expNeg(seg->tauAt(*a, *r, t));
+        if (attempt > 0.0f) {
+            const float s = 1.0f - attempt * seg->cdfAt(t);
+            T *= s > 0.0f ? 1.0f / s : 0.0f;
+        }
+        return T;
+    }
+};
+
+// Where the atmosphere ends for a ray: on the ground when it meets the ground
+// and sees it, or meets it without renderbackside; `ground`: it sees it.
+NOVA_INLINE float atmosphereRayEnd(const AtmosphereView &a, const AtmosphereRay &r, const MediumRay &ray,
+                                   float &groundT, bool &ground) {
+    groundT = atmosphereGroundHit(a, r, ray.tEnd);
+    ground = groundT < ray.tEnd && atmosphereGroundVisible(a, ray.rayType);
+    return groundT < ray.tEnd && (ground || !a.backside) ? groundT : ray.tEnd;
+}
+
+// trackMedia with the atmosphere: the transmittance of the volumes (ratio
+// tracking) times the atmosphere's; zero where a visible ground blocks.
+template <class Media, class Spans, class Actives>
+NOVA_INLINE Spectrum trackAtmosphere(Media &media, Spans &spans, Actives &active, const MediumRay &ray, float u0,
+                                     Rng &rng, EmissionGather *gather, const float *crossT = nullptr,
+                                     Spectrum *crossOut = nullptr, int crossCount = 0) {
+    const AtmosphereView *a = media.atmosphere();
+    if (!a)
+        return trackMedia(media, spans, active, ray, u0, rng, gather, crossT, crossOut, crossCount);
+    AtmosphereRay r;
+    r.init(*a, ray.o, ray.d);
+    float groundT = kInf;
+    bool ground = false;
+    const float end = atmosphereRayEnd(*a, r, ray, groundT, ground);
+    if (ground && crossCount == 0)
+        return Spectrum{0.0f, 0.0f, 0.0f};
+    AtmosphereSegment seg;
+    float s0 = 0.0f, s1 = 0.0f;
+    if (atmosphereShell(*a, r, end, s0, s1))
+        seg.build(*a, r, s0, s1, spectrum(1.0f / 3.0f), false);
+    else
+        seg.build(*a, r, 0.0f, 0.0f, spectrum(1.0f / 3.0f), false);
+    AtmosphereOuter outer;
+    outer.a = a;
+    outer.r = &r;
+    outer.seg = &seg;
+    outer.ground = ground ? groundT : kInf;
+    Spectrum T{1.0f, 1.0f, 1.0f};
+    if (media.activeCount() > 0) {
+        T = trackMedia(media, spans, active, ray, u0, rng, gather, crossT, crossOut, crossCount, outer);
+    } else {
+        for (int i = 0; i < crossCount; ++i)
+            crossOut[i] = outer(crossT[i]);
+    }
+    return ground ? Spectrum{0.0f, 0.0f, 0.0f} : T * expNeg(seg.depth());
+}
+
+// flyMedia with the atmosphere (the choice above). An atmosphere event
+// scatters by Rayleigh and Mie at once (PhaseFunction::kSky); passing onto a
+// visible ground ends the flight there (MediumFlight::ground).
+template <class Media, class Spans, class Actives, class Hits>
+NOVA_INLINE MediumFlight flyAtmosphere(Media &media, Spans &spans, Actives &active, Hits &parts, const MediumRay &ray,
+                                       Spectrum beta, float u0, Rng &rng, EmissionGather *gather, Spectrum *alphaT,
+                                       const float *crossT = nullptr, Spectrum *crossOut = nullptr,
+                                       int crossCount = 0, Spectrum *alphaV = nullptr) {
+    const AtmosphereView *a = media.atmosphere();
+    if (!a)
+        return flyMedia(media, spans, active, parts, ray, beta, u0, rng, gather, alphaT, crossT, crossOut, crossCount,
+                        alphaV);
+    AtmosphereRay r;
+    r.init(*a, ray.o, ray.d);
+    float groundT = kInf;
+    bool ground = false;
+    const float end = atmosphereRayEnd(*a, r, ray, groundT, ground);
+    // The proposal weighs the channels by the path throughput.
+    Spectrum w = absolute(beta);
+    const float sw = w.x + w.y + w.z;
+    w = sw > 0.0f && sw < 1e30f ? w * (1.0f / sw) : spectrum(1.0f / 3.0f);
+    AtmosphereSegment seg;
+    float s0 = 0.0f, s1 = 0.0f;
+    if (atmosphereShell(*a, r, end, s0, s1))
+        seg.build(*a, r, s0, s1, w);
+    else
+        seg.build(*a, r, 0.0f, 0.0f, w);
+    const Spectrum Tend = expNeg(seg.depth());
+    // The probability of scattering in the atmosphere: all of it when
+    // nothing lies behind, the opacity otherwise, a tenth of it in front of
+    // a bright light at infinity.
+    float P = 0.0f;
+    if (seg.total() > 0.0f) {
+        const float opacity = nova::fmin(nova::fmax(1.0f - dot(w, Tend), 0.0f), 1.0f);
+        const uint8_t behind = ground ? uint8_t(1) : ray.behind;
+        P = behind == 0 ? 1.0f : (behind == 2 ? 0.1f * opacity : opacity);
+    }
+    const bool volumes = media.activeCount() > 0;
+    const float u = volumes ? rng.next() : u0;
+    const bool attempt = P > 0.0f && u < P;
+    float ta = 0.0f, density = 0.0f;
+    if (attempt)
+        ta = seg.sample(nova::fmin(u / P, 0.99999994f), density);
+    AtmosphereOuter outer;
+    outer.a = a;
+    outer.r = &r;
+    outer.seg = &seg;
+    outer.attempt = P;
+    outer.ground = ground ? groundT : kInf;
+    MediumFlight f;
+    Spectrum Fv{1.0f, 1.0f, 1.0f};
+    // A layer of transmittance X behind what alphaT has seen: with alphaV
+    // (holdout volumes, M11-P2 D15) its opacity counts, whatever volumes it
+    // holds (the atmosphere is no holdout).
+    const auto layer = [&](const Spectrum &X) {
+        if (alphaV)
+            *alphaV += *alphaT * (spectrum(1.0f) - X);
+        *alphaT *= X;
+    };
+    if (volumes) {
+        MediumRay vr = ray;
+        if (attempt)
+            vr.tEnd = ta;
+        f = flyMedia(media, spans, active, parts, vr, beta, u0, rng, gather, alphaT, crossT, crossOut, crossCount,
+                     alphaV, outer);
+        if (f.scattered) {
+            f.weight *= outer(f.t);
+            if (alphaT) {
+                // The volumes' opacity past the flight's end (flyMedia tracks
+                // it up to vr.tEnd), then the atmosphere's.
+                if (vr.tEnd < ray.tEnd) {
+                    MediumRay rest = ray;
+                    rest.o = ray.o + ray.d * vr.tEnd;
+                    rest.tEnd = ray.tEnd - vr.tEnd;
+                    layer(trackMedia(media, spans, active, rest, rng.next(), rng, nullptr));
+                }
+                layer(ground ? Spectrum{0.0f, 0.0f, 0.0f} : Tend);
+            }
+            return f;
+        }
+        Fv = f.weight;
+        if (alphaT && attempt && ta < ray.tEnd) {
+            MediumRay rest = ray;
+            rest.o = ray.o + ray.d * ta;
+            rest.tEnd = ray.tEnd - ta;
+            layer(trackMedia(media, spans, active, rest, rng.next(), rng, nullptr));
+        }
+    } else {
+        for (int i = 0; i < crossCount; ++i)
+            crossOut[i] = outer(crossT[i]);
+        if (alphaT)
+            *alphaT = spectrum(1.0f);
+        if (alphaV)
+            *alphaV = spectrum(0.0f);
+    }
+    if (alphaT)
+        layer(ground ? Spectrum{0.0f, 0.0f, 0.0f} : Tend);
+    f = MediumFlight{};
+    if (attempt) {
+        int crossings = 0;
+        while (crossings < crossCount && crossT[crossings] < ta)
+            ++crossings;
+        f.crossings = crossings;
+        const float h = r.altitude(ta);
+        const AtmosphereCoefficients c =
+            atmosphereAt(*a, h < 0.0f ? 0.0f : (h > a->topAltitude ? a->topAltitude : h));
+        const Spectrum T = expNeg(seg.tauAt(*a, r, ta));
+        const Spectrum bF = absolute(beta * Fv);
+        const float pr = dot(bF, c.rayleigh), pm = dot(bF, c.mie), total = pr + pm;
+        if (!(density > 0.0f) || !(total > 0.0f)) {
+            f.weight = spectrum(0.0f); // nothing scatters there: the path ends
+            return f;
+        }
+        // Both kinds of scattering at once (PhaseFunction::kSky): directions
+        // from their throughput-weighted mixture, each channel weighed by
+        // its own.
+        const Spectrum sigma = c.rayleigh + c.mie;
+        f.scattered = true;
+        f.t = ta;
+        f.volume = a->volume;
+        f.phase = PhaseFunction{};
+        f.phase.kind = PhaseFunction::kSky;
+        f.phase.g = a->mieG;
+        f.phase.mix = pm / total;
+        f.phase.mie = Spectrum{sigma.x > 0.0f ? c.mie.x / sigma.x : 0.0f, sigma.y > 0.0f ? c.mie.y / sigma.y : 0.0f,
+                               sigma.z > 0.0f ? c.mie.z / sigma.z : 0.0f};
+        f.weight = Fv * sigma * T * (1.0f / (P * density));
+        return f;
+    }
+    f.crossings = crossCount;
+    f.weight = P < 1.0f ? Fv * Tend * (1.0f / (1.0f - P)) : spectrum(0.0f);
+    if (ground) {
+        f.ground = true;
+        f.t = groundT;
     }
     return f;
 }
