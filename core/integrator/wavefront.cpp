@@ -929,7 +929,7 @@ void shadeGround(const ShadeContext &c, WaveQueues &q, uint32_t p, const MediumR
             continue;
         }
         const Spectrum contribution =
-            clampContribution(unit * atmosphereTransmittanceToInfinity(a, origin, l.direction), c.clampEscape);
+            clampContribution(unit * atmosphereTransmittanceToInfinity(a, origin, l.direction), c.clampEmission);
         if (isBlack(contribution))
             continue;
         addRadiance(q, p, contribution);

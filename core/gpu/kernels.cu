@@ -1072,7 +1072,7 @@ __device__ void shadeGround(const ShadeArgs &a, uint32_t k, uint32_t p, const Me
     const Spectrum beta = w.beta[p] * weight * at.groundAlbedo;
     if (isBlack(beta))
         return;
-    const float clampEscape = a.depth > 1 ? a.settings.clampIndirect : 0.0f;
+    const float clampEscape = clampEmissionAt(a.settings, a.depth); // an object's light (the CPU's clampEmission)
     const LpeView &lpe = sc.lpe;
     GpuFilm film = a.film;
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
@@ -1090,7 +1090,7 @@ __device__ void shadeGround(const ShadeArgs &a, uint32_t k, uint32_t p, const Me
         if (isBlack(unit))
             continue;
         if (at.groundShadows) {
-            const float clampNee = a.depth > 0 ? a.settings.clampIndirect : 0.0f;
+            const float clampNee = clampNeeAt(a.settings, a.depth);
             const float seed = a.rays.filterSeed[k] + 0.5f;
             const uint32_t r = pushRay(w.shadow, origin, l.direction, shadowRayLength(kInf, sc.tolerance), p, ray.time,
                                        seed - std::floor(seed), RayClass::Shadow);
