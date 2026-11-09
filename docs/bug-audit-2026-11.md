@@ -232,6 +232,6 @@ Ten findings: each was checked against the code and, where it could be, reproduc
 
 Also found: tests that compare light and BSDF sampling under a constant dome cannot see a difference, a constant dome is never light-sampled (both strategies take its BSDF samples); the new MIS tests use rect lights.
 
-- The regression tests were run on the old code first: all fail there but V-3's (not real) and V-1's CPU case (the old code crashed in that scene); V-6's test also fails with its fix reverted in place.
+- The regression tests were run on the old code first: all fail there but V-3's (not real); V-1's scene crashed the test process (seen in its XPU test, which renders it on the CPU first). V-6's test also fails with its fix reverted in place.
 - Golden check (nova_cli, 16 samples): all 38 reference scenes bit-identical to the pre-fix build (no reference scene has several suns on a shadowed atmosphere ground, volumes at the ground, a Pndc-dependent shadow, constrain-roughness with fake caustics, shadow-invisible surfaces with volumes or shells of more than 32 crossings).
 - Tests after merging main (1152bfe): ctest 686/686 (`reference_cli_karma_atmosphere` skipped by design), `[gpu]` 49 test cases (6251 assertions) pass.
