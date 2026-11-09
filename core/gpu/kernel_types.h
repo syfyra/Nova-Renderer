@@ -10,6 +10,7 @@
 #include "core/bsdf/surface.h"
 #include "core/film/filter.h"
 #include "core/gpu/device_texture.h"
+#include "core/integrator/guiding.h"
 #include "core/integrator/lookdev.h"
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_lane.h"
@@ -212,6 +213,9 @@ struct GpuScene {
     const uint32_t *eqLights = nullptr;
     LightSamplerView eqTable;
     const float *eqPmf = nullptr;
+    // Path guiding (core/integrator/guiding.h, docs/design/M11-P9c.md): the
+    // field's device copy, set per pass (inactive: off).
+    GuideView guide;
 };
 
 // A site's LPE parts on the GPU (lpe_path.h).
@@ -418,6 +422,9 @@ struct GpuWave {
     Vec2f *fakeUv = nullptr;
     uint32_t *fakeInstance = nullptr;
     GpuWalks walks;
+    // Path guiding's training records per path (null while the field does
+    // not train).
+    GuidePaths guide;
 };
 
 // The device film: what Film keeps per pixel for the beauty.
@@ -457,6 +464,7 @@ struct GenerateArgs {
     uint32_t pixelCount = 0;
     uint32_t spp = 1;
     uint32_t seed = 0;
+    uint32_t sampleOffset = 0; // Film::sampleOffset
     uint8_t filterSeeds = 0; // rays carry opacity seeds (some mesh is filtered)
     uint8_t records = 0;     // per-sample records (GpuSettings::records)
 };
@@ -489,6 +497,7 @@ struct FlushArgs {
     GpuFilm film;
     uint32_t pixelCount = 0;
     uint32_t spp = 1;
+    GuideView guide; // novaGuideRecord: the field the wave's records go to
     // Karma's outlines: the lines over the beauty and into the outline planes.
     uint8_t outlines = 0;
     OutlineSettings outline;

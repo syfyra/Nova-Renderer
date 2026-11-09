@@ -598,6 +598,83 @@ __device__ void shadePrelit(const ShadeArgs &a, uint32_t k, const SurfaceHit &hi
 }
 
 // Pass C for one surface hit (shadeHit).
+// Path guiding (guiding.h): records a guided vertex of path p whose
+// continuation wi of density pdf left it with throughput beta; the jitter
+// from its own stream. Out of line: the shading kernels stay lean.
+__device__ __noinline__ void guideRecordAt(const ShadeArgs &a, uint32_t p, Vec3f P, Vec3f wi, float pdf, Spectrum beta) {
+    const GpuWave &w = a.wave;
+    Rng rng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], stream::guideRecord(a.depth));
+    const float jx = rng.next(), jy = rng.next(), jz = rng.next();
+    guideRecordVertex(a.scene.guide, w.guide, p, P, wi, pdf, beta, Vec3f{jx, jy, jz});
+}
+
+// The guided lobes of a surface hit and the field there (guiding.h).
+__device__ __noinline__ GuideSite guideSurfaceAt(const ShadeArgs &a, ClosureList &cl, Vec3f P, uint32_t p,
+                                                 const RayLimitOverrides &limits) {
+    const GpuWave &w = a.wave;
+    return guideSurfaceSite(a.scene.guide, cl, P,
+                            guideOpenClasses(w.eventCounts[p], limits, a.settings.limits, w.limitDither[p]));
+}
+
+// The guided mixture's density of a light sample's direction (its MIS).
+__device__ __noinline__ float guidedPdfAt(const ShadeArgs &a, const GuideSite &site, const ClosureEval &e, Vec3f wi) {
+    return guidedPdf(a.scene.guide, site, e, wi);
+}
+
+// The same for a volume event or a walk exit (one lobe of density `own`),
+// its guide, and a direction from the field.
+__device__ __noinline__ GuideSite guidePointAt(const ShadeArgs &a, Vec3f P, uint8_t component, bool open) {
+    return guidePointSite(a.scene.guide, P, component, open);
+}
+__device__ __noinline__ float guidedPointPdfAt(const ShadeArgs &a, const GuideSite &site, float own, Vec3f wi) {
+    return guidedPointPdf(a.scene.guide, site, own, wi);
+}
+__device__ __noinline__ Vec3f guideSampleAt(const ShadeArgs &a, const GuideSite &site, Vec2f u, float &pdf) {
+    return guideSample(a.scene.guide, site.root, u, pdf);
+}
+
+// A volume event's guide: the volume component, its class open.
+__device__ __noinline__ GuideSite guideVolumeAt(const ShadeArgs &a, uint32_t volume, uint32_t p, Vec3f x) {
+    constexpr int kVolumeClass = int(LimitClass::Volume);
+    const float volumeLimit = a.scene.volumes[volume].volumeLimit;
+    const uint32_t allowed = pathLimit(volumeLimit >= 0.0f ? volumeLimit : a.settings.limits.limit[kVolumeClass],
+                                       a.wave.limitDither[p]);
+    const uint32_t n = uint32_t(a.wave.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu;
+    return guidePointSite(a.scene.guide, x, guide::kVolume, n < allowed);
+}
+
+// A volume event's continuation from the mixture of its phase function and
+// the field: the direction, the mixture's density and phase / density.
+__device__ __noinline__ Vec3f guidedPhaseAt(const ShadeArgs &a, const GuideSite &site, const PhaseFunction &phase,
+                                            Vec3f d, Vec3f u, float uGuide, float &pdf, float &weight) {
+    Vec3f wi;
+    float ph = 0.0f;
+    if (uGuide < site.alpha) {
+        float pg = 0.0f;
+        wi = guideSample(a.scene.guide, site.root, {u.x, u.y}, pg);
+        ph = pg > 0.0f ? phase.eval(d, wi) : 0.0f;
+        pdf = (1.0f - site.alpha) * ph + site.alpha * pg;
+    } else {
+        wi = phase.sample(d, u, ph);
+        pdf = ph > 0.0f ? guidedPointPdf(a.scene.guide, site, ph, wi) : 0.0f;
+    }
+    weight = pdf > 0.0f ? ph / pdf : 0.0f;
+    return wi;
+}
+
+// The continuation of a guided surface vertex, with or without the lobes'
+// values (lpe_path.h).
+__device__ __noinline__ bool sampleGuidedAt(const ShadeArgs &a, const ClosureList &cl, Vec3f wo, Vec3f u, float uGuide,
+                                            const GuideSite &site, ClosureSample &s, Spectrum *lobeF, uint32_t &mask,
+                                            bool perLobe) {
+    if (!perLobe)
+        return sampleClosureGuided(cl, wo, u, uGuide, a.scene.guide, site, s);
+    return sampleClosureGuided(cl, wo, u, uGuide, a.scene.guide, site, s, [&](int i, const Spectrum &f) {
+        lobeF[i] = f;
+        mask |= 1u << i;
+    });
+}
+
 __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     const GpuWave &w = a.wave;
     const GpuSettings &st = a.settings;
@@ -788,6 +865,11 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     }
     // With light path expressions, whether the lobes need their own values.
     const bool perLobe = state && lpeNeedsLobes(lpe, state, cl, tag);
+    // Path guiding (guiding.h): the guided lobes (listed components with
+    // room under their ray limits) and the field at the hit.
+    GuideSite guided;
+    if (sc.guide.sampling || sc.guide.training)
+        guided = guideSurfaceAt(a, cl, hit.P, p, mesh.rayLimits);
 
     const Sampler sampler{w.pixelSeed[p], w.sampleIndex[p]};
     const Vec3f origin = leave(ng);
@@ -818,7 +900,10 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                 const Spectrum f = e.fcosDiffuse * light.diffuse + (e.fcos - e.fcosDiffuse) * light.specular;
                 if (!isBlack(f)) {
                     const float lightPdf = selectPdf * ls.pdf;
-                    const float weight = lightSampleWeight(strategy, lightPdf, e.pdf, ls.delta || light.neeOnly());
+                    // The continuation's density there (with guided lobes
+                    // the guided mixture's).
+                    const float bsdfPdf = guided.alpha > 0.0f ? guidedPdfAt(a, guided, e, ls.wi) : e.pdf;
+                    const float weight = lightSampleWeight(strategy, lightPdf, bsdfPdf, ls.delta || light.neeOnly());
                     const Spectrum contribution = w.beta[p] * f * ls.Li * (weight / lightPdf);
                     // With unoccluded; or shadow; outputs the parts also carry
                     // MIS weight 1, and the shadow ray is traced for them even
@@ -904,8 +989,12 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     Spectrum lobeF[ClosureList::kMaxLobes];
     uint32_t lobeMask = 0;
     const Vec3f us = sampler.get3D(stream::bounce(a.depth, stream::kBsdf));
-    if (!(perLobe ? sampleClosureLobes(cl, wo, us, s, lobeF, lobeMask) : sampleClosure(cl, wo, us, s)))
+    if (guided.alpha > 0.0f) {
+        if (!sampleGuidedAt(a, cl, wo, us, sampler.get1D(stream::guide(a.depth)), guided, s, lobeF, lobeMask, perLobe))
+            return;
+    } else if (!(perLobe ? sampleClosureLobes(cl, wo, us, s, lobeF, lobeMask) : sampleClosure(cl, wo, us, s))) {
         return;
+    }
     const Spectrum wholeWeight = s.weight; // all lobes (lpeScatter may keep one class's share)
     const lpe::State next = state ? lpeScatter(lpe, a.depth, state, cl, s, lobeF, lobeMask, tag, sampler) : state;
     // Into the inside of a solid dielectric (as for light samples), before
@@ -1057,6 +1146,9 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     w.coneWidth[p] = width;
     pushRay(a.next, leave(s.wi), s.wi, kInf, p, time,
             sc.anyFiltered ? sampler.get1D(stream::bounce(a.depth + 1, stream::kOpacity)) : 0.0f, s.rayClass);
+    // A full, non-delta continuation of a guided vertex trains the field.
+    if (guided.record && !s.delta && !w.lightOnly[p])
+        guideRecordAt(a, p, hit.P, s.wi, s.pdf, beta);
 }
 
 } // namespace
@@ -1074,7 +1166,7 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
                                         uint32_t(a.x0 + int(pixel % uint32_t(a.width)));
     const int x = int(pix % uint32_t(a.film.width)), y = int(pix / uint32_t(a.film.width));
     const int ix = x + camera.imageOriginX, iy = y + camera.imageOriginY;
-    const uint32_t sampleIndex = a.film.count[pix] + j;
+    const uint32_t sampleIndex = a.sampleOffset + a.film.count[pix] + j;
     const Sampler sampler = Sampler::make(ix, iy, sampleIndex, a.seed);
     const Vec2f offset = a.filter->sample(sampler.get2D(stream::kPixelFilter));
     const float time = sampler.get1D(stream::kTime);
@@ -1116,6 +1208,10 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
     }
     if (w.lpeState)
         w.lpeState[slot] = a.lpeStart; // after the camera event
+    if (w.guide.count) { // path guiding's records (guiding.h)
+        w.guide.count[slot] = 0;
+        w.guide.pending[slot] = 0;
+    }
     // The cone of the pixel's tile (generateCameraRays: the tile's center).
     const Vec2f cone = a.tileCones[((y - a.y0) / 32) * a.tilesX + (x - a.x0) / 32];
     w.coneWidth[slot] = cone.x;
@@ -1664,6 +1760,10 @@ extern "C" __global__ void novaWalkExit(const ShadeArgs a) {
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
     const uint32_t receiverSet = mesh.receiverSet(instance);
     const float clampNee = clampNeeAt(st, a.depth);
+    // Path guiding (guiding.h): the exit's cosine lobe mixed with the field
+    // when the continuation is a full ray.
+    const GuideSite guided =
+        sc.guide.active() ? guidePointAt(a, hit.P, guide::kSss, !w.lightOnly[p]) : GuideSite{};
 
     // Next-event estimation with the exit's Lambert lobe.
     const GpuLightChoice choice = chooseLight(sc, st, w, p, time, sampler, origin, ng, Receiver::OneSided, receiverSet,
@@ -1675,8 +1775,11 @@ extern "C" __global__ void novaWalkExit(const ShadeArgs a) {
         const float cosI = dot(ls.wi, n);
         if (cosI > 0.0f && dot(ls.wi, ng) > 0.0f) {
             const float lightPdf = choice.selectPdf * ls.pdf;
-            const float weight = lightSampleWeight(st.lightStrategy, lightPdf, cosineHemispherePdf(cosI),
-                                                   ls.delta || light.neeOnly());
+            const float own = cosineHemispherePdf(cosI);
+            const float weight =
+                lightSampleWeight(st.lightStrategy, lightPdf,
+                                  guided.alpha > 0.0f ? guidedPointPdfAt(a, guided, own, ls.wi) : own,
+                                  ls.delta || light.neeOnly());
             const Spectrum unit = beta * ls.Li * light.diffuse * (cosI * kInvPi / lightPdf);
             const Spectrum contribution = unit * weight;
             GpuLpeParts parts;
@@ -1706,10 +1809,28 @@ extern "C" __global__ void novaWalkExit(const ShadeArgs a) {
     // The continuation: the entry's kBsdf direction numbers were not used
     // (they picked the lobe only), Russian roulette after the walk.
     const Vec3f us = sampler.get3D(stream::bounce(a.depth, stream::kBsdf));
-    const Vec3f wi = Frame::fromNormal(n).toWorld(sampleCosineHemisphere({us.x, us.y}));
-    const float pdf = cosineHemispherePdf(dot(wi, n));
-    if (!(dot(wi, ng) > 0.0f) || !(pdf > 0.0f))
-        return;
+    Vec3f wi;
+    float pdf;
+    if (guided.alpha > 0.0f) {
+        // The mixture of the cosine lobe and the field (weight cos / pi over
+        // its density).
+        float pg = 1.0f;
+        wi = sampler.get1D(stream::guide(a.depth)) < guided.alpha
+                 ? guideSampleAt(a, guided, {us.x, us.y}, pg)
+                 : Frame::fromNormal(n).toWorld(sampleCosineHemisphere({us.x, us.y}));
+        if (!(pg > 0.0f))
+            return;
+        const float own = cosineHemispherePdf(dot(wi, n));
+        pdf = guidedPointPdfAt(a, guided, own, wi);
+        if (!(dot(wi, ng) > 0.0f) || !(own > 0.0f) || !(pdf > 0.0f))
+            return;
+        beta *= own / pdf;
+    } else {
+        wi = Frame::fromNormal(n).toWorld(sampleCosineHemisphere({us.x, us.y}));
+        pdf = cosineHemispherePdf(dot(wi, n));
+        if (!(dot(wi, ng) > 0.0f) || !(pdf > 0.0f))
+            return;
+    }
     if (a.depth + 1 >= st.rrStartDepth) {
         const float survive = rouletteSurvival(beta, w.etaScale[p]);
         if (sampler.get1D(stream::bounce(a.depth, stream::kRoulette)) >= survive)
@@ -1733,6 +1854,8 @@ extern "C" __global__ void novaWalkExit(const ShadeArgs a) {
     w.coneSpread[p] = nova::fmax(w.coneSpread[p], 1.0f);
     pushRay(a.next, origin, wi, kInf, p, time,
             sc.anyFiltered ? sampler.get1D(stream::bounce(a.depth + 1, stream::kOpacity)) : 0.0f, RayClass::Sss);
+    if (guided.record)
+        guideRecordAt(a, p, hit.P, wi, pdf, beta);
 }
 
 // Pass C' (shadeVolumes, docs/design/M8.md D9-D12): the scattering events
@@ -1777,6 +1900,10 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     if (scattered && lpe.albedo && lpe.albedoAfter[scattered])
         lpeDeposit(lpe, film, pixel, lpe.program.step(scattered, lpe.albedoSymbol), w.beta[p]);
     const float clampNee = clampNeeAt(st, a.depth);
+    constexpr int kVolumeClass = int(LimitClass::Volume);
+    // Path guiding (guiding.h): the phase function mixed with the field
+    // while the continuation is a full ray.
+    const GuideSite guided = sc.guide.active() ? guideVolumeAt(a, volume, p, x) : GuideSite{};
 
     // Next-event estimation (no surface: the shadow ray starts at x).
     {
@@ -1789,8 +1916,11 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
             const float f = phase.eval(d, ls.wi) * light.diffuse;
             if (f != 0.0f) {
                 const float lightPdf = choice.selectPdf * ls.pdf;
-                const float weight = lightSampleWeight(st.lightStrategy, lightPdf, phase.eval(d, ls.wi),
-                                                       ls.delta || light.neeOnly());
+                const float phasePdf = phase.eval(d, ls.wi);
+                const float weight = lightSampleWeight(
+                    st.lightStrategy, lightPdf,
+                    guided.alpha > 0.0f ? guidedPointPdfAt(a, guided, phasePdf, ls.wi) : phasePdf,
+                    ls.delta || light.neeOnly());
                 // A light sampled equiangularly along this ray (M9 D17): the
                 // free flight's share of the distance.
                 float share = 1.0f;
@@ -1851,12 +1981,15 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
         }
     }
 
-    // The continuation.
-    float pdf = 0.0f;
-    const Vec3f wi = phase.sample(d, sampler.get3D(stream::bounce(a.depth, stream::kBsdf)), pdf);
-    if (!(pdf > 0.0f))
+    // The continuation: the phase function's sample (weight 1), or with the
+    // guide the mixture's (weight phase / mixture density).
+    float pdf = 0.0f, phaseWeight = 1.0f;
+    const Vec3f u = sampler.get3D(stream::bounce(a.depth, stream::kBsdf));
+    const Vec3f wi = guided.alpha > 0.0f ? guidedPhaseAt(a, guided, phase, d, u, sampler.get1D(stream::guide(a.depth)),
+                                                         pdf, phaseWeight)
+                                         : phase.sample(d, u, pdf);
+    if (!(pdf > 0.0f) || !(phaseWeight > 0.0f))
         return;
-    constexpr int kVolumeClass = int(LimitClass::Volume);
     const float volumeLimit = sc.volumes[volume].volumeLimit;
     const uint32_t allowed =
         pathLimit(volumeLimit >= 0.0f ? volumeLimit : st.limits.limit[kVolumeClass], w.limitDither[p]);
@@ -1865,7 +1998,7 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
         w.lightOnly[p] = 1;
     else if (n < 255)
         w.eventCounts[p] += uint64_t(1) << (8 * kVolumeClass);
-    Spectrum beta = w.beta[p];
+    Spectrum beta = w.beta[p] * phaseWeight;
     if (phase.kind == PhaseFunction::kSky)
         beta *= phase.weight(d, wi);
     bool alive = !isBlack(beta) && isFinite(beta);
@@ -1901,6 +2034,8 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     w.coneSpread[p] = nova::fmax(w.coneSpread[p], 1.0f);
     pushRay(a.next, x, wi, kInf, p, time,
             sc.anyFiltered ? sampler.get1D(stream::bounce(a.depth + 1, stream::kOpacity)) : 0.0f, RayClass::Volume);
+    if (guided.record && !w.lightOnly[p])
+        guideRecordAt(a, p, x, wi, pdf, beta);
 }
 
 // Stage 4 (traceShadowRays): unoccluded light samples add their radiance;
@@ -2218,4 +2353,32 @@ extern "C" __global__ void novaFlush(const FlushArgs a) {
         a.film.ao[pix] = ao;
     }
     a.film.count[pix] += a.spp;
+}
+
+// Path guiding (guiding.h, guideSnapshot): at the start of a bounce the
+// newest vertex of each path takes the path's radiance (its own light
+// samples were the last bounce's).
+extern "C" __global__ void novaGuideSnap(const ShadeArgs a) {
+    const uint32_t k = threadIndex();
+    if (k >= *a.rays.count)
+        return;
+    const uint32_t p = a.rays.path[k];
+    guideSnapshot(a.wave.guide, p, a.wave.radiance[p]);
+}
+
+// Path guiding (guideFlushPath): at the wave's end each path's recorded
+// vertices add their incident radiance to the building quadtrees (integer
+// atomics: the sums do not depend on the order). A holdout path's light is
+// not in its radiance.
+extern "C" __global__ void novaGuideRecord(const FlushArgs a) {
+    const uint32_t p = threadIndex();
+    if (p >= a.pixelCount * a.spp)
+        return;
+    const GpuWave &w = a.wave;
+    if (w.holdout[p]) {
+        w.guide.count[p] = 0;
+        w.guide.pending[p] = 0;
+        return;
+    }
+    guideFlushPath(a.guide, w.guide, p, w.radiance[p], w.pixelSeed[p], w.sampleIndex[p]);
 }

@@ -11,6 +11,7 @@
 #include "core/film/film.h"
 #include "core/film/filter.h"
 #include "core/film/lpe.h"
+#include "core/integrator/guiding.h"
 #include "core/integrator/camera_samples.h"
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_eval.h"
@@ -332,7 +333,17 @@ struct WaveQueues {
     uint64_t walkRays = 0;
     uint64_t walksDone = 0, walksCapped = 0;
 
+    // Path guiding's training records (core/integrator/guiding.h,
+    // GuidePaths), allocated while the field trains.
+    std::vector<uint8_t> guideCount, guidePending;
+    std::vector<uint32_t> guideSlot;
+    std::vector<Spectrum> guideWeight, guideSnap;
+
     void reserve(uint32_t paths);
+    void reserveGuide(uint32_t paths);
+    GuidePaths guidePaths() {
+        return {guideCount.data(), guidePending.data(), guideSlot.data(), guideWeight.data(), guideSnap.data()};
+    }
 };
 
 // Traces `samplesPerPixel` samples for every pixel of `tile` (or for the
@@ -348,10 +359,13 @@ void subsurfaceWalkStats(uint64_t &walks, uint64_t &capped);
 
 // With `baker` (texture baking, core/bake/bake.h), the camera rays are the
 // bake's: every sample's path starts at its shading point (samples without
-// one add nothing), and the bake's maps accumulate alongside.
+// one add nothing), and the bake's maps accumulate alongside. With `guide`
+// (path guiding, core/integrator/guiding.h) its field guides the listed
+// components and, while it trains, the wave's guided vertices are recorded.
 uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettings &settings, const PixelFilter &filter,
                     const TileRect &tile, const uint32_t *pixels, uint32_t pixelCount, Film &film, WaveQueues &queues,
-                    const LpeTables *lpe = nullptr, uint32_t samplesPerPixel = 1, const Baker *baker = nullptr);
+                    const LpeTables *lpe = nullptr, uint32_t samplesPerPixel = 1, const Baker *baker = nullptr,
+                    const GuideView *guide = nullptr);
 
 // renderWave's first part alone: the first-hit AOVs of the tile's pixels
 // (or of pixels in it) without a sample yet, for passes whose samples

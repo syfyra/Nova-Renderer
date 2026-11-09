@@ -441,7 +441,9 @@ bool GpuRenderer::init(std::string &error) {
         !function(m_shadow, "novaShadow") || !function(m_ao, "novaAo") || !function(m_flush, "novaFlush") ||
         !function(m_media, "novaMedia") || !function(m_volumes, "novaVolumes") ||
         !function(m_fakeStart, "novaFakeStart") || !function(m_fakeStep, "novaFakeStep") ||
-        !function(m_walkExit, "novaWalkExit") || !function(m_outlineMain, "novaOutlineMain") ||
+        !function(m_walkExit, "novaWalkExit") || !function(m_guideSnap, "novaGuideSnap") ||
+        !function(m_guideRecord, "novaGuideRecord") ||
+        !function(m_outlineMain, "novaOutlineMain") ||
         !function(m_outlineRays, "novaOutlineRays") || !function(m_outlineFlags, "novaOutlineFlags") ||
         !function(m_outlineFinish, "novaOutlineFinish") ||
         !m_counts.reserve(m_device, 8 * sizeof(uint32_t)) ||
@@ -1191,6 +1193,94 @@ bool GpuRenderer::reserveFake(uint32_t paths) {
     return true;
 }
 
+bool GpuRenderer::uploadGuide(const PathGuide &guide) {
+    if (guide.generation() == m_guideGeneration)
+        return true;
+    // Every array anew; the building sums and leaf counts start at zero (the
+    // host holds what the CPU recorded and adds the device's at the end).
+    m_guideBuffers.clear();
+    m_guideBuffers.resize(7);
+    GuideView v;
+    bool ok = true;
+    const auto put = [&](size_t i, const auto &vec) {
+        using T = typename std::decay_t<decltype(vec)>::value_type;
+        if (vec.empty())
+            return static_cast<T *>(nullptr);
+        if (!m_device.upload(m_guideBuffers[i], vec)) {
+            ok = false;
+            return static_cast<T *>(nullptr);
+        }
+        return m_guideBuffers[i].template as<T>();
+    };
+    const auto zeros = [&](size_t i, size_t count) -> uint64_t * {
+        if (!count)
+            return nullptr;
+        DeviceBuffer &b = m_guideBuffers[i];
+        if (!b.reserve(m_device, count * sizeof(uint64_t)) ||
+            !m_device.check(m_device.cu().p_cuMemsetD8Async(b.ptr(), 0, count * sizeof(uint64_t), m_device.stream()),
+                            "cuMemsetD8Async")) {
+            ok = false;
+            return nullptr;
+        }
+        return b.as<uint64_t>();
+    };
+    v.spatial = put(0, guide.spatial);
+    v.leaves = put(1, guide.leaves);
+    v.nodes = put(2, guide.nodes);
+    v.buildChild = put(3, guide.buildChild);
+    v.buildLeaf = put(4, guide.buildLeaf);
+    v.buildSum = zeros(5, guide.buildSum.size());
+    v.leafCount = zeros(6, guide.leafCount.size());
+    if (!ok) {
+        m_guideBuffers.clear();
+        m_guideGeneration = 0;
+        return false;
+    }
+    m_guideView = v;
+    m_guideGeneration = guide.generation();
+    return true;
+}
+
+bool GpuRenderer::downloadGuide(PathGuide &guide) {
+    if (guide.generation() != m_guideGeneration || m_guideBuffers.size() < 7)
+        return true; // nothing of this generation on the device
+    Device::Scope scope(m_device);
+    std::vector<uint64_t> sums(guide.buildSum.size()), counts(guide.leafCount.size());
+    if ((!sums.empty() && !m_device.download(sums.data(), m_guideBuffers[5].ptr(), sums.size() * sizeof(uint64_t))) ||
+        (!counts.empty() && !m_device.download(counts.data(), m_guideBuffers[6].ptr(), counts.size() * sizeof(uint64_t))))
+        return false;
+    for (size_t i = 0; i < sums.size(); ++i)
+        guide.buildSum[i] += sums[i];
+    for (size_t i = 0; i < counts.size(); ++i)
+        guide.leafCount[i] += counts[i];
+    // The device's sums now live on the host: cleared for further passes.
+    m_guideGeneration = 0;
+    return true;
+}
+
+bool GpuRenderer::reserveGuide(uint32_t paths) {
+    if (paths > m_guideCapacity) {
+        m_guideWave.clear();
+        m_guideWave.resize(5);
+        const size_t n = paths, v = size_t(paths) * guide::kVertices;
+        if (!m_guideWave[0].reserve(m_device, n) || !m_guideWave[1].reserve(m_device, n) ||
+            !m_guideWave[2].reserve(m_device, v * sizeof(uint32_t)) ||
+            !m_guideWave[3].reserve(m_device, v * sizeof(Spectrum)) ||
+            !m_guideWave[4].reserve(m_device, v * sizeof(Spectrum))) {
+            m_guideCapacity = 0;
+            return false;
+        }
+        m_guideCapacity = paths;
+    }
+    GuidePaths &g = m_wave.guide;
+    g.count = m_guideWave[0].as<uint8_t>();
+    g.pending = m_guideWave[1].as<uint8_t>();
+    g.slot = m_guideWave[2].as<uint32_t>();
+    g.weight = m_guideWave[3].as<Spectrum>();
+    g.snap = m_guideWave[4].as<Spectrum>();
+    return true;
+}
+
 bool GpuRenderer::launch(CUfunction fn, uint32_t threads, void *args) {
     if (threads == 0)
         return true;
@@ -1202,7 +1292,8 @@ bool GpuRenderer::launch(CUfunction fn, uint32_t threads, void *args) {
 
 bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &settings, const PixelFilter &filter,
                              const TileRect &region, uint32_t spp, Film &film, uint64_t &rays,
-                             const LpeTables *lpe, const std::vector<uint32_t> *list, uint64_t lpeGeneration) {
+                             const LpeTables *lpe, const std::vector<uint32_t> *list, uint64_t lpeGeneration,
+                             const PathGuide *guide) {
     if (!m_scene || film.width != m_width || film.height != m_height)
         return false;
     Device::Scope scope(m_device);
@@ -1267,6 +1358,25 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
         gf.pixels = size_t(film.width) * size_t(film.height);
     }
     view.useTree = uint8_t(settings.lightTree);
+    // Path guiding: the field's device copy with this pass's flags (sampling,
+    // training) and record scale.
+    bool guideTraining = false;
+    view.guide = GuideView{};
+    if (guide) {
+        if (!uploadGuide(*guide))
+            return false;
+        const GuideView host = guide->view();
+        view.guide = m_guideView;
+        view.guide.origin = host.origin;
+        view.guide.size = host.size;
+        view.guide.recordScale = host.recordScale;
+        view.guide.probability = host.probability;
+        view.guide.filter = host.filter;
+        view.guide.components = host.components;
+        view.guide.sampling = uint8_t(host.sampling && m_guideView.nodes);
+        view.guide.training = uint8_t(host.training && m_guideView.buildChild && m_guideView.buildSum);
+        guideTraining = view.guide.training != 0;
+    }
     // The any-hit filter's view of the scene (filtered meshes only).
     const GpuFilter hitFilter{view, gs.globals};
     if (!m_device.upload(m_hitFilter, &hitFilter, 1))
@@ -1289,6 +1399,12 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             return false;
         if (!lpeOn)
             m_wave.lpeState = nullptr, m_wave.partBegin = nullptr;
+        if (guideTraining) {
+            if (!reserveGuide(paths))
+                return false;
+        } else {
+            m_wave.guide = GuidePaths{};
+        }
         if (!fake)
             m_wave.fakeT = nullptr;
         GenerateArgs g;
@@ -1307,6 +1423,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
         g.pixelCount = pixels;
         g.spp = spp;
         g.seed = settings.seed;
+        g.sampleOffset = film.sampleOffset;
         g.lpeStart = lpeOn ? lpe->program.start : lpe::State(0);
         g.filterSeeds = view.anyFiltered;
         g.records = gs.records;
@@ -1406,6 +1523,9 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             s.rays = r;
             s.next = next;
             s.depth = depth;
+            // Path guiding: the last bounce's vertices take their snapshots.
+            if (guideTraining && depth > 0 && !launch(m_guideSnap, count, &s))
+                return false;
             // Volumes: the medium along each ray first, the scattering events
             // after the surfaces (both append shadow rays and continuations).
             if (media && (!m_device.check(cu.p_cuMemsetD32Async(CUdeviceptr(m_wave.volumeShadeCount), 0, 1, stream),
@@ -1559,6 +1679,11 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
         f.outline = settings.outline;
         if (!launch(m_flush, pixels, &f))
             return false;
+        if (guideTraining) { // the wave's records into the field's sums
+            f.guide = view.guide;
+            if (!launch(m_guideRecord, paths, &f))
+                return false;
+        }
         if (gs.crypto || gs.records) { // the camera hits, accumulated on the host (D9; M11 P6)
             CameraSampleRecords &r = m_records;
             r.reserve(paths);
