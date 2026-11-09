@@ -271,6 +271,10 @@ private:
     mutable TfToken _unknownPixelFilter; // last warned-about value
     HdRenderPassAovBindingVector _aovBindings;
     std::vector<HdNovaAovSource> _aovSources; // resolved per binding
+    // Karma's background plate (denoise.h, docs/design/M11-P2.md D16): the
+    // image and what it was read from (file, version, placement).
+    std::shared_ptr<const HdNovaPlate> _plate;
+    std::string _plateKey;
     std::vector<std::string> _lpeExpressions;  // the program's outputs, in order
     std::shared_ptr<const nova::lpe::Compiled> _lpeProgram;
     std::shared_ptr<const std::vector<nova::UtilityRequest>> _utility;

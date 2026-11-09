@@ -10,6 +10,7 @@
 #include "core/scene/hit.h"
 #include "core/scene/material.h"
 #include "core/scene/mesh.h"
+#include "core/scene/object_key.h"
 #include "core/scene/outline.h"
 #include "core/scene/ray_limits.h"
 #include "core/scene/ray.h"
@@ -76,6 +77,10 @@ struct MeshRecord {
     std::vector<MaterialBinding> bindings;
     bool instanced = false;   // the instances come from setMeshInstances*()
     bool alive = false;
+    // The object's stable key (core/scene/object_key.h): per-object random
+    // decisions hash it, emissive triangles are listed in its order. Without
+    // one from the host, the MeshId.
+    uint64_t key = 0;
     // Changes with every updateMesh(), unique in the process: devices that copy
     // the geometry (Nova XPU) keep their copy while it stays (0: none yet).
     uint64_t geometryVersion = 0;
@@ -143,6 +148,12 @@ struct VolumeRecord {
     // Karma's modifiers are on): continuations then gather lights through a
     // transmittance of their own (wavefront.cpp traceMedia).
     bool levelDependent = false;
+    // Ray visibility and holdouts (core/scene/visibility.h, docs/design/
+    // M11-P2.md D15): the prim's settings and, from commit(), the effective
+    // ones (unset: the render settings').
+    ObjectVisibility visibilitySettings;
+    uint8_t visibility = kVisibleAll;
+    HoldoutMode holdout = HoldoutMode::None;
     // A light source (VolumeDesc::light with emission): its cells by their
     // emission bounds times their world volume, the sum's power (4 pi
     // times), one cell's world volume, and its index in Scene::lights().
@@ -156,6 +167,9 @@ struct VolumeRecord {
     std::array<int32_t, 3> velocity{-1, -1, -1};
     float blurReach = 0.0f;
     bool alive = false;
+    // The stable key (core/scene/object_key.h): the active volumes are in
+    // its order. Without one from the host, the VolumeId.
+    uint64_t key = 0;
 
     bool empty() const { return !(lower.x <= upper.x) || layout.empty(); }
 };
@@ -186,7 +200,13 @@ public:
     Scene(const Scene &) = delete;
     Scene &operator=(const Scene &) = delete;
 
-    MeshId createMesh();
+    // Objects are created with a stable key (core/scene/object_key.h,
+    // objectKey()): something that does not depend on the order the host
+    // creates them in, such as the prim's path. Random decisions per object
+    // and the order of the lists random numbers index follow the keys, so
+    // the same objects render the same image whatever their ids. Without a
+    // key an object keys by its id.
+    MeshId createMesh(std::optional<uint64_t> key = std::nullopt);
     // Geometry; an instanced mesh keeps its instances.
     void updateMesh(MeshId id, MeshDesc desc);
     // Single (non-instanced) transform; also leaves instanced mode.
@@ -266,7 +286,7 @@ public:
     // of their own.
     bool shadowVisibilityDiffers() const { return m_shadowVisibilityDiffers; }
 
-    LightId createLight();
+    LightId createLight(std::optional<uint64_t> key = std::nullopt);
     void updateLight(LightId id, const LightDesc &desc);
     void removeLight(LightId id);
     // Light filters (docs/design/M11-P4.md), by key: lights list the keys of
@@ -280,11 +300,14 @@ public:
     void removePortal(const std::string &key);
 
     // Volumes (docs/design/M8.md). The majorants are built at commit().
-    VolumeId createVolume();
+    VolumeId createVolume(std::optional<uint64_t> key = std::nullopt);
     void updateVolume(VolumeId id, VolumeDesc desc);
     // Object-to-world at uniform steps over the shutter (one step = static).
     void updateVolumeMotion(VolumeId id, const std::vector<Mat4> &steps);
     void setVolumeVisible(VolumeId id, bool visible);
+    // A volume's ray visibility and holdout mode (as setMeshVisibility; the
+    // same render-settings defaults, docs/design/M11-P2.md D15).
+    void setVolumeVisibility(VolumeId id, const ObjectVisibility &visibility);
     void removeVolume(VolumeId id);
     // The frame being rendered and the frames per second (RenderSettings'):
     // volume shaders that read Time or Frame bound their extinction at it, so
@@ -423,6 +446,12 @@ public:
     const std::vector<VolumeId> &activeVolumes() const { return m_activeVolumes; }
     // Whether an active volume depends on the ray level (VolumeRecord).
     bool anyLevelDependentVolume() const { return m_levelDependentVolumes; }
+    // An active volume is a holdout; one's shadow visibility differs from a
+    // scattered class's (lights along scattered rays then see the volumes
+    // as shadow rays do, D15).
+    bool anyHoldoutVolume() const { return m_holdoutVolumes; }
+    bool anyBackgroundVolume() const { return m_backgroundVolumes; }
+    bool volumeShadowVisibilityDiffers() const { return m_volumeShadowVisibilityDiffers; }
     // A volume's object-to-world transform at a ray time.
     Affine3f volumeToWorld(VolumeId id, float time) const;
     // The planetary sky atmosphere (docs/design/M11-P7.md): the first visible
@@ -494,6 +523,7 @@ private:
     bool m_volumesDirty = false; // added, removed, moved or hidden: the active list and bounds change
     std::vector<VolumeId> m_activeVolumes;
     bool m_levelDependentVolumes = false;
+    bool m_holdoutVolumes = false, m_backgroundVolumes = false, m_volumeShadowVisibilityDiffers = false;
     AtmosphereView m_atmosphere;
     std::vector<float> m_atmosphereLevels;
     uint32_t m_atmosphereCount = 0;
@@ -503,6 +533,7 @@ private:
     void markVolumesOf(MaterialId material);
 
     std::vector<std::optional<LightDesc>> m_lights; // indexed by LightId
+    std::vector<uint64_t> m_lightKeys;              // indexed by LightId: the lights' stable keys
     std::vector<LightId> m_freeLightIds;
     bool m_lightsDirty = false;
     std::vector<LightData> m_lightData;   // the host's lights, then the volume lights

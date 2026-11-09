@@ -311,8 +311,10 @@ Verification: probe 3 as a husk check (ratio 0.886 in Karma); Fire/Explosion/Clo
 ### 5.2 Mesh-bounded uniform volumes (WP-B)
 
 Karma turns a closed mesh (or points) whose volume shader, or prim, carries `volumeuniform` into a homogeneous
-medium: the surface is no longer shaded, its interior is a volume with density `volumeuniformdensity` times the
-shader (on XPU only constant primvars). Used by the Uniform Volume and Whitewater recipes and the Karma Fog Box LOP.
+medium: the surface is no longer shaded, its interior is a volume with the shader's density (on XPU only constant
+primvars). Correction (M11 P5, measured in Karma 22.0.466, docs/design/M11-P5.md): `volumeuniformdensity` has no
+effect; the density comes from the shader alone, and `volumeuniform` without a material gives a white medium of
+density 1. Used by the Uniform Volume and Whitewater recipes and the Karma Fog Box LOP. Implemented in M11 P5.
 Nova: needs media bounded by meshes. Sketch: mark such meshes "medium boundary" (invisible to camera/shadow as
 surfaces); entering/leaving is tracked per path (front/back face hits push/pop a medium id, as nested media), free
 flights sample a constant majorant (density times the shader's interval bound, the M8 interval executor), shadow

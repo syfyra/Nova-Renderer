@@ -17,6 +17,7 @@
 #include "primvarUtil.h"
 #include "renderBuffer.h"
 #include "renderPass.h"
+#include "textureConvert.h"
 #include "volume.h"
 #include "deepWriter.h"
 #include "products.h"
@@ -354,6 +355,7 @@ void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bi
                 s.output = int(i);
                 s.invert = (_lpeProgram->outputFlags[i] & nova::lpe::OutputInvert) != 0;
                 s.shadowSlot = _lpeProgram->shadowSlot(i);
+                s.holdoutSlot = _lpeProgram->holdoutShadow(i) ? _lpeProgram->holdoutTotalSlot() : -1;
             }
         }
         if (s.intAsFloat)
@@ -405,17 +407,19 @@ void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bi
                 HD_NOVA_WARN("texture bake: %s", w.c_str());
     }
     if (filter.shadowCatcher) {
-        int output = -1, slot = -1;
+        int output = -1, slot = -1, holdoutSlot = -1;
         for (size_t i = 0; i < bindings.size(); ++i)
             if (bindings[i].aovName.GetString() == filter.shadows && _aovSources[i].kind == HdNovaAovKind::Lpe &&
                 _aovSources[i].shadowSlot >= 0) {
                 output = _aovSources[i].output;
                 slot = _aovSources[i].shadowSlot;
+                holdoutSlot = _aovSources[i].holdoutSlot;
             }
         for (size_t i = 0; i < bindings.size(); ++i)
             if (bindings[i].aovName.GetString() == filter.destination && _aovSources[i].kind == HdNovaAovKind::Beauty) {
                 _aovSources[i].catcherOutput = output;
                 _aovSources[i].catcherSlot = slot;
+                _aovSources[i].catcherHoldoutSlot = holdoutSlot;
                 _aovSources[i].catcherAlpha = filter.alpha;
             }
         if (output < 0) {
@@ -427,19 +431,63 @@ void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bi
             });
         }
     }
+    // The plate composite (docs/design/M11-P2.md D16): an image filter's, or
+    // the Background Plate's IPR filter where karma:global:use_background is
+    // On, or Auto (its default) in the viewport (Karma, measured).
     static const TfToken useBackground("karma:global:use_background"), iprFilter("karma:global:background_iprfilter");
     const std::string use = TfStringToLower(text(useBackground));
     const HdNovaBackgroundFilter ipr = HdNovaParseKarmaBackgroundFilter(text(iprFilter));
-    if (filter.plate || ((use == "on" || (use != "off" && GetRenderSetting<bool>(HdNovaSettingsTokens->houdiniViewport,
-                                                                                  false))) &&
-                         ipr.plate)) {
-        static std::once_flag warned;
-        std::call_once(warned, [] {
-            HD_NOVA_WARN("Karma's background image filter (the Background Plate's composite of the plate, the holdout "
-                         "shadows and extras under the beauty) is not applied by Nova; the holdout AOVs hold its "
-                         "inputs");
-        });
+    const bool viewport = GetRenderSetting<bool>(HdNovaSettingsTokens->houdiniViewport, false);
+    const HdNovaBackgroundFilter *comp = filter.plate                                           ? &filter
+                                         : ipr.plate && (use == "on" || (use != "off" && viewport)) ? &ipr
+                                                                                                     : nullptr;
+    if (!comp) {
+        _plate.reset();
+        _plateKey.clear();
+        return;
     }
+    // The plate, read once per file version and placement.
+    const std::string key = comp->plateFile + "|" + HdNovaTextureSignature(comp->plateFile) + "|" +
+                            TfStringPrintf("%g %g %g %g", comp->scale[0], comp->scale[1], comp->translate[0],
+                                           comp->translate[1]);
+    if (key != _plateKey) {
+        _plateKey = key;
+        std::string error;
+        _plate = HdNovaLoadPlate(*comp, error);
+        if (!_plate)
+            HD_NOVA_WARN("Karma's background plate %s cannot be read (%s); the composite has no plate",
+                         comp->plateFile.c_str(), error.c_str());
+    }
+    const auto find = [&](std::string const &name) -> const HdNovaAovSource * {
+        for (size_t i = 0; i < bindings.size(); ++i)
+            if (bindings[i].aovName.GetString() == name && _aovSources[i].kind == HdNovaAovKind::Lpe &&
+                _aovSources[i].output >= 0)
+                return &_aovSources[i];
+        return nullptr;
+    };
+    const HdNovaAovSource *shadows = comp->shadows.empty() ? nullptr : find(comp->shadows);
+    if (!comp->shadows.empty() && (!shadows || shadows->shadowSlot < 0)) {
+        static std::once_flag warned;
+        std::call_once(warned, [&] {
+            HD_NOVA_WARN("Karma's background plate composite reads shadows from AOV '%s', which is not a bound "
+                         "shadow; expression; the plate stays unshadowed",
+                         comp->shadows.c_str());
+        });
+        shadows = nullptr;
+    }
+    std::vector<int> extras;
+    for (std::string const &name : comp->extras)
+        if (const HdNovaAovSource *s = find(name))
+            extras.push_back(s->output);
+    for (size_t i = 0; i < bindings.size(); ++i)
+        if (bindings[i].aovName.GetString() == comp->destination && _aovSources[i].kind == HdNovaAovKind::Beauty) {
+            HdNovaAovSource &s = _aovSources[i];
+            s.plate = _plate ? _plate : std::make_shared<const HdNovaPlate>(); // unread: black
+            s.plateShadowOutput = shadows ? shadows->output : -1;
+            s.plateShadowSlot = shadows ? shadows->shadowSlot : -1;
+            s.plateHoldoutSlot = shadows ? shadows->holdoutSlot : -1;
+            s.plateExtras = extras;
+        }
 }
 
 // ---------------------------------------------------------------------------

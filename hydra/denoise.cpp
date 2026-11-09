@@ -2,14 +2,18 @@
 
 #include "diagnostics.h"
 #include "renderBuffer.h"
+#include "textureConvert.h"
 
 #include "core/denoise/denoiser.h"
 
+#include <OpenImageIO/imageio.h>
 #include <pxr/base/js/json.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cmath>
+#include <filesystem>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -75,10 +79,98 @@ HdNovaBackgroundFilter HdNovaParseKarmaBackgroundFilter(std::string const &json)
             out.alpha = float(it->second.GetReal());
         else if (it != o.end() && it->second.IsInt())
             out.alpha = float(it->second.GetInt());
-        out.plate = !text("backgroundfile", "").empty();
+        out.plateFile = text("backgroundfile", "");
+        out.plate = !out.plateFile.empty();
+        const auto pair = [&](char const *key, float *v) {
+            const auto it = o.find(key);
+            if (it == o.end() || !it->second.IsArray() || it->second.GetJsArray().size() != 2)
+                return;
+            for (int i = 0; i < 2; ++i) {
+                JsValue const &e = it->second.GetJsArray()[size_t(i)];
+                if (e.IsReal())
+                    v[i] = float(e.GetReal());
+                else if (e.IsInt())
+                    v[i] = float(e.GetInt());
+            }
+        };
+        pair("backgroundscale", out.scale);
+        pair("backgroundtranslate", out.translate);
+        if (const auto it = o.find("extras"); it != o.end() && it->second.IsArray()) {
+            for (JsValue const &e : it->second.GetJsArray())
+                if (e.IsString())
+                    out.extras.push_back(e.GetString());
+        } else {
+            out.extras = HdNovaSplitAovNames(text("extras", ""));
+        }
         return out;
     }
     return out;
+}
+
+void HdNovaPlate::lookup(float x, float y, float out[3]) const {
+    const bool decode = srgb;
+    out[0] = out[1] = out[2] = 0.0f;
+    if (width <= 0 || height <= 0)
+        return;
+    const float u = (x - 0.5f - translate[0]) / scale[0] + 0.5f;
+    const float v = (y - 0.5f - translate[1]) / scale[1] + 0.5f;
+    if (!(u >= 0.0f && u < 1.0f && v >= 0.0f && v < 1.0f))
+        return;
+    const int px = std::min(int(u * float(width)), width - 1);
+    const int py = std::min(int((1.0f - v) * float(height)), height - 1); // rows top-down
+    const float *t = rgb.data() + (size_t(py) * size_t(width) + size_t(px)) * 3;
+    for (int c = 0; c < 3; ++c) {
+        const float s = t[c];
+        out[c] = !decode       ? s
+                 : s <= 0.04045f ? s / 12.92f
+                                 : std::pow((s + 0.055f) / 1.055f, 2.4f);
+    }
+}
+
+std::shared_ptr<const HdNovaPlate> HdNovaLoadPlate(HdNovaBackgroundFilter const &filter, std::string &error) {
+    std::error_code ec;
+    const std::filesystem::path file = std::filesystem::absolute(
+        std::filesystem::path(std::u8string(filter.plateFile.begin(), filter.plateFile.end())), ec);
+    const std::u8string utf8 = file.u8string();
+    const std::string path(utf8.begin(), utf8.end());
+    // .pic and .rat through imaketx (their stored values), others as they are.
+    const std::string readable = HdNovaReadableTexture(path, HdNovaTextureOptions{}, true, error);
+    if (readable.empty())
+        return nullptr;
+    // Integer images hold sRGB values (Houdini's .pic and .rat are 8-bit);
+    // floating-point ones linear values.
+    std::string ext = file.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    bool srgb = ext == ".pic" || ext == ".rat";
+    if (!srgb)
+        if (auto source = OIIO::ImageInput::open(path)) {
+            const OIIO::TypeDesc f = source->spec().format;
+            srgb = !(f == OIIO::TypeDesc::FLOAT || f == OIIO::TypeDesc::HALF || f == OIIO::TypeDesc::DOUBLE);
+        }
+    auto in = OIIO::ImageInput::open(readable);
+    if (!in) {
+        error = OIIO::geterror();
+        return nullptr;
+    }
+    const OIIO::ImageSpec &spec = in->spec();
+    auto plate = std::make_shared<HdNovaPlate>();
+    plate->width = spec.width;
+    plate->height = spec.height;
+    std::vector<float> pixels(size_t(spec.width) * size_t(spec.height) * size_t(spec.nchannels));
+    if (spec.nchannels < 1 || !in->read_image(0, 0, 0, spec.nchannels, OIIO::TypeDesc::FLOAT, pixels.data())) {
+        error = in->geterror();
+        return nullptr;
+    }
+    plate->rgb.resize(size_t(spec.width) * size_t(spec.height) * 3);
+    for (size_t i = 0, n = size_t(spec.width) * size_t(spec.height); i < n; ++i)
+        for (int c = 0; c < 3; ++c)
+            plate->rgb[i * 3 + size_t(c)] = pixels[i * size_t(spec.nchannels) + size_t(std::min(c, spec.nchannels - 1))];
+    for (int i = 0; i < 2; ++i) {
+        plate->scale[i] = filter.scale[i] != 0.0f ? filter.scale[i] : 1.0f;
+        plate->translate[i] = filter.translate[i];
+    }
+    plate->srgb = srgb;
+    return plate;
 }
 
 std::vector<std::string> HdNovaSplitAovNames(std::string const &names) {

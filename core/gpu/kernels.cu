@@ -913,11 +913,24 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                         lpeLightSampleParts(lpe, parts, state, tag, cl, lobeF, lobeMask, light, li,
                                             dot(ls.wi, ng) < 0.0f, dot(wo, hit.Ng) > 0.0f, f,
                                             w.beta[p] * ls.Li * (1.0f / lightPdf), weight);
-                        // At a background point the illumbackground lights
-                        // stay out of the unoccluded; and shadow; sums.
-                        if (backgroundPoint && light.illumBackground)
-                            for (uint32_t j = 0; j < parts.size(); ++j)
-                                parts.unitValue[j] = spectrum(0.0f);
+                        // A background point's weight-1 parts (D14,
+                        // backgroundLightParts): an illumbackground light's
+                        // to unoccluded; outputs now and none to the shadow
+                        // ray, another's whole light to the holdout total.
+                        if (backgroundPoint && lpe.unit) {
+                            if (light.illumBackground) {
+                                for (uint32_t j = 0; j < parts.size(); ++j) {
+                                    lpeDepositBackgroundUnit(lpe, film, pixel, parts.state[j], parts.unitValue[j],
+                                                             spectrum(0.0f), false);
+                                    parts.unitValue[j] = spectrum(0.0f);
+                                }
+                            } else {
+                                const Spectrum whole = w.beta[p] * f * ls.Li * (1.0f / lightPdf);
+                                lpeDepositHoldoutTotal(lpe, film, pixel,
+                                                       light.type == LightType::Triangle ? whole * light.emission
+                                                                                         : whole);
+                            }
+                        }
                     }
                     if ((weight > 0.0f && !isBlack(contribution)) || (state && lpe.unit && parts.size() > 0)) {
                         Vec3f o = origin, d = ls.wi;
@@ -982,6 +995,7 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     } else if (!(perLobe ? sampleClosureLobes(cl, wo, us, s, lobeF, lobeMask) : sampleClosure(cl, wo, us, s))) {
         return;
     }
+    const Spectrum wholeWeight = s.weight; // all lobes (lpeScatter may keep one class's share)
     const lpe::State next = state ? lpeScatter(lpe, a.depth, state, cl, s, lobeF, lobeMask, tag, sampler) : state;
     // Into the inside of a solid dielectric (as for light samples), before
     // thin-wall pass-throughs change s.
@@ -1054,23 +1068,29 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         s.weight *= cl.absorptionColor;
     }
     Spectrum beta = w.beta[p] * s.weight;
+    Spectrum wholeBeta = w.beta[p] * wholeWeight;
     float etaScale = w.etaScale[p];
     if (s.refract)
         etaScale *= s.eta * s.eta; // the BTDF scaled radiance by 1 / eta^2
     bool alive = !isBlack(beta) && isFinite(beta);
     if (alive && a.depth + 1 >= st.rrStartDepth) {
         const float survive = rouletteSurvival(beta, etaScale);
-        if (sampler.get1D(stream::bounce(a.depth, stream::kRoulette)) < survive)
+        if (sampler.get1D(stream::bounce(a.depth, stream::kRoulette)) < survive) {
             beta *= 1.0f / survive;
-        else
+            wholeBeta *= 1.0f / survive;
+        } else {
             alive = false;
+        }
     }
     if (!alive)
         return;
     w.beta[p] = beta;
     if (state) {
         w.lpeState[p] = next;
-        if (next && lpe.unit && !intoSolid) { // as light samples: none into solid glass
+        // As light samples: none into solid glass. At a background point by
+        // its rule (D14), the whole light even where this lobe's state leads
+        // to no output.
+        if ((next || backgroundPoint) && lpe.unit && !intoSolid) {
             // Gathered at this hit with the receiver set the continuation
             // will carry (gatherSite()).
             const uint32_t set = !s.delta                          ? receiverSet
@@ -1078,7 +1098,7 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                                                                   : prevLinkSet(w.prevSet[p]);
             lpeUnoccludedEnvironment(lpe, sc.lights, sc.lightCount, sc.lightSampler.pmf, film, pixel, next, s.wi,
                                      LightFilterSite{origin, sc.links.categories(set)}, s.diffuseShare, beta,
-                                     !s.delta);
+                                     !s.delta, backgroundPoint ? &wholeBeta : nullptr);
         }
     }
     w.bsdfPdf[p] = s.delta ? -1.0f : s.pdf;
@@ -1361,21 +1381,34 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
     GpuSpans spans;
     GpuActives active;
     w.volumeHit[k] = 0;
-    const bool split = a.depth > 0 && sc.levelDependent;
+    // Camera rays through holdout volumes (D15): their emission apart, alpha
+    // without their opacity, no equiangular samples. Lights along scattered
+    // rays see the volumes with shadow visibility where it differs.
+    const bool holdoutVolumes = a.depth == 0 && sc.holdoutVolumes;
+    const bool shadowVisibility = a.depth > 0 && sc.volumeShadowVisibility;
+    // The lights a ray leaving a background point gathers pass background
+    // volumes, as its shadow rays do.
+    const bool backgroundLights = a.depth == 1 && sc.backgroundVolumes;
+    const bool fromBackground = backgroundLights && w.holdout[p] == uint8_t(HoldoutMode::Background);
+    const bool split = a.depth > 0 && (sc.levelDependent || shadowVisibility || backgroundLights);
+    gather.holdouts = holdoutVolumes;
     if (!w.lightOnly[p] && a.depth < st.maxDepth) {
-        if (sc.eqTable.count > 0 && mediumExtent(media, spans, ray, w.eqA[k], w.eqB[k]))
+        if (sc.eqTable.count > 0 && !holdoutVolumes && mediumExtent(media, spans, ray, w.eqA[k], w.eqB[k]))
             equiangularSample(a, k, ray, media, spans, active);
         const int allCrossings = crossings;
         gather.lights = !split;
         GpuHits hits;
-        Spectrum alphaT;
+        Spectrum alphaT, alphaV;
         if (atmosphere)
             ray.behind = atmosphereBehind(sc, a.depth, miss, dir, crossings);
         const MediumFlight f = flyAtmosphere(media, spans, active, hits, ray, w.beta[p], u0, rng, &gather,
-                                             a.depth == 0 ? &alphaT : nullptr, crossT, crossOut, crossings);
+                                             a.depth == 0 ? &alphaT : nullptr, crossT, crossOut, crossings,
+                                             holdoutVolumes ? &alphaV : nullptr);
         w.mediumT[k] = f.weight;
         if (a.depth == 0)
             w.mediumAlpha[k] = alphaT;
+        if (holdoutVolumes)
+            w.mediumAlphaV[k] = alphaV;
         if (f.scattered) {
             w.volumeHit[k] = 1;
             w.volumeT[k] = f.t;
@@ -1395,6 +1428,9 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
             // lower), whether or not the flight scattered.
             MediumRay light = ray;
             --light.depth;
+            if (shadowVisibility)
+                light.visibleClass = uint8_t(RayClass::Shadow);
+            light.fromBackground = fromBackground;
             const uint32_t ls = stream::mediumLight(a.depth);
             Rng lrng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], ls);
             lightGather.objects = false;
@@ -1409,9 +1445,14 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
         // level of the event that spawned them.
         if (ray.depth > 0)
             --ray.depth;
+        if (shadowVisibility)
+            ray.visibleClass = uint8_t(RayClass::Shadow);
+        ray.fromBackground = fromBackground;
         gather.objects = false;
         const Spectrum T = trackAtmosphere(media, spans, active, ray, u0, rng, &gather, crossT, crossOut, crossings);
         w.mediumT[k] = w.mediumAlpha[k] = w.lightT[k] = T;
+        if (holdoutVolumes)
+            w.mediumAlphaV[k] = spectrum(1.0f) - T;
     }
     w.crossCount[k] = uint8_t(crossings);
     for (int i = 0; i < crossings; ++i) {
@@ -1432,6 +1473,13 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
         addRadiance(w, p, contribution);
         if (state)
             lpeDepositAll(lpe, film, pixel, lpeStep(lpe, state, lpe::TypeObject, lpe::ScatterNone, 0, 0), contribution);
+    }
+    // Holdout volumes' emission seen by the camera: holdout; outputs only.
+    if (!isBlack(gather.holdoutSum) && w.lpeState) { // the start may be dead (only holdout; outputs)
+        const lpe::State held = lpeHoldoutState(lpe.program, state);
+        if (held)
+            lpeDepositAll(lpe, film, pixel, lpeStep(lpe, held, lpe::TypeObject, lpe::ScatterNone, 0, 0),
+                          clampContribution(w.beta[p] * gather.holdoutSum, clampEmission));
     }
     const EmissionGather *gathers[2] = {&gather, &lightGather};
     for (const EmissionGather *g : gathers)
@@ -1474,7 +1522,8 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
     }
     // Volumes along the segment: lights crossed on the way take the
     // transmittance in front of them, everything at its end the whole.
-    const bool split = media && a.depth > 0 && sc.levelDependent;
+    const bool split = media && a.depth > 0 &&
+                       (sc.levelDependent || sc.volumeShadowVisibility || (a.depth == 1 && sc.backgroundVolumes));
     const DeviceAtten atten{w, k, media, split};
     const Spectrum betaIn = w.beta[p];
     if (media)
@@ -1514,6 +1563,17 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             const Spectrum T = w.mediumAlpha[k];
             return 1.0f - (T.x + T.y + T.z) * (1.0f / 3.0f);
         };
+        // With holdout volumes (D15) the other volumes' opacity, plus what
+        // lies behind (1: opaque) seen through all of them.
+        const bool heldOut = media && sc.holdoutVolumes;
+        const auto alphaOver = [&](float behind) {
+            const Spectrum V = w.mediumAlphaV[k], T = w.mediumAlpha[k];
+            return (V.x + V.y + V.z + behind * (T.x + T.y + T.z)) * (1.0f / 3.0f);
+        };
+        const auto surfaceAlpha = [&] {
+            const bool cut = sc.anyHoldouts && sc.meshes[w.hitMesh[k]].holdout != 0;
+            return heldOut ? alphaOver(cut ? 0.0f : 1.0f) : 1.0f;
+        };
         // The camera hit for the host's cryptomattes and per-sample records
         // (camera_samples.h), as the CPU's recordCameraHit.
         const auto recordHit = [&] {
@@ -1530,9 +1590,11 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             if (miss) {
                 bool visible = false;
                 cameraEnvironment(sc.lights, sc.lightCount, a.rays.org[k], dir, visible);
-                alpha = visible ? 1.0f : volumeAlpha();
-            } else if (a.settings.crypto || a.settings.records) { // volumes are transparent to cryptomattes
-                recordHit();
+                alpha = heldOut ? alphaOver(visible ? 1.0f : 0.0f) : visible ? 1.0f : volumeAlpha();
+            } else {
+                alpha = surfaceAlpha();
+                if (a.settings.crypto || a.settings.records) // volumes are transparent to cryptomattes
+                    recordHit();
             }
             if (a.settings.records)
                 w.camEventT[p] = w.volumeT[k];
@@ -1552,7 +1614,10 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
                                                           })
                                       : cameraEnvironment(sc.lights, sc.lightCount, a.rays.org[k], dir, visible);
             addRadiance(w, p, clampContribution(beta * Le, clampLightAt(a.settings, a.depth)));
-            w.alpha[p] += visible ? 1.0f : media ? volumeAlpha() : 0.0f;
+            w.alpha[p] += heldOut   ? alphaOver(visible ? 1.0f : 0.0f)
+                          : visible ? 1.0f
+                          : media   ? volumeAlpha()
+                                    : 0.0f;
             return;
         }
         if (a.settings.crypto || a.settings.records)
@@ -1563,15 +1628,15 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
         if (holdout) {
             // A holdout (core/integrator/holdout.h): transparent to alpha but
             // for the volumes in front, its light to holdout; outputs.
-            w.alpha[p] += media ? volumeAlpha() : 0.0f;
+            w.alpha[p] += heldOut ? alphaOver(0.0f) : media ? volumeAlpha() : 0.0f;
             w.holdout[p] = holdout;
-            if (state)
+            if (w.lpeState) // also from a dead start: only holdout; outputs (start 0)
                 w.lpeState[p] = lpeHoldoutState(lpe.program, state);
             const bool shading = (w.lpeState && lpe.program.holdoutStart != 0) || a.settings.ao;
             if (!shading)
                 return; // nothing takes its light
         } else {
-            w.alpha[p] += 1.0f; // surfaces are opaque to alpha (transmission included)
+            w.alpha[p] += surfaceAlpha(); // surfaces are opaque to alpha (transmission included)
         }
     } else {
         // Rays scattered by a surface collect the area lights they crossed
@@ -1619,13 +1684,16 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             if (state) {
                 lpeDeposit(lpe, film, pixel, lpe.program.step(state, lpe.backgroundSymbol), beta);
                 // Lights at infinity that light sampling never picks give the
-                // lit shadow; estimate here with weight 1.
+                // lit shadow; estimate here with weight 1 (from a background
+                // point none of the illumbackground lights, D14).
                 parts.clear();
+                const bool fromBackground = a.depth == 1 && w.holdout[p] == uint8_t(HoldoutMode::Background);
                 Le = escapedRadiance(sc.lights, pmf, sc.lightCount, dir, site, w.bsdfPdf[p], a.settings.lightStrategy,
                                      w.diffuseShare[p], [&](uint32_t i, const Spectrum &Li) {
                                          const lpe::State s = lpeLightStep(lpe, state, i);
                                          lpePartsAdd(lpe, parts, s, Li);
-                                         if (lpe.unit && !(sc.lightSampler.pmf[i] > 0.0f))
+                                         if (lpe.unit && !(sc.lightSampler.pmf[i] > 0.0f) &&
+                                             !(fromBackground && sc.lights[i].illumBackground))
                                              lpeDepositUnit(lpe, film, pixel, s, beta * Li, false, true);
                                      });
             } else {
@@ -1817,6 +1885,15 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     const LpeView &lpe = sc.lpe;
     GpuFilm film = a.film;
     const uint32_t pixel = w.pixel[p];
+    // A camera ray's event in a holdout volume (D15): a holdout path; in a
+    // background holdout a background point.
+    const uint8_t held = a.depth == 0 ? sc.volumes[volume].medium.holdout : uint8_t(0);
+    if (held) {
+        w.holdout[p] = held;
+        if (w.lpeState)
+            w.lpeState[p] = lpeHoldoutState(lpe.program, w.lpeState[p]);
+    }
+    const bool backgroundPoint = held == uint8_t(HoldoutMode::Background);
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
     const uint32_t tag = state && volume < lpe.volumeTag.size() ? lpe.volumeTag[volume] : 0u;
     const lpe::State scattered = state ? lpeStep(lpe, state, lpe::TypeVolume, lpe::ScatterNone, tag, 0) : state;
@@ -1867,9 +1944,24 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
                 GpuLpeParts parts;
                 if (scattered && (weight > 0.0f || lpe.unit))
                     lpePartsAdd(lpe, parts, lpeLightStep(lpe, scattered, li), contribution, unit);
+                // D14, as novaShade's background points, whatever the event's state.
+                if (backgroundPoint && w.lpeState && lpe.unit) {
+                    if (light.illumBackground) {
+                        for (uint32_t j = 0; j < parts.size(); ++j) {
+                            lpeDepositBackgroundUnit(lpe, film, pixel, parts.state[j], parts.unitValue[j],
+                                                     spectrum(0.0f), false);
+                            parts.unitValue[j] = spectrum(0.0f);
+                        }
+                    } else {
+                        lpeDepositHoldoutTotal(lpe, film, pixel,
+                                               light.type == LightType::Triangle ? unit * light.emission : unit);
+                    }
+                }
                 if ((weight > 0.0f && !isBlack(contribution)) || (state && lpe.unit && parts.size() > 0)) {
                     const uint32_t r = pushRay(w.shadow, x, ls.wi, shadowRayLength(ls.distance, sc.tolerance), p, time,
                                                shadowRaySeed(a.rays.filterSeed[k]), RayClass::Shadow);
+                    if (backgroundPoint)
+                        w.shadow.rayType[r] |= kRayFromBackground;
                     w.shadowCategory[r] = light.shadowCategory;
                     w.shadowSlot[r] = 0;
                     if (light.type == LightType::Triangle) {
@@ -1923,9 +2015,10 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     w.beta[p] = beta;
     if (state) {
         w.lpeState[p] = scattered;
-        if (scattered && lpe.unit) // volume events are receiver set 0
+        if ((scattered || backgroundPoint) && lpe.unit) // volume events are receiver set 0
             lpeUnoccludedEnvironment(lpe, sc.lights, sc.lightCount, sc.lightSampler.pmf, film, pixel, scattered, wi,
-                                     LightFilterSite{x, sc.links.categories(0u)}, 1.0f, beta, true);
+                                     LightFilterSite{x, sc.links.categories(0u)}, 1.0f, beta, true,
+                                     backgroundPoint ? &beta : nullptr);
     }
     w.bsdfPdf[p] = pdf;
     w.diffuseShare[p] = 1.0f;
@@ -2001,6 +2094,8 @@ extern "C" __global__ void novaShadow(const ShadowArgs a) {
         ray.time = w.shadow.time[i];
         ray.rayType = uint8_t(RayClass::Shadow);
         ray.depth = a.depth;
+        // Background holdout volumes do not shadow background points (D15).
+        ray.fromBackground = (w.shadow.rayType[i] & kRayFromBackground) != 0;
         const uint32_t stream = stream::mediumShadow(a.depth);
         Rng rng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], stream);
         DeviceMedia media{a.scene, a.settings.globals};
@@ -2020,11 +2115,18 @@ extern "C" __global__ void novaShadow(const ShadowArgs a) {
     // emissive triangle they take its emission and the clamp first.
     GpuFilm film = a.film;
     const uint32_t pixel = w.pixel[p];
+    // Light samples of background points by their own rule (D14).
+    const bool background = a.depth == 0 && (w.shadow.rayType[i] & kRayFromBackground);
     for (uint32_t j = w.partBegin[i], end = j + w.partCount[i]; j < end; ++j) {
         const Spectrum value = w.partValue[j] * Le * emitterScale, unitValue = w.partUnit[j] * Le;
         if (!blocked)
             lpeDeposit(lpe, film, pixel, w.partState[j], value * T);
-        if (unit) {
+        if (!unit)
+            continue;
+        if (background) {
+            lpeDepositBackgroundUnit(lpe, film, pixel, w.partState[j], unitValue,
+                                     blocked ? spectrum(0.0f) : unitValue * T, true);
+        } else {
             lpeDepositUnit(lpe, film, pixel, w.partState[j], unitValue, true, false);
             if (!blocked)
                 lpeDepositUnit(lpe, film, pixel, w.partState[j], unitValue * T, false, true);

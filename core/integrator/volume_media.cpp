@@ -93,6 +93,8 @@ MediumVolume mediumVolume(const VolumeRecord &rec) {
     v.objectToIndex = rec.objectToIndex;
     if (rec.desc.shell)
         v.shell = rec.desc.shell->view();
+    v.visibility = rec.visibility;
+    v.holdout = uint8_t(rec.holdout);
     return v;
 }
 
@@ -144,14 +146,14 @@ Spectrum trackMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGloba
 
 MediumFlight flyMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGlobals &globals, const MediumRay &ray,
                       Spectrum beta, float u0, Rng &rng, EmissionGather *gather, Spectrum *alphaT,
-                      const float *crossT, Spectrum *crossOut, int crossCount) {
+                      const float *crossT, Spectrum *crossOut, int crossCount, Spectrum *alphaV) {
     thread_local std::vector<MediumHit> hits;
     HostMedia media(scene, cache, globals);
     ListRef<VolumeSpan> spans{spanList()};
     ListRef<MediumActive> active{activeList()};
     ListRef<MediumHit> parts{hits};
     return nova::flyAtmosphere(media, spans, active, parts, ray, beta, u0, rng, gather, alphaT, crossT, crossOut,
-                               crossCount);
+                               crossCount, alphaV);
 }
 
 } // namespace nova

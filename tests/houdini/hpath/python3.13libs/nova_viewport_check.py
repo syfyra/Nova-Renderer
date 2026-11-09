@@ -30,6 +30,8 @@ OUT = os.environ.get("NOVA_VIEWPORT_CHECK", "")
 # .rat HDRI in Nova CPU, Nova XPU and Karma (setup_dome).
 # =velocity velocity blur switched on and off live (setup_velocity).
 # =sky the Karma Physical Sky, edited live (setup_sky).
+# =plate the Background Plate's composite in Karma, Nova CPU and XPU
+# (setup_plate).
 # =karmasettings a Karma Render Settings LOP over the scene (setup_karmasettings).
 ONLY = os.environ.get("NOVA_VIEWPORT_CHECK_ONLY", "")
 SCENE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scenes", "basic.usda").replace("\\", "/")
@@ -1169,6 +1171,117 @@ def step_sky_xpu():
     later(2, finish)
 
 
+def box_mean(name, x0, x1, y0, y1):
+    """The mean color of a capture's box (fractions of width and height)."""
+    try:
+        from PySide6 import QtGui
+    except ImportError:  # pragma: no cover
+        from PySide2 import QtGui
+    path = os.path.join(OUT, name + ".png")
+    if not os.path.exists(path):
+        return None
+    img = QtGui.QImage(path)
+    total, n = [0.0, 0.0, 0.0], 0
+    for y in range(int(y0 * img.height()), int(y1 * img.height())):
+        for x in range(int(x0 * img.width()), int(x1 * img.width())):
+            c = img.pixelColor(x, y)
+            total[0] += c.redF(); total[1] += c.greenF(); total[2] += c.blueF()
+            n += 1
+    return [round(t / max(n, 1), 4) for t in total]
+
+
+def plate_regions(name):
+    """Boxes of the plate scene's capture (fractions of the frame): the ball
+    in the middle, the plate left and right of it, its shadow above it."""
+    return {"ball": box_mean(name, 0.48, 0.52, 0.47, 0.53), "left": box_mean(name, 0.25, 0.35, 0.40, 0.60),
+            "right": box_mean(name, 0.65, 0.75, 0.40, 0.60), "shadow": box_mean(name, 0.48, 0.52, 0.17, 0.21),
+            "top": box_mean(name, 0.40, 0.60, 0.03, 0.08)}
+
+
+# Over the Background Plate's scene: a perspective camera and a resolution
+# of the viewport's aspect (16:9), so the frame is the camera's in every
+# renderer.
+PLATE_OVER = """#usda 1.0
+(
+    subLayers = [@./plate_scene.usda@]
+)
+
+over "cam"
+{
+    token projection = "perspective"
+    float focalLength = 30
+    float horizontalAperture = 36
+    float verticalAperture = 20.25
+}
+
+over "Render"
+{
+    over "rendersettings"
+    {
+        int2 resolution = (640, 360)
+    }
+}
+"""
+
+
+def setup_plate():
+    """The Background Plate 2.0 (docs/design/M11-P2.md): its LOP's scene
+    (tests/husk/karma_nodes/backgroundplate2.usda: the ground a background
+    holdout, a ball, sun and dome, Houdini's Mandril.pic as the plate)
+    through /cam, made a perspective camera of the viewport's aspect.
+    Karma's viewport composites the plate under the holdouts
+    (karma:global:use_background Auto); Nova CPU and Nova XPU must show it
+    the same."""
+    import shutil
+    STATE["t0"] = time.time()
+    stage = hou.node("/stage")
+    src = os.path.join(os.path.dirname(SCENE), "..", "husk", "karma_nodes", "backgroundplate2.usda")
+    plate = os.path.join(OUT, "plate.pic").replace("\\", "/")
+    shutil.copyfile(hou.text.expandString("$HFS/houdini/pic/Mandril.pic"), plate)
+    # The IPR filter's backgroundfile is a plain string, relative to the
+    # working directory (husk's is the scene's folder in the checks; this
+    # Houdini's is not): made absolute. Karma shows a flat pink without it.
+    with open(src) as f:
+        text = f.read().replace('\\"backgroundfile\\": \\"./plate.pic\\"', '\\"backgroundfile\\": \\"%s\\"' % plate)
+        text = text.replace('"backgroundfile": "./plate.pic"', '"backgroundfile": "%s"' % plate)
+    with open(os.path.join(OUT, "plate_scene.usda"), "w") as f:
+        f.write(text)
+    scene = os.path.join(OUT, "plate_view.usda")
+    with open(scene, "w") as f:
+        f.write(PLATE_OVER)
+    sub = stage.createNode("sublayer", "plate")
+    sub.parm("filepath1").set(scene.replace("\\", "/"))
+    sub.setDisplayFlag(True)
+    v = viewer()
+    v.setPwd(stage)
+    try:
+        v.curViewport().setCamera("/cam")
+    except Exception:  # noqa: BLE001
+        pass
+    log("plate setup", prims=[str(p.GetPath()) for p in sub.stage().Traverse()][:40])
+    set_renderer("Karma CPU")
+    later(40, step_plate_karma)
+
+
+def step_plate_karma():
+    capture("80_plate_karma")
+    set_renderer("Nova CPU")
+    later(30, step_plate_nova)
+
+
+def step_plate_nova():
+    capture("81_plate_nova")
+    set_renderer("Nova XPU")
+    later(30, step_plate_xpu)
+
+
+def step_plate_xpu():
+    capture("82_plate_xpu")
+    log("plate", **{name: plate_regions(name) for name in ("80_plate_karma", "81_plate_nova", "82_plate_xpu")})
+    set_renderer("Nova CPU")
+    later(2, finish)
+
+
 def sharp_share(name):
     """The share of a capture's pixels as dark as the grey quads themselves:
     a quad that blurs mixes with the white dome behind it and leaves it."""
@@ -1287,5 +1400,5 @@ def start():
     os.makedirs(OUT, exist_ok=True)
     modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble,
              "icons": setup_icons, "dome": setup_dome, "velocity": setup_velocity, "sky": setup_sky,
-             "karmasettings": setup_karmasettings}
+             "plate": setup_plate, "karmasettings": setup_karmasettings}
     later(5, modes.get(ONLY, setup))

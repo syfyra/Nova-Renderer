@@ -424,7 +424,7 @@ void HdNovaBasisCurves::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
 
     nova::Scene &scene = param->AcquireSceneForEdit();
     if (first)
-        _meshId = scene.createMesh();
+        _meshId = scene.createMesh(nova::objectKey(id.GetString())); // stable, not the sync order
     if (rebuild)
         scene.updateMesh(_meshId, built ? std::move(desc) : nova::MeshDesc{});
     if (instancesDirty) {

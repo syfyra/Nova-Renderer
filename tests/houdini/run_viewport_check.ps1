@@ -43,6 +43,9 @@
 # -Only sky: a Karma Physical Sky LOP over a plane in Nova CPU, its solar
 # altitude and turbidity edited live, then Karma and Nova XPU (70_sky_nova ...
 # 73_sky_xpu_edit; log.json has the sky and ground means of each).
+# -Only plate: the Background Plate 2.0's scene (tests/husk/karma_nodes) in
+# Karma, Nova CPU and Nova XPU, whose viewports composite the plate under the
+# holdouts (80_plate_karma ... 82_plate_xpu; log.json has region means).
 # -Only karmasettings: the scene under a Karma Render Settings LOP in Nova
 # CPU (80_karma_settings); stdout.txt lists the render settings Nova
 # receives (TF_DEBUG HDNOVA_SETTINGS).
