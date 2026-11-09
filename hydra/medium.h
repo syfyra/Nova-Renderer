@@ -15,6 +15,7 @@
 // - karma:object:volumeuniformdensity changes nothing (the shader's density
 //   is used); volumesteprate is ignored (Nova does not march).
 
+#include "motion.h"
 #include "material/registry.h"
 
 #include "core/scene/scene.h"
@@ -36,9 +37,10 @@ public:
     bool Active() const { return _volumeId != nova::kInvalidId; }
     // Creates or updates the volume: `shell` is the gprim's new shell in its
     // object space (null: keep the last one; the first call needs one),
-    // `transformDirty` resamples its transform over the shutter.
+    // `transformDirty` resamples its transform over `shutter` (the gprim's:
+    // the frame alone with Karma's per-object motion blur off).
     void Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath const &id, SdfPath const &material, bool visible,
-              int primId, nova::MediumShellPtr shell, bool transformDirty);
+              int primId, nova::MediumShellPtr shell, bool transformDirty, HdNovaShutter const &shutter);
     // Removes the volume (the gprim is a surface again, or goes away).
     void Remove(HdNovaRenderParam &param);
 

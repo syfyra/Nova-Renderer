@@ -6,6 +6,7 @@
 // follow, other filter kinds are left out, and filterLink is ignored as Karma
 // ignores it, even where a light-linking scene index gives it a category.
 
+#include "hydra/lightFilter.h"
 #include "hydra/renderDelegate.h"
 #include "hydra/renderParam.h"
 
@@ -345,4 +346,58 @@ def Scope "f"
     CHECK(same(at(4, {5, 0, 0}), {5, 0, 0}));        // an Xform: world
     CHECK(same(at(5, {7, 0, 0}), {7, 0, 0}));        // "": world
     CHECK(same(at(6, {3, 2, 1}), {3, 2, 1}));        // a named space: world (warned)
+}
+
+// M11 review: a blocker in another prim's space follows that prim when only
+// the prim moves (an animated light or camera over a husk frame sequence or
+// in the viewport; the filter itself is not synced again). The render pass
+// re-resolves such spaces before every render, as done here.
+TEST_CASE("Blocker spaces follow an animated space prim", "[hydra][filters]") {
+    Driver d(R"(#usda 1.0
+def SphereLight "spc"
+{
+    float inputs:intensity = 0
+    double3 xformOp:translate.timeSamples = { 1: (0, 0, 0), 2: (3, 0, 0) }
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+}
+def DistantLight "sun"
+{
+    rel light:filters = </blk>
+}
+def LightFilter "blk"
+{
+    uniform token lightFilter:shaderId = "kma_lfilter_blocker"
+    string inputs:space = "/spc"
+}
+def LightFilter "own"
+{
+    uniform token lightFilter:shaderId = "kma_lfilter_blocker"
+}
+)");
+    auto &param = *static_cast<HdNovaRenderParam *>(d.delegate->GetRenderParam());
+    const auto refresh = [&] { // what the render pass does before rendering
+        for (HdNovaLightFilter *filter : param.SpaceFilters())
+            filter->RefreshSpace(param);
+        d.scene().commit();
+    };
+    const auto origin = [&] {
+        for (const nova::LightData &l : d.scene().lights())
+            if (l.type == nova::LightType::Distant && l.filterCount == 1)
+                return l.filters[0].toSpace({0.0f, 0.0f, 0.0f});
+        FAIL("no filtered distant light");
+        return nova::Vec3f{};
+    };
+    CHECK(param.SpaceFilters().size() == 1); // its own space follows its own sync
+    d.sceneIndices.stageSceneIndex->SetTime(UsdTimeCode(1.0));
+    d.sync();
+    refresh();
+    CHECK_THAT(origin().x, WithinAbs(0.0, 1e-6));
+    d.sceneIndices.stageSceneIndex->SetTime(UsdTimeCode(2.0));
+    d.sync();
+    refresh();
+    CHECK_THAT(origin().x, WithinAbs(3.0, 1e-6)); // a light's space: its transform itself
+    // A static space: nothing to edit.
+    const uint64_t version = param.GetEditVersion();
+    refresh();
+    CHECK(param.GetEditVersion() == version);
 }

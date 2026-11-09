@@ -13,6 +13,7 @@
 #include <pxr/imaging/hd/sceneDelegate.h>
 #include <pxr/imaging/hd/tokens.h>
 
+#include <cstring>
 #include <map>
 #include <mutex>
 #include <set>
@@ -145,7 +146,8 @@ void HdNovaLightFilter::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
         *dirtyBits = HdLight::Clean;
         return;
     }
-    nova::Scene &scene = static_cast<HdNovaRenderParam *>(renderParam)->AcquireSceneForEdit();
+    auto &param = *static_cast<HdNovaRenderParam *>(renderParam);
+    nova::Scene &scene = param.AcquireSceneForEdit();
     const FilterParams params(sd, id);
     const std::string kind = shaderId(params);
     if (kind != _tokens->blockerId.GetString()) {
@@ -156,6 +158,7 @@ void HdNovaLightFilter::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
         if (_inScene)
             scene.removeLightFilter(id.GetString());
         _inScene = false;
+        param.NoteSpaceFilter(this, false);
         *dirtyBits = HdLight::Clean;
         return;
     }
@@ -202,12 +205,31 @@ void HdNovaLightFilter::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
 
     scene.setLightFilter(id.GetString(), desc);
     _inScene = true;
+    // Another prim's space: re-resolved before every render (RefreshSpace).
+    _sceneDelegate = sd;
+    _desc = desc;
+    _space = space;
+    param.NoteSpaceFilter(this, !space.empty() && space[0] == '/' && space != id.GetString());
     *dirtyBits = HdLight::Clean;
 }
 
+bool HdNovaLightFilter::RefreshSpace(HdNovaRenderParam &param) {
+    if (!_inScene || !_sceneDelegate)
+        return false;
+    const SdfPath &id = GetId();
+    const nova::Mat4 m = toNova(spaceFromWorld(_sceneDelegate, id, _sceneDelegate->GetTransform(id), _space));
+    if (std::memcmp(&m, &_desc.spaceFromWorld, sizeof(m)) == 0)
+        return false;
+    _desc.spaceFromWorld = m;
+    param.AcquireSceneForEdit().setLightFilter(id.GetString(), _desc);
+    return true;
+}
+
 void HdNovaLightFilter::Finalize(HdRenderParam *renderParam) {
+    auto &param = *static_cast<HdNovaRenderParam *>(renderParam);
+    param.NoteSpaceFilter(this, false);
     if (_inScene) {
-        static_cast<HdNovaRenderParam *>(renderParam)->AcquireSceneForEdit().removeLightFilter(GetId().GetString());
+        param.AcquireSceneForEdit().removeLightFilter(GetId().GetString());
         _inScene = false;
     }
 }

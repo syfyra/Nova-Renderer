@@ -405,7 +405,6 @@ void HdNovaBasisCurves::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
     if (instancesDirty && instanced) {
         auto *instancer = static_cast<HdNovaInstancer *>(sd->GetRenderIndex().GetInstancer(GetInstancerId()));
         if (TF_VERIFY(instancer)) {
-            instancer->SyncShutter(shutter);
             HdNovaComputeInstances(sd, id, *instancer, shutter, maxSteps, instances, instanceKeys, instanceSteps);
             const size_t count = instanceSteps > 1 ? instanceKeys.size() / instanceSteps : instances.size();
             instancer->ComputeInstanceAttributes(id, instanceAttributes);
@@ -443,7 +442,10 @@ void HdNovaBasisCurves::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
         scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         scene.setMeshOutline(_meshId, HdNovaObjectOutline(sd, id));       // M11 P9a
-        HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (M6 D10)
+    }
+    // Cryptomatte ids (M6 D10); per-instance names follow the instance indices.
+    if (rebuild || (bits & (HdChangeTracker::DirtyInstancer | HdChangeTracker::DirtyInstanceIndex))) {
+        HdNovaCryptoNames &names = param->GetCryptoNames();
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
                             HdNovaCryptoAttributes(sd, id, names, GetInstancerId()));
     }
