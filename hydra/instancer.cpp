@@ -223,63 +223,70 @@ HdNovaInstancer *HdNovaInstancer::_Parent() const {
     return static_cast<HdNovaInstancer *>(GetDelegate()->GetRenderIndex().GetInstancer(GetParentId()));
 }
 
-void HdNovaInstancer::Sync(HdSceneDelegate *delegate, HdRenderParam *renderParam, HdDirtyBits *dirtyBits) {
+void HdNovaInstancer::Sync(HdSceneDelegate *delegate, HdRenderParam *, HdDirtyBits *dirtyBits) {
     // Parent instancer id and the instancer -> instancer dependency, so that
     // edits of a parent reach this instancer's rprims as DirtyInstancer.
     _UpdateInstancer(delegate, dirtyBits);
 
-    std::lock_guard<std::mutex> lock(_mutex);
-    const HdNovaShutter shutter =
-        renderParam ? static_cast<HdNovaRenderParam *>(renderParam)->GetShutter() : HdNovaShutter{};
-    const bool resample = !(shutter == _shutter) || _xf.values.empty();
-    _shutter = shutter;
-
+    SdfPath const &id = GetId();
     if (*dirtyBits & HdChangeTracker::DirtyVisibility)
-        _visible = delegate->GetVisible(GetId());
-    if ((*dirtyBits & HdChangeTracker::DirtyTransform) || resample)
-        _SampleTransform(delegate);
-    if (HdChangeTracker::IsAnyPrimvarDirty(*dirtyBits, GetId()) || resample)
-        _SamplePrimvars(delegate);
+        _visible = delegate->GetVisible(id);
+    const bool primvarsDirty = HdChangeTracker::IsAnyPrimvarDirty(*dirtyBits, id);
+    std::shared_ptr<ShadingPrimvars> shading;
+    if (primvarsDirty || !_Shading()) {
+        // Shading only: values at the frame, no motion samples.
+        shading = std::make_shared<ShadingPrimvars>();
+        for (HdPrimvarDescriptor const &pv : delegate->GetPrimvarDescriptors(id, HdInterpolationInstance))
+            if (!HdNovaIsGeometryPrimvar(pv.name))
+                shading->emplace_back(pv.name, delegate->Get(id, pv.name));
+    }
+    std::lock_guard<std::mutex> lock(_mutex);
+    if (shading)
+        _shading = std::move(shading);
+    // The motion samples follow the scene: resampled per shutter on demand.
+    if (primvarsDirty || (*dirtyBits & HdChangeTracker::DirtyTransform))
+        _samples.clear();
     // DirtyInstanceIndex needs no cache: indices are fetched when computing.
     // _SyncInstancerAndParents() marks the instancer clean afterwards.
 }
 
-void HdNovaInstancer::SyncShutter(HdNovaShutter const &shutter) {
-    for (HdNovaInstancer *inst = this; inst; inst = inst->_Parent()) {
-        std::lock_guard<std::mutex> lock(inst->_mutex);
-        if (!(inst->_shutter == shutter) || inst->_xf.values.empty()) {
-            inst->_shutter = shutter;
-            inst->_SampleTransform(inst->GetDelegate());
-            inst->_SamplePrimvars(inst->GetDelegate());
-        }
-    }
+std::shared_ptr<const HdNovaInstancer::ShadingPrimvars> HdNovaInstancer::_Shading() const {
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _shading;
 }
 
-void HdNovaInstancer::_SampleTransform(HdSceneDelegate *delegate) {
-    HdNovaSampleTransformSamples(delegate, GetId(), _shutter, &_xf, /*instancer=*/true);
+HdNovaInstancer::ShutterSamplesPtr HdNovaInstancer::_SamplesFor(HdNovaShutter const &shutter) const {
+    std::lock_guard<std::mutex> lock(_mutex);
+    for (ShutterSamplesPtr const &s : _samples)
+        if (s->shutter == shutter)
+            return s;
+    ShutterSamplesPtr s = _Sample(shutter);
+    constexpr size_t kMaxShutters = 4; // readers keep the ones they hold
+    if (_samples.size() >= kMaxShutters)
+        _samples.erase(_samples.begin());
+    _samples.push_back(s);
+    return s;
 }
 
-void HdNovaInstancer::_SamplePrimvars(HdSceneDelegate *delegate) {
+HdNovaInstancer::ShutterSamplesPtr HdNovaInstancer::_Sample(HdNovaShutter const &shutter) const {
+    HdSceneDelegate *delegate = GetDelegate();
     SdfPath const &id = GetId();
-    // Rebuilt from the current descriptors, so a removed primvar (e.g. a
-    // deleted "scales" attribute) does not linger (hdEmbree keeps it).
-    _translations = _rotations = _scales = _transforms = Samples();
-    _shadingPrimvars.clear();
+    auto out = std::make_shared<ShutterSamples>();
+    out->shutter = shutter;
+    HdNovaSampleTransformSamples(delegate, id, shutter, &out->xf, /*instancer=*/true);
+    // From the current descriptors, so a removed primvar (e.g. a deleted
+    // "scales" attribute) does not linger (hdEmbree keeps it).
     for (HdPrimvarDescriptor const &pv : delegate->GetPrimvarDescriptors(id, HdInterpolationInstance)) {
-        if (!HdNovaIsGeometryPrimvar(pv.name)) {
-            _shadingPrimvars.emplace_back(pv.name, delegate->Get(id, pv.name)); // shading only: no motion samples
-            continue;
-        }
-        Samples *target = pv.name == HdInstancerTokens->instanceTranslations ? &_translations
-                          : pv.name == HdInstancerTokens->instanceRotations  ? &_rotations
-                          : pv.name == HdInstancerTokens->instanceScales     ? &_scales
-                          : pv.name == HdInstancerTokens->instanceTransforms ? &_transforms
+        Samples *target = pv.name == HdInstancerTokens->instanceTranslations ? &out->translations
+                          : pv.name == HdInstancerTokens->instanceRotations  ? &out->rotations
+                          : pv.name == HdInstancerTokens->instanceScales     ? &out->scales
+                          : pv.name == HdInstancerTokens->instanceTransforms ? &out->transforms
                                                                              : nullptr;
         if (!target)
             continue;
-        if (_shutter.IsBlurred()) {
+        if (shutter.IsBlurred()) {
             HdTimeSampleArray<VtValue, 4> s;
-            delegate->SamplePrimvar(id, pv.name, _shutter.open, _shutter.close, &s);
+            delegate->SamplePrimvar(id, pv.name, shutter.open, shutter.close, &s);
             target->times.assign(s.times.begin(), s.times.begin() + s.count);
             target->values.assign(s.values.begin(), s.values.begin() + s.count);
             // Particles born or dying within the shutter change the array
@@ -303,29 +310,33 @@ void HdNovaInstancer::_SamplePrimvars(HdSceneDelegate *delegate) {
             target->values.assign(1, delegate->Get(id, pv.name));
         }
     }
+    return out;
 }
 
-unsigned HdNovaInstancer::GetMotionStepCount(unsigned maxSteps) const {
-    if (!_shutter.IsBlurred())
+unsigned HdNovaInstancer::GetMotionStepCount(HdNovaShutter const &shutter, unsigned maxSteps) const {
+    if (!shutter.IsBlurred())
         return 1;
-    unsigned steps = _xf.StepCount(_shutter, maxSteps);
-    for (Samples const *s : {&_translations, &_rotations, &_scales, &_transforms})
-        steps = std::max(steps, HdNovaMotionStepCount(s->times.data(), s->times.size(), _shutter, maxSteps));
+    const ShutterSamplesPtr samples = _SamplesFor(shutter);
+    unsigned steps = samples->xf.StepCount(shutter, maxSteps);
+    for (Samples const *s : {&samples->translations, &samples->rotations, &samples->scales, &samples->transforms})
+        steps = std::max(steps, HdNovaMotionStepCount(s->times.data(), s->times.size(), shutter, maxSteps));
     if (HdNovaInstancer const *parent = _Parent())
-        steps = std::max(steps, parent->GetMotionStepCount(maxSteps));
+        steps = std::max(steps, parent->GetMotionStepCount(shutter, maxSteps));
     return steps;
 }
 
 void HdNovaInstancer::ComputeInstanceTransformsAt(SdfPath const &prototypeId, GfMatrix4d const &prototypeXf,
-                                                  float time, std::vector<GfMatrix4d> &out) const {
-    _ComputeAt(prototypeId, time, out);
+                                                  HdNovaShutter const &shutter, float time,
+                                                  std::vector<GfMatrix4d> &out) const {
+    _ComputeAt(prototypeId, shutter, time, out);
     WorkParallelForN(out.size(), [&](size_t begin, size_t end) {
         for (size_t k = begin; k < end; ++k)
             out[k] = prototypeXf * out[k];
     });
 }
 
-void HdNovaInstancer::_ComputeAt(SdfPath const &prototypeId, float time, std::vector<GfMatrix4d> &out) const {
+void HdNovaInstancer::_ComputeAt(SdfPath const &prototypeId, HdNovaShutter const &shutter, float time,
+                                 std::vector<GfMatrix4d> &out) const {
     out.clear();
     if (!_visible)
         return;
@@ -338,14 +349,15 @@ void HdNovaInstancer::_ComputeAt(SdfPath const &prototypeId, float time, std::ve
         HdNovaInstancer const *p = _Parent();
         if (!TF_VERIFY(p))
             return;
-        p->_ComputeAt(GetId(), time, parent);
+        p->_ComputeAt(GetId(), shutter, time, parent);
         if (parent.empty())
             return; // the parent level has no (visible) instances
     }
 
     // Interpolated per instance (inside the parallel loop), only for this
     // prototype's instances.
-    Level const level = levelAt(_translations, _scales, _rotations, _transforms, _xf.At(time), time);
+    const ShutterSamplesPtr s = _SamplesFor(shutter);
+    Level const level = levelAt(s->translations, s->scales, s->rotations, s->transforms, s->xf.At(time), time);
 
     size_t const n = indices.size();
     size_t const np = parent.empty() ? 1 : parent.size();
@@ -401,7 +413,9 @@ void HdNovaInstancer::ComputeInstanceAttributes(SdfPath const &prototypeId,
         return nullptr;
     };
 
-    for (auto const &[name, value] : _shadingPrimvars) {
+    const std::shared_ptr<const ShadingPrimvars> shading = _Shading();
+    static const ShadingPrimvars none;
+    for (auto const &[name, value] : shading ? *shading : none) {
         int width = 0;
         std::vector<float> data;
         if (!HdNovaPrimvarToFloats(value, &width, &data) || data.empty())
@@ -485,7 +499,9 @@ void HdNovaInstancer::ComputeInstanceStrings(SdfPath const &prototypeId,
     }
     size_t const n = indices.size();
     std::vector<std::string> values;
-    for (auto const &[name, value] : _shadingPrimvars) {
+    const std::shared_ptr<const ShadingPrimvars> shading = _Shading();
+    static const ShadingPrimvars none;
+    for (auto const &[name, value] : shading ? *shading : none) {
         if (!instanceStrings(value, values) || values.empty())
             continue;
         std::vector<std::string> const *outer = nullptr;
@@ -516,16 +532,18 @@ void HdNovaInstancer::ComputeInstanceStrings(SdfPath const &prototypeId,
 }
 
 void HdNovaInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId, GfMatrix4d const &prototypeXf,
-                                                std::vector<nova::Xform34> &out) const {
+                                                HdNovaShutter const &shutter, std::vector<nova::Xform34> &out) const {
     out.clear();
     if (!_visible)
         return;
-    const float time = _shutter.FrameOffset();
-    const bool moving = _xf.values.size() > 1 || _translations.values.size() > 1 || _rotations.values.size() > 1 ||
-                        _scales.values.size() > 1 || _transforms.values.size() > 1;
+    const float time = shutter.FrameOffset();
+    const ShutterSamplesPtr s = _SamplesFor(shutter);
+    const bool moving = s->xf.values.size() > 1 || s->translations.values.size() > 1 ||
+                        s->rotations.values.size() > 1 || s->scales.values.size() > 1 ||
+                        s->transforms.values.size() > 1;
     if (moving) { // only if the motion steps were unusable: exact, in double precision
         std::vector<GfMatrix4d> exact;
-        ComputeInstanceTransformsAt(prototypeId, prototypeXf, time, exact);
+        ComputeInstanceTransformsAt(prototypeId, prototypeXf, shutter, time, exact);
         out.resize(exact.size());
         for (size_t k = 0; k < exact.size(); ++k)
             out[k] = toXform34(exact[k]);
@@ -540,14 +558,14 @@ void HdNovaInstancer::ComputeInstanceTransforms(SdfPath const &prototypeId, GfMa
         HdNovaInstancer const *p = _Parent();
         if (!TF_VERIFY(p))
             return;
-        p->_ComputeAt(GetId(), time, parent);
+        p->_ComputeAt(GetId(), shutter, time, parent);
         if (parent.empty())
             return;
     }
 
     // Single samples: the common static case with millions of instances, so
     // no double-precision temporaries.
-    Level const level = levelAt(_translations, _scales, _rotations, _transforms, _xf.At(time), time);
+    Level const level = levelAt(s->translations, s->scales, s->rotations, s->transforms, s->xf.At(time), time);
     size_t const n = indices.size();
     size_t const np = parent.empty() ? 1 : parent.size();
     out.resize(n * np);
