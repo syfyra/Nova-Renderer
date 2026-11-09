@@ -382,21 +382,55 @@ TEST_CASE("Instancer samples per shutter under parallel syncs", "[hydra][instanc
 // Review finding 6: per-instance cryptomatte names follow edited instance
 // indices (animated protoIndices) on every prim type.
 TEST_CASE("Per-instance cryptomatte names follow the instance indices", "[hydra][crypto][instancing][resync]") {
-    Rig rig(TfStringPrintf(kInstancer, ""));
-    const auto names = [&](float x) {
+    // Prototypes of three kinds: a mesh, points and curves.
+    Rig rig(R"(
+def PointInstancer "inst"
+{
+    rel prototypes = [</inst/protos/a>, </inst/protos/p>, </inst/protos/c>]
+    int[] protoIndices = [0, 1, 2, 0]
+    point3f[] positions = [(0, 0, 0), (2, 0, 0), (4, 0, 0), (6, 0, 0)]
+    string[] primvars:instname = ["i0", "i1", "i2", "i3"] (interpolation = "vertex")
+    def Scope "protos"
+    {
+        def Mesh "a"
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(-0.5, -0.5, 0), (0.5, -0.5, 0), (0.5, 0.5, 0), (-0.5, 0.5, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+        def Points "p"
+        {
+            point3f[] points = [(0, 0, 0)]
+            float[] widths = [0.5] (interpolation = "vertex")
+        }
+        def BasisCurves "c"
+        {
+            uniform token type = "linear"
+            int[] curveVertexCounts = [2]
+            point3f[] points = [(0, 0, 0), (0, 1, 0)]
+            float[] widths = [0.1] (interpolation = "constant")
+        }
+    }
+}
+)");
+    const auto names = [&](nova::MeshShape shape) {
         std::vector<std::string> out;
-        for (nova::CryptoAttribute const &a : instanced(rig, x).cryptoAttributes)
+        for (nova::CryptoAttribute const &a : rig.record(shape).cryptoAttributes)
             if (a.name == "instname" && a.perInstance)
                 for (uint32_t id : a.ids)
                     out.push_back(rig.param().GetCryptoNames().Find("instname", id));
         return out;
     };
-    CHECK(names(-0.5f) == std::vector<std::string>{"i0", "i2"});
-    CHECK(names(-0.25f) == std::vector<std::string>{"i1"});
-    rig.stage->GetAttributeAtPath(SdfPath("/inst.protoIndices")).Set(VtIntArray{1, 0, 0});
+    using S = std::vector<std::string>;
+    CHECK(names(nova::MeshShape::Triangles) == S{"i0", "i3"});
+    CHECK(names(nova::MeshShape::Points) == S{"i1"});
+    CHECK(names(nova::MeshShape::Curves) == S{"i2"});
+    rig.stage->GetAttributeAtPath(SdfPath("/inst.protoIndices")).Set(VtIntArray{1, 2, 0, 0});
     rig.sync();
-    CHECK(names(-0.5f) == std::vector<std::string>{"i1", "i2"});
-    CHECK(names(-0.25f) == std::vector<std::string>{"i0"});
+    CHECK(names(nova::MeshShape::Triangles) == S{"i2", "i3"});
+    CHECK(names(nova::MeshShape::Points) == S{"i0"});
+    CHECK(names(nova::MeshShape::Curves) == S{"i1"});
 }
 
 // Review finding 7: media bounded by a mesh or a sphere sample their motion
