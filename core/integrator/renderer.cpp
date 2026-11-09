@@ -199,32 +199,56 @@ void Renderer::resetPasses() {
     m_oracleReady = false; // initOracle() at the next pass
 }
 
-uint32_t Renderer::restartOffset() const {
+uint32_t Renderer::restartOffset() {
     // While a path guiding field lives, a restarted film continues after the
-    // sample numbers it rendered: the field learned from those, and paths
-    // drawn with the same numbers again would correlate with it (biased).
-    if (!m_guide || !m_guide->valid())
+    // sample numbers drawn since the field began (m_sampleEnd): the field
+    // learned from those, and paths drawn with the same numbers again would
+    // correlate with it (biased). Rounded up to a power of two at least the
+    // render's samples, so the new film's samples stay an aligned block of
+    // the sequence (its stratified prefixes). Without a field: from 0.
+    noteGuideSamples(0);
+    if (!m_guide || !m_guide->valid() || !m_settings.guiding.enable || m_sampleEnd == 0)
         return 0;
-    uint32_t most = 0;
-    for (const uint32_t c : m_film.count)
-        most = std::max(most, c);
-    return m_film.sampleOffset + most;
+    const uint64_t block = ceilPow2(std::max(64u, m_settings.maxSamples));
+    const uint64_t offset = (m_sampleEnd + block - 1) / block * block;
+    if (offset < (uint64_t(1) << 31))
+        return uint32_t(offset);
+    dropGuide(); // the numbers ran out: a new field (prepareGuide), from 0
+    return 0;
 }
 
-void Renderer::reset() {
+void Renderer::noteGuideSamples(uint32_t ahead) {
+    // A pixel's count is at most the level plus one per proxy pass.
+    if (m_guide)
+        m_sampleEnd = std::max(m_sampleEnd, uint64_t(m_film.sampleOffset) + m_level + (m_pass - m_fullPasses) + ahead);
+}
+
+void Renderer::dropGuide() {
+    m_guide.reset();
+    m_gpuGuide = false; // the device's records go with it
+    m_sampleEnd = 0;
+}
+
+void Renderer::restartFilm() {
     m_film.sampleOffset = restartOffset();
     m_film.clear();
     m_gpuFilm = false;
     m_filmStale = false;
-    m_discarded = 0;
     m_lpePrevCount.clear();
     resetPasses();
+}
+
+void Renderer::reset() {
+    restartFilm();
+    m_discarded = 0;
 }
 
 void Renderer::resize(int width, int height) {
     if (width == m_film.width && height == m_film.height)
         return;
+    const uint32_t offset = restartOffset(); // the new film restarts too
     m_film.resize(width, height);
+    m_film.sampleOffset = offset;
     m_lpePrevCount.clear();
     m_gpuFilm = false;
     m_filmStale = false;
@@ -412,9 +436,7 @@ void Renderer::syncFilm() {
                  m_gpu ? m_gpu->lastError().c_str() : "no device");
     m_gpu.reset();
     m_gpuFailed = true;
-    m_gpuFilm = false;
-    m_film.clear();
-    resetPasses();
+    restartFilm();
 #endif
 }
 
@@ -475,9 +497,8 @@ bool Renderer::gpuPass(bool lists, uint32_t spp, const LpeTables *lpe, const Pat
         m_gpuFailed = true;
         m_gpuFilm = false;
         if (m_filmStale) { // the device held sums the host lacks: start over
-            m_filmStale = false;
-            m_film.clear();
-            resetPasses();
+            restartFilm();
+            noteGuideSamples(spp); // the CPU pass that follows
         }
         return false;
     }
@@ -584,12 +605,16 @@ bool Renderer::renderPass(const std::function<bool()> &cancel) {
     const LpeTables *lpe = lpeTables();
     GuideView guideView;
     const GuideView *guide = prepareGuide(guideView);
+    // The sample numbers this pass draws: a film restarted while the field
+    // lives starts past them, also after a cancelled pass.
+    noteGuideSamples(spp);
     const bool gpu = m_settings.device == RenderDevice::Xpu && gpuPass(lists, spp, lpe, guide ? m_guide.get() : nullptr);
     m_lastPassGpu = gpu;
 
     if (!gpu && m_scene && !m_tiles.empty()) {
         syncFilm();
-        m_gpuFilm = false; // the CPU adds samples the device film lacks
+        noteGuideSamples(spp); // also into a film syncFilm() restarted
+        m_gpuFilm = false;     // the CPU adds samples the device film lacks
         // Work items: whole tiles; in proxy, capped and adaptive passes the
         // tiles' selected pixels, in chunks small enough to keep every thread
         // busy when few pixels are left. A pixel's samples always stay in one
@@ -650,11 +675,16 @@ bool Renderer::renderPass(const std::function<bool()> &cancel) {
 }
 
 const GuideView *Renderer::prepareGuide(GuideView &view) {
-    if (!m_settings.guiding.enable || !m_scene || m_settings.bake)
+    if (!m_settings.guiding.enable || !m_scene || m_settings.bake) {
+        dropGuide(); // restarted films number their samples from 0 again
         return nullptr;
+    }
     if (!m_guide)
         m_guide = std::make_unique<PathGuide>();
-    if (!m_guide->matches(m_settings.guiding, m_scene->version())) {
+    // A new field when the scene or the guiding settings changed, and for
+    // every frame (a sequence's frames stay independent, also when only the
+    // camera moves).
+    if (!m_guide->matches(m_settings.guiding, m_scene->version()) || m_guideFrame != m_settings.frame) {
         // A new field over the scene's surfaces and volumes: the scene (or
         // the guiding settings) changed, so what was learned is stale.
         Vec3f lo, hi;
@@ -672,8 +702,12 @@ const GuideView *Renderer::prepareGuide(GuideView &view) {
             hi = Vec3f{std::max(hi.x, r.upper.x), std::max(hi.y, r.upper.y), std::max(hi.z, r.upper.z)};
         }
         m_guide->reset(lo, hi, m_settings.guiding, m_scene->version());
-        if (m_pass == 0) // a new film: nothing it renders has trained the new field
+        m_guideFrame = m_settings.frame;
+        // A new film numbers from 0 (nothing has trained the new field);
+        // a film under way from where it is.
+        if (m_pass == 0)
             m_film.sampleOffset = 0;
+        m_sampleEnd = m_film.sampleOffset;
     }
     view = m_guide->view();
     return view.active() ? &view : nullptr;
@@ -697,11 +731,7 @@ void Renderer::finishGuidePass(uint32_t spp, bool gpu) {
     // it); training through the whole render drops nothing.
     if (m_settings.guiding.clearBuffers && m_level < m_settings.maxSamples && m_discarded == 0) {
         const uint32_t discarded = m_level;
-        m_film.sampleOffset = restartOffset();
-        m_film.clear();
-        m_gpuFilm = false;
-        m_filmStale = false;
-        resetPasses();
+        restartFilm();
         m_discarded = discarded;
     }
 }
@@ -749,6 +779,9 @@ void Renderer::takeLpeSamples() {
 namespace {
 
 constexpr char kProgressMagic[8] = {'N', 'O', 'V', 'A', 'P', 'R', 'G', '1'};
+// Optional trailer (older checkpoints lack it): path guiding's dropped
+// training samples and the film's first sample number.
+constexpr char kGuideMagic[4] = {'G', 'U', 'I', 'D'};
 
 template <typename T>
 void putArray(std::vector<uint8_t> &out, const std::vector<T> &v) {
@@ -794,6 +827,10 @@ void Renderer::saveCheckpoint(std::vector<uint8_t> &out) {
     putArray(out, m_half);
     for (const std::vector<float> *v : {&m_halfAlpha, &m_dsq, &m_lum, &m_dsqAlpha, &m_lumAlpha})
         putArray(out, *v);
+    const uint32_t guided[2] = {m_discarded, m_film.sampleOffset};
+    out.insert(out.end(), kGuideMagic, kGuideMagic + sizeof(kGuideMagic));
+    const auto *g = reinterpret_cast<const uint8_t *>(guided);
+    out.insert(out.end(), g, g + sizeof(guided));
 }
 
 bool Renderer::loadCheckpoint(const uint8_t *data, size_t size) {
@@ -814,7 +851,15 @@ bool Renderer::loadCheckpoint(const uint8_t *data, size_t size) {
     if (!getArray(p, end, film) || !getArray(p, end, active) || !getArray(p, end, evaluated) ||
         !getArray(p, end, noisy) || !getArray(p, end, checked) || !getArray(p, end, half) ||
         !getArray(p, end, halfAlpha) || !getArray(p, end, dsq) || !getArray(p, end, lum) ||
-        !getArray(p, end, dsqAlpha) || !getArray(p, end, lumAlpha) || p != end)
+        !getArray(p, end, dsqAlpha) || !getArray(p, end, lumAlpha))
+        return false;
+    uint32_t guided[2] = {0, 0}; // discarded, sample offset
+    if (size_t(end - p) == sizeof(kGuideMagic) + sizeof(guided) &&
+        std::memcmp(p, kGuideMagic, sizeof(kGuideMagic)) == 0) {
+        std::memcpy(guided, p + sizeof(kGuideMagic), sizeof(guided));
+        p += sizeof(kGuideMagic) + sizeof(guided);
+    }
+    if (p != end)
         return false;
     const size_t n = m_film.pixelCount();
     const bool oracle = progress[4] != 0 && m_settings.adaptive;
@@ -844,6 +889,12 @@ bool Renderer::loadCheckpoint(const uint8_t *data, size_t size) {
     m_tilePixels.clear();
     m_gpuFilm = false; // the device film is uploaded at the next GPU pass
     m_filmStale = false;
+    // Path guiding: the film's sample numbers go on from where they were,
+    // and training dropped from the film once stays dropped. The field is
+    // not saved: a new one learns from the samples that follow.
+    m_discarded = guided[0];
+    m_film.sampleOffset = guided[1];
+    dropGuide();
     // The filtered LPE planes go on from the loaded sums.
     m_lpePrevCount.clear();
     if (m_film.wantsLpeSamples()) {

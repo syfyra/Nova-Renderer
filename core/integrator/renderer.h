@@ -135,8 +135,14 @@ private:
     // After a pass of spp samples per pixel: the iteration ends when due
     // (the GPU's records first); clearBuffers drops the training samples.
     void finishGuidePass(uint32_t spp, bool gpu);
-    // The sample offset of a film restarted now (Film::sampleOffset).
-    uint32_t restartOffset() const;
+    // The sample offset of a film restarted now (Film::sampleOffset), and the
+    // restart itself (every path: reset, resize, GPU failures, clearBuffers).
+    uint32_t restartOffset();
+    void restartFilm();
+    // Path guiding: the film's sample numbers up to `ahead` more per pixel
+    // join those drawn since the field began; dropGuide() ends the field.
+    void noteGuideSamples(uint32_t ahead);
+    void dropGuide();
     // After a pass: the new sample of every pixel into the LPE planes with a
     // sample filter, as the change of the LPE sums since the last pass
     // (docs/design/M11-P6.md 4; such renders take one sample per pass).
@@ -198,6 +204,10 @@ private:
     uint64_t m_lpeGeneration = 0;                // counts m_lpe's builds (the GPU's copy follows it)
     std::unique_ptr<PathGuide> m_guide;
     uint32_t m_discarded = 0; // training samples dropped from the film (clearBuffers)
+    // Path guiding: the sample numbers drawn since the field began (a
+    // restarted film starts past them) and the frame it was made for.
+    uint64_t m_sampleEnd = 0;
+    float m_guideFrame = 0.0f;
     bool m_gpuGuide = false;  // the device holds records of the current training iteration
     std::unique_ptr<Baker> m_baker;
     const BakeSettings *m_bakeBuilt = nullptr; // the settings and scene version m_baker was built for
