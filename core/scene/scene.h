@@ -9,6 +9,7 @@
 #include "core/scene/hit.h"
 #include "core/scene/material.h"
 #include "core/scene/mesh.h"
+#include "core/scene/object_key.h"
 #include "core/scene/ray_limits.h"
 #include "core/scene/ray.h"
 #include "core/scene/visibility.h"
@@ -66,6 +67,10 @@ struct MeshRecord {
     std::vector<MaterialBinding> bindings;
     bool instanced = false;   // the instances come from setMeshInstances*()
     bool alive = false;
+    // The object's stable key (core/scene/object_key.h): per-object random
+    // decisions hash it, emissive triangles are listed in its order. Without
+    // one from the host, the MeshId.
+    uint64_t key = 0;
     // Changes with every updateMesh(), unique in the process: devices that copy
     // the geometry (Nova XPU) keep their copy while it stays (0: none yet).
     uint64_t geometryVersion = 0;
@@ -146,6 +151,9 @@ struct VolumeRecord {
     std::array<int32_t, 3> velocity{-1, -1, -1};
     float blurReach = 0.0f;
     bool alive = false;
+    // The stable key (core/scene/object_key.h): the active volumes are in
+    // its order. Without one from the host, the VolumeId.
+    uint64_t key = 0;
 
     bool empty() const { return !(lower.x <= upper.x) || layout.empty(); }
 };
@@ -176,7 +184,13 @@ public:
     Scene(const Scene &) = delete;
     Scene &operator=(const Scene &) = delete;
 
-    MeshId createMesh();
+    // Objects are created with a stable key (core/scene/object_key.h,
+    // objectKey()): something that does not depend on the order the host
+    // creates them in, such as the prim's path. Random decisions per object
+    // and the order of the lists random numbers index follow the keys, so
+    // the same objects render the same image whatever their ids. Without a
+    // key an object keys by its id.
+    MeshId createMesh(std::optional<uint64_t> key = std::nullopt);
     // Geometry; an instanced mesh keeps its instances.
     void updateMesh(MeshId id, MeshDesc desc);
     // Single (non-instanced) transform; also leaves instanced mode.
@@ -247,7 +261,7 @@ public:
     // of their own.
     bool shadowVisibilityDiffers() const { return m_shadowVisibilityDiffers; }
 
-    LightId createLight();
+    LightId createLight(std::optional<uint64_t> key = std::nullopt);
     void updateLight(LightId id, const LightDesc &desc);
     void removeLight(LightId id);
     // Light filters (docs/design/M11-P4.md), by key: lights list the keys of
@@ -257,7 +271,7 @@ public:
     void removeLightFilter(const std::string &key);
 
     // Volumes (docs/design/M8.md). The majorants are built at commit().
-    VolumeId createVolume();
+    VolumeId createVolume(std::optional<uint64_t> key = std::nullopt);
     void updateVolume(VolumeId id, VolumeDesc desc);
     // Object-to-world at uniform steps over the shutter (one step = static).
     void updateVolumeMotion(VolumeId id, const std::vector<Mat4> &steps);
@@ -459,6 +473,7 @@ private:
     void markVolumesOf(MaterialId material);
 
     std::vector<std::optional<LightDesc>> m_lights; // indexed by LightId
+    std::vector<uint64_t> m_lightKeys;              // indexed by LightId: the lights' stable keys
     std::vector<LightId> m_freeLightIds;
     bool m_lightsDirty = false;
     std::vector<LightData> m_lightData;   // the host's lights, then the volume lights

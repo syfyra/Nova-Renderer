@@ -6,15 +6,16 @@
 // templates over a mesh record type with the members of MeshRecord that
 // they read: `desc` (MeshDesc's points, pointSteps, indices, normals,
 // sphereRadius, the curve and point data, shape queries, pointCount(),
-// normalsPerStep()), `instances`, `motionKeys`, `motionSteps` and
-// instanceCount(). The CPU passes MeshRecord, the GPU a view of plain
-// arrays with the same names.
+// normalsPerStep()), `instances`, `motionKeys`, `motionSteps`,
+// instanceCount() and `key` (the object's stable key). The CPU passes
+// MeshRecord, the GPU a view of plain arrays with the same names.
 
 #include "core/geometry/curves.h"
 #include "core/math/frame.h"
 #include "core/math/xform.h"
 #include "core/scene/mesh.h"
 #include "core/scene/motion.h"
+#include "core/scene/object_key.h"
 #include "core/texture/ray_cone.h"
 
 #include <cmath>
@@ -252,11 +253,11 @@ NOVA_INLINE SurfaceHit resolveCurveHit(const Rec &rec, MeshId meshId, uint32_t p
     hit.mesh = meshId;
     hit.instance = instance;
     hit.prim = prim;
+    // Per curve of the object (its stable key, not its id: object_key.h) and
+    // instance.
     const uint32_t curveIndex = prim < m.segmentCurve.size() ? m.segmentCurve[prim] : 0u;
-    hit.strandRandom =
-        float(hit_detail::hashMix(curveIndex * 0x9E3779B1u ^ hit_detail::hashMix(meshId + 0x7F4A7C15u * (instance + 1u))) >>
-              8) *
-        (1.0f / 16777216.0f);
+    const uint32_t object = hit_detail::hashMix(objectHash(rec.key) + 0x7F4A7C15u * (instance + 1u));
+    hit.strandRandom = float(hit_detail::hashMix(curveIndex * 0x9E3779B1u ^ object) >> 8) * (1.0f / 16777216.0f);
     hit.Pobject = toObject.point(hit.P);
     hit.Nobject = normalize(toObject.vector(hit.N));
     return hit;

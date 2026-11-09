@@ -159,11 +159,13 @@ bool Scene::OpacityFilter::accept(const HitCandidate &c, const RayBatch &rays) c
     if (!(o > 0.0f))
         return false;
     // One uniform number per (ray, surface): the ray's seed decides, the
-    // surface ids decorrelate the surfaces along the ray.
+    // surface (the object's stable key, not its id: object_key.h; prim and
+    // instance) decorrelates the surfaces along the ray.
     const float seed = rays.filterSeed ? rays.filterSeed[c.ray] : 0.5f;
     uint32_t seedBits;
     std::memcpy(&seedBits, &seed, sizeof(seedBits));
-    const uint32_t h = hashMix(seedBits ^ hashMix(c.mesh * 0x9E3779B1u + hashMix(c.prim ^ hashMix(c.instance + 0x632BE5ABu))));
+    const uint32_t h = hashMix(seedBits ^ hashMix(objectHash(mesh.key) * 0x9E3779B1u +
+                                                   hashMix(c.prim ^ hashMix(c.instance + 0x632BE5ABu))));
     return float(h >> 8) * (1.0f / 16777216.0f) < o;
 }
 
@@ -221,7 +223,7 @@ void Scene::updateFilterFlags(bool &geometryChanged) {
 }
 Scene::~Scene() = default;
 
-MeshId Scene::createMesh() {
+MeshId Scene::createMesh(std::optional<uint64_t> key) {
     std::lock_guard lock(m_mutex);
     MeshId id;
     if (!m_freeMeshIds.empty()) {
@@ -233,6 +235,7 @@ MeshId Scene::createMesh() {
     }
     m_meshes[id] = MeshRecord{};
     m_meshes[id].alive = true;
+    m_meshes[id].key = key ? *key : id;
     return id;
 }
 
@@ -556,7 +559,7 @@ void Scene::rebuildBindings() {
     m_bindingsDirty = false;
 }
 
-LightId Scene::createLight() {
+LightId Scene::createLight(std::optional<uint64_t> key) {
     std::lock_guard lock(m_mutex);
     LightId id;
     if (!m_freeLightIds.empty()) {
@@ -565,7 +568,9 @@ LightId Scene::createLight() {
     } else {
         id = LightId(m_lights.size());
         m_lights.emplace_back();
+        m_lightKeys.emplace_back();
     }
+    m_lightKeys[id] = key ? *key : id;
     LightDesc desc;
     desc.visible = false; // until the first update arrives
     m_lights[id] = desc;
@@ -605,7 +610,7 @@ void Scene::removeLightFilter(const std::string &key) {
     ++m_version;
 }
 
-VolumeId Scene::createVolume() {
+VolumeId Scene::createVolume(std::optional<uint64_t> key) {
     std::lock_guard lock(m_mutex);
     VolumeId id;
     if (!m_freeVolumeIds.empty()) {
@@ -617,6 +622,7 @@ VolumeId Scene::createVolume() {
     }
     m_volumes[id] = VolumeRecord{};
     m_volumes[id].alive = true;
+    m_volumes[id].key = key ? *key : id;
     m_dirtyVolumes.insert(id);
     m_volumesDirty = true;
     ++m_version;
@@ -903,9 +909,18 @@ bool Scene::commit() {
         m_lightFilterData.clear();
         m_lightFilterLinks.clear();
         std::vector<uint32_t> filterBegin;
-        for (const std::optional<LightDesc> &light : m_lights) { // id order keeps sampling deterministic
-            if (!light || !light->visible)
-                continue;
+        // The lights in the order of their keys (object_key.h): the light
+        // tree and the selection distributions are then the same whatever
+        // order the host created the lights in.
+        std::vector<LightId> order;
+        for (LightId id = 0; id < m_lights.size(); ++id)
+            if (m_lights[id] && m_lights[id]->visible)
+                order.push_back(id);
+        std::sort(order.begin(), order.end(), [&](LightId a, LightId b) {
+            return m_lightKeys[a] != m_lightKeys[b] ? m_lightKeys[a] < m_lightKeys[b] : a < b;
+        });
+        for (const LightId id : order) {
+            const std::optional<LightDesc> &light = m_lights[id];
             LightData data = makeLightData(*light);
             filterBegin.push_back(uint32_t(m_lightFilterData.size()));
             for (const std::string &key : light->filters) {
@@ -950,10 +965,14 @@ bool Scene::commit() {
         m_dirtyVolumes.clear();
     }
     if (m_volumesDirty) {
+        // In the order of their keys (object_key.h), as the lights.
         m_activeVolumes.clear();
         for (VolumeId id = 0; id < m_volumes.size(); ++id)
             if (m_volumes[id].alive && m_volumes[id].desc.visible && !m_volumes[id].empty())
                 m_activeVolumes.push_back(id);
+        std::sort(m_activeVolumes.begin(), m_activeVolumes.end(), [&](VolumeId a, VolumeId b) {
+            return m_volumes[a].key != m_volumes[b].key ? m_volumes[a].key < m_volumes[b].key : a < b;
+        });
         m_volumesDirty = false;
     }
     if (volumesChanged) {
@@ -1140,7 +1159,14 @@ void Scene::buildEmitters() {
     m_lightData.resize(m_emitterBegin);
     size_t total = 0;
     bool moving = false;
-    for (MeshId id = 0; id < m_meshes.size(); ++id) {
+    // The meshes in the order of their keys (object_key.h), as the lights.
+    std::vector<MeshId> order(m_meshes.size());
+    for (MeshId id = 0; id < m_meshes.size(); ++id)
+        order[id] = id;
+    std::sort(order.begin(), order.end(), [&](MeshId a, MeshId b) {
+        return m_meshes[a].key != m_meshes[b].key ? m_meshes[a].key < m_meshes[b].key : a < b;
+    });
+    for (const MeshId id : order) {
         MeshRecord &rec = m_meshes[id];
         rec.emitterOf.clear();
         rec.emitterBase = rec.emitterStride = 0;

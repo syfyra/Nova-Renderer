@@ -67,6 +67,7 @@ struct MeshRecordView {
     // The keys interpolate as OptiX does (nlerp, docs/design/M10.md D6): the
     // GPU's hit reconstruction then matches its traversal.
     uint8_t nlerp = 0;
+    uint64_t key = 0; // MeshRecord::key, the object's stable key (core/scene/object_key.h)
 
     NOVA_INLINE uint32_t instanceCount() const {
         return motionSteps > 1 ? uint32_t(motionKeys.size() / motionSteps) : uint32_t(instances.size());
@@ -101,6 +102,7 @@ MeshRecordView meshRecordView(const Rec &r) {
     v.instances = spanOf(r.instances);
     v.motionKeys = spanOf(r.motionKeys);
     v.motionSteps = r.motionSteps;
+    v.key = r.key;
     return v;
 }
 

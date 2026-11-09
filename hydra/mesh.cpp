@@ -1061,7 +1061,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
 
     nova::Scene &scene = param->AcquireSceneForEdit();
     if (first) {
-        _meshId = scene.createMesh();
+        _meshId = scene.createMesh(nova::objectKey(id.GetString())); // stable, not the sync order
         param->NoteMeshPath(id, _meshId); // texture baking finds meshes by path
     }
     if (geometryDirty)

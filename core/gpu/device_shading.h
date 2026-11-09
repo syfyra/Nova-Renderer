@@ -145,10 +145,12 @@ NOVA_INLINE bool acceptHit(const GpuScene &sc, const ShadeGlobals &globals, uint
         return true;
     if (!(o > 0.0f))
         return false;
+    // The object's stable key, not its id (core/scene/object_key.h).
     uint32_t seedBits;
     std::memcpy(&seedBits, &seed, sizeof(seedBits));
     const auto mix = hit_detail::hashMix;
-    const uint32_t h = mix(seedBits ^ mix(meshId * 0x9E3779B1u + mix(prim ^ mix(instance + 0x632BE5ABu))));
+    const uint32_t h =
+        mix(seedBits ^ mix(objectHash(mesh.view.key) * 0x9E3779B1u + mix(prim ^ mix(instance + 0x632BE5ABu))));
     return float(h >> 8) * (1.0f / 16777216.0f) < o;
 }
 

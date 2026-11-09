@@ -54,6 +54,7 @@ add_executable(nova_tests
     test_light_filter.cpp
     test_sky.cpp
     test_bake.cpp
+    test_determinism.cpp
 )
 target_link_libraries(nova_tests PRIVATE nova_core Catch2::Catch2WithMain)
 # The GPU backend's tests (docs/design/M10.md); they skip without a device.
@@ -316,6 +317,13 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_emitters/$<CONFIG>")
     set_tests_properties(husk_emitters PROPERTIES LABELS husk TIMEOUT 600)
+    # Run-to-run determinism (docs/bug-audit-2026-11.md D-1): the same scene
+    # rendered five times by husk, CPU and Nova XPU, bit-identical.
+    add_test(NAME husk_determinism
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_determinism.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_determinism/$<CONFIG>")
+    set_tests_properties(husk_determinism PROPERTIES LABELS husk TIMEOUT 900)
     # Karma's render settings in Nova (docs/design/M11-P1.md).
     add_test(NAME husk_karma_props
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_props.py"

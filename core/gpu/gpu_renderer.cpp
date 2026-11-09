@@ -127,19 +127,33 @@ bool surfaceTexturesOnDevice(const MaterialRecord &rec) {
 
 bool volumeShaderOnDevice(const VolumeRecord &rec) { return rec.program && rec.program->rowCount <= kGpuMaxRows; }
 
-// The texture samplers the device uses, in the order setScene uploads them:
-// the surface materials', then the volume shaders'.
+// The texture samplers the device uses: the surface materials', then the
+// volume shaders'. The budget favours them in this order, so it must not
+// follow the ids, which follow the host's sync order (docs/bug-audit-2026-11.md
+// D-1): materials go by their names' cryptomatte ids, volumes by their keys.
 template <class F> void forEachDeviceSampler(const Scene &scene, F &&f) {
+    std::vector<MaterialId> materials;
     for (MaterialId id = 0; id < scene.materialCount(); ++id)
         if (scene.hasMaterial(id) && surfaceTexturesOnDevice(scene.material(id)))
-            for (const TexSampler &s : scene.material(id).samplers)
-                f(s);
-    for (VolumeId id = 0; id < scene.volumeCount(); ++id) {
-        const VolumeRecord &rec = scene.volumeRecord(id);
-        if (volumeShaderOnDevice(rec))
-            for (const TexSampler &s : scene.material(rec.material).samplers)
-                f(s);
-    }
+            materials.push_back(id);
+    std::sort(materials.begin(), materials.end(), [&](MaterialId a, MaterialId b) {
+        const uint32_t ka = scene.material(a).desc.cryptoId, kb = scene.material(b).desc.cryptoId;
+        return ka != kb ? ka < kb : a < b;
+    });
+    for (MaterialId id : materials)
+        for (const TexSampler &s : scene.material(id).samplers)
+            f(s);
+    std::vector<VolumeId> volumes;
+    for (VolumeId id = 0; id < scene.volumeCount(); ++id)
+        if (volumeShaderOnDevice(scene.volumeRecord(id)))
+            volumes.push_back(id);
+    std::sort(volumes.begin(), volumes.end(), [&](VolumeId a, VolumeId b) {
+        const uint64_t ka = scene.volumeRecord(a).key, kb = scene.volumeRecord(b).key;
+        return ka != kb ? ka < kb : a < b;
+    });
+    for (VolumeId id : volumes)
+        for (const TexSampler &s : scene.material(scene.volumeRecord(id).material).samplers)
+            f(s);
 }
 
 } // namespace
@@ -544,6 +558,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
         g.view.desc = geo.view;
         g.view.instances = put(rec.instances);
         g.view.motionSteps = rec.motionSteps;
+        g.view.key = rec.key;
         if (rec.motionSteps > 1) { // OptiX's keys and interpolation (D6)
             g.view.motionKeys = put(OptixScene::continuousKeys(rec));
             g.view.nlerp = 1;
