@@ -19,6 +19,7 @@ struct Compiled;
 }
 struct UtilityRequest;
 struct CryptoRequest;
+struct BakeSettings;
 
 // Where passes render (docs/design/M10.md D1, D15): the CPU, or the GPU with
 // the CPU as fallback (Nova XPU).
@@ -86,6 +87,10 @@ struct RenderSettings {
     std::shared_ptr<const std::vector<UtilityRequest>> utility;
     // Cryptomattes to render (core/film/crypto.h); null: none.
     std::shared_ptr<const std::vector<CryptoRequest>> crypto;
+    // Texture baking (core/bake/bake.h, docs/design/M11-P8.md): the film is
+    // a texture tile of the bake meshes; rendered on the CPU. Null: a camera
+    // render.
+    std::shared_ptr<const BakeSettings> bake;
 
     bool operator==(const RenderSettings &) const = default;
 };
