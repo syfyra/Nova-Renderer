@@ -61,6 +61,12 @@ void ShadowQueue::reserve(uint32_t capacity) {
     }
 }
 
+void ShadowQueue::grow() {
+    const uint32_t size = rays.size;
+    reserve(std::max<uint32_t>(64u, 2u * uint32_t(contribution.size())));
+    rays.size = size; // reserve() empties the ray queue
+}
+
 void WaveQueues::reserve(uint32_t paths) {
     if (pixel.size() < paths) {
         pixel.resize(paths);
@@ -135,9 +141,12 @@ void WaveQueues::reserve(uint32_t paths) {
     if (aoOccluded.size() < paths)
         aoOccluded.resize(paths);
     // Per path and depth at most: an equiangular sample, the hit's or volume
-    // event's light sample, a walk exit's, and a shadow-linked dome's BSDF
-    // sample (path.h) at the event or the exit.
-    shadows.reserve(4 * paths);
+    // event's light sample, a walk exit's, a shadow-linked dome's BSDF
+    // sample (path.h) at the event or the exit, and the sky atmosphere's
+    // ground's (one per flight that ends on it, chooseGroundLight; its hit
+    // behind is still shaded, with zero throughput). ShadowQueue::push grows
+    // the queue past that.
+    shadows.reserve(5 * paths);
 }
 
 void WaveQueues::reserveGuide(uint32_t paths) {
@@ -758,8 +767,7 @@ void equiangularDensities(const ShadeContext &c, WaveQueues &q, uint32_t k, uint
     const float a = q.eqA[k], b = q.eqB[k];
     MediumPart parts[4];
     Spectrum extinction;
-    mediumAt(c.scene, q.volumes, ShadeGlobals{c.settings.frame, c.settings.fps}, flightRay(c, q, k), t, parts, 4,
-             extinction);
+    mediumAt(c.scene, q.volumes, c.globals, flightRay(c, q, k), t, parts, 4, extinction);
     pFree = freeFlightProxy(extinction, a, t) * pTree;
     Equiangular e;
     if (t >= a && t < b && e.init(q.rays.org[k], q.rays.dir[k], a, b, c.lights[li].position)) {
@@ -794,7 +802,7 @@ void equiangularSample(const ShadeContext &c, WaveQueues &q, uint32_t k) {
     const float t = e.sample(rng.next());
     if (!(t >= q.eqA[k] && t < q.eqB[k]))
         return; // rounding at the ends
-    const ShadeGlobals globals{c.settings.frame, c.settings.fps};
+    const ShadeGlobals &globals = c.globals;
     MediumPart parts[4];
     Spectrum extinction;
     const int n = mediumAt(c.scene, q.volumes, globals, ray, t, parts, 4, extinction);
@@ -882,8 +890,9 @@ struct AtmosphereBehind {
 // ground, docs/design/M11-P7.md): a Lambert surface of the atmosphere's
 // albedo lit by the distant lights through the atmosphere, nothing else
 // (Karma, measured: no sky light, no other lights); the scene's objects
-// shadow it with groundreceiveshadow (shadow rays), else its light is added
-// here. An object-emission (O) event in light path expressions.
+// shadow it with groundreceiveshadow (one shadow ray to one of the lights,
+// chooseGroundLight), else its light is added here. An object-emission (O)
+// event in light path expressions.
 void shadeGround(const ShadeContext &c, WaveQueues &q, uint32_t p, const MediumRay &ray, float t,
                  const Spectrum &weight, float seed) {
     const AtmosphereView &a = *c.scene.atmosphere();
@@ -896,6 +905,26 @@ void shadeGround(const ShadeContext &c, WaveQueues &q, uint32_t p, const MediumR
     const lpe::State state = lpe ? q.lpeState[p] : lpe::State(0);
     const lpe::State object = state ? lpeStep(*lpe, state, lpe::TypeObject, lpe::ScatterNone, 0, 0) : state;
     const Vec3f origin = x + n * nova::fmax(4.0f * c.tolerance, 1e-6f * maxComponent(absolute(x)));
+    if (a.groundShadows) {
+        Spectrum unit;
+        const float u = Sampler{q.pixelSeed[p], q.sampleIndex[p]}.get1D(stream::groundLight(c.depth));
+        const uint32_t li = chooseGroundLight(c.lights, c.lightCount, n, beta, u, unit);
+        if (li == kInvalidId)
+            return;
+        const LightData &l = c.lights[li];
+        LightSample ls;
+        ls.wi = l.direction;
+        ls.Li = l.delta ? l.emission : l.emission * (kTwoPi * l.oneMinusCosThetaMax);
+        ls.pdf = 1.0f;
+        ls.distance = kInf;
+        ls.delta = true;
+        if (lpe)
+            lpePartsClear(q);
+        if (object)
+            lpePartsAdd(*lpe, q, object, unit, unit);
+        pushShadowRay(c, q, origin, l.direction, shadowRayLength(kInf, c.tolerance), p, unit, ray.time, seed, li, ls);
+        return;
+    }
     for (uint32_t li = 0; li < c.lightCount; ++li) {
         const LightData &l = c.lights[li];
         if (l.type != LightType::Distant)
@@ -907,21 +936,6 @@ void shadeGround(const ShadeContext &c, WaveQueues &q, uint32_t p, const MediumR
         const Spectrum unit = beta * E * (cosI * kInvPi * l.diffuse);
         if (isBlack(unit))
             continue;
-        if (a.groundShadows) {
-            LightSample ls;
-            ls.wi = l.direction;
-            ls.Li = E;
-            ls.pdf = 1.0f;
-            ls.distance = kInf;
-            ls.delta = true;
-            if (lpe)
-                lpePartsClear(q);
-            if (object)
-                lpePartsAdd(*lpe, q, object, unit, unit);
-            pushShadowRay(c, q, origin, l.direction, shadowRayLength(kInf, c.tolerance), p, unit, ray.time, seed, li,
-                          ls);
-            continue;
-        }
         const Spectrum contribution =
             clampContribution(unit * atmosphereTransmittanceToInfinity(a, origin, l.direction), c.clampEmission);
         if (isBlack(contribution))
@@ -934,6 +948,16 @@ void shadeGround(const ShadeContext &c, WaveQueues &q, uint32_t p, const MediumR
                 lpeDeposit(*lpe, c.film, q.pixel[p], object, contribution);
         }
     }
+}
+
+// Whether ray k finds its lights past its hit: the light query
+// (intersectRays) went on through a surface that shadow rays do not see.
+// Its lights then see the volumes up to where the query ended, so they take
+// a transmittance of their own (lightT), as with lightSplit.
+bool lightsPastHit(const WaveQueues &q, uint32_t k) {
+    if (!q.lightQuery || q.hitMesh[k] == kInvalidId)
+        return false;
+    return q.lightHitMesh[k] == kInvalidId || q.lightHitT[k] > q.hitT[k];
 }
 
 void traceMedia(const ShadeContext &c, WaveQueues &q) {
@@ -963,7 +987,7 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
     bool hasAreaLights = false;
     for (uint32_t i = 0; i < c.lightCount; ++i)
         hasAreaLights |= isAreaLight(c.lights[i].type) && !c.lights[i].delta;
-    const ShadeGlobals globals{c.settings.frame, c.settings.fps};
+    const ShadeGlobals &globals = c.globals;
     const LpeView *lpe = c.lpe;
     constexpr int kMaxCrossings = 16;
     for (uint32_t k = 0; k < q.rays.size; ++k) {
@@ -976,8 +1000,16 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
         uint32_t crossLight[kMaxCrossings];
         Spectrum crossOut[kMaxCrossings];
         int crossings = 0;
+        // Lights found past the hit: the volumes up to where the light query
+        // ended, a split of their own.
+        const bool pastHit = lightsPastHit(q, k);
+        const bool split = q.lightSplit || pastHit;
+        const bool lightMiss = pastHit && q.lightHitMesh[k] == kInvalidId;
+        const float lightEnd = !pastHit ? 0.0f : lightMiss ? q.rays.tMax[k] : q.lightHitT[k];
         if (hasAreaLights) {
-            const float tLights = miss ? q.rays.tMax[k] : lightSearchLimit(q.hitT[k], c.tolerance);
+            const float tLights = pastHit ? (lightMiss ? lightEnd : lightSearchLimit(lightEnd, c.tolerance))
+                                  : miss  ? q.rays.tMax[k]
+                                          : lightSearchLimit(q.hitT[k], c.tolerance);
             crossings = areaLightCrossings(c.lights, c.lightCount, c.lightTree, org, dir, tLights, crossT, crossLight,
                                            kMaxCrossings);
             for (int i = 1; i < crossings; ++i) // by distance
@@ -1025,7 +1057,7 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
             if (equiangular && mediumExtent(c.scene, ray, q.eqA[k], q.eqB[k]))
                 equiangularSample(c, q, k);
             const int allCrossings = crossings;
-            gather.lights = !q.lightSplit;
+            gather.lights = !split;
             if (atmosphere)
                 ray.behind = behind(c, miss, dir, crossings);
             const MediumFlight f = flyMedia(c.scene, q.volumes, globals, ray, q.beta[p], u0, rng, &gather,
@@ -1045,11 +1077,14 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
                 shadeGround(c, q, p, ray, f.t, f.weight, shadowRaySeed(q.rays.filterSeed[k]));
                 q.mediumT[k] = spectrum(0.0f);
             }
-            if (q.lightSplit) {
+            if (split) {
                 // Lights along the whole segment, as the light sample's
                 // shadow ray of the event that spawned this ray sees them
-                // (one level lower), whether or not the flight scattered.
+                // (one level lower), whether or not the flight scattered;
+                // past the hit up to the light query's end.
                 MediumRay light = ray;
+                if (pastHit)
+                    light.tEnd = lightEnd;
                 --light.depth;
                 if (shadowVisibility)
                     light.visibleClass = uint8_t(RayClass::Shadow);
@@ -1073,8 +1108,23 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
                 ray.visibleClass = uint8_t(RayClass::Shadow);
             ray.fromBackground = backgroundLights && q.holdout[p] == uint8_t(HoldoutMode::Background);
             gather.objects = false;
-            q.mediumT[k] = trackMedia(c.scene, q.volumes, globals, ray, u0, rng, &gather, crossT, crossOut, crossings);
-            q.mediumAlpha[k] = q.lightT[k] = q.mediumT[k];
+            if (pastHit) {
+                // The ray's own segment for what continues (a fake-caustic
+                // pass-through), the light query's for its lights.
+                q.mediumT[k] = trackMedia(c.scene, q.volumes, globals, ray, u0, rng, nullptr);
+                MediumRay light = ray;
+                light.tEnd = lightEnd;
+                const uint32_t ls = stream::mediumLight(c.depth);
+                Rng lrng = Rng::make(q.pixelSeed[p], q.sampleIndex[p], ls);
+                q.lightT[k] = trackMedia(c.scene, q.volumes, globals, light,
+                                         Sampler{q.pixelSeed[p], q.sampleIndex[p]}.get1D(ls), lrng, &gather, crossT,
+                                         crossOut, crossings);
+            } else {
+                q.mediumT[k] =
+                    trackMedia(c.scene, q.volumes, globals, ray, u0, rng, &gather, crossT, crossOut, crossings);
+                q.lightT[k] = q.mediumT[k];
+            }
+            q.mediumAlpha[k] = q.mediumT[k];
             q.mediumAlphaV[k] = spectrum(1.0f) - q.mediumT[k];
         }
         for (int i = 0; i < crossings; ++i) {
@@ -1116,10 +1166,12 @@ void traceMedia(const ShadeContext &c, WaveQueues &q) {
 }
 
 // The transmittance in front of light `light` crossed at distance t by ray
-// k (traceMedia); without volumes 1.
+// k (traceMedia); without volumes 1. `split`: the ray's lights have a
+// transmittance of their own (lightSplit, lightsPastHit).
 struct MediumAtten {
     const WaveQueues &q;
     uint32_t k;
+    bool split = false;
     Spectrum operator()(uint32_t light, float t) const {
         if (!q.media)
             return {1.0f, 1.0f, 1.0f};
@@ -1127,7 +1179,7 @@ struct MediumAtten {
         for (uint32_t i = b; i < e; ++i)
             if (q.crossingLight[i] == light && q.crossingT[i] == t)
                 return q.crossingAtten[i];
-        return q.lightSplit ? q.lightT[k] : q.mediumT[k];
+        return split ? q.lightT[k] : q.mediumT[k];
     }
     // The first crossing of a light (camera-visible lights).
     Spectrum ofLight(uint32_t light) const {
@@ -1172,7 +1224,8 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
         // Volumes along the segment (traceMedia): lights crossed on the way
         // take the transmittance in front of them, everything at the end of
         // the segment the whole.
-        const MediumAtten atten{q, k};
+        const bool split = q.media && (q.lightSplit || lightsPastHit(q, k));
+        const MediumAtten atten{q, k, split};
         const Spectrum betaIn = q.beta[p];
         if (q.media)
             q.beta[p] *= q.mediumT[k];
@@ -1284,8 +1337,8 @@ void gatherLights(const ShadeContext &c, Film &film, WaveQueues &q) {
             // With light path expressions each light's share is a part of
             // its own (its light event); the parts take the clamp of the sum.
             // The lights' densities are measured from the MIS vertex (prevP),
-            // which a fake-caustic pass-through leaves behind the ray.
-            const bool split = q.media && q.lightSplit;
+            // which a fake-caustic pass-through leaves behind the ray. With
+            // a split (MediumAtten) they take lightT, over their own segment.
             // The lights end where the ray ends as a shadow ray when shadow
             // visibility differs from the ray's (intersectRays).
             const bool lightMiss = q.lightQuery ? q.lightHitMesh[k] == kInvalidId : miss;
@@ -1422,7 +1475,7 @@ LightSample sampleVolumeLight(const ShadeContext &c, WaveQueues &q, uint32_t p, 
     const float r = std::sqrt(r2);
     ls.wi = d * (1.0f / r);
     ls.distance = r;
-    VolumeEvaluator &eval = q.volumes.get(c.scene, light.volume, ShadeGlobals{c.settings.frame, c.settings.fps});
+    VolumeEvaluator &eval = q.volumes.get(c.scene, light.volume, c.globals);
     ls.Li = eval(object, world, ls.wi, time, uint8_t(RayClass::Shadow), c.depth).emission * (1.0f / sigma);
     ls.pdf = pdf01 / float(cells.count) / rec.cellVolume * r2 / sigma;
     return ls;
@@ -1789,21 +1842,23 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
         // the path's (constrainRoughness) or, on true-caustic paths after a
         // diffuse event, the caustics clamp.
         const ObjectShading &shading = c.scene.meshRecord(hit.mesh).shading;
+        // Fake caustics after a diffuse event (docs/design/M4.md 3.3): glossy
+        // lobes are skipped, transmission becomes a straight pass-through with
+        // the shadow rays' transmittance, so NEE through the object and BSDF
+        // paths through it weigh the same. Shadow rays have no path
+        // roughness: the pass-through keeps the surface's own roughness too
+        // (its glossy lobes, which the clamp would raise, are dropped).
+        Spectrum fakeT{0.0f, 0.0f, 0.0f};
+        // (External closures have no transmittance: opaque to fake caustics, D13.)
+        const bool fake = !ext && q.afterDiffuse[p] && shading.fakeCaustics;
         if (!ext) {
             if (!shading.internalReflection)
                 dropInternalReflection(cl, wo);
-            float minAlpha = c.settings.constrainRoughness ? q.pathAlpha[p] : 0.0f;
+            float minAlpha = c.settings.constrainRoughness && !fake ? q.pathAlpha[p] : 0.0f;
             if (q.afterDiffuse[p] && !shading.fakeCaustics && shading.causticsRoughnessClamp > 0.0f)
                 minAlpha = nova::fmax(minAlpha, sqr(nova::fmin(shading.causticsRoughnessClamp, 1.0f)));
             clampLobeRoughness(cl, minAlpha);
         }
-        // Fake caustics after a diffuse event (docs/design/M4.md 3.3): glossy
-        // lobes are skipped, transmission becomes a straight pass-through with
-        // the shadow rays' transmittance, so NEE through the object and BSDF
-        // paths through it weigh the same.
-        Spectrum fakeT{0.0f, 0.0f, 0.0f};
-        // (External closures have no transmittance: opaque to fake caustics, D13.)
-        const bool fake = !ext && q.afterDiffuse[p] && shading.fakeCaustics;
         const LpeView *lpe = c.lpe;
         const lpe::State state = lpe ? q.lpeState[p] : lpe::State(0);
         const uint32_t tag = state ? lpe->objectTag(hit.mesh, c.scene.materialIdOf(hit.mesh, hit.prim)) : 0u;
@@ -2584,7 +2639,7 @@ void shadeSurfaces(const Scene &scene, const RenderSettings &settings, uint32_t 
 // light's shadow-link category (0xFFFF: none); objects outside its shadow
 // set neither block nor tint the ray, as in phase 1 (M9 D15), they are
 // stepped over. Returns the rays traced in `rays`.
-Spectrum fakeCausticTransmittance(const Scene &scene, const ClosureContext &ctx, const RenderSettings &settings,
+Spectrum fakeCausticTransmittance(const Scene &scene, const ClosureContext &ctx, const ShadeGlobals &globals,
                                   uint32_t depth, Vec3f org, Vec3f dir, float tMax, float time, float seed,
                                   uint16_t category, MaterialEvalScratch &scratch, uint32_t &rays,
                                   uint8_t flags = 0) {
@@ -2592,7 +2647,6 @@ Spectrum fakeCausticTransmittance(const Scene &scene, const ClosureContext &ctx,
     const uint8_t type = uint8_t(RayClass::Shadow);
     // The hit filter sees the shadow ray's flags (background points, holdout.h).
     const uint8_t filterType = uint8_t(type | flags);
-    const ShadeGlobals globals{settings.frame, settings.fps};
     for (int crossing = 0; crossing < 8; ++crossing) {
         float t = 0.0f;
         uint32_t mesh = kInvalidId, prim = 0, instance = 0;
@@ -2633,7 +2687,7 @@ Spectrum fakeCausticTransmittance(const Scene &scene, const ClosureContext &ctx,
 // for unoccluded; outputs), evaluated per material in batches and seen from
 // the ray's origin; the contribution and its parts take it, then the clamp
 // of a light sample.
-void emitterShadowRadiance(const Scene &scene, const RenderSettings &settings, const ClosureContext &ctx,
+void emitterShadowRadiance(const Scene &scene, const ShadeGlobals &globals, const ClosureContext &ctx,
                            uint32_t depth, WaveQueues &q, bool unit) {
     ShadowQueue &s = q.shadows;
     const LightData *lights = scene.lights().data();
@@ -2667,9 +2721,8 @@ void emitterShadowRadiance(const Scene &scene, const RenderSettings &settings, c
             times[n] = s.rays.time[i];
             rayTypes[n] = uint8_t(RayClass::Shadow);
         }
-        evaluateSurfaceInputs(scene, material, hits, dirs, times, n, inputs, q.materialScratch,
-                              ShadeGlobals{settings.frame, settings.fps}, HitTextureData{},
-                              HitRayData{rayTypes, depth + 1});
+        evaluateSurfaceInputs(scene, material, hits, dirs, times, n, inputs, q.materialScratch, globals,
+                              HitTextureData{}, HitRayData{rayTypes, depth + 1});
         for (int j = 0; j < n; ++j) {
             const uint32_t i = order[a + size_t(j)].second;
             ClosureList cl;
@@ -2721,12 +2774,13 @@ uint32_t probeBackgroundOccluders(const Scene &scene, ShadowQueue &s, uint32_t d
 
 // Stage 4: occlusion tests for the light samples; unoccluded ones add their
 // radiance.
-uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, const ClosureContext &ctx, uint32_t depth,
+// `globals`: the render's frame and camera (the blockers' opacity, the
+// emitters' emission and the fake-caustic surfaces see it as every shading).
+uint32_t traceShadowRays(const Scene &scene, const ShadeGlobals &globals, const ClosureContext &ctx, uint32_t depth,
                          WaveQueues &q, Film &film, const LpeView *lpe) {
     ShadowQueue &s = q.shadows;
     if (s.rays.size == 0)
         return 0;
-    const ShadeGlobals globals{settings.frame, settings.fps};
     // Shadow rays: RayClass::Shadow, RayDepth the bounce's (M4 3.1).
     RayBatch batch = s.rays.batch(depth, &globals);
     if (scene.shadowLinking())
@@ -2739,7 +2793,7 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
     const bool media = scene.anyMedia();
     const bool unit = lpe && lpe->unit;
     if (s.emitterCount > 0)
-        emitterShadowRadiance(scene, settings, ctx, depth, q, unit);
+        emitterShadowRadiance(scene, globals, ctx, depth, q, unit);
     for (uint32_t i = 0; i < s.rays.size; ++i) {
         const bool blocked = s.occluded[i] != 0;
         if (blocked && !unit)
@@ -2749,7 +2803,7 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
         if (!blocked) {
             Spectrum c = s.contribution[i];
             if (fake && !(s.rays.rayType[i] & kRayBackgroundLit)) {
-                T = fakeCausticTransmittance(scene, ctx, settings, depth, s.rays.org[i], s.rays.dir[i],
+                T = fakeCausticTransmittance(scene, ctx, globals, depth, s.rays.org[i], s.rays.dir[i],
                                              s.rays.tMax[i], s.rays.time[i], s.rays.filterSeed[i],
                                              scene.shadowLinking() ? s.shadowCategory[i] : uint16_t(0xFFFFu),
                                              q.materialScratch, rays,
@@ -3048,7 +3102,7 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
         shadeSurfaces(scene, settings, depth, film, q, ctx, lpe, ao, globals, active ? guide : nullptr);
         rays += q.walkRays;
         q.walkRays = 0;
-        rays += traceShadowRays(scene, settings, ctx, depth, q, film, lpe);
+        rays += traceShadowRays(scene, globals, ctx, depth, q, film, lpe);
         if (ao && depth == 0)
             rays += traceAoRays(scene, *ao, q, globals);
         std::swap(q.rays, q.nextRays);
@@ -3073,10 +3127,20 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
             if (!q.holdout[slot])
                 guideFlushPath(*guide, records, slot, q.radiance[slot], q.pixelSeed[slot], q.sampleIndex[slot]);
     }
-    if (q.records) // filtered utility planes and the deep map (camera_samples.h)
+    if (q.records) { // filtered utility planes and the deep map (camera_samples.h)
+        // The film's own sample numbers (Even/Odd filters, the pixel-samples
+        // var): without Film::sampleOffset, as on the XPU.
+        const uint32_t *index = q.sampleIndex.data();
+        thread_local std::vector<uint32_t> relative;
+        if (film.sampleOffset != 0) {
+            relative.resize(paths);
+            for (uint32_t slot = 0; slot < paths; ++slot)
+                relative[slot] = q.sampleIndex[slot] - film.sampleOffset;
+            index = relative.data();
+        }
         accumulateCameraSamples(scene, camera, globals, film,
-                                CameraSampleView::of(q.camera, paths, q.pixel.data(), q.sampleIndex.data(),
-                                                     q.radiance.data()));
+                                CameraSampleView::of(q.camera, paths, q.pixel.data(), index, q.radiance.data()));
+    }
     if (q.walksDone > 0) {
         g_walks.fetch_add(q.walksDone, std::memory_order_relaxed);
         g_walksCapped.fetch_add(q.walksCapped, std::memory_order_relaxed);

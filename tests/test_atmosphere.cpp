@@ -10,8 +10,10 @@
 #include "core/integrator/renderer.h"
 #include "core/math/frame.h"
 #include "core/scene/scene.h"
+#include "core/shading/compiler.h"
 #include "core/volume/atmosphere.h"
 #include "core/volume/phase.h"
+#include "core/volume/shell.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -482,4 +484,193 @@ TEST_CASE("Single scattering in the atmosphere matches a quadrature", "[atmosphe
     INFO("Nova " << got.x << " " << got.y << " " << got.z << ", quadrature " << L[0] << " " << L[1] << " " << L[2]);
     for (int c = 0; c < 3; ++c)
         CHECK_THAT(double(got[c]), WithinRel(L[c], 0.01));
+}
+
+// --- The visible ground with several suns and with volumes (M11 review) ----
+
+namespace {
+
+// A sun (a delta distant light of irradiance `intensity`) at altitude
+// `altDeg` and azimuth `azDeg` (0: towards +Y, 90: towards +X).
+Vec3f addSunAt(Scene &scene, float altDeg, float azDeg, float intensity) {
+    const float a = altDeg * kPi / 180.0f, z = azDeg * kPi / 180.0f;
+    const Vec3f to{std::sin(z) * std::cos(a), std::cos(z) * std::cos(a), std::sin(a)};
+    LightDesc sun;
+    sun.type = LightType::Distant;
+    sun.normalize = true;
+    sun.angleDeg = 0.0f;
+    sun.intensity = intensity;
+    const Frame f = Frame::fromNormal(to);
+    const Vec3f axes[3] = {f.t, f.b, f.n};
+    for (int r = 0; r < 3; ++r) {
+        sun.transform.m[r][0] = axes[r].x;
+        sun.transform.m[r][1] = axes[r].y;
+        sun.transform.m[r][2] = axes[r].z;
+    }
+    scene.updateLight(scene.createLight(), sun);
+    return to;
+}
+
+// A shell box [lo, hi] of constant absorption, scattering and emission
+// (a light source with `light`).
+VolumeId addMediumBox(Scene &scene, Vec3f lo, Vec3f hi, Spectrum absorption, Spectrum scattering,
+                      Spectrum emission = spectrum(0.0f), bool light = false) {
+    using namespace shading;
+    IrGraph g;
+    IrBuilder b(g);
+    const auto field = [](uint16_t f) { return uint16_t(volume_field::kBase + f); };
+    b.output(field(volume_field::scattering), 3, b.constant(scattering.x, scattering.y, scattering.z));
+    b.output(field(volume_field::absorption), 3, b.constant(absorption.x, absorption.y, absorption.z));
+    b.output(field(volume_field::emission), 3, b.constant(emission.x, emission.y, emission.z));
+    MaterialDesc m;
+    m.program = compile(g).program;
+    REQUIRE(m.program);
+    const std::vector<Vec3f> p = {{lo.x, lo.y, lo.z}, {hi.x, lo.y, lo.z}, {hi.x, hi.y, lo.z}, {lo.x, hi.y, lo.z},
+                                  {lo.x, lo.y, hi.z}, {hi.x, lo.y, hi.z}, {hi.x, hi.y, hi.z}, {lo.x, hi.y, hi.z}};
+    const std::vector<uint32_t> idx = {0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
+                                       1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7};
+    VolumeDesc v;
+    v.name = "/box";
+    v.shell = makeTriangleShell(p.data(), p.size(), idx.data(), idx.size() / 3);
+    v.material = scene.createMaterial();
+    v.light = light;
+    scene.updateMaterial(v.material, m);
+    const VolumeId id = scene.createVolume();
+    scene.updateVolume(id, v);
+    scene.updateVolumeMotion(id, {Mat4::identity()});
+    return id;
+}
+
+} // namespace
+
+// With groundreceiveshadow the lit suns shadow the ground through shadow
+// rays; a path keeps one light sample per event (the XPU's one shadow ray per
+// path and slot, the CPU's queue of four per path): the ground picks one sun
+// in proportion to its light. Five lit suns (they overflowed the CPU's queue
+// and raced on the XPU) give the exact sum of their light.
+TEST_CASE("The atmosphere's ground under several suns with groundreceiveshadow", "[atmosphere][render]") {
+    auto desc = absorbingDesc();
+    desc->groundVisibility = kVisibleAll;
+    desc->groundShadows = true;
+    desc->groundAlbedo = Spectrum{0.5f, 0.3f, 0.2f};
+    Scene scene;
+    addAtmosphere(scene, desc);
+    struct Sun {
+        float alt, az, intensity;
+    };
+    const Sun suns[] = {{40.0f, 0.0f, 1.0f}, {40.0f, 120.0f, 0.5f}, {40.0f, 240.0f, 2.0f},
+                        {25.0f, 60.0f, 1.0f}, {60.0f, 200.0f, 1.5f}, {-10.0f, 90.0f, 3.0f}}; // the last below the horizon
+    std::vector<Vec3f> dirs;
+    for (const Sun &s : suns)
+        dirs.push_back(addSunAt(scene, s.alt, s.az, s.intensity));
+    build(scene);
+    const Film film = renderOrtho(scene, {0.0f, 0.0f, 0.0f}, 256, 4, 0.1f);
+    const Spectrum got = filmMean(film);
+    const Model model(*desc);
+    const double g[3] = {0.0, 0.0, -100.0};
+    const double o[3] = {0.0, 0.0, 0.0}, down[3] = {0.0, 0.0, -1.0};
+    double tv[3];
+    model.depth(o, down, 0.0, 100.0, 4000, tv);
+    double expected[3] = {0.0, 0.0, 0.0};
+    for (size_t i = 0; i < dirs.size(); ++i) {
+        if (!(suns[i].alt > 0.0f))
+            continue;
+        const double ds[3] = {dirs[i].x, dirs[i].y, dirs[i].z};
+        double ts[3];
+        model.depth(g, ds, 0.0, model.exitTop(g, ds), 400000, ts);
+        for (int c = 0; c < 3; ++c)
+            expected[c] += desc->groundAlbedo[c] / kPiD * suns[i].intensity * std::sin(suns[i].alt * kPiD / 180.0) *
+                           std::exp(-ts[c] - tv[c]);
+    }
+    INFO("Nova " << got.x << " " << got.y << " " << got.z << ", expected " << expected[0] << " " << expected[1] << " "
+                 << expected[2]);
+    for (int c = 0; c < 3; ++c)
+        CHECK_THAT(double(got[c]), WithinRel(expected[c], 2e-3));
+    CHECK_THAT(alphaMean(film), WithinAbs(1.0, 1e-6));
+}
+
+// A visible ground ends the volumes' free flight: a fog box from 10 m below
+// to 10 m above sea level (no ground mesh) dims the ground seen from above
+// by its upper half only; the half behind the ground neither dims it nor
+// takes paths away.
+TEST_CASE("Volumes behind the atmosphere's visible ground do not reach it", "[atmosphere][render][volume]") {
+    auto desc = absorbingDesc();
+    desc->groundVisibility = kVisibleAll;
+    desc->groundAlbedo = Spectrum{0.5f, 0.3f, 0.2f};
+    const float sigma = 0.05f;
+    for (const bool scatter : {false, true}) {
+        Scene scene;
+        addAtmosphere(scene, desc);
+        addSun(scene, 40.0f);
+        // Sea level is 100 m below the origin.
+        addMediumBox(scene, {-5.0f, -5.0f, -110.0f}, {5.0f, 5.0f, -90.0f}, spectrum(scatter ? 0.0f : sigma),
+                     spectrum(scatter ? sigma : 0.0f));
+        scene.commit();
+        REQUIRE(scene.atmosphere() != nullptr);
+        Renderer renderer;
+        RenderSettings settings;
+        settings.maxSamples = 1024;
+        settings.maxDepth = scatter ? 4 : 1;
+        settings.clampIndirect = 0.0f;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 0.0f}, 0.1f, 4, 4));
+        renderer.resize(4, 4);
+        renderToConvergence(renderer);
+        const Spectrum got = filmMean(renderer.film());
+        const Model model(*desc);
+        const Vec3f s = sunDir(40.0f);
+        const double g[3] = {0.0, 0.0, -100.0}, ds[3] = {s.x, s.y, s.z};
+        double ts[3];
+        model.depth(g, ds, 0.0, model.exitTop(g, ds), 400000, ts);
+        const double o[3] = {0.0, 0.0, 0.0}, down[3] = {0.0, 0.0, -1.0};
+        double tv[3];
+        model.depth(o, down, 0.0, 100.0, 4000, tv);
+        INFO((scatter ? "scattering" : "absorbing") << " fog: Nova " << got.x << " " << got.y << " " << got.z);
+        for (int c = 0; c < 3; ++c) {
+            // The ground's light (without groundreceiveshadow the volumes do
+            // not shadow it) through the fog's upper 10 m.
+            const double ground = desc->groundAlbedo[c] / kPiD * std::sin(40.0 * kPiD / 180.0) *
+                                  std::exp(-ts[c] - tv[c]) * std::exp(-double(sigma) * 10.0);
+            if (scatter) // and the fog's own in-scattered light on top
+                CHECK(double(got[c]) > 0.98 * ground);
+            else
+                CHECK_THAT(double(got[c]), WithinRel(ground, 0.01));
+        }
+    }
+}
+
+// A volume light in front of a visible ground still adds its light to rays
+// that only gather lights (here camera rays at path length 0): the tracker
+// runs up to the ground.
+TEST_CASE("Volume lights in front of the atmosphere's ground", "[atmosphere][render][volume]") {
+    auto desc = defaultDesc();
+    desc->rayleigh = spectrum(0.0f);
+    desc->mieScatter = spectrum(0.0f);
+    desc->mieAbsorb = spectrum(0.0f);
+    desc->ozone = spectrum(0.0f);
+    desc->groundVisibility = kVisibleAll;
+    Scene scene;
+    addAtmosphere(scene, desc);
+    // 20 m of emission between 40 and 60 m below the camera.
+    addMediumBox(scene, {-1.0f, -1.0f, -60.0f}, {1.0f, 1.0f, -40.0f}, spectrum(0.0f), spectrum(0.0f),
+                 Spectrum{0.1f, 0.05f, 0.025f}, true);
+    scene.commit();
+    REQUIRE(scene.atmosphere() != nullptr);
+    Renderer renderer;
+    RenderSettings settings;
+    settings.maxSamples = 64;
+    settings.maxDepth = 0;
+    settings.clampIndirect = 0.0f;
+    settings.clampDirect = 0.0f;
+    renderer.setScene(&scene);
+    renderer.setSettings(settings);
+    renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 0.0f}, 0.1f, 4, 4));
+    renderer.resize(4, 4);
+    renderToConvergence(renderer);
+    const Spectrum got = filmMean(renderer.film());
+    INFO("Nova " << got.x << " " << got.y << " " << got.z);
+    CHECK_THAT(double(got.x), WithinRel(2.0, 0.01));
+    CHECK_THAT(double(got.y), WithinRel(1.0, 0.01));
+    CHECK_THAT(double(got.z), WithinRel(0.5, 0.01));
 }
