@@ -1816,6 +1816,143 @@ TEST_CASE("XPU edit latency", "[.][gpu][ipr]") {
     pass("next pass");
 }
 
+// Nested dielectrics and light portals (docs/design/M11-P9b.md) on both
+// devices: glass A over a B of higher priority that overlaps it, with
+// absorbing interiors and a refraction limit that passes the last exit as a
+// thin wall, over an emitter; a room lit by a constant dome through a
+// window with a portal, and a second window without one.
+TEST_CASE("XPU nested dielectrics and light portals", "[gpu][render][nested][portal]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    namespace sf = surface_field;
+    {
+        Scene scene;
+        MaterialDesc emit;
+        emit.inputs = standardSurfaceDefaults();
+        emit.inputs.set(sf::baseWeight, 0.0f);
+        emit.inputs.set(sf::specularWeight, 0.0f);
+        emit.inputs.set(sf::emissionWeight, 1.0f);
+        emit.inputs.set(sf::emissionColor, spectrum(1.0f));
+        const MaterialId emitId = scene.createMaterial();
+        scene.updateMaterial(emitId, emit);
+        const auto glass = [&](float ior, Spectrum color) {
+            MaterialDesc d;
+            d.inputs = standardSurfaceDefaults();
+            d.inputs.set(sf::baseWeight, 0.0f);
+            d.inputs.set(sf::transmissionWeight, 1.0f);
+            d.inputs.set(sf::specularRoughness, 0.05f);
+            d.inputs.set(sf::specularIor, ior);
+            d.inputs.set(sf::transmissionColor, color);
+            d.inputs.set(sf::transmissionDepth, 1.0f);
+            const MaterialId id = scene.createMaterial();
+            scene.updateMaterial(id, d);
+            return id;
+        };
+        MeshDesc ground = makeQuad(6.0f);
+        ground.transform = translation({0.0f, 0.0f, -3.0f});
+        const MeshId g = scene.createMesh();
+        scene.updateMesh(g, ground);
+        scene.setMeshMaterials(g, {emitId});
+        const MeshId a = scene.createMesh(), b = scene.createMesh(), c = scene.createMesh();
+        scene.updateMesh(a, box({-0.8f, -0.8f, 0.0f}, {0.8f, 0.8f, 2.0f}));
+        scene.updateMesh(b, box({-0.6f, -0.5f, -1.0f}, {0.6f, 0.5f, 1.0f}));
+        scene.updateMesh(c, box({-0.3f, -0.3f, 0.5f}, {0.3f, 0.3f, 1.5f})); // ice in both
+        scene.setMeshMaterials(a, {glass(1.5f, {1.0f, 0.5f, 1.0f})});
+        scene.setMeshMaterials(b, {glass(1.33f, {1.0f, 1.0f, 0.5f})});
+        scene.setMeshMaterials(c, {glass(1.31f, {0.6f, 1.0f, 1.0f})});
+        for (const auto &[mesh, priority] : {std::pair{a, 1}, std::pair{b, 0}, std::pair{c, 2}}) {
+            RayLimitOverrides o;
+            o.dielectricPriority = int16_t(priority);
+            scene.setMeshRayLimits(mesh, o);
+        }
+        RayLimits d;
+        d.internalReflection = false;
+        scene.setObjectDefaults(d);
+        scene.commit();
+        REQUIRE(scene.nestedDielectrics());
+        RenderSettings base;
+        base.clampIndirect = 0.0f;
+        base.limits.limit[int(LimitClass::Refract)] = 2.0f;
+        const Camera camera = makePerspectiveCamera({0.3f, 0.2f, 6.0f}, 0.05, 0.036, 32, 32);
+        const Render cpu = render(scene, camera, 32, 32, 64, RenderDevice::Cpu, 16, true, base);
+        const Render gpu = render(scene, camera, 32, 32, 64, RenderDevice::Xpu, 16, true, base);
+        REQUIRE(gpu.gpu);
+        const double close = closePixels(cpu.film, gpu.film), cpuMean = luminanceMean(cpu.film),
+                     gpuMean = luminanceMean(gpu.film);
+        INFO("nested: pixels within 1e-3: " << close << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
+        CHECK(close >= 0.8);
+        CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.01 * cpuMean));
+        // The priorities change the image (the test exercises them).
+        for (const MeshId mesh : {a, b, c})
+            scene.setMeshRayLimits(mesh, RayLimitOverrides{});
+        scene.commit();
+        REQUIRE(!scene.nestedDielectrics());
+        const Render plain = render(scene, camera, 32, 32, 64, RenderDevice::Xpu, 16, true, base);
+        CHECK(std::fabs(luminanceMean(plain.film) - gpuMean) > 0.01 * gpuMean);
+    }
+    {
+        Scene scene;
+        const MaterialId grey = [&] {
+            MaterialDesc m;
+            m.inputs = lambertDefaults(spectrum(0.5f));
+            const MaterialId id = scene.createMaterial();
+            scene.updateMaterial(id, m);
+            return id;
+        }();
+        const auto quad = [&](Vec3f o, Vec3f e1, Vec3f e2) {
+            const MeshId id = scene.createMesh();
+            scene.updateMesh(id, wall(o, e1, e2, spectrum(0.5f)));
+            scene.setMeshMaterials(id, {grey});
+        };
+        quad({-2, -2, 0}, {4, 0, 0}, {0, 4, 0});
+        quad({-2, -2, 3}, {4, 0, 0}, {0, 4, 0});
+        quad({-2, -2, 0}, {4, 0, 0}, {0, 0, 3});
+        quad({-2, 2, 0}, {4, 0, 0}, {0, 0, 3});
+        for (const float x : {2.0f, -2.0f}) { // both walls with a window
+            quad({x, -2, 0}, {0, 4, 0}, {0, 0, 1});
+            quad({x, -2, 2}, {0, 4, 0}, {0, 0, 1});
+            quad({x, -2, 1}, {0, 1.25f, 0}, {0, 0, 1});
+            quad({x, 0.75f, 1}, {0, 1.25f, 0}, {0, 0, 1});
+        }
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        dome.path = "/World/dome";
+        scene.updateLight(scene.createLight(), dome);
+        PortalDesc portal;
+        portal.triangles = {{2.0f, -0.75f, 1.0f}, {2.0f, 0.75f, 1.0f}, {2.0f, 0.75f, 2.0f},
+                            {2.0f, -0.75f, 1.0f}, {2.0f, 0.75f, 2.0f}, {2.0f, -0.75f, 2.0f}};
+        scene.setPortal("/World/window", portal);
+        scene.commit();
+        REQUIRE(scene.lights()[0].portalCount == 2);
+        RenderSettings base;
+        base.clampIndirect = 0.0f;
+        base.limits.limit[int(LimitClass::Diffuse)] = 1.0f;
+        const Camera camera = makePerspectiveCamera({0.0f, 0.0f, 2.9f}, 12.0, 20.955, 32, 32);
+        for (const bool tree : {true, false}) {
+            const Render cpu = render(scene, camera, 32, 32, 64, RenderDevice::Cpu, 3, tree, base);
+            const Render gpu = render(scene, camera, 32, 32, 64, RenderDevice::Xpu, 3, tree, base);
+            REQUIRE(gpu.gpu);
+            const double close = closePixels(cpu.film, gpu.film), cpuMean = luminanceMean(cpu.film),
+                         gpuMean = luminanceMean(gpu.film);
+            INFO("portal (light tree " << tree << "): pixels within 1e-3: " << close << "; mean CPU " << cpuMean
+                                       << ", GPU " << gpuMean);
+            CHECK(close >= 0.8);
+            CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.01 * cpuMean));
+        }
+        // Without the portal both windows let the dome in.
+        scene.removePortal("/World/window");
+        scene.commit();
+        const Render open = render(scene, camera, 32, 32, 64, RenderDevice::Xpu, 3, true, base);
+        const Render portal1 = [&] {
+            scene.setPortal("/World/window", portal);
+            scene.commit();
+            return render(scene, camera, 32, 32, 64, RenderDevice::Xpu, 3, true, base);
+        }();
+        CHECK(luminanceMean(open.film) > 1.8 * luminanceMean(portal1.film));
+    }
+}
+
 TEST_CASE("XPU renders are bit-identical", "[gpu][render]") {
     std::string why;
     if (!gpuAvailable(why))

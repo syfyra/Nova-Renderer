@@ -173,7 +173,7 @@ struct Lobe {
         case LobeType::Conductor:
             return conductor.ggx.smooth();
         case LobeType::Dielectric:
-            return dielectric.ggx.smooth() || std::fabs(dielectric.eta - 1.0f) < kIndexMatched;
+            return dielectric.ggx.smooth() || std::fabs(dielectric.mediaEta() - 1.0f) < kIndexMatched;
         case LobeType::ThinDielectric:
             return thin.ggxR.smooth() && thin.ggxT.smooth();
         default:
@@ -285,6 +285,10 @@ struct ClosureList {
     Spectrum emission; // radiance emitted towards wo
     Spectrum albedo;   // sum of weight x albedo at wo (AOV, denoiser guide)
     Spectrum sigmaA;   // absorption inside the medium a transmission enters (0: none)
+    // The colour that absorption stands for (transmission_color at its depth;
+    // 1: none): Karma tints thin-wall pass-throughs and fake-caustic
+    // crossings of absorbing dielectrics with it (docs/design/M11-P9b.md).
+    Spectrum absorptionColor;
     uint8_t count;
     bool overflow;         // a lobe was dropped or replaced (more than kMaxLobes)
     uint16_t nonDeltaMask; // lobes that can be evaluated (light sampling)
@@ -300,6 +304,7 @@ struct ClosureList {
         nonDeltaMask = 0;
         estimateSum = 0.0f;
         emission = albedo = sigmaA = spectrum(0.0f);
+        absorptionColor = spectrum(1.0f);
         external.active = false;
     }
 
@@ -484,7 +489,8 @@ NOVA_INLINE Spectrum fakeCausticFactor(const ClosureList &cl, Vec3f wo, const Ob
             return spectrum(0.0f); // opaque whatever the controls
         t = color;
     } else {
-        t = (f.karma ? karmaTransmittance(cl, wo, s.internalReflection, tables) : closureTransmittance(cl, wo, tables)) *
+        t = (f.karma ? karmaTransmittance(cl, wo, s.internalReflection, tables) * cl.absorptionColor
+                     : closureTransmittance(cl, wo, tables)) *
             color;
         if (isBlack(t) && f.color[0] > 0.0f && f.color[1] > 0.0f && f.color[2] > 0.0f)
             return t; // opaque (no transmission) whatever the opacity
@@ -523,6 +529,45 @@ NOVA_INLINE void dropInternalReflection(ClosureList &cl, Vec3f) {
         cl.count = uint8_t(n);
         cl.finalize();
     }
+}
+
+// Nested dielectrics (core/integrator/nested.h): whether the closure refracts
+// into or out of a medium (a dielectric lobe that transmits), and the index
+// of that medium, the surface's own (relative to the outside: the inside's
+// lobes carry its inverse; `entering`: wo on the outside). The strongest
+// transmitting lobe decides.
+NOVA_INLINE bool refractingIndex(const ClosureList &cl, bool entering, float &ior) {
+    float best = -1.0f;
+    for (int i = 0; i < cl.count; ++i) {
+        const Lobe &l = cl.lobe[i];
+        if (l.type != LobeType::Dielectric || !(l.dielectric.mode & DielectricLobe::kTransmit))
+            continue;
+        const float w = luminance(l.weight);
+        if (w > best) {
+            best = w;
+            ior = entering ? l.dielectric.eta : 1.0f / l.dielectric.eta;
+        }
+    }
+    return best >= 0.0f;
+}
+
+// The transmissions bend by the media's index ratio: `other` is the index of
+// the medium on the far side of the interface (entering: the one the path
+// is in; leaving: the one it enters), the surface's own index stays for the
+// reflectance (DielectricLobe::etaMedia). Index 1 on the far side changes
+// nothing.
+NOVA_INLINE void setMediaIndex(ClosureList &cl, bool entering, float other) {
+    if (other == 1.0f)
+        return;
+    for (int i = 0; i < cl.count; ++i) {
+        Lobe &l = cl.lobe[i];
+        if (l.type == LobeType::Dielectric && (l.dielectric.mode & DielectricLobe::kTransmit))
+            l.dielectric.etaMedia = entering ? l.dielectric.eta / other : l.dielectric.eta * other;
+    }
+    cl.nonDeltaMask = 0; // an index-matched pair of media is a delta event
+    for (int i = 0; i < cl.count; ++i)
+        if (!cl.lobe[i].delta())
+            cl.nonDeltaMask |= uint16_t(1u << i);
 }
 
 // The GGX alpha of a glossy lobe (0: not glossy).
@@ -710,8 +755,8 @@ NOVA_INLINE bool sampleClosure(const ClosureList &cl, Vec3f wo, Vec3f u, Closure
     s.transmit = ls.transmit;
     s.rayClass = l.eventClass(ls.transmit);
     s.roughness = l.roughness();
-    s.refract = ls.transmit && l.type == LobeType::Dielectric && std::fabs(l.dielectric.eta - 1.0f) >= kIndexMatched;
-    s.eta = s.refract ? l.dielectric.eta : 1.0f;
+    s.refract = ls.transmit && l.type == LobeType::Dielectric && std::fabs(l.dielectric.mediaEta() - 1.0f) >= kIndexMatched;
+    s.eta = s.refract ? l.dielectric.mediaEta() : 1.0f;
     if (ls.delta) {
         s.delta = true;
         s.pdf = 0.0f;

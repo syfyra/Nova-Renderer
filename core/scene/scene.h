@@ -16,6 +16,7 @@
 #include "core/volume/volume.h"
 
 #include <array>
+#include <map>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -255,6 +256,10 @@ public:
     // lights may arrive in any order.
     void setLightFilter(const std::string &key, const LightFilterDesc &desc);
     void removeLightFilter(const std::string &key);
+    // Light portals (docs/design/M11-P9b.md), by key; the dome lights they
+    // serve are found at commit().
+    void setPortal(const std::string &key, const PortalDesc &desc);
+    void removePortal(const std::string &key);
 
     // Volumes (docs/design/M8.md). The majorants are built at commit().
     VolumeId createVolume();
@@ -286,6 +291,10 @@ public:
     // Some mesh has opacity (rays then carry filter seeds).
     bool anyFiltered() const { return m_anyFiltered; }
     bool anyFakeCaustics() const { return m_anyFakeCaustics; }
+    // Some meshes differ in their dielectric priority (nested dielectrics,
+    // core/integrator/nested.h); with one priority everywhere paths keep
+    // Nova's medium tracking without nesting, which is the same.
+    bool nestedDielectrics() const { return m_nestedDielectrics; }
 
     // The host's texture sampler (not owned; null: texture lookups return
     // their fallback).
@@ -441,6 +450,7 @@ private:
     OpacityFilter m_opacityFilter;
     bool m_anyFiltered = false;
     bool m_anyFakeCaustics = false;
+    bool m_nestedDielectrics = false;
     RayLimits m_objectDefaults; // the shading-side fields (setObjectDefaults)
     ObjectVisibility m_defaultVisibility;
     bool m_anyHoldouts = false, m_anyBackground = false, m_bgOccludeShadow = false;
@@ -473,6 +483,8 @@ private:
     // in order (LightData::filters points in here), each with its filter's
     // filterLink category.
     std::unordered_map<std::string, LightFilterDesc> m_lightFilters;
+    std::map<std::string, PortalDesc> m_portals; // ordered: deterministic triangle order
+    std::vector<PortalTriangle> m_portalTriangles; // the domes' portals (LightData::portals)
     std::vector<LightFilterData> m_lightFilterData;
     std::vector<std::string> m_lightFilterLinks; // parallel to m_lightFilterData
     size_t m_hostLightCount = 0;

@@ -22,6 +22,7 @@
 // Flat POD arrays: the same view works on the GPU.
 
 #include "core/lights/light_sampler.h"
+#include "core/lights/shapes.h"
 #include "core/math/vec.h"
 
 #include <atomic>
@@ -164,6 +165,13 @@ struct LightTreeView {
     // that light it, for any number of receiver sets.
     LightLinks links;
     uint32_t receiverSetCount = 0; // the sets `links.receiver` covers
+    // Domes with light portals (docs/design/M11-P9b.md), per infinite slot:
+    // their triangles [portalBegin, + portalCount) of portalTris (null: no
+    // portals anywhere). Their infiniteE is the mean radiance, which the
+    // portals' solid angle at the receiver turns into an irradiance.
+    const PortalTriangle *portalTris = nullptr;
+    const uint32_t *portalBegin = nullptr;
+    const uint32_t *portalCount = nullptr;
 
     // The importance of a node for a receiver whose set has these link
     // categories (LightLinks::categories).
@@ -191,7 +199,10 @@ struct LightTreeView {
                 c = dot(n, dir);
                 c = r == Receiver::TwoSided ? std::fabs(c) : (c > 0.0f ? c : 0.0f);
             }
-            inf += linksTo(infinite[i], categories) ? infiniteE[i] * c : 0.0f;
+            float e = infiniteE[i];
+            if (portalCount && portalCount[i] > 0)
+                e *= portalSolidAngle(portalTris + portalBegin[i], portalCount[i], p);
+            inf += linksTo(infinite[i], categories) ? e * c : 0.0f;
         }
         if (nodeCount == 0)
             return inf > 0.0f ? 1.0f : 0.0f;
@@ -296,6 +307,9 @@ public:
     // New powers and boxes with the same lights (value edits; moves keep
     // working but select worse until the next build).
     void refit(const std::vector<LightBounds> &bounds);
+    // Light portals of the lights at infinity (after build/update): per
+    // light its triangles (empty: none); none at all clears them.
+    void setPortals(const std::vector<std::vector<PortalTriangle>> &perLight);
 
     LightTreeView view() const;
     uint32_t depth() const { return m_depth; }
@@ -320,6 +334,8 @@ private:
     std::vector<uint64_t> m_receiver; // per receiver set
     LightSampler m_infiniteTable;
     uint32_t m_depth = 0;
+    std::vector<PortalTriangle> m_portalTris; // per infinite slot [m_portalBegin, + m_portalCount)
+    std::vector<uint32_t> m_portalBegin, m_portalCount;
 };
 
 } // namespace nova

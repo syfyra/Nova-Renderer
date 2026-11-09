@@ -14,6 +14,7 @@
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_eval.h"
 #include "core/integrator/material_lane.h"
+#include "core/integrator/nested.h"
 #include "core/integrator/settings.h"
 #include "core/integrator/volume_media.h"
 #include "core/math/spectrum.h"
@@ -188,6 +189,7 @@ struct WaveQueues {
     std::vector<float> etaScale;      // product of squared relative indices of refractions (Russian roulette)
     std::vector<Spectrum> sigmaA;     // absorption of the medium the path is in
     std::vector<uint8_t> inMedium;    // the path is inside a refractive, absorbing material
+    std::vector<NestedMedia> nested;  // the media by priority (nested dielectrics, core/integrator/nested.h)
     std::vector<float> coneWidth;     // ray cone at the current ray's origin (core/texture/ray_cone.h)
     std::vector<float> coneSpread;
     // Ray limits (core/scene/ray_limits.h): events per LimitClass so far,

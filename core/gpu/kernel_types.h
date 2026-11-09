@@ -13,6 +13,7 @@
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_lane.h"
 #include "core/integrator/medium_track.h"
+#include "core/integrator/nested.h"
 #include "core/lights/light_sampler.h"
 #include "core/lights/light_tree.h"
 #include "core/lights/lights.h"
@@ -179,6 +180,7 @@ struct GpuScene {
     float tolerance = 0.0f;
     uint8_t hasAreaLights = 0, hasVisibleAreaLights = 0;
     uint8_t anyFiltered = 0; // some mesh is filtered: rays carry opacity seeds (Scene::anyFiltered)
+    uint8_t nestedDielectrics = 0; // Scene::nestedDielectrics
     // Holdouts (core/integrator/holdout.h): some mesh is a holdout; some light
     // has illumbackground and some mesh is a background holdout.
     uint8_t anyHoldouts = 0, illumBackground = 0;
@@ -279,6 +281,7 @@ struct GpuWave {
     float *etaScale = nullptr;
     Spectrum *sigmaA = nullptr;
     uint8_t *inMedium = nullptr;
+    NestedMedia *nested = nullptr; // the media by priority (nested dielectrics, core/integrator/nested.h)
     uint64_t *eventCounts = nullptr;
     float *limitDither = nullptr;
     uint8_t *lightOnly = nullptr;

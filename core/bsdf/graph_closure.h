@@ -430,8 +430,13 @@ NOVA_INLINE void buildGraphSegment(const SurfaceInputs &in, const ClosureGraph &
                 break;
             default: // LayerVdf: the medium below the top's interfaces
                 W[n.a] += w;
-                if (!thin)
+                if (!thin) {
                     cl.sigmaA = graphColor(in, n.param);
+                    // Per unit length: the colour of a unit's depth.
+                    cl.absorptionColor = Spectrum{std::exp(-nova::fmax(cl.sigmaA.x, 0.0f)),
+                                                  std::exp(-nova::fmax(cl.sigmaA.y, 0.0f)),
+                                                  std::exp(-nova::fmax(cl.sigmaA.z, 0.0f))};
+                }
                 break;
             }
         }
@@ -525,6 +530,7 @@ NOVA_INLINE void buildGraphSurface(const SurfaceInputs &in, const ShadingGeometr
         if (transmitted * w > bestT) {
             bestT = transmitted * w;
             cl.sigmaA = part.sigmaA;
+            cl.absorptionColor = part.absorptionColor;
         }
         appendClosure(cl, part, frames, spectrum(w), frameBase);
     }

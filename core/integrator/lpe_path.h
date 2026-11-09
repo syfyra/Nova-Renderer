@@ -203,9 +203,11 @@ NOVA_INLINE void lpeUnoccludedEnvironment(const LpeView &t, const LightData *lig
         if (pmf[i] > 0.0f || !light.illuminates() || (nonDelta && light.shadowLinked()))
             continue;
         Spectrum Le;
-        if (light.type == LightType::Dome)
+        if (light.type == LightType::Dome) {
+            if (!domeSeen(light, site.p, dir)) // portals: through them only
+                continue;
             Le = domeRadiance(light, dir);
-        else if (light.type == LightType::Distant && !light.delta && inDistantCone(light, dir))
+        } else if (light.type == LightType::Distant && !light.delta && inDistantCone(light, dir))
             Le = light.emission;
         else
             continue;

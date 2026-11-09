@@ -53,6 +53,10 @@ nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &
 // the render settings (docs/design/M11-P1.md).
 nova::RayLimitOverrides HdNovaObjectOverrides(HdSceneDelegate *sd, SdfPath const &id);
 
+// Light portals are meshes (docs/design/M11-P9b.md): a prim of another kind
+// (`kind`) whose primvars make it a portal warns once and renders as itself.
+void HdNovaWarnPortalPrim(HdSceneDelegate *sd, SdfPath const &id, char const *kind);
+
 // A constant primvar's value (empty if the prim has none of that name).
 VtValue HdNovaConstantPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name);
 

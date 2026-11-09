@@ -38,6 +38,8 @@ add_executable(nova_tests
     test_ray_limits.cpp
     test_fake_caustics.cpp
     test_karma_shading.cpp
+    test_nested_dielectrics.cpp
+    test_portals.cpp
     test_volume.cpp
     test_volume_shader.cpp
     test_volume_render.cpp
@@ -297,6 +299,12 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_props/$<CONFIG>")
     set_tests_properties(husk_karma_props PROPERTIES LABELS husk TIMEOUT 900)
+    # Nested dielectrics and light portals (docs/design/M11-P9b.md).
+    add_test(NAME husk_karma_p9b
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_p9b.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_karma_p9b/$<CONFIG>")
+    set_tests_properties(husk_karma_p9b PROPERTIES LABELS husk TIMEOUT 900)
     add_test(NAME husk_subdiv
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_subdiv.py"
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" --scenes "${CMAKE_CURRENT_SOURCE_DIR}/scenes"

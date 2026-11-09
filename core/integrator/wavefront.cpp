@@ -75,6 +75,7 @@ void WaveQueues::reserve(uint32_t paths) {
         etaScale.resize(paths);
         sigmaA.resize(paths);
         inMedium.resize(paths);
+        nested.resize(paths);
         coneWidth.resize(paths);
         coneSpread.resize(paths);
         eventCounts.resize(paths);
@@ -528,6 +529,7 @@ void generateCameraRays(const Camera &camera, const PixelFilter &filter, uint32_
             q.etaScale[slot] = 1.0f;
             q.sigmaA[slot] = spectrum(0.0f);
             q.inMedium[slot] = 0;
+            q.nested[slot].clear();
             q.coneWidth[slot] = coneWidth0;
             q.coneSpread[slot] = coneSpread0;
             q.eventCounts[slot] = 0;
@@ -1602,6 +1604,32 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
         // emissive triangles treated as lights and (light-only rays) at
         // fake-caustic objects (pass A).
         const bool lightsOnly = q.lightOnly[p] || (c.depth > 0 && c.depth >= c.settings.maxDepth);
+
+        // Nested dielectrics (core/integrator/nested.h): a false interface is
+        // crossed without an event, at a real one the transmission bends by
+        // the media's indices. Fake-caustic and light-only rays cross every
+        // surface, as shadow rays do.
+        const uint8_t priority = shading.dielectricPriority;
+        const bool entering = dot(wo, hit.Ng) > 0.0f;
+        float ownIor = 1.0f;
+        const bool refracting =
+            c.scene.nestedDielectrics() && !ext && !fake && !lightsOnly && refractingIndex(cl, entering, ownIor);
+        if (refracting) {
+            NestedMedia &media = q.nested[p];
+            if (media.falseInterface(priority)) {
+                if (entering)
+                    media.enter(priority, ownIor, cl.sigmaA);
+                else
+                    media.leave(priority);
+                q.sigmaA[p] = media.absorption();
+                q.inMedium[p] = !isBlack(q.sigmaA[p]);
+                q.coneWidth[p] += q.coneSpread[p] * hit.t;
+                q.nextRays.push(leave(-wo), -wo, kInf, p, time, q.rays.filterSeed[k], RayClass(q.rays.rayType[k]));
+                return;
+            }
+            setMediaIndex(cl, entering, media.otherIndex(priority));
+        }
+
         if (state && lpe->albedo && !lightsOnly)
             lpeAlbedoEvents(*lpe, c.film, q.pixel[p], state, tag, cl, q.beta[p]);
 
@@ -1817,14 +1845,20 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                 }
                 return;
             }
+            // A transmission through a refracting interface changes the
+            // medium, also as a thin-wall pass-through (Karma, measured).
+            const bool crossed =
+                s.refract || (refracting && s.transmit && s.lobe >= 0 && cl.lobe[s.lobe].type == LobeType::Dielectric);
             if (passThrough) {
-                // Straight on with the event's weight, as through a thin wall:
-                // no bending, no medium change, nothing for MIS to weigh.
+                // Straight on with the event's weight, as through a thin wall
+                // (tinted by the colour an absorbing interior stands for, as
+                // Karma's): no bending, nothing for MIS to weigh.
                 s.wi = -wo;
                 s.delta = true;
                 s.pdf = 0.0f;
                 s.refract = false;
                 s.diffuseShare = 0.0f;
+                s.weight *= cl.absorptionColor;
             }
             Spectrum beta = q.beta[p] * s.weight;
             float etaScale = q.etaScale[p];
@@ -1868,9 +1902,17 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                     q.prevSet[p] = kPrevSetDelta | c.scene.receiverSet(hit.mesh, q.hitInstance[k]);
                 }
                 q.etaScale[p] = etaScale;
-                if (s.refract) {
+                if (crossed && refracting) {
+                    // Into or out of the object's level (nested.h).
+                    NestedMedia &media = q.nested[p];
+                    if (entering)
+                        media.enter(priority, ownIor, cl.sigmaA);
+                    else
+                        media.leave(priority);
+                    q.sigmaA[p] = media.absorption();
+                    q.inMedium[p] = !isBlack(q.sigmaA[p]);
+                } else if (crossed) {
                     // Entering or leaving: by the authored orientation.
-                    const bool entering = dot(wo, hit.Ng) > 0.0f;
                     q.inMedium[p] = entering && !isBlack(cl.sigmaA);
                     q.sigmaA[p] = entering ? cl.sigmaA : spectrum(0.0f);
                 }
