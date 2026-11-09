@@ -258,6 +258,41 @@ def check_deep(args, env, oiio, np):
               f"deep depth range at column {x}: {z} vs Karma ({lo}, {hi})")
 
 
+def windows(spec):
+    """(data window, display window) as (x, y, width, height) each."""
+    return ((spec.x, spec.y, spec.width, spec.height),
+            (spec.full_x, spec.full_y, spec.full_width, spec.full_height))
+
+
+def check_deep_windows(args, env, oiio, np):
+    """A cropped and an overscan render (dataWindowNDC): the deep file's data
+    and display windows are the flat product's (husk's), as Karma writes its
+    deep files (measured with Karma CPU: the same windows as its flat image)."""
+    with open(os.path.join(SCENES, "deep.usda"), encoding="utf-8") as f:
+        text = f.read()
+    # 40 x 20 pixels: x 10..39 and the upper half; then 4 / 2 pixels around.
+    for name, ndc, want in (("crop", "(0.25, 0.5, 1, 1)", (10, 0, 30, 10)),
+                            ("overscan", "(-0.1, -0.1, 1.1, 1.1)", (-4, -2, 48, 24))):
+        folder = os.path.join(args.out, "deep_" + name)
+        shutil.rmtree(folder, ignore_errors=True)
+        os.makedirs(folder)
+        scene = text.replace("uniform float4 dataWindowNDC = (0, 0, 1, 1)", "uniform float4 dataWindowNDC = " + ndc)
+        check(scene != text, f"deep.usda authors dataWindowNDC ({name})")
+        with open(os.path.join(folder, "deep.usda"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(scene)
+        proc = run([tool(args, "husk.exe"), "--renderer", "Nova", "deep.usda"], env, folder)
+        check(proc.returncode == 0, f"husk deep.usda ({name}) exits with 0")
+        deep_path, flat_path = os.path.join(folder, "deep_deep.exr"), os.path.join(folder, "deep.exr")
+        if not (os.path.exists(deep_path) and os.path.exists(flat_path)):
+            check(False, f"both products written ({name})")
+            continue
+        deep = windows(oiio.ImageInput.open(deep_path).spec())
+        flat = windows(oiio.ImageInput.open(flat_path).spec())
+        check(deep == flat, f"deep windows {deep} are the flat product's {flat} ({name})")
+        check(flat[0] == want and flat[1] == (0, 0, 40, 20),
+              f"husk's windows {flat}: data {want}, display (0, 0, 40, 20) ({name})")
+
+
 def check_checkpoint(args, env, oiio, np):
     folder = os.path.join(args.out, "checkpoint")
     shutil.rmtree(folder, ignore_errors=True)
@@ -312,6 +347,7 @@ def main():
         check_persp(args, env, oiio, np)
         check_crypto(args, env, oiio, np)
         check_deep(args, env, oiio, np)
+        check_deep_windows(args, env, oiio, np)
         check_checkpoint(args, env, oiio, np)
     finally:
         shutil.rmtree(prefs, ignore_errors=True)

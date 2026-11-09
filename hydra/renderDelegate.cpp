@@ -238,8 +238,10 @@ std::shared_ptr<const nova::lpe::Compiled>
 HdNovaRenderDelegate::GetLpeProgram(HdRenderPassAovBindingVector const &bindings) {
     std::vector<std::string> expressions;
     std::vector<std::string> names; // the first AOV of each expression, for messages
+    // With the PrimId var as the other resolutions (no false sample filter warnings).
+    const bool primId = HdNovaHasPrimIdChannel(bindings);
     for (const HdRenderPassAovBinding &b : bindings) {
-        const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
+        const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking(), primId);
         // LPE vars with a per-sample filter are utility planes of an output.
         const bool lpe = s.kind == HdNovaAovKind::Lpe ||
                          (s.kind == HdNovaAovKind::Utility && s.utility.kind == nova::UtilityKind::Lpe);
@@ -289,8 +291,9 @@ HdNovaRenderDelegate::GetUtilityRequests(HdRenderPassAovBindingVector const &bin
 std::shared_ptr<const std::vector<nova::CryptoRequest>>
 HdNovaRenderDelegate::GetCryptoRequests(HdRenderPassAovBindingVector const &bindings) {
     std::vector<nova::CryptoRequest> requests;
+    const bool primId = HdNovaHasPrimIdChannel(bindings);
     for (const HdRenderPassAovBinding &b : bindings) {
-        const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
+        const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking(), primId);
         if (s.kind == HdNovaAovKind::Crypto && std::find(requests.begin(), requests.end(), s.crypto) == requests.end())
             requests.push_back(s.crypto);
     }
@@ -547,7 +550,10 @@ std::shared_ptr<const nova::DeepRequest> HdNovaRenderDelegate::GetDeepRequest() 
                     HdRenderPassAovBinding b;
                     b.aovName = v.aovName;
                     b.aovSettings = v.settings;
-                    const HdNovaAovSource s = HdNovaResolveAov(b);
+                    // Deep records hold every sample (the filter is not
+                    // applied below), so the object coverage modes do not
+                    // need a PrimId var here: no warning about it.
+                    const HdNovaAovSource s = HdNovaResolveAov(b, false, /*primIdChannel=*/true);
                     nova::UtilityRequest r;
                     using U = nova::UtilityKind;
                     switch (s.kind) {
@@ -689,9 +695,17 @@ void HdNovaRenderDelegate::_WriteDeep() {
     const nova::UtilityContext clip = nova::UtilityContext::make(_scene, camera);
     out.clipNear = clip.nearDepth;
     out.clipFar = clip.farDepth;
+    // Where the film lies in the full image (husk's crops and overscan, as
+    // husk writes the flat products): raster coordinates map to NDC with
+    // 2 / the full image size, the film starts at the image origin (y-up);
+    // EXR windows count rows top-down.
+    const auto fullSize = [](float ndcScale, int fallback) {
+        return ndcScale > 0.0f ? int(std::lround(2.0 / double(ndcScale))) : fallback;
+    };
+    out.fullWidth = fullSize(camera.rasterToNdcScale.x, film.width);
+    out.fullHeight = fullSize(camera.rasterToNdcScale.y, film.height);
     out.originX = camera.imageOriginX;
-    out.fullWidth = film.width;
-    out.fullHeight = film.height;
+    out.originY = out.fullHeight - camera.imageOriginY - film.height;
     std::string error;
     if (HdNovaWriteDeepImage(film, out, error))
         std::fprintf(stderr, "[Nova] Saved deep image: %s\n", out.path.c_str());

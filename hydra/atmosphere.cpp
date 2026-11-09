@@ -25,9 +25,6 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 namespace {
 
-// Visible atmospheres; Karma renders one (the first) and warns about the rest.
-std::atomic<int> g_visibleAtmospheres{0};
-
 bool numbers(HdSceneDelegate *sd, SdfPath const &id, const char *name, std::vector<float> &out) {
     int width = 0;
     out.clear();
@@ -81,10 +78,7 @@ TfToken const &HdNovaAtmosphere::TypeToken() {
 
 HdNovaAtmosphere::HdNovaAtmosphere(SdfPath const &id) : HdRprim(id) {}
 
-HdNovaAtmosphere::~HdNovaAtmosphere() {
-    if (_counted)
-        --g_visibleAtmospheres;
-}
+HdNovaAtmosphere::~HdNovaAtmosphere() = default; // Finalize() uncounts it
 
 HdDirtyBits HdNovaAtmosphere::GetInitialDirtyBitsMask() const {
     return HdChangeTracker::Clean | HdChangeTracker::InitRepr | HdChangeTracker::DirtyPrimvar |
@@ -113,11 +107,13 @@ void HdNovaAtmosphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdD
             _UpdateVisibility(sd, dirtyBits);
         const bool enabled = number(sd, id, "enableatmosphere", 1.0f) != 0.0f;
         const bool visible = IsVisible() && enabled;
+        // Counted per delegate: another render of the stage (a second
+        // viewport, husk beside the viewport) has its own atmosphere.
         if (visible != _counted) {
-            g_visibleAtmospheres += visible ? 1 : -1;
+            param.AddVisibleAtmospheres(visible ? 1 : -1);
             _counted = visible;
         }
-        if (visible && g_visibleAtmospheres.load() > 1 && !_warnedSecond) {
+        if (visible && param.VisibleAtmospheres() > 1 && !_warnedSecond) {
             HD_NOVA_WARN("%s: more than one Karma Sky Atmosphere; only the first is rendered (as in Karma)",
                          id.GetText());
             _warnedSecond = true;
@@ -177,7 +173,7 @@ void HdNovaAtmosphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdD
 
 void HdNovaAtmosphere::Finalize(HdRenderParam *renderParam) {
     if (_counted) {
-        --g_visibleAtmospheres;
+        static_cast<HdNovaRenderParam *>(renderParam)->AddVisibleAtmospheres(-1);
         _counted = false;
     }
     if (_volumeId != nova::kInvalidId) {

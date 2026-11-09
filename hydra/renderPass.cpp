@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "diagnostics.h"
+#include "lightFilter.h"
 #include "renderBuffer.h"
 #include "renderDelegate.h"
 #include "resyncSceneIndex.h"
@@ -112,7 +113,10 @@ HdNovaRenderPass::HdNovaRenderPass(HdRenderIndex *index, HdRprimCollection const
     // other per-object defaults (docs/design/M11-P1.md).
     if (HdNovaVelocityModeSceneIndexRefPtr velocity = HdNovaVelocityModeSceneIndex::Find(index))
         velocity->SetDefaults(_delegate->GetVelocityDefaults());
-    _delegate->GetNovaRenderParam().SetObjectDefaults(_delegate->GetObjectDefaults());
+    // True when prims already used other defaults (this pass replaces
+    // another in a session): they are re-synced at the first execute, which
+    // SetObjectDefaults() alone would no longer tell.
+    _defaultsChanged = _delegate->GetNovaRenderParam().SetObjectDefaults(_delegate->GetObjectDefaults());
 }
 
 HdNovaRenderPass::~HdNovaRenderPass() {
@@ -340,7 +344,9 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     // The other per-object defaults of the render settings (Karma's curve
     // and point styles, width scale, emission as light, dicing; docs/design/
     // M11-P1.md): prims that used the old ones re-sync, render after it.
-    if (param.SetObjectDefaults(_delegate->GetObjectDefaults()))
+    const bool defaultsChanged = param.SetObjectDefaults(_delegate->GetObjectDefaults()) || _defaultsChanged;
+    _defaultsChanged = false;
+    if (defaultsChanged)
         if (HdRenderIndex *index = GetRenderIndex()) {
             thread.StopRender();
             const TfTokenVector types{HdPrimTypeTokens->mesh, HdPrimTypeTokens->basisCurves, HdPrimTypeTokens->points,
@@ -402,6 +408,12 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
                 return;
             }
     }
+
+    // Light filters whose space is another prim follow that prim, which may
+    // have moved without the filter being synced (docs/design/M11-P4.md):
+    // an edit restarts the render below.
+    for (HdNovaLightFilter *filter : param.SpaceFilters())
+        filter->RefreshSpace(param);
 
     bool restart = _delegate->ConsumeNeedsReset();
     const HdNovaDenoiseConfig denoise = _delegate->GetDenoiseConfig();
