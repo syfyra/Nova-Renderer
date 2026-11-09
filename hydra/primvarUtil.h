@@ -80,3 +80,18 @@ int HdNovaRenderVisibilityValue(VtValue const &value, std::string const &where);
 int HdNovaHoldoutModeValue(VtValue const &value, std::string const &where);
 
 PXR_NAMESPACE_CLOSE_SCOPE
+
+#include "core/scene/outline.h"
+
+#include <functional>
+
+PXR_NAMESPACE_OPEN_SCOPE
+
+// Karma's outlines (docs/design/M11-P9a.md): the karma:object:outline_*
+// values a lookup gives (a prim's constant primvars, the render settings'),
+// unset ones negative. outline_secondary and outline_idthreshold change
+// nothing in Nova (lines on camera rays only, objects compared exactly).
+nova::OutlineOverrides HdNovaOutlineValues(std::function<VtValue(TfToken const &)> const &get);
+nova::OutlineOverrides HdNovaObjectOutline(HdSceneDelegate *sd, SdfPath const &id);
+
+PXR_NAMESPACE_CLOSE_SCOPE

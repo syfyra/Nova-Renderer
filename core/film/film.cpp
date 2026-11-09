@@ -14,6 +14,8 @@ uint8_t utilityWidth(UtilityKind kind) {
     case UtilityKind::HitDist:
     case UtilityKind::Face:
     case UtilityKind::Ao: // the unoccluded sum, written to every channel
+    case UtilityKind::OutlineId:
+    case UtilityKind::OutlineThickness:
     case UtilityKind::Mask:
     case UtilityKind::HitStack:
     case UtilityKind::Time:
@@ -27,6 +29,10 @@ uint8_t utilityWidth(UtilityKind kind) {
     case UtilityKind::BakeAlpha:
         return 1;
     case UtilityKind::Primvar:
+    case UtilityKind::Outline:
+    case UtilityKind::OutlineContour:
+    case UtilityKind::OutlineCrease:
+    case UtilityKind::OutlineDepth:
     case UtilityKind::Beauty:
         return 4;
     default:

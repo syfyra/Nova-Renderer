@@ -60,6 +60,7 @@ LightData buildLightData(const LightDesc &desc) {
     d.specular = desc.specular;
     d.cameraVisible = desc.cameraVisible;
     d.illumBackground = desc.illumBackground;
+    d.castsShadows = desc.castsShadows;
     const Spectrum base = desc.color * (desc.intensity * std::exp2(desc.exposure));
     const Mat4 &xf = desc.transform;
     d.position = xf.transformAffine({0.0f, 0.0f, 0.0f});

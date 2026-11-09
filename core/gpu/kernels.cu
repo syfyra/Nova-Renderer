@@ -807,6 +807,38 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                                                 : lpeStep(lpe, state, lpe::TypeObject, lpe::ScatterNone, tag, 0),
                           contribution);
     }
+    if (st.look.simplified && a.depth == 0) {
+        // Karma's simplified shading (disable_lighting, wavefront.cpp
+        // shadeSimplified): the display colour times the facing ratio with
+        // the fog, occluded along one cosine ray; the path ends.
+        const AttributeRef &display = mesh.displayColor;
+        float v[3];
+        Spectrum color = spectrum(1.0f);
+        if (fetchAttribute(display, mesh.view.desc.indices.data() + size_t(hit.prim) * 3, hit.prim, hit.instance,
+                           hit.uv.x, hit.uv.y, 3, v))
+            color = {v[0], v[1], v[2]};
+        const Vec3f n = faceForward(hit.N, ng);
+        const Spectrum base = w.beta[p] * simplifiedShade(st.look, color, n, wo, hit.t);
+        if (st.look.aoSamples == 0 || isBlack(base)) {
+            addRadiance(w, p, base);
+            return;
+        }
+        const Vec2f u = Sampler{w.pixelSeed[p], w.sampleIndex[p]}.get2D(stream::kLookAo);
+        const Vec3f d = Frame::fromNormal(n).toWorld(sampleCosineHemisphere(u));
+        if (dot(d, ng) <= 0.0f)
+            return; // below the surface: occluded
+        const uint32_t i = pushRay(w.shadow, leave(ng), d, nova::fmin(nova::fmax(st.look.aoDistance, 0.0f), kInf), p,
+                                   time, shadowRaySeed(a.rays.filterSeed[k]), RayClass::Shadow);
+        w.shadowCategory[i] = 0xFFFFu;
+        w.shadowSlot[i] = 0;
+        w.shadowContribution[i] = base;
+        w.shadowEmitter[i] = kInvalidId;
+        if (w.partBegin) {
+            GpuLpeParts none;
+            attachParts(w, i, none, 1.0f);
+        }
+        return;
+    }
     if (lightsOnly && !(fake && w.lightOnly[p] && a.depth < st.maxDepth))
         return;
     // Background holdouts (core/integrator/holdout.h): pre-lit for every ray
@@ -2071,6 +2103,100 @@ extern "C" __global__ void novaFakeStep(const ShadeArgs a) {
     a.next.rayType[r] |= w.shadow.rayType[i] & kRayFromBackground;
 }
 
+// Karma's outlines (wavefront.cpp traceOutlines, core/integrator/outline.h).
+// After the camera rays' closest hits: per camera ray the hit its stencil
+// compares with (none: a miss or an object without outlines).
+extern "C" __global__ void novaOutlineMain(const OutlineArgs a) {
+    const uint32_t k = threadIndex();
+    if (k >= *a.rays.count)
+        return;
+    const GpuWave &w = a.wave;
+    const uint32_t p = a.rays.path[k];
+    w.outline[p] = OutlineSample{};
+    w.outlineTypes[k] = 0;
+    w.outlineFlagged[k] = 0;
+    const uint32_t meshId = w.hitMesh[k];
+    if (meshId == kInvalidId)
+        return;
+    const GpuMesh &mesh = a.scene.meshes[meshId];
+    if (!mesh.outline.enable)
+        return;
+    const Vec3f dir = a.rays.dir[k];
+    const SurfaceHit hit = resolveMeshHit(mesh.view, meshId, w.hitPrim[k], w.hitUv[k], a.rays.tMax[k],
+                                          w.hitInstance[k], a.rays.time[k], a.rays.org[k], dir);
+    OutlineMain m;
+    m.P = hit.P;
+    m.N = faceForward(hit.N, -dir);
+    const float R = outlineRadius(a.settings.outline, mesh.outline, hit.t);
+    m.rho = R * hit.t;
+    m.mesh = meshId;
+    m.instance = w.hitInstance[k];
+    m.object = mesh.outline;
+    w.outlineMain[k] = m;
+    w.outlineRadius[k] = R;
+    w.outlineTypes[k] = kOutlineValid;
+}
+
+// One stencil point: its ray for every camera ray with outlines, appended
+// to aoRays (path: the camera ray).
+extern "C" __global__ void novaOutlineRays(const OutlineArgs a) {
+    const uint32_t k = threadIndex();
+    if (k >= *a.rays.count)
+        return;
+    const GpuWave &w = a.wave;
+    if (!(w.outlineTypes[k] & kOutlineValid))
+        return;
+    const uint32_t p = a.rays.path[k];
+    const Vec2f offset = outlineOffset(a.settings.outline, a.point, w.pixelSeed[p], w.sampleIndex[p]);
+    pushRay(w.aoRays, a.rays.org[k], outlineDirection(a.rays.dir[k], offset, w.outlineRadius[k]), kInf, k,
+            a.rays.time[k], a.rays.filterSeed[k], RayClass::Camera);
+}
+
+// The stencil rays' hits (in the light* arrays): the line types they flag.
+extern "C" __global__ void novaOutlineFlags(const OutlineArgs a) {
+    const uint32_t i = threadIndex();
+    const GpuWave &w = a.wave;
+    if (i >= *w.aoRays.count)
+        return;
+    const uint32_t k = w.aoRays.path[i];
+    const uint32_t meshId = w.lightMesh[i];
+    const bool hit = meshId != kInvalidId;
+    Vec3f P{0.0f, 0.0f, 0.0f}, N{0.0f, 0.0f, 0.0f};
+    uint32_t instance = 0;
+    if (hit) {
+        const GpuMesh &mesh = a.scene.meshes[meshId];
+        const Vec3f dir = w.aoRays.dir[i];
+        const SurfaceHit h = resolveMeshHit(mesh.view, meshId, w.lightPrim[i], w.lightUv[i], w.lightHitT[i],
+                                            w.lightInstance[i], w.aoRays.time[i], w.aoRays.org[i], dir);
+        P = h.P;
+        N = faceForward(h.N, -dir);
+        instance = w.lightInstance[i];
+    }
+    const uint8_t flags = outlinePointFlags(w.outlineMain[k], a.settings.outline, hit, meshId, instance, P, N);
+    if (flags) {
+        w.outlineFlagged[k] += 1;
+        w.outlineTypes[k] |= flags;
+    }
+}
+
+// The camera samples' lines.
+extern "C" __global__ void novaOutlineFinish(const OutlineArgs a) {
+    const uint32_t k = threadIndex();
+    if (k >= *a.rays.count)
+        return;
+    const GpuWave &w = a.wave;
+    if (!(w.outlineTypes[k] & kOutlineValid))
+        return;
+    const OutlineMain &m = w.outlineMain[k];
+    const OutlineSettings &s = a.settings.outline;
+    OutlineSample o;
+    o.weight = outlineWeight(s, w.outlineFlagged[k], outlinePointCount(s));
+    o.types = w.outlineTypes[k];
+    o.id = outlineObjectId(m.mesh, m.instance);
+    o.thickness = w.outlineRadius[k] * outlineMeanRadius(s);
+    w.outline[a.rays.path[k]] = o;
+}
+
 // The ambient occlusion AOV's rays (traceAoRays): unoccluded ones count.
 extern "C" __global__ void novaAo(const AoArgs a) {
     const uint32_t i = threadIndex();
@@ -2091,13 +2217,33 @@ extern "C" __global__ void novaFlush(const FlushArgs a) {
     Spectrum sum = a.film.colorSum[pix];
     float alpha = a.film.alphaSum[pix];
     for (uint32_t j = 0; j < a.spp; ++j) {
-        const Spectrum L = w.radiance[first + j];
+        Spectrum L = w.radiance[first + j];
+        if (a.outlines) { // Karma's outlines: the line over the beauty (and its per-sample records)
+            L = outlineComposite(a.outline, w.outline[first + j], isFinite(L) ? L : spectrum(0.0f));
+            w.radiance[first + j] = L;
+        }
         if (isFinite(L))
             sum += L;
         alpha += w.alpha[first + j];
     }
     a.film.colorSum[pix] = sum;
     a.film.alphaSum[pix] = alpha;
+    if (a.outlines) // and into the outline planes
+        for (int plane = 0; plane < kOutlinePlaneCount; ++plane) {
+            float *dst = a.film.outline[plane];
+            if (!dst)
+                continue;
+            const int width = plane <= kOutlinePlaneDepth ? 4 : plane == kOutlinePlaneColor ? 3 : 1;
+            float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            for (uint32_t j = 0; j < a.spp; ++j) {
+                float v[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                outlinePlaneValue(plane, w.outline[first + j], a.outline.color, v);
+                for (int c = 0; c < 4; ++c)
+                    acc[c] += v[c];
+            }
+            for (int c = 0; c < width; ++c)
+                dst[size_t(pix) * size_t(width) + size_t(c)] += acc[c];
+        }
     if (a.film.ao) {
         float ao = a.film.ao[pix];
         for (uint32_t j = 0; j < a.spp; ++j)

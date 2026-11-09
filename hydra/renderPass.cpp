@@ -436,6 +436,10 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     // Ray visibility and holdouts of objects without their own (M11 P2).
     scene.setDefaultVisibility(settings.objectVisibility);
     scene.setBackgroundOccludesShadows(settings.backgroundOccludesShadows);
+    // Karma's outlines of objects without their own, and the look-dev light
+    // overrides (the headlight looks along the camera; M11 P9a).
+    scene.setDefaultOutline(settings.objectOutline);
+    scene.setLightOverride(settings.look.lights, settings.look.autoHeadlight, toNova(view.worldToView.GetInverse()));
     // Volume majorants of Time/Frame-driven shaders bound the rendered frame.
     scene.setShadeFrame(settings.frame, settings.fps);
     scene.commit();

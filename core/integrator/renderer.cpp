@@ -89,6 +89,12 @@ void Renderer::setSettings(const RenderSettings &settings) {
     if (settings.deep != m_settings.deep)
         m_film.setDeep(settings.deep.get());
     m_settings = settings;
+    // Karma computes outlines only for a render with an outline AOV
+    // (docs/design/M11-P9a.md): one of the outline planes.
+    m_settings.outline.requested = false;
+    if (settings.utility)
+        for (const UtilityRequest &r : *settings.utility)
+            m_settings.outline.requested |= r.kind >= UtilityKind::Outline && r.kind <= UtilityKind::OutlineDepth;
 }
 
 const LpeTables *Renderer::lpeTables() {

@@ -245,7 +245,7 @@ void UtilityContext::value(const UtilityRequest &r, const UtilityHit &h, float *
     case UtilityKind::Beauty: // per sample from the path (accumulateCameraSamples)
     case UtilityKind::Lpe:    // per pass from the film (Renderer)
         break;
-    default: // the texture baker's maps (core/bake/bake.h) are written by bakes
+    default: // the texture baker's maps (core/bake/bake.h) are written by bakes, the outline planes by traceOutlines
         break;
     }
 }

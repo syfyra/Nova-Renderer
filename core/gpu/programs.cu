@@ -66,6 +66,10 @@ extern "C" __global__ void __raygen__closest() {
     unsigned i;
     if (!rayIndex(i))
         return;
+    if (!(params.tMax[i] > params.tMin)) { // an empty segment: no hit (OptiX wants tmin <= tmax)
+        params.mesh[i] = 0xFFFFFFFFu;
+        return;
+    }
     optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), params.tMin, params.tMax[i], rayTime(i), 255,
                   OPTIX_RAY_FLAG_NONE, 0, 1, 0);
     if (!optixHitObjectIsHit()) {
@@ -91,6 +95,13 @@ extern "C" __global__ void __raygen__occluded() {
         return;
     const unsigned c = params.category ? params.category[i] : 0xFFFFu;
     const unsigned mask = c < 7 ? 1u << c : 0x80u;
+    if (!(params.tMax[i] > params.tMin)) {
+        // An empty segment (a light that casts no shadows, M11 P9a): nothing
+        // occludes; OptiX wants tmin <= tmax.
+        if (!params.probeBackground)
+            params.occluded[i] = 0;
+        return;
+    }
     if (params.probeBackground) {
         // Karma's bgoccludeshadow (core/integrator/holdout.h): a ray from a
         // background point that a background holdout occludes keeps its

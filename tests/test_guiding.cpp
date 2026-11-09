@@ -415,12 +415,31 @@ TEST_CASE("Guiding across IPR restarts", "[guiding][render][ipr]") {
     CHECK(renderer.film().count[0] == 1u);
 }
 
+namespace {
+
+int envInt(const char *name, int fallback) {
+#if defined(_MSC_VER)
+    char *value = nullptr;
+    size_t size = 0;
+    if (_dupenv_s(&value, &size, name) != 0 || !value)
+        return fallback;
+    const int v = std::atoi(value);
+    std::free(value);
+    return v > 0 ? v : fallback;
+#else
+    const char *value = std::getenv(name);
+    return value && std::atoi(value) > 0 ? std::atoi(value) : fallback;
+#endif
+}
+
+} // namespace
+
 // Exploration (hidden): noise and field size of the room at a size and
 // sample count from the environment (NOVA_GUIDE_W, NOVA_GUIDE_SPP).
 TEST_CASE("Guided room noise (exploration)", "[.][guidebench]") {
-    const int w = std::getenv("NOVA_GUIDE_W") ? std::atoi(std::getenv("NOVA_GUIDE_W")) : 160;
+    const int w = envInt("NOVA_GUIDE_W", 160);
     const int h = w * 3 / 4;
-    const uint32_t spp = std::getenv("NOVA_GUIDE_SPP") ? uint32_t(std::atoi(std::getenv("NOVA_GUIDE_SPP"))) : 32;
+    const uint32_t spp = uint32_t(envInt("NOVA_GUIDE_SPP", 32));
     Scene scene;
     guideRoom(scene);
     scene.commit();
