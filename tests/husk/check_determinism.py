@@ -173,11 +173,14 @@ SUN = '''
 
 
 def opacity_scene():
+    # Overlapping surfaces are never coplanar: which of two surfaces at the
+    # same distance a ray reports follows the accelerator's traversal
+    # (docs/bug-audit-2026-11.md D-1, remaining limitation).
     body = backdrop() + SUN
     k = 0
     for i in range(6):
         for j in range(4):
-            body += quad('veil%02d' % k, (-2.5 + i, 0.5 + j * 0.8, 1.0 + 0.15 * ((i + j) % 3)), 1.3, 'veil')
+            body += quad('veil%02d' % k, (-2.5 + i, 0.5 + j * 0.8, 1.0 + 0.04 * k), 1.3, 'veil')
             k += 1
     body += '''
     def PointInstancer "panes" (prepend apiSchemas = ["MaterialBindingAPI"])
@@ -198,10 +201,10 @@ def opacity_scene():
     def Xform "card%d" (instanceable = true
         prepend references = </CardProto>)
     {
-        double3 xformOp:translate = (%g, 0.5, 2.6)
+        double3 xformOp:translate = (%g, 0.5, %g)
         uniform token[] xformOpOrder = ["xformOp:translate"]
     }
-''' % (k, -1.5 + 0.8 * k)
+''' % (k, -1.5 + 0.8 * k, 2.6 + 0.07 * k)
     proto = 'class Xform "CardProto"\n{\n' + quad('card', (0, 0, 0), 0.9, 'veil2') + '}\n'
     mats = surface('grey', (0.5, 0.5, 0.5)) + surface('veil', (0.9, 0.3, 0.2), opacity=0.5) + \
         surface('veil2', (0.2, 0.4, 0.9), opacity=0.35)
