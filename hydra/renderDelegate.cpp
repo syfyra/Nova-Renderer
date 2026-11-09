@@ -209,7 +209,7 @@ HdNovaRenderDelegate::GetLpeProgram(HdRenderPassAovBindingVector const &bindings
     std::vector<std::string> expressions;
     std::vector<std::string> names; // the first AOV of each expression, for messages
     for (const HdRenderPassAovBinding &b : bindings) {
-        const HdNovaAovSource s = HdNovaResolveAov(b);
+        const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
         if (s.kind == HdNovaAovKind::Lpe &&
             std::find(expressions.begin(), expressions.end(), s.expression) == expressions.end()) {
             expressions.push_back(s.expression);
@@ -242,7 +242,7 @@ std::shared_ptr<const std::vector<nova::UtilityRequest>>
 HdNovaRenderDelegate::GetUtilityRequests(HdRenderPassAovBindingVector const &bindings) {
     std::vector<nova::UtilityRequest> requests;
     for (const HdRenderPassAovBinding &b : bindings) {
-        const HdNovaAovSource s = HdNovaResolveAov(b);
+        const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
         if (s.kind == HdNovaAovKind::Utility && std::find(requests.begin(), requests.end(), s.utility) == requests.end())
             requests.push_back(s.utility);
     }
@@ -257,7 +257,7 @@ std::shared_ptr<const std::vector<nova::CryptoRequest>>
 HdNovaRenderDelegate::GetCryptoRequests(HdRenderPassAovBindingVector const &bindings) {
     std::vector<nova::CryptoRequest> requests;
     for (const HdRenderPassAovBinding &b : bindings) {
-        const HdNovaAovSource s = HdNovaResolveAov(b);
+        const HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
         if (s.kind == HdNovaAovKind::Crypto && std::find(requests.begin(), requests.end(), s.crypto) == requests.end())
             requests.push_back(s.crypto);
     }
@@ -268,11 +268,38 @@ HdNovaRenderDelegate::GetCryptoRequests(HdRenderPassAovBindingVector const &bind
     return _crypto;
 }
 
+bool HdNovaRenderDelegate::IsBaking() const {
+    return HdNovaBakeRequested([this](TfToken const &key) { return GetRenderSetting(key); });
+}
+
+std::shared_ptr<const nova::BakeSettings> HdNovaRenderDelegate::GetBakeSettings() {
+    if (!IsBaking()) {
+        _bake.reset();
+        return _bake;
+    }
+    std::vector<std::string> warnings;
+    nova::BakeSettings settings = HdNovaParseBakeSettings(
+        [this](TfToken const &key) { return GetRenderSetting(key); }, *_renderParam, warnings);
+    if (GetNovaSettings().device == nova::RenderDevice::Xpu)
+        warnings.push_back("Nova XPU bakes textures on the CPU");
+    {
+        static std::mutex mutex;
+        static std::set<std::string> warned;
+        std::lock_guard lock(mutex);
+        for (std::string const &w : warnings)
+            if (warned.insert(w).second)
+                HD_NOVA_WARN("texture bake: %s", w.c_str());
+    }
+    if (!_bake || !(*_bake == settings))
+        _bake = std::make_shared<const nova::BakeSettings>(std::move(settings));
+    return _bake;
+}
+
 void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bindings) {
     _aovBindings = bindings;
     _aovSources.clear();
     for (const HdRenderPassAovBinding &b : bindings) {
-        HdNovaAovSource s = HdNovaResolveAov(b);
+        HdNovaAovSource s = HdNovaResolveAov(b, IsBaking());
         if (s.kind == HdNovaAovKind::Lpe && _lpeProgram) {
             const auto it = std::find(_lpeExpressions.begin(), _lpeExpressions.end(), s.expression);
             const size_t i = size_t(it - _lpeExpressions.begin());
@@ -318,6 +345,18 @@ void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bi
                                           : std::string();
     };
     const HdNovaBackgroundFilter filter = HdNovaParseKarmaBackgroundFilter(text(HdNovaSettingsTokens->karmaImageFilter));
+    // A bake's image filters (normal remaps, island expansion; M11 P8).
+    _bakeFilters.clear();
+    if (IsBaking()) {
+        std::vector<std::string> warnings;
+        _bakeFilters = HdNovaParseBakeFilters(text(HdNovaSettingsTokens->karmaImageFilter), warnings);
+        static std::mutex mutex;
+        static std::set<std::string> warned;
+        std::lock_guard lock(mutex);
+        for (std::string const &w : warnings)
+            if (warned.insert(w).second)
+                HD_NOVA_WARN("texture bake: %s", w.c_str());
+    }
     if (filter.shadowCatcher) {
         int output = -1, slot = -1;
         for (size_t i = 0; i < bindings.size(); ++i)
@@ -530,6 +569,17 @@ void HdNovaRenderDelegate::_RenderLoop() {
                     copies[i]->WriteFromFilm(film, rows, _aovSources[i], firstHitAovs, _renderer.fillStride(),
                                              region.x0, region.y0);
         });
+        // A bake's image filters on the buffers just written (M11 P8), with
+        // the film's coverage as their alpha.
+        if (!_bakeFilters.empty() && anyCopy) {
+            std::vector<float> coverage(film.pixelCount(), 0.0f);
+            for (size_t p = 0; p < coverage.size(); ++p)
+                coverage[p] = film.count[p] ? film.alphaSum[p] / float(film.count[p]) : 0.0f;
+            std::vector<std::string> names;
+            for (const HdRenderPassAovBinding &b : _aovBindings)
+                names.push_back(b.aovName.GetString());
+            HdNovaApplyBakeFilters(_bakeFilters, names, copies, coverage);
+        }
         // Denoising: the viewport's beauty, or the final frame's listed AOVs.
         std::vector<HdNovaRenderBuffer *> denoised;
         bool guidesAlbedo = true, guidesNormal = true;
@@ -714,6 +764,12 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
     } else {
         s.maxSamples = uint32_t(std::max(1, GetRenderSetting<int>(HdNovaSettingsTokens->samples, int(s.maxSamples))));
     }
+    // A texture bake (M11 P8): Karma's baker takes its primary samples
+    // (samplesperpixel, 9 from the LOP) as the texel samples; the secondary
+    // ones only serve shading.
+    if (IsBaking() && !IsSettingAuthored(HdNovaSettingsTokens->samples)) {
+        s.maxSamples = uint32_t(std::clamp(std::lround(primary), 1l, 1l << 20));
+    }
     s.maxDepth = uint32_t(std::max(1, GetRenderSetting<int>(HdNovaSettingsTokens->maxDepth, 64)));
     {
         const TfToken limits[nova::kLimitClasses] = {HdNovaSettingsTokens->diffuseLimit, HdNovaSettingsTokens->reflectLimit,
@@ -887,6 +943,8 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
         }
     }
     s.oracleMinSamples = minSamples > 0 ? uint32_t(minSamples) : 0u;
+    if (IsBaking())
+        s.adaptive = false; // bakes take every texel sample (M11 P8)
     _WarnUnsupportedKarmaSettings();
     return s;
 }

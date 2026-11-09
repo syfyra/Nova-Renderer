@@ -1,6 +1,7 @@
 #pragma once
 
 #include "aov.h"
+#include "bake.h"
 #include "denoise.h"
 #include "renderParam.h"
 #include "velocitySceneIndex.h"
@@ -200,6 +201,11 @@ public:
     // The cryptomattes the bindings ask for (null: none), likewise.
     std::shared_ptr<const std::vector<nova::CryptoRequest>> GetCryptoRequests(
         HdRenderPassAovBindingVector const &bindings);
+    // Texture baking (docs/design/M11-P8.md): whether the settings are a
+    // Karma Texture Baker's, and its settings with the meshes resolved (null:
+    // no bake); the same object while they stay the same.
+    bool IsBaking() const;
+    std::shared_ptr<const nova::BakeSettings> GetBakeSettings();
     // Only called while the render thread is stopped, after GetLpeProgram()
     // and GetUtilityRequests() for the same bindings.
     void SetAovBindings(HdRenderPassAovBindingVector const &bindings);
@@ -252,6 +258,8 @@ private:
     std::shared_ptr<const nova::lpe::Compiled> _lpeProgram;
     std::shared_ptr<const std::vector<nova::UtilityRequest>> _utility;
     std::shared_ptr<const std::vector<nova::CryptoRequest>> _crypto;
+    std::shared_ptr<const nova::BakeSettings> _bake;
+    std::vector<HdNovaBakeFilter> _bakeFilters; // set with the bindings
     std::mutex _controlMutex;
     std::atomic<bool> _needsReset{false};
     std::atomic<bool> _stoppedByHost{false};

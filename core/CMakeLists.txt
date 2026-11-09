@@ -39,6 +39,9 @@ add_library(nova_core STATIC
     bsdf/tables/bsdf_tables.cpp
     bsdf/surface.cpp
     denoise/optix_denoiser.cpp
+    bake/bake.cpp
+    bake/mikktspace.cpp
+    bake/image_filter.cpp
 )
 
 target_include_directories(nova_core PUBLIC "${PROJECT_SOURCE_DIR}")
