@@ -33,7 +33,8 @@ MediumVolume mediumVolume(const VolumeRecord &rec);
 void volumeSpans(const Scene &scene, Vec3f o, Vec3f d, float tEnd, float time, std::vector<VolumeSpan> &spans);
 
 // Ratio tracking along the ray through every volume it crosses: returns the
-// transmittance estimate; with `gather`, adds the emission it collects.
+// transmittance estimate; with `gather`, adds the emission it collects. The
+// sky atmosphere's transmittance is part of it (trackAtmosphere).
 // `crossT` (ascending distances, may be empty) receive in `crossOut` the
 // transmittance in front of each. `u0` is the first uniform (a Sobol
 // sample), `rng` gives the rest.
@@ -41,7 +42,8 @@ Spectrum trackMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGloba
                     float u0, Rng &rng, EmissionGather *gather, const float *crossT = nullptr,
                     Spectrum *crossOut = nullptr, int crossCount = 0);
 
-// A free flight (medium_track.h's flyMedia).
+// A free flight (medium_track.h's flyMedia, with the sky atmosphere's choice:
+// flyAtmosphere).
 MediumFlight flyMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGlobals &globals, const MediumRay &ray,
                       Spectrum beta, float u0, Rng &rng, EmissionGather *gather, Spectrum *alphaT,
                       const float *crossT = nullptr, Spectrum *crossOut = nullptr, int crossCount = 0);

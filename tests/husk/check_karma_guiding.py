@@ -16,10 +16,11 @@ means across the seeds (mean of var / mean^2 over the blocks), and compares:
 - the noise with guiding on against guiding off: Nova's must drop at least
   as stated (Karma's ratios stored below for reference);
 - the controls: training samples (a frozen field after 8 samples), the
-  training samples discarded (clearbuffers: the image holds fewer samples,
-  so its noise rises over room_train's), components without the scene's
-  (no change of the noise), deterministic (two renders with one seed are
-  identical; Nova's guiding is always deterministic).
+  training samples discarded (clearbuffers: the image holds 24 of the 32
+  samples, read from a ray:pixelsamples var), components without the scene's
+  (the image of guiding off, bit for bit), deterministic (two renders with
+  one seed are identical; Nova's guiding is always deterministic);
+- Nova XPU on the room and the fog: Nova CPU's means and noise drop.
 
 Needs numpy and OpenImageIO, so run it with Houdini's Python:
 $HFS/python313/python.exe -I check_karma_guiding.py --hfs ... --stage ... --out ...
@@ -60,6 +61,7 @@ KARMA = {
 
 CASES = ["room_off", "room_on", "room_train", "room_clear", "room_reflect", "room_det", "fog_off", "fog_on",
          "fog_diffuse"]
+XPU_CASES = ["room_off", "room_on", "fog_off", "fog_on"]
 
 
 def seed_layer(case, seed, out, samples=0):
@@ -81,12 +83,45 @@ over "Render"
     return path
 
 
-def read(path, np, oiio):
+def samples_layer(case, out):
+    """The case with a ray:pixelsamples var in its product (as check_karma_props.py)."""
+    path = os.path.join(out, case + "_samples.usda")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write('''#usda 1.0
+(
+    subLayers = [@%s@]
+)
+over "Render"
+{
+    over "Products"
+    {
+        over "renderproduct"
+        {
+            rel orderedVars = [</Render/Vars/beauty>, </Render/Vars/samples>]
+        }
+    }
+    over "Vars"
+    {
+        def RenderVar "samples"
+        {
+            uniform token dataType = "float"
+            uniform string sourceName = "ray:pixelsamples"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:format = "float"
+            string driver:parameters:aov:name = "samples"
+        }
+    }
+}
+''' % os.path.join(HERE, case + ".usda").replace("\\", "/"))
+    return path
+
+
+def read(path, np, oiio, part=0):
     image = oiio.ImageInput.open(path)
-    if not image:
+    if not image or not image.seek_subimage(part, 0):
         return None
     spec = image.spec()
-    px = np.asarray(image.read_image(0, 0, 0, spec.nchannels, oiio.FLOAT)).reshape(spec.height, spec.width, -1)
+    px = np.asarray(image.read_image(part, 0, 0, spec.nchannels, oiio.FLOAT)).reshape(spec.height, spec.width, -1)
     image.close()
     return px[..., :3].mean(axis=2)
 
@@ -150,14 +185,51 @@ def checks(results, images):
         check(r("fog_diffuse", "pixnoise") > 1.05 * r("fog_on", "pixnoise"),
               f"fog_diffuse: pixel noise {r('fog_diffuse', 'pixnoise'):.3f} over fog_on's "
               f"{r('fog_on', 'pixnoise'):.3f} (volumes not guided)")
-    # clearbuffers: the image keeps the samples after training (24 of 32).
-    if "room_train" in results and "room_clear" in results:
-        ratio = r("room_clear", "pixnoise") / r("room_train", "pixnoise")
-        check(ratio > 1.15, f"room_clear: pixel noise x{ratio:.2f} of room_train's (Karma x1.41, 32/24 = 1.33)")
+    # clearbuffers: the image keeps the samples after training, 24 of 32
+    # (Karma: noise x1.41 of room_train's; Nova's training samples are the
+    # noisy ones, so dropping them costs little noise: the samples plane
+    # shows the count).
+    if "room_clear" in results and "samples" in results["room_clear"]:
+        got = results["room_clear"]["samples"]
+        check(abs(got - 24.0) < 1e-3, f"room_clear: {got:.2f} samples per pixel in the image (32 less 8 training)")
+    if "room_train" in results and "samples" in results["room_train"]:
+        got = results["room_train"]["samples"]
+        check(abs(got - 32.0) < 1e-3, f"room_train: {got:.2f} samples per pixel in the image (training kept)")
     # Deterministic: Nova always (Karma only with guiding_deterministic).
     for case in ("room_on", "room_det"):
         if case in results:
             check(r(case, "repeat") == 0.0, f"{case}: a second render is identical (|diff| {r(case, 'repeat'):.3e})")
+
+
+def xpu_checks(args, env, cpu, np, oiio):
+    """Nova XPU on the room and the fog, guiding off and on: the means of Nova
+    CPU, the noise drop of Nova CPU (Karma XPU ignores guiding)."""
+    xpu = {}
+    for case in XPU_CASES:
+        if case not in cpu:
+            continue
+        images = []
+        for seed in range(args.seeds):
+            exr = os.path.join(args.out, f"{case}_xpu_{seed}.exr")
+            proc = run([tool(args, "husk.exe"), "--renderer", "HdNovaXpuRendererPlugin", "--headlight", "none", "-s",
+                        "/Render/rendersettings", "-o", exr, seed_layer(case, seed, args.out, args.samples)], env,
+                       args.out)
+            lum = read(exr, np, oiio) if proc.returncode == 0 else None
+            if lum is None:
+                check(False, f"XPU {case} seed {seed}: no image")
+                return
+            images.append(lum)
+        xpu[case] = stats(images, np)
+        r = xpu[case]
+        print(f"     XPU {case}: mean {r['mean']:.5f} noise {r['noise']:.3e} pixel noise {r['pixnoise']:.3e}")
+        bound = 4.0 * (r["error"] ** 2 + cpu[case]["error"] ** 2) ** 0.5 + 1e-5
+        check(abs(r["mean"] - cpu[case]["mean"]) <= bound,
+              f"XPU {case}: mean {r['mean']:.5f} = CPU's {cpu[case]['mean']:.5f} within 4 sigma ({bound:.5f})")
+    for off, on, bound in (("room_off", "room_on", 0.8), ("fog_off", "fog_on", 0.9)):
+        if off in xpu and on in xpu:
+            ratio = xpu[on]["pixnoise"] / xpu[off]["pixnoise"]
+            cpu_ratio = cpu[on]["pixnoise"] / cpu[off]["pixnoise"]
+            check(ratio < bound, f"XPU {on}: pixel noise x{ratio:.2f} of {off} (CPU x{cpu_ratio:.2f}, bound {bound})")
 
 
 def main():
@@ -169,6 +241,7 @@ def main():
     parser.add_argument("--seeds", type=int, default=8)
     parser.add_argument("--cases", default=",".join(CASES))
     parser.add_argument("--samples", type=int, default=0, help="override the scenes' 32 samples")
+    parser.add_argument("--no-xpu", action="store_true", help="skip the Nova XPU renders")
     args = parser.parse_args()
     os.makedirs(args.out, exist_ok=True)
     os.add_dll_directory(os.path.join(args.hfs, "bin"))
@@ -198,6 +271,13 @@ def main():
         everything[case] = images
         results[case] = stats(images, np)
         results[case]["seconds"] = seconds / len(images)
+        if case in ("room_train", "room_clear") and not measure:  # the samples the image holds
+            exr = os.path.join(args.out, f"{case}_samples.exr")
+            run([tool(args, "husk.exe"), "--renderer", args.renderer, "--headlight", "none", "-s",
+                 "/Render/rendersettings", "-o", exr, samples_layer(case, args.out)], env, args.out)
+            plane = read(exr, np, oiio, 1)
+            if plane is not None:
+                results[case]["samples"] = float(plane.mean())
         if case in ("room_on", "room_det"):  # a second render with seed 0: the same image?
             exr = os.path.join(args.out, f"{case}_again.exr")
             run([tool(args, "husk.exe"), "--renderer", args.renderer, "--headlight", "none", "-s",
@@ -212,6 +292,8 @@ def main():
         print(json.dumps(results, indent=1))
     else:
         checks(results, everything)
+        if not args.no_xpu:
+            xpu_checks(args, env, results, np, oiio)
     shutil.rmtree(prefs, ignore_errors=True)
     print(f"{len(FAILURES)} failure(s)")
     return 1 if FAILURES else 0

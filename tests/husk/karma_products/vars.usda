@@ -1,0 +1,912 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 1
+    endTimeCode = 1
+    timeCodesPerSecond = 24
+)
+
+# Built by tests/husk/karma_products_scenes.py (Karma LOPs, Houdini 22.0.466).
+
+def Xform "World"
+{
+    def Scope "m"
+    {
+        def Material "grey"
+        {
+            token outputs:mtlx:surface.connect = </World/m/grey/s.outputs:out>
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.5, 0.5, 0.5)
+                float inputs:specular = 0
+                token outputs:out
+            }
+        }
+    }
+    def Mesh "back" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 4, 3, 1, 2, 5, 4]
+        point3f[] points = [(-2, -1, 0), (-1.04, -1, 0), (1.03, -1, 0), (-2, 1, 0), (-1.04, 1, 0), (1.03, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (0.5, 0), (1, 0), (0, 1), (0.5, 1), (1, 1)] (interpolation = "vertex")
+        color3f[] primvars:pcol = [(0.5, 0.5, 0.5), (0, 0, 1)] (interpolation = "uniform")
+        float[] primvars:ps = [-3, 1] (interpolation = "uniform")
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/m/grey>
+    }
+    def Mesh "front" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-0.5, -0.5, 1), (0.07, -0.5, 1), (0.07, 0.5, 1), (-0.5, 0.5, 1)]
+        color3f primvars:pcol = (0, 0.6, 0) (interpolation = "constant")
+        float primvars:ps = 2 (interpolation = "constant")
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/m/grey>
+    }
+    def Mesh "ramp" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(1.5, -1, 0), (1.95, -1, 0.9), (1.95, 1, 0.9), (1.5, 1, 0)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/m/grey>
+        int primvars:karma:object:holdoutmode = 1 (interpolation = "constant")
+    }
+    def DistantLight "sun"
+    {
+        float inputs:intensity = 1
+        float inputs:angle = 0
+    }
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float focalLength = 50
+        float horizontalAperture = 40
+        float verticalAperture = 20
+        float2 clippingRange = (0.5, 50)
+        double shutter:open = -0.25
+        double shutter:close = 0.25
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "s"
+    {
+        rel camera = </World/cam>
+        uniform int2 resolution = (40, 20)
+        rel products = [</Render/Products/p>]
+        custom int karma:global:pathtracedsamples = 64
+        custom int karma:global:samplesperpixel = 64
+        custom string karma:global:pixeloracle = "uniform"
+        custom string karma:global:pixelfilter = "box"
+        custom token karma:global:convergence_mode = "Path Traced"
+        custom int nova:samples = 64
+        custom token nova:pixelFilter = "box"
+    }
+
+    def Scope "Products"
+    {
+        def Scope "Vars"
+        {
+            def RenderVar "beauty" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color4f"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color4h"
+                bool driver:parameters:aov:husk:multiSampled = 1
+                string driver:parameters:aov:husk:name = "C"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "hitP" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "point3f"
+                string driver:parameters:aov:husk:channel_prefix = "P"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "P"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitP"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitPz" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "depth"
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"zmin"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "element" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "int"
+                string driver:parameters:aov:husk:channel_prefix = "id"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "element"
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"idcover"}]'
+                uniform string sourceName = "ray:element"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "primid" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "int"
+                string driver:parameters:aov:husk:channel_prefix = "id"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "primid"
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"idcover"}]'
+                uniform string sourceName = "ray:primid"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitN" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "normal3f"
+                string driver:parameters:aov:husk:channel_prefix = "N"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "N"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitN"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitN_facingratio" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "Facingratio_N"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "half"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "Facingratio_N"
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitN_facingratio"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_ubox" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_ubox"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_ubox"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_acc" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_acc"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_acc"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["accumulate",{}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_min" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_min"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_min"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"min"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_max" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_max"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_max"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"max"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_zmin" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_zmin"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_zmin"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"zmin"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_zmax" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_zmax"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_zmax"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"zmax"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_var" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_var"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_var"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["stats",{"mode":"var"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_mse" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_mse"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_mse"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["stats",{"mode":"mse"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_even" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_even"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_even"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["stats",{"mode":"even"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "z_odd" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "z_odd"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "z_odd"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["stats",{"mode":"odd"}]'
+                uniform string sourceName = "ray:hitPz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "C_min" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "C_min"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "C_min"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"min"}]'
+                uniform string sourceName = "C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "C_max" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "C_max"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "C_max"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"max"}]'
+                uniform string sourceName = "C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "C_var" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "C_var"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "C_var"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["stats",{"mode":"var"}]'
+                uniform string sourceName = "C.*[LO]"
+                uniform token sourceType = "lpe"
+            }
+
+            def RenderVar "pcol_ubox" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "pcol_ubox"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "pcol_ubox"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "pcol"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "ps_ubox" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "ps_ubox"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "ps_ubox"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ps"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "pcol_min" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "pcol_min"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "pcol_min"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"min"}]'
+                uniform string sourceName = "pcol"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "ps_min" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "ps_min"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "ps_min"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"min"}]'
+                uniform string sourceName = "ps"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "pcol_max" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "pcol_max"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "pcol_max"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"max"}]'
+                uniform string sourceName = "pcol"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "ps_max" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "ps_max"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "ps_max"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"max"}]'
+                uniform string sourceName = "ps"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "pcol_zmin" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "pcol_zmin"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "pcol_zmin"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"zmin"}]'
+                uniform string sourceName = "pcol"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "ps_zmin" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "ps_zmin"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "ps_zmin"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"zmin"}]'
+                uniform string sourceName = "ps"
+                uniform token sourceType = "primvar"
+            }
+
+            def RenderVar "mask" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "mask"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "mask"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:mask"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "time" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "time"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "time"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:time"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "near" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "near"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "near"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:near"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "far" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "far"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "far"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:far"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "rayorigin" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "point3f"
+                string driver:parameters:aov:husk:channel_prefix = "rayorigin"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "rayorigin"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:P"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "raydir" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "vector3f"
+                string driver:parameters:aov:husk:channel_prefix = "raydir"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "raydir"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:D"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "contrib" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "color3f"
+                string driver:parameters:aov:husk:channel_prefix = "contrib"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "color3f"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "contrib"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:contrib"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "dPdz" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "dPdz"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "dPdz"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:dPdz"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hituv" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "vector3f"
+                string driver:parameters:aov:husk:channel_prefix = "hituv"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "hituv"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hituv"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "N_facing" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "normal3f"
+                string driver:parameters:aov:husk:channel_prefix = "N_facing"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "N_facing"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitN_facing"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "P_noholdouts" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "point3f"
+                string driver:parameters:aov:husk:channel_prefix = "P_noholdouts"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "P_noholdouts"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:noholdout;hitP"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "P_holdouts" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "point3f"
+                string driver:parameters:aov:husk:channel_prefix = "P_holdouts"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float3"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "P_holdouts"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:holdout;hitP"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "level" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "level"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "level"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:level"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "hitstack" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "float"
+                string driver:parameters:aov:husk:channel_prefix = "hitstack"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "hitstack"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["ubox",{}]'
+                uniform string sourceName = "ray:hitstack"
+                uniform token sourceType = "raw"
+            }
+
+            def RenderVar "primarysamples" (
+                apiSchemas = ["KarmaRenderVarAPI", "HuskRenderVarAPI"]
+            )
+            {
+                uniform token dataType = "int"
+                string driver:parameters:aov:husk:channel_prefix = "primarysamples"
+                float driver:parameters:aov:husk:clearValue = 0
+                token driver:parameters:aov:husk:format = "float"
+                bool driver:parameters:aov:husk:multiSampled = 0
+                string driver:parameters:aov:husk:name = "primarysamples"
+                bool driver:parameters:aov:karma:cryptomatte = 0
+                int driver:parameters:aov:karma:cryptomatterank = 6
+                string driver:parameters:aov:karma:cryptomattesidecar = ""
+                string driver:parameters:aov:karma:filter = '["minmax",{"mode":"max"}]'
+                uniform string sourceName = "ray:pixelsamples"
+                uniform token sourceType = "intrinsic"
+            }
+        }
+
+        def RenderProduct "p" (
+            apiSchemas = ["HuskRenderProductAPI"]
+        )
+        {
+            rel camera = </World/cam>
+            rel orderedVars = [
+                </Render/Products/Vars/C_max>,
+                </Render/Products/Vars/C_min>,
+                </Render/Products/Vars/C_var>,
+                </Render/Products/Vars/N_facing>,
+                </Render/Products/Vars/P_holdouts>,
+                </Render/Products/Vars/P_noholdouts>,
+                </Render/Products/Vars/beauty>,
+                </Render/Products/Vars/contrib>,
+                </Render/Products/Vars/dPdz>,
+                </Render/Products/Vars/element>,
+                </Render/Products/Vars/far>,
+                </Render/Products/Vars/hitN>,
+                </Render/Products/Vars/hitN_facingratio>,
+                </Render/Products/Vars/hitP>,
+                </Render/Products/Vars/hitPz>,
+                </Render/Products/Vars/hitstack>,
+                </Render/Products/Vars/hituv>,
+                </Render/Products/Vars/level>,
+                </Render/Products/Vars/mask>,
+                </Render/Products/Vars/near>,
+                </Render/Products/Vars/pcol_max>,
+                </Render/Products/Vars/pcol_min>,
+                </Render/Products/Vars/pcol_ubox>,
+                </Render/Products/Vars/pcol_zmin>,
+                </Render/Products/Vars/primarysamples>,
+                </Render/Products/Vars/primid>,
+                </Render/Products/Vars/ps_max>,
+                </Render/Products/Vars/ps_min>,
+                </Render/Products/Vars/ps_ubox>,
+                </Render/Products/Vars/ps_zmin>,
+                </Render/Products/Vars/raydir>,
+                </Render/Products/Vars/rayorigin>,
+                </Render/Products/Vars/time>,
+                </Render/Products/Vars/z_acc>,
+                </Render/Products/Vars/z_even>,
+                </Render/Products/Vars/z_max>,
+                </Render/Products/Vars/z_min>,
+                </Render/Products/Vars/z_mse>,
+                </Render/Products/Vars/z_odd>,
+                </Render/Products/Vars/z_ubox>,
+                </Render/Products/Vars/z_var>,
+                </Render/Products/Vars/z_zmax>,
+                </Render/Products/Vars/z_zmin>,
+            ]
+            token productName = "vars.exr"
+            uniform token productType = "raster"
+        }
+    }
+}
+

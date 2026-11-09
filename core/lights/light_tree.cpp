@@ -355,7 +355,29 @@ LightTreeView LightTree::view() const {
     v.links.light = m_mask.empty() ? nullptr : m_mask.data();
     v.links.receiver = m_mask.empty() ? nullptr : m_receiver.data();
     v.receiverSetCount = m_mask.empty() ? 0u : uint32_t(m_receiver.size());
+    if (!m_portalCount.empty()) {
+        v.portalTris = m_portalTris.data();
+        v.portalBegin = m_portalBegin.data();
+        v.portalCount = m_portalCount.data();
+    }
     return v;
+}
+
+void LightTree::setPortals(const std::vector<std::vector<PortalTriangle>> &perLight) {
+    m_portalTris.clear();
+    m_portalBegin.clear();
+    m_portalCount.clear();
+    bool any = false;
+    for (const std::vector<PortalTriangle> &t : perLight)
+        any |= !t.empty();
+    if (!any)
+        return;
+    for (uint32_t light : m_infinite) {
+        m_portalBegin.push_back(uint32_t(m_portalTris.size()));
+        if (light < perLight.size())
+            m_portalTris.insert(m_portalTris.end(), perLight[light].begin(), perLight[light].end());
+        m_portalCount.push_back(uint32_t(m_portalTris.size()) - m_portalBegin.back());
+    }
 }
 
 } // namespace nova

@@ -64,6 +64,10 @@ public:
     // primvars, primvars on native instances), flattened in the same order as
     // the transforms. Per name, the innermost level that defines it wins.
     void ComputeInstanceAttributes(SdfPath const &prototypeId, std::vector<nova::InstanceAttribute> &out) const;
+    // The same for string and int primvars (cryptomattes; ints as decimal
+    // strings): per name one value per flattened instance.
+    void ComputeInstanceStrings(SdfPath const &prototypeId,
+                                std::vector<std::pair<std::string, std::vector<std::string>>> &out) const;
 
 private:
     // Samples of a primvar over the shutter (frame-relative times, ascending,

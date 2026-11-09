@@ -351,6 +351,11 @@ NOVA_INLINE GuideSite guidePointSite(const GuideView &g, Vec3f P, uint8_t compon
     GuideSite site;
     if (!g.active() || !(g.components & component) || !open)
         return site;
+    // Outside the field's cube (the sky atmosphere's far air): not guided,
+    // so the scene's cells keep the scene's light.
+    for (int a = 0; a < 3; ++a)
+        if (!(P[a] >= g.origin[a] && P[a] <= g.origin[a] + g.size))
+            return site;
     site.record = g.training != 0;
     site.share = 1.0f;
     if (g.sampling) {

@@ -21,6 +21,7 @@ class GpuRenderer {};
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <new>
 
 namespace nova {
@@ -77,10 +78,16 @@ void Renderer::setSettings(const RenderSettings &settings) {
         m_film.setLpeOutputs(ok ? uint32_t(c->outputFlags.size()) : 0u, ok ? c->shadowCount() : 0u);
         m_lpeProgram = nullptr;
     }
-    if (settings.utility != m_settings.utility)
+    if (settings.utility != m_settings.utility) {
         m_film.setUtility(settings.utility ? *settings.utility : std::vector<UtilityRequest>{});
+        m_lpePrevCount.clear();
+    }
+    if (settings.lpe != m_settings.lpe)
+        m_lpePrevCount.clear();
     if (settings.crypto != m_settings.crypto)
         m_film.setCrypto(settings.crypto ? *settings.crypto : std::vector<CryptoRequest>{});
+    if (settings.deep != m_settings.deep)
+        m_film.setDeep(settings.deep.get());
     m_settings = settings;
 }
 
@@ -199,6 +206,7 @@ void Renderer::reset() {
     m_gpuFilm = false;
     m_filmStale = false;
     m_discarded = 0;
+    m_lpePrevCount.clear();
     resetPasses();
 }
 
@@ -206,6 +214,7 @@ void Renderer::resize(int width, int height) {
     if (width == m_film.width && height == m_film.height)
         return;
     m_film.resize(width, height);
+    m_lpePrevCount.clear();
     m_gpuFilm = false;
     m_filmStale = false;
     m_discarded = 0;
@@ -546,8 +555,11 @@ bool Renderer::renderPass(const std::function<bool()> &cancel) {
         initOracle();
     // Samples per pixel: one; in final renders with adaptive sampling, when
     // few pixels are left, up to the next checkpoint (waves stay full).
+    // (Not with filtered LPE planes: they take each sample from the change
+    // of the sums over a pass.)
     uint32_t spp = 1;
-    if (adaptive && stride == 1 && m_proxyDepth == 0 && m_activeCount > 0 && m_level < maxSamples) {
+    if (adaptive && stride == 1 && m_proxyDepth == 0 && m_activeCount > 0 && m_level < maxSamples &&
+        !m_film.wantsLpeSamples()) {
         const uint32_t regionPixels = uint32_t(m_region.pixelCount());
         uint32_t next = 1;
         while (next <= m_level)
@@ -609,6 +621,8 @@ bool Renderer::renderPass(const std::function<bool()> &cancel) {
 
     if (cancelled)
         return false;
+    if (m_film.wantsLpeSamples())
+        takeLpeSamples();
     ++m_film.samples;
     ++m_pass;
     if (stride == 1) {
@@ -679,6 +693,161 @@ void Renderer::finishGuidePass(uint32_t spp, bool gpu) {
         resetPasses();
         m_discarded = discarded;
     }
+}
+
+void Renderer::takeLpeSamples() {
+    syncFilm();
+    std::vector<UtilityPlane *> planes;
+    for (UtilityPlane &p : m_film.utility)
+        if (p.request.kind == UtilityKind::Lpe && p.request.filter != SampleFilter::Center && p.request.index >= 0 &&
+            uint32_t(p.request.index) < m_film.lpeOutputs)
+            planes.push_back(&p);
+    const size_t n = m_film.pixelCount();
+    if (m_lpePrevCount.size() != n || m_lpePrev.size() != planes.size()) {
+        m_lpePrevCount.assign(n, 0u);
+        m_lpePrev.assign(planes.size(), std::vector<Spectrum>(n, Spectrum{0.0f, 0.0f, 0.0f}));
+    }
+    const TileRect r = m_region;
+    parallelRows(r.y0, r.y1, [&](int y0, int y1) {
+        for (int y = y0; y < y1; ++y)
+            for (int x = r.x0; x < r.x1; ++x) {
+                const size_t p = size_t(y) * size_t(m_film.width) + size_t(x);
+                const uint32_t c = m_film.count[p];
+                uint32_t &before = m_lpePrevCount[p];
+                if (c < before) { // the film restarted (a GPU read-back failed)
+                    before = 0;
+                    for (std::vector<Spectrum> &prev : m_lpePrev)
+                        prev[p] = Spectrum{0.0f, 0.0f, 0.0f};
+                }
+                if (c == before)
+                    continue;
+                const uint32_t k = c - before;
+                for (size_t j = 0; j < planes.size(); ++j) {
+                    const Spectrum now = m_film.lpe(uint32_t(planes[j]->request.index))[p];
+                    const Spectrum d = (now - m_lpePrev[j][p]) * (1.0f / float(k));
+                    const float v[3] = {d.x, d.y, d.z};
+                    for (uint32_t s = before; s < c; ++s)
+                        addFilteredSample(*planes[j], p, s, v, true, 0.0f);
+                    m_lpePrev[j][p] = now;
+                }
+                before = c;
+            }
+    });
+}
+
+namespace {
+
+constexpr char kProgressMagic[8] = {'N', 'O', 'V', 'A', 'P', 'R', 'G', '1'};
+
+template <typename T>
+void putArray(std::vector<uint8_t> &out, const std::vector<T> &v) {
+    const uint64_t n = v.size();
+    const auto *b = reinterpret_cast<const uint8_t *>(&n);
+    out.insert(out.end(), b, b + sizeof(n));
+    const auto *d = reinterpret_cast<const uint8_t *>(v.data());
+    out.insert(out.end(), d, d + n * sizeof(T));
+}
+
+template <typename T>
+bool getArray(const uint8_t *&p, const uint8_t *end, std::vector<T> &v) {
+    uint64_t n = 0;
+    if (size_t(end - p) < sizeof(n))
+        return false;
+    std::memcpy(&n, p, sizeof(n));
+    p += sizeof(n);
+    if (n > size_t(end - p) / sizeof(T))
+        return false;
+    v.resize(size_t(n));
+    if (n)
+        std::memcpy(v.data(), p, size_t(n) * sizeof(T));
+    p += size_t(n) * sizeof(T);
+    return true;
+}
+
+} // namespace
+
+void Renderer::saveCheckpoint(std::vector<uint8_t> &out) {
+    syncFilm();
+    std::vector<uint8_t> film;
+    m_film.save(film);
+    out.clear();
+    out.insert(out.end(), kProgressMagic, kProgressMagic + sizeof(kProgressMagic));
+    const uint32_t progress[8] = {m_pass, m_fullPasses, m_level, uint32_t(m_fillStride), m_oracleReady ? 1u : 0u,
+                                  m_allActive ? 1u : 0u, m_activeCount, m_settings.adaptive ? 1u : 0u};
+    const auto *b = reinterpret_cast<const uint8_t *>(progress);
+    out.insert(out.end(), b, b + sizeof(progress));
+    putArray(out, film);
+    for (const std::vector<uint8_t> *v : {&m_active, &m_evaluated, &m_noisy})
+        putArray(out, *v);
+    putArray(out, m_checked);
+    putArray(out, m_half);
+    for (const std::vector<float> *v : {&m_halfAlpha, &m_dsq, &m_lum, &m_dsqAlpha, &m_lumAlpha})
+        putArray(out, *v);
+}
+
+bool Renderer::loadCheckpoint(const uint8_t *data, size_t size) {
+    const uint8_t *p = data, *end = data + size;
+    uint32_t progress[8];
+    if (size < sizeof(kProgressMagic) + sizeof(progress) || std::memcmp(p, kProgressMagic, sizeof(kProgressMagic)) != 0)
+        return false;
+    p += sizeof(kProgressMagic);
+    std::memcpy(progress, p, sizeof(progress));
+    p += sizeof(progress);
+    if ((progress[7] != 0) != m_settings.adaptive)
+        return false;
+    std::vector<uint8_t> film;
+    std::vector<uint8_t> active, evaluated, noisy;
+    std::vector<uint32_t> checked;
+    std::vector<Spectrum> half;
+    std::vector<float> halfAlpha, dsq, lum, dsqAlpha, lumAlpha;
+    if (!getArray(p, end, film) || !getArray(p, end, active) || !getArray(p, end, evaluated) ||
+        !getArray(p, end, noisy) || !getArray(p, end, checked) || !getArray(p, end, half) ||
+        !getArray(p, end, halfAlpha) || !getArray(p, end, dsq) || !getArray(p, end, lum) ||
+        !getArray(p, end, dsqAlpha) || !getArray(p, end, lumAlpha) || p != end)
+        return false;
+    const size_t n = m_film.pixelCount();
+    const bool oracle = progress[4] != 0 && m_settings.adaptive;
+    if (oracle && (active.size() != n || checked.size() != n || half.size() != n || lumAlpha.size() != n))
+        return false;
+    if (!m_film.load(film.data(), film.size()))
+        return false;
+    m_pass = progress[0];
+    m_fullPasses = progress[1];
+    m_level = progress[2];
+    m_fillStride = int(progress[3]);
+    m_oracleReady = oracle;
+    m_allActive = progress[5] != 0;
+    m_activeCount = progress[6];
+    if (oracle) {
+        m_active = std::move(active);
+        m_evaluated = std::move(evaluated);
+        m_noisy = std::move(noisy);
+        m_checked = std::move(checked);
+        m_half = std::move(half);
+        m_halfAlpha = std::move(halfAlpha);
+        m_dsq = std::move(dsq);
+        m_lum = std::move(lum);
+        m_dsqAlpha = std::move(dsqAlpha);
+        m_lumAlpha = std::move(lumAlpha);
+    }
+    m_tilePixels.clear();
+    m_gpuFilm = false; // the device film is uploaded at the next GPU pass
+    m_filmStale = false;
+    // The filtered LPE planes go on from the loaded sums.
+    m_lpePrevCount.clear();
+    if (m_film.wantsLpeSamples()) {
+        std::vector<UtilityPlane *> planes;
+        for (UtilityPlane &pl : m_film.utility)
+            if (pl.request.kind == UtilityKind::Lpe && pl.request.filter != SampleFilter::Center &&
+                pl.request.index >= 0 && uint32_t(pl.request.index) < m_film.lpeOutputs)
+                planes.push_back(&pl);
+        m_lpePrevCount = m_film.count;
+        m_lpePrev.assign(planes.size(), {});
+        for (size_t j = 0; j < planes.size(); ++j)
+            m_lpePrev[j].assign(m_film.lpe(uint32_t(planes[j]->request.index)),
+                                m_film.lpe(uint32_t(planes[j]->request.index)) + n);
+    }
+    return true;
 }
 
 void Renderer::parallelRows(int y0, int y1, const std::function<void(int, int)> &body) const {

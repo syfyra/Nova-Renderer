@@ -245,11 +245,12 @@ void HdNovaPoints::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     }
     if (rebuild) { // DirtyPrimvar rebuilds
         scene.setMeshRayLimits(_meshId, HdNovaObjectOverrides(sd, id));
+        HdNovaWarnPortalPrim(sd, id, "points"); // light portals are meshes only (M11 P9b)
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
         scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (M6 D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
-                            HdNovaCryptoAttributes(sd, id, names));
+                            HdNovaCryptoAttributes(sd, id, names, GetInstancerId()));
     }
     if (categoriesDirty)
         HdNovaSyncCategories(sd, id, GetInstancerId(), scene, _meshId); // light linking (M9 D15)

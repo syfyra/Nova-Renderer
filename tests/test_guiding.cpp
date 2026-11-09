@@ -373,6 +373,48 @@ TEST_CASE("Guiding components and training controls", "[guiding][render]") {
     }
 }
 
+TEST_CASE("Guiding across IPR restarts", "[guiding][render][ipr]") {
+    Scene scene;
+    guideRoom(scene);
+    scene.commit();
+    Renderer renderer;
+    renderer.setScene(&scene);
+    renderer.setSettings(guided(64));
+    renderer.setCamera(guideRoomCamera(32, 24));
+    renderer.resize(32, 24);
+    for (int pass = 0; pass < 8; ++pass)
+        renderer.renderPass({});
+    REQUIRE(renderer.guide());
+    const uint32_t trained = renderer.guide()->trainedSamples();
+    CHECK(trained == 8u);
+    CHECK(renderer.guide()->iterations() == 3u);
+    // A camera move restarts the film, not the field: its samples continue
+    // after the ones the field learned from.
+    renderer.setCamera(guideRoomCamera(32, 24));
+    renderer.reset();
+    CHECK(renderer.film().sampleOffset == 8u);
+    renderer.renderPass({});
+    CHECK(renderer.guide()->trainedSamples() == 9u);
+    // A scene edit (the sun brighter) retrains from scratch.
+    LightDesc sun;
+    sun.type = LightType::Distant;
+    sun.angleDeg = 0.0f;
+    sun.intensity = 9.0f;
+    scene.updateLight(0, sun);
+    scene.commit();
+    renderer.reset();
+    renderer.renderPass({});
+    CHECK(renderer.guide()->trainedSamples() == 1u);
+    CHECK(renderer.guide()->iterations() == 1u);
+    CHECK(renderer.film().sampleOffset == 0u);
+    // Guiding off: no field.
+    RenderSettings off = guided(64, false);
+    renderer.setSettings(off);
+    renderer.reset();
+    renderer.renderPass({});
+    CHECK(renderer.film().count[0] == 1u);
+}
+
 // Exploration (hidden): noise and field size of the room at a size and
 // sample count from the environment (NOVA_GUIDE_W, NOVA_GUIDE_SPP).
 TEST_CASE("Guided room noise (exploration)", "[.][guidebench]") {

@@ -177,6 +177,7 @@ private:
     // shadow queue and the queue lengths (rays A, rays B, shadow rays, AO
     // rays).
     uint32_t m_capacity = 0;
+    bool m_nestedReserved = false; // the wave holds the nested dielectrics' media (GpuWave::nested)
     uint32_t m_shadowSlots = 0; // shadow rays per path the wave holds (2, 3 with walks, +1 with shadow-linked domes)
     std::vector<DeviceBuffer> m_waveBuffers;
     GpuWave m_wave;
@@ -230,7 +231,11 @@ private:
 
     // The film.
     DeviceBuffer m_colorSum, m_alphaSum, m_count, m_aoPlane, m_lpeSum, m_lpeLit;
-    std::vector<uint32_t> m_cryptoMesh, m_cryptoPrim; // a wave's camera hits on the host
+    // A wave's camera hits on the host (cryptomattes, per-sample records),
+    // with their pixels, sample numbers and radiance.
+    CameraSampleRecords m_records;
+    std::vector<uint32_t> m_samplePixel, m_sampleIndex;
+    std::vector<Spectrum> m_sampleRadiance;
     int m_width = 0, m_height = 0;
 };
 

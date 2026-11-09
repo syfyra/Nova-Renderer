@@ -16,6 +16,7 @@ public:
         : m_scene(scene), m_cache(cache), m_globals(globals) {}
 
     uint32_t activeCount() const { return uint32_t(m_scene.activeVolumes().size()); }
+    const AtmosphereView *atmosphere() const { return m_scene.atmosphere(); }
     VolumeId active(uint32_t i) const { return m_scene.activeVolumes()[i]; }
     MediumVolume volume(VolumeId id) const { return mediumVolume(m_scene.volumeRecord(id)); }
     Affine3f volumeToWorld(VolumeId id, float time) const { return m_scene.volumeToWorld(id, time); }
@@ -138,7 +139,7 @@ Spectrum trackMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGloba
     HostMedia media(scene, cache, globals);
     ListRef<VolumeSpan> spans{spanList()};
     ListRef<MediumActive> active{activeList()};
-    return nova::trackMedia(media, spans, active, ray, u0, rng, gather, crossT, crossOut, crossCount);
+    return nova::trackAtmosphere(media, spans, active, ray, u0, rng, gather, crossT, crossOut, crossCount);
 }
 
 MediumFlight flyMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGlobals &globals, const MediumRay &ray,
@@ -149,8 +150,8 @@ MediumFlight flyMedia(const Scene &scene, VolumeEvalCache &cache, const ShadeGlo
     ListRef<VolumeSpan> spans{spanList()};
     ListRef<MediumActive> active{activeList()};
     ListRef<MediumHit> parts{hits};
-    return nova::flyMedia(media, spans, active, parts, ray, beta, u0, rng, gather, alphaT, crossT, crossOut,
-                          crossCount);
+    return nova::flyAtmosphere(media, spans, active, parts, ray, beta, u0, rng, gather, alphaT, crossT, crossOut,
+                               crossCount);
 }
 
 } // namespace nova

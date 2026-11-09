@@ -65,11 +65,14 @@ struct CryptoPlane {
     }
 };
 
-// A string primvar's ids on a mesh: one (constant) or one per authored face.
+// A string primvar's ids on a mesh: one (constant), one per authored face
+// (uniform), or one per instance (perInstance: the instancers' instance-rate
+// primvars, flattened as the mesh's instances; docs/design/M11-P6.md 7).
 struct CryptoAttribute {
     std::string name;
     bool uniform = false;
     std::vector<uint32_t> ids;
+    bool perInstance = false;
 };
 
 } // namespace nova

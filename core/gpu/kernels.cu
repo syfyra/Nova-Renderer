@@ -196,6 +196,9 @@ struct DeviceMedia {
     const GpuScene &sc;
     ShadeGlobals globals;
     NOVA_INLINE uint32_t activeCount() const { return sc.activeVolumeCount; }
+    NOVA_INLINE const AtmosphereView *atmosphere() const {
+        return sc.atmosphere.volume != 0xFFFFFFFFu ? &sc.atmosphere : nullptr;
+    }
     NOVA_INLINE VolumeId active(uint32_t i) const { return sc.activeVolumes[i]; }
     NOVA_INLINE MediumVolume volume(VolumeId id) const { return sc.volumes[id].medium; }
     NOVA_INLINE Affine3f volumeToWorld(VolumeId id, float time) const { return sc.volumes[id].toWorld(time); }
@@ -394,7 +397,7 @@ __device__ void equiangularSample(const ShadeArgs &a, uint32_t k, const MediumRa
     // it, and an absorbing refractive interior.
     MediumRay to = ray;
     to.tEnd = t;
-    Spectrum beta = w.beta[p] * trackMedia(media, spans, active, to, rng.next(), rng, nullptr);
+    Spectrum beta = w.beta[p] * trackAtmosphere(media, spans, active, to, rng.next(), rng, nullptr);
     if (w.inMedium[p]) {
         const Spectrum s = w.sigmaA[p];
         beta *= Spectrum{std::exp(-s.x * t), std::exp(-s.y * t), std::exp(-s.z * t)};
@@ -630,6 +633,35 @@ __device__ __noinline__ Vec3f guideSampleAt(const ShadeArgs &a, const GuideSite 
     return guideSample(a.scene.guide, site.root, u, pdf);
 }
 
+// A volume event's guide: the volume component, its class open.
+__device__ __noinline__ GuideSite guideVolumeAt(const ShadeArgs &a, uint32_t volume, uint32_t p, Vec3f x) {
+    constexpr int kVolumeClass = int(LimitClass::Volume);
+    const float volumeLimit = a.scene.volumes[volume].volumeLimit;
+    const uint32_t allowed = pathLimit(volumeLimit >= 0.0f ? volumeLimit : a.settings.limits.limit[kVolumeClass],
+                                       a.wave.limitDither[p]);
+    const uint32_t n = uint32_t(a.wave.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu;
+    return guidePointSite(a.scene.guide, x, guide::kVolume, n < allowed);
+}
+
+// A volume event's continuation from the mixture of its phase function and
+// the field: the direction, the mixture's density and phase / density.
+__device__ __noinline__ Vec3f guidedPhaseAt(const ShadeArgs &a, const GuideSite &site, const PhaseFunction &phase,
+                                            Vec3f d, Vec3f u, float uGuide, float &pdf, float &weight) {
+    Vec3f wi;
+    float ph = 0.0f;
+    if (uGuide < site.alpha) {
+        float pg = 0.0f;
+        wi = guideSample(a.scene.guide, site.root, {u.x, u.y}, pg);
+        ph = pg > 0.0f ? phase.eval(d, wi) : 0.0f;
+        pdf = (1.0f - site.alpha) * ph + site.alpha * pg;
+    } else {
+        wi = phase.sample(d, u, ph);
+        pdf = ph > 0.0f ? guidedPointPdf(a.scene.guide, site, ph, wi) : 0.0f;
+    }
+    weight = pdf > 0.0f ? ph / pdf : 0.0f;
+    return wi;
+}
+
 // The continuation of a guided surface vertex, with or without the lobes'
 // values (lpe_path.h).
 __device__ __noinline__ bool sampleGuidedAt(const ShadeArgs &a, const ClosureList &cl, Vec3f wo, Vec3f u, float uGuide,
@@ -719,6 +751,31 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     const uint32_t pixel = w.pixel[p];
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
     const uint32_t tag = state ? lpe.objectTag(meshId, materialIdOf(mesh, hit.prim)) : 0u;
+
+    // Nested dielectrics (core/integrator/nested.h): a false interface is
+    // crossed without an event, at a real one the transmission bends by the
+    // media's indices. Fake-caustic and light-only rays cross every surface,
+    // as shadow rays do.
+    const uint8_t priority = shading.dielectricPriority;
+    const bool entering = dot(wo, hit.Ng) > 0.0f;
+    float ownIor = 1.0f;
+    const bool refracting = sc.nestedDielectrics && !fake && !lightsOnly && refractingIndex(cl, entering, ownIor);
+    if (refracting) {
+        NestedMedia &media = w.nested[p];
+        if (media.falseInterface(priority)) {
+            if (entering)
+                media.enter(priority, ownIor, cl.sigmaA);
+            else
+                media.leave(priority);
+            w.sigmaA[p] = media.absorption();
+            w.inMedium[p] = !isBlack(w.sigmaA[p]);
+            w.coneWidth[p] += w.coneSpread[p] * hit.t;
+            pushRay(a.next, leave(-wo), -wo, kInf, p, time, a.rays.filterSeed[k], RayClass(a.rays.rayType[k]));
+            return;
+        }
+        setMediaIndex(cl, entering, media.otherIndex(priority));
+    }
+
     if (state && lpe.albedo && !lightsOnly)
         lpeAlbedoEvents(lpe, film, pixel, state, tag, cl, w.beta[p]);
     // Emission, reached by BSDF sampling: an O event of weight 1, or for an
@@ -951,12 +1008,18 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         wk.medium[j] = cl.lobe[s.lobe].subsurface;
         return;
     }
+    // A transmission through a refracting interface changes the medium, also
+    // as a thin-wall pass-through (Karma, measured), which tints like a thin
+    // wall.
+    const bool crossed =
+        s.refract || (refracting && s.transmit && s.lobe >= 0 && cl.lobe[s.lobe].type == LobeType::Dielectric);
     if (passThrough) {
         s.wi = -wo;
         s.delta = true;
         s.pdf = 0.0f;
         s.refract = false;
         s.diffuseShare = 0.0f;
+        s.weight *= cl.absorptionColor;
     }
     Spectrum beta = w.beta[p] * s.weight;
     float etaScale = w.etaScale[p];
@@ -1002,9 +1065,17 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         w.prevSet[p] = kPrevSetDelta | mesh.receiverSet(hit.instance);
     }
     w.etaScale[p] = etaScale;
-    if (s.refract) {
+    if (crossed && refracting) {
+        // Into or out of the object's level (nested.h).
+        NestedMedia &media = w.nested[p];
+        if (entering)
+            media.enter(priority, ownIor, cl.sigmaA);
+        else
+            media.leave(priority);
+        w.sigmaA[p] = media.absorption();
+        w.inMedium[p] = !isBlack(w.sigmaA[p]);
+    } else if (crossed) {
         // Entering or leaving: by the authored orientation.
-        const bool entering = dot(wo, hit.Ng) > 0.0f;
         w.inMedium[p] = entering && !isBlack(cl.sigmaA);
         w.sigmaA[p] = entering ? cl.sigmaA : spectrum(0.0f);
     }
@@ -1061,6 +1132,8 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
     w.etaScale[slot] = 1.0f;
     w.sigmaA[slot] = spectrum(0.0f);
     w.inMedium[slot] = 0;
+    if (w.nested)
+        w.nested[slot].clear();
     w.eventCounts[slot] = 0;
     w.limitDither[slot] = sampler.get1D(stream::kLimit);
     w.lightOnly[slot] = 0;
@@ -1075,6 +1148,12 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
     w.prevSet[slot] = kPrevSetDelta;
     w.ao[slot] = 0.0f;
     w.cryptoMesh[slot] = kInvalidId;
+    if (a.records) { // per-sample records (camera_samples.h)
+        w.camEventT[slot] = kInf;
+        w.camOrg[slot] = ray.org;
+        w.camDir[slot] = ray.dir;
+        w.camTime[slot] = time;
+    }
     if (w.lpeState)
         w.lpeState[slot] = a.lpeStart; // after the camera event
     if (w.guide.count) { // path guiding's records (guiding.h)
@@ -1103,6 +1182,87 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
 // Light-only rays and rays past the path length only gather lights: ratio
 // tracking. With level-dependent volumes a continuation's lights get a
 // ratio-tracked transmittance of their own (lightT).
+// What a ray that may scatter sees at its end, for the sky atmosphere's
+// choice (MediumRay::behind, docs/design/M11-P7.md; wavefront.cpp's
+// AtmosphereBehind).
+__device__ uint8_t atmosphereBehind(const GpuScene &sc, uint32_t depth, bool miss, Vec3f dir, int crossings) {
+    if (!miss || crossings > 0)
+        return 1;
+    uint8_t behind = 0;
+    for (uint32_t i = 0; i < sc.lightCount; ++i) {
+        const LightData &l = sc.lights[i];
+        if (!(depth > 0 || l.cameraVisible))
+            continue;
+        if (l.type == LightType::Dome)
+            return 1;
+        if (l.type == LightType::Distant && !l.delta && dot(dir, l.direction) >= 1.0f - l.oneMinusCosThetaMax)
+            behind = 2;
+    }
+    return behind;
+}
+
+// The sky atmosphere's ground where a flight ended on it (wavefront.cpp's
+// shadeGround): a Lambert surface lit by the distant lights through the
+// atmosphere; with groundreceiveshadow through shadow rays (kind 0: the ray
+// ends here, its hit is not lit).
+__device__ void shadeGround(const ShadeArgs &a, uint32_t k, uint32_t p, const MediumRay &ray, float t,
+                            const Spectrum &weight) {
+    const GpuWave &w = a.wave;
+    const GpuScene &sc = a.scene;
+    const AtmosphereView &at = sc.atmosphere;
+    const Vec3f x = ray.o + ray.d * t;
+    const Vec3f n = atmosphereNormal(at, x);
+    const Spectrum beta = w.beta[p] * weight * at.groundAlbedo;
+    if (isBlack(beta))
+        return;
+    const float clampEscape = clampEmissionAt(a.settings, a.depth); // an object's light (the CPU's clampEmission)
+    const LpeView &lpe = sc.lpe;
+    GpuFilm film = a.film;
+    const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
+    const lpe::State object = state ? lpeStep(lpe, state, lpe::TypeObject, lpe::ScatterNone, 0, 0) : state;
+    const Vec3f origin = x + n * nova::fmax(4.0f * sc.tolerance, 1e-6f * maxComponent(absolute(x)));
+    for (uint32_t li = 0; li < sc.lightCount; ++li) {
+        const LightData &l = sc.lights[li];
+        if (l.type != LightType::Distant)
+            continue;
+        const float cosI = dot(n, l.direction);
+        if (!(cosI > 0.0f))
+            continue;
+        const Spectrum E = l.delta ? l.emission : l.emission * (kTwoPi * l.oneMinusCosThetaMax);
+        const Spectrum unit = beta * E * (cosI * kInvPi * l.diffuse);
+        if (isBlack(unit))
+            continue;
+        if (at.groundShadows) {
+            const float clampNee = clampNeeAt(a.settings, a.depth);
+            const float seed = a.rays.filterSeed[k] + 0.5f;
+            const uint32_t r = pushRay(w.shadow, origin, l.direction, shadowRayLength(kInf, sc.tolerance), p, ray.time,
+                                       seed - std::floor(seed), RayClass::Shadow);
+            w.shadowCategory[r] = l.shadowCategory;
+            w.shadowSlot[r] = 0;
+            w.shadowContribution[r] = clampContribution(unit, clampNee);
+            w.shadowEmitter[r] = kInvalidId;
+            if (w.partBegin) {
+                GpuLpeParts parts;
+                if (object)
+                    lpePartsAdd(lpe, parts, object, unit, unit);
+                attachParts(w, r, parts, clampScale(unit, clampNee));
+            }
+            continue;
+        }
+        const Spectrum contribution =
+            clampContribution(unit * atmosphereTransmittanceToInfinity(at, origin, l.direction), clampEscape);
+        if (isBlack(contribution))
+            continue;
+        addRadiance(w, p, contribution);
+        if (object) {
+            if (a.depth == 0)
+                lpeDepositAll(lpe, film, w.pixel[p], object, contribution);
+            else
+                lpeDeposit(lpe, film, w.pixel[p], object, contribution);
+        }
+    }
+}
+
 extern "C" __global__ void novaMedia(const ShadeArgs a) {
     const uint32_t k = threadIndex();
     if (k >= *a.rays.count)
@@ -1135,6 +1295,11 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
     ray.o = org;
     ray.d = dir;
     ray.tEnd = a.rays.tMax[k];
+    // Camera rays that miss see the sky atmosphere past the far clipping
+    // plane (Karma's ignorecameraclip, docs/design/M11-P7.md).
+    const bool atmosphere = sc.atmosphere.volume != 0xFFFFFFFFu;
+    if (atmosphere && miss && a.depth == 0 && sc.atmosphere.ignoreClip)
+        ray.tEnd = kInf;
     ray.time = a.rays.time[k];
     ray.rayType = a.rays.rayType[k];
     ray.depth = a.depth;
@@ -1172,8 +1337,10 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
         gather.lights = !split;
         GpuHits hits;
         Spectrum alphaT;
-        const MediumFlight f = flyMedia(media, spans, active, hits, ray, w.beta[p], u0, rng, &gather,
-                                        a.depth == 0 ? &alphaT : nullptr, crossT, crossOut, crossings);
+        if (atmosphere)
+            ray.behind = atmosphereBehind(sc, a.depth, miss, dir, crossings);
+        const MediumFlight f = flyAtmosphere(media, spans, active, hits, ray, w.beta[p], u0, rng, &gather,
+                                             a.depth == 0 ? &alphaT : nullptr, crossT, crossOut, crossings);
         w.mediumT[k] = f.weight;
         if (a.depth == 0)
             w.mediumAlpha[k] = alphaT;
@@ -1184,6 +1351,12 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
             w.volumePhase[k] = f.phase;
             crossings = f.crossings; // the lights in front of the event
         }
+        if (f.ground) {
+            // The flight ends on the atmosphere's ground: its light, and
+            // nothing from behind it.
+            shadeGround(a, k, p, ray, f.t, f.weight);
+            w.mediumT[k] = Spectrum{0.0f, 0.0f, 0.0f};
+        }
         if (split) {
             // Lights along the whole segment, as the light sample's shadow
             // ray of the event that spawned this ray sees them (one level
@@ -1193,8 +1366,9 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
             const uint32_t ls = stream::mediumLight(a.depth);
             Rng lrng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], ls);
             lightGather.objects = false;
-            w.lightT[k] = trackMedia(media, spans, active, light, Sampler{w.pixelSeed[p], w.sampleIndex[p]}.get1D(ls),
-                                     lrng, &lightGather, crossT, crossOut, allCrossings);
+            w.lightT[k] = trackAtmosphere(media, spans, active, light,
+                                          Sampler{w.pixelSeed[p], w.sampleIndex[p]}.get1D(ls), lrng, &lightGather,
+                                          crossT, crossOut, allCrossings);
             crossings = allCrossings;
         }
     } else {
@@ -1204,7 +1378,7 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
         if (ray.depth > 0)
             --ray.depth;
         gather.objects = false;
-        const Spectrum T = trackMedia(media, spans, active, ray, u0, rng, &gather, crossT, crossOut, crossings);
+        const Spectrum T = trackAtmosphere(media, spans, active, ray, u0, rng, &gather, crossT, crossOut, crossings);
         w.mediumT[k] = w.mediumAlpha[k] = w.lightT[k] = T;
     }
     w.crossCount[k] = uint8_t(crossings);
@@ -1256,7 +1430,7 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
     const float tHit = a.rays.tMax[k]; // the ray's tMax at a miss
     // A scattering event in a volume (novaMedia) ends the segment: the
     // surface behind it is not reached, the event goes to pass C'.
-    const bool media = sc.activeVolumeCount > 0;
+    const bool media = sc.anyMedia();
     const bool event = media && w.volumeHit[k];
     // Absorption along the segment inside a medium (Beer). A ray that leaves
     // the scene from inside an absorbing medium is lost.
@@ -1308,16 +1482,28 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             const Spectrum T = w.mediumAlpha[k];
             return 1.0f - (T.x + T.y + T.z) * (1.0f / 3.0f);
         };
+        // The camera hit for the host's cryptomattes and per-sample records
+        // (camera_samples.h), as the CPU's recordCameraHit.
+        const auto recordHit = [&] {
+            w.cryptoMesh[p] = w.hitMesh[k];
+            w.cryptoPrim[p] = w.hitPrim[k];
+            w.cryptoInstance[p] = w.hitInstance[k];
+            if (a.settings.records) {
+                w.camUv[p] = w.hitUv[k];
+                w.camT[p] = tHit;
+            }
+        };
         if (event) {
             float alpha = 1.0f;
             if (miss) {
                 bool visible = false;
                 cameraEnvironment(sc.lights, sc.lightCount, a.rays.org[k], dir, visible);
                 alpha = visible ? 1.0f : volumeAlpha();
-            } else if (a.settings.crypto) { // volumes are transparent to cryptomattes
-                w.cryptoMesh[p] = w.hitMesh[k];
-                w.cryptoPrim[p] = w.hitPrim[k];
+            } else if (a.settings.crypto || a.settings.records) { // volumes are transparent to cryptomattes
+                recordHit();
             }
+            if (a.settings.records)
+                w.camEventT[p] = w.volumeT[k];
             w.alpha[p] += alpha;
             pushEvent();
             return;
@@ -1337,10 +1523,10 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
             w.alpha[p] += visible ? 1.0f : media ? volumeAlpha() : 0.0f;
             return;
         }
-        if (a.settings.crypto) {
-            w.cryptoMesh[p] = w.hitMesh[k];
-            w.cryptoPrim[p] = w.hitPrim[k];
-        }
+        if (a.settings.crypto || a.settings.records)
+            recordHit();
+        if (a.settings.records)
+            w.camEventT[p] = tHit;
         const uint8_t holdout = sc.anyHoldouts ? sc.meshes[w.hitMesh[k]].holdout : uint8_t(0);
         if (holdout) {
             // A holdout (core/integrator/holdout.h): transparent to alpha but
@@ -1606,14 +1792,9 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
         lpeDeposit(lpe, film, pixel, lpe.program.step(scattered, lpe.albedoSymbol), w.beta[p]);
     const float clampNee = clampNeeAt(st, a.depth);
     constexpr int kVolumeClass = int(LimitClass::Volume);
-    const float volumeLimit = sc.volumes[volume].volumeLimit;
-    const uint32_t allowed =
-        pathLimit(volumeLimit >= 0.0f ? volumeLimit : st.limits.limit[kVolumeClass], w.limitDither[p]);
-    const uint32_t n = uint32_t(w.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu;
     // Path guiding (guiding.h): the phase function mixed with the field
     // while the continuation is a full ray.
-    const GuideSite guided =
-        sc.guide.active() ? guidePointAt(a, x, guide::kVolume, n < allowed) : GuideSite{};
+    const GuideSite guided = sc.guide.active() ? guideVolumeAt(a, volume, p, x) : GuideSite{};
 
     // Next-event estimation (no surface: the shadow ray starts at x).
     {
@@ -1647,7 +1828,9 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
                     equiangularDensities(sc, media, ray, w.eqA[k], w.eqB[k], li, t, choice.selectPdf, pEq, pFree);
                     share = pEq > 0.0f ? pFree * pFree / (pEq * pEq + pFree * pFree) : 1.0f;
                 }
-                const Spectrum unit = w.beta[p] * ls.Li * (f * share / lightPdf);
+                Spectrum unit = w.beta[p] * ls.Li * (f * share / lightPdf);
+                if (phase.kind == PhaseFunction::kSky) // the sky's channels (docs/design/M11-P7.md)
+                    unit *= phase.weight(d, ls.wi);
                 const Spectrum contribution = unit * weight;
                 GpuLpeParts parts;
                 if (scattered && (weight > 0.0f || lpe.unit))
@@ -1678,28 +1861,22 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     // guide the mixture's (weight phase / mixture density).
     float pdf = 0.0f, phaseWeight = 1.0f;
     const Vec3f u = sampler.get3D(stream::bounce(a.depth, stream::kBsdf));
-    Vec3f wi;
-    if (guided.alpha > 0.0f && sampler.get1D(stream::guide(a.depth)) < guided.alpha) {
-        float pg = 0.0f;
-        wi = guideSampleAt(a, guided, {u.x, u.y}, pg);
-        const float ph = pg > 0.0f ? phase.eval(d, wi) : 0.0f;
-        pdf = (1.0f - guided.alpha) * ph + guided.alpha * pg;
-        phaseWeight = pdf > 0.0f ? ph / pdf : 0.0f;
-    } else {
-        wi = phase.sample(d, u, pdf);
-        if (guided.alpha > 0.0f && pdf > 0.0f) {
-            const float ph = pdf;
-            pdf = guidedPointPdfAt(a, guided, ph, wi);
-            phaseWeight = ph / pdf;
-        }
-    }
+    const Vec3f wi = guided.alpha > 0.0f ? guidedPhaseAt(a, guided, phase, d, u, sampler.get1D(stream::guide(a.depth)),
+                                                         pdf, phaseWeight)
+                                         : phase.sample(d, u, pdf);
     if (!(pdf > 0.0f) || !(phaseWeight > 0.0f))
         return;
+    const float volumeLimit = sc.volumes[volume].volumeLimit;
+    const uint32_t allowed =
+        pathLimit(volumeLimit >= 0.0f ? volumeLimit : st.limits.limit[kVolumeClass], w.limitDither[p]);
+    const uint32_t n = uint32_t(w.eventCounts[p] >> (8 * kVolumeClass)) & 0xFFu;
     if (n >= allowed)
         w.lightOnly[p] = 1;
     else if (n < 255)
         w.eventCounts[p] += uint64_t(1) << (8 * kVolumeClass);
     Spectrum beta = w.beta[p] * phaseWeight;
+    if (phase.kind == PhaseFunction::kSky)
+        beta *= phase.weight(d, wi);
     bool alive = !isBlack(beta) && isFinite(beta);
     if (alive && a.depth + 1 >= st.rrStartDepth) {
         const float s = maxComponent(absolute(beta)) * w.etaScale[p];
@@ -1782,7 +1959,7 @@ extern "C" __global__ void novaShadow(const ShadowArgs a) {
         T = w.fakeT[i];
         c *= T;
     }
-    if (!blocked && a.scene.activeVolumeCount > 0 && (!isBlack(c) || unit)) {
+    if (!blocked && a.scene.anyMedia() && (!isBlack(c) || unit)) {
         // The volumes between the point and the light, seen as a shadow ray
         // by their shaders.
         MediumRay ray;
@@ -1798,7 +1975,7 @@ extern "C" __global__ void novaShadow(const ShadowArgs a) {
         GpuSpans spans;
         GpuActives active;
         const Spectrum Tm =
-            trackMedia(media, spans, active, ray, Sampler{w.pixelSeed[p], w.sampleIndex[p]}.get1D(stream), rng, nullptr);
+            trackAtmosphere(media, spans, active, ray, Sampler{w.pixelSeed[p], w.sampleIndex[p]}.get1D(stream), rng, nullptr);
         T *= Tm;
         c *= Tm;
     }

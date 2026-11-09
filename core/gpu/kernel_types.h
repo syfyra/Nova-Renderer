@@ -14,6 +14,7 @@
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_lane.h"
 #include "core/integrator/medium_track.h"
+#include "core/integrator/nested.h"
 #include "core/lights/light_sampler.h"
 #include "core/lights/light_tree.h"
 #include "core/lights/lights.h"
@@ -180,6 +181,7 @@ struct GpuScene {
     float tolerance = 0.0f;
     uint8_t hasAreaLights = 0, hasVisibleAreaLights = 0;
     uint8_t anyFiltered = 0; // some mesh is filtered: rays carry opacity seeds (Scene::anyFiltered)
+    uint8_t nestedDielectrics = 0; // Scene::nestedDielectrics
     // Holdouts (core/integrator/holdout.h): some mesh is a holdout; some light
     // has illumbackground and some mesh is a background holdout.
     uint8_t anyHoldouts = 0, illumBackground = 0;
@@ -192,6 +194,9 @@ struct GpuScene {
     const uint32_t *activeVolumes = nullptr;
     uint32_t activeVolumeCount = 0;
     uint8_t levelDependent = 0;
+    // The sky atmosphere (docs/design/M11-P7.md; volume kInvalidId: none).
+    AtmosphereView atmosphere;
+    NOVA_INLINE bool anyMedia() const { return activeVolumeCount > 0 || atmosphere.volume != 0xFFFFFFFFu; }
     // Equiangular sampling (M9 D17): the lights that opted in, chosen by power
     // (table slot -> light), each light's probability of being chosen.
     const uint32_t *eqLights = nullptr;
@@ -224,6 +229,9 @@ struct GpuSettings {
     float textureFilterWidth = 0.25f;
     uint8_t ao = 0;     // the film has an ambient occlusion plane
     uint8_t crypto = 0; // the film has cryptomattes: camera hits are recorded
+    // The film has per-sample planes (filtered utility AOVs, a deep map;
+    // docs/design/M11-P6.md 4): the camera hits' full records too.
+    uint8_t records = 0;
 };
 
 // A ray queue (RayQueue) with its length on the device.
@@ -283,6 +291,7 @@ struct GpuWave {
     float *etaScale = nullptr;
     Spectrum *sigmaA = nullptr;
     uint8_t *inMedium = nullptr;
+    NestedMedia *nested = nullptr; // the media by priority (nested dielectrics, core/integrator/nested.h)
     uint64_t *eventCounts = nullptr;
     float *limitDither = nullptr;
     uint8_t *lightOnly = nullptr;
@@ -337,6 +346,15 @@ struct GpuWave {
     // which the host accumulates.
     uint32_t *cryptoMesh = nullptr;
     uint32_t *cryptoPrim = nullptr;
+    uint32_t *cryptoInstance = nullptr;
+    // Per-sample records (records): the camera hit's barycentrics and
+    // distance, the first event's distance (kInf: none), the camera ray.
+    Vec2f *camUv = nullptr;
+    float *camT = nullptr;
+    float *camEventT = nullptr;
+    Vec3f *camOrg = nullptr;
+    Vec3f *camDir = nullptr;
+    float *camTime = nullptr;
     // Light path expressions: per path its state; per shadow ray its parts
     // [partBegin, + partCount) in the wave's arena (partUsed: taken so far,
     // partCapacity: its size; parts past it are dropped).
@@ -420,6 +438,7 @@ struct GenerateArgs {
     uint32_t seed = 0;
     uint32_t sampleOffset = 0; // Film::sampleOffset
     uint8_t filterSeeds = 0; // rays carry opacity seeds (some mesh is filtered)
+    uint8_t records = 0;     // per-sample records (GpuSettings::records)
 };
 
 struct ShadeArgs {

@@ -355,11 +355,12 @@ void HdNovaSphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         // Per-object ray limits and shading properties (Nova's, then Karma's
         // constant primvars; docs/design/M11-P1.md).
         scene.setMeshRayLimits(_meshId, HdNovaObjectOverrides(sd, id));
+        HdNovaWarnPortalPrim(sd, id, "spheres"); // light portals are meshes only (M11 P9b)
         scene.setMeshLpeTag(_meshId, HdNovaObjectLpeTag(sd, id));
         scene.setMeshVisibility(_meshId, HdNovaObjectVisibility(sd, id)); // M11 P2
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
-                            HdNovaCryptoAttributes(sd, id, names));
+                            HdNovaCryptoAttributes(sd, id, names, GetInstancerId()));
     }
     if (categoriesDirty)
         HdNovaSyncCategories(sd, id, GetInstancerId(), scene, _meshId); // light linking (M9 D15)

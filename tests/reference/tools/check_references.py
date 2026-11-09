@@ -38,6 +38,11 @@ def main():
     if scene.get("status") == "pending":
         print(f"{name}: pending ({scene.get('requires', 'not implemented yet')})")
         return rc.SKIP
+    if args.cli and scene.get("cli", True) is False:
+        # Houdini's imaging adapters (USD_HD.dll) are not in nova_cli: e.g. the
+        # Karma Sky Atmosphere reaches only husk (docs/design/M11-P7.md).
+        print(f"{name}: husk only")
+        return rc.SKIP
 
     # The reference must have been made from the current scene files.
     info_path = os.path.join(args.refdir, "images", f"{name}.json")

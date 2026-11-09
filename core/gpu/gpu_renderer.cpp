@@ -685,6 +685,8 @@ bool GpuRenderer::setScene(const Scene &scene) {
             l.texels = put(l.texels, size_t(l.texWidth) * l.texHeight).ptr;
         if (l.filters)
             l.filters = put(l.filters, l.filterCount).ptr;
+        if (l.portals) // a dome's light portals (M11-P9b)
+            l.portals = put(l.portals, l.portalCount).ptr;
         Distribution2DView &d = l.distribution;
         if (d.func) {
             const size_t nu = d.nu, nv = d.nv;
@@ -717,6 +719,12 @@ bool GpuRenderer::setScene(const Scene &scene) {
     t.infiniteTable.alias = put(tree.infiniteTable.alias, tree.infiniteTable.count).ptr;
     t.infiniteSlot = put(tree.infiniteSlot, treeLights).ptr;
     t.cut = put(tree.cut, tree.cutCount).ptr;
+    if (tree.portalCount && tree.infiniteCount > 0) { // domes with light portals (M11-P9b)
+        const uint32_t last = tree.infiniteCount - 1;
+        t.portalTris = put(tree.portalTris, size_t(tree.portalBegin[last]) + tree.portalCount[last]).ptr;
+        t.portalBegin = put(tree.portalBegin, tree.infiniteCount).ptr;
+        t.portalCount = put(tree.portalCount, tree.infiniteCount).ptr;
+    }
     t.links.light = put(tree.links.light, treeLights).ptr;
     t.links.receiver = put(tree.links.receiver, tree.receiverSetCount).ptr;
     m_view.links = t.links; // over every light, as Scene::lightLinks()
@@ -813,6 +821,12 @@ bool GpuRenderer::setScene(const Scene &scene) {
     m_view.activeVolumes = put(scene.activeVolumes()).ptr;
     m_view.activeVolumeCount = uint32_t(scene.activeVolumes().size());
     m_view.levelDependent = uint8_t(scene.anyLevelDependentVolume());
+    // The sky atmosphere (docs/design/M11-P7.md) with its altitude levels.
+    m_view.atmosphere = AtmosphereView{};
+    if (const AtmosphereView *atmosphere = scene.atmosphere()) {
+        m_view.atmosphere = *atmosphere;
+        m_view.atmosphere.levels = put(scene.atmosphereLevels()).ptr;
+    }
     // Equiangular sampling (M9 D17): the lights that opted in.
     const Scene::EquiangularLights eq = scene.equiangularLights();
     m_view.eqLights = put(eq.lights, eq.table.count).ptr;
@@ -823,6 +837,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
     m_view.eqPmf = put(eq.pmf, scene.analyticLightCount()).ptr;
     m_view.tolerance = scene.intersectionTolerance();
     m_view.anyFiltered = uint8_t(scene.anyFiltered());
+    m_view.nestedDielectrics = uint8_t(scene.nestedDielectrics());
     // Holdouts (core/integrator/holdout.h).
     m_view.anyHoldouts = uint8_t(scene.anyHoldouts());
     m_view.shadowVisibilityDiffers = uint8_t(scene.shadowVisibilityDiffers());
@@ -852,7 +867,8 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     // Pre-lit background holdouts with illumbackground lights use the walk
     // exits' kind (kernels.cu shadePrelit).
     const uint32_t slots = (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u);
-    if (paths <= m_capacity && slots <= m_shadowSlots)
+    const bool nested = m_view.nestedDielectrics != 0;
+    if (paths <= m_capacity && slots <= m_shadowSlots && (!nested || m_nestedReserved))
         return true;
     m_waveBuffers.clear();
     bool ok = true;
@@ -884,6 +900,11 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.etaScale, paths);
     field(w.sigmaA, paths);
     field(w.inMedium, paths);
+    // Only scenes with nested dielectrics carry the media (72 bytes a path).
+    if (nested)
+        field(w.nested, paths);
+    else
+        w.nested = nullptr;
     field(w.eventCounts, paths);
     field(w.limitDither, paths);
     field(w.lightOnly, paths);
@@ -924,10 +945,18 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.aoBelow, paths);
     field(w.cryptoMesh, paths);
     field(w.cryptoPrim, paths);
+    field(w.cryptoInstance, paths);
+    field(w.camUv, paths);
+    field(w.camT, paths);
+    field(w.camEventT, paths);
+    field(w.camOrg, paths);
+    field(w.camDir, paths);
+    field(w.camTime, paths);
     rays(m_rays[0], 0, paths);
     rays(m_rays[1], 1, paths);
     m_capacity = ok ? paths : 0;
     m_shadowSlots = ok ? slots : 0;
+    m_nestedReserved = ok && nested;
     return ok;
 }
 
@@ -1249,6 +1278,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     UtilityPlane *aoPlane = film.findUtility(UtilityKind::Ao);
     gs.ao = aoPlane != nullptr;
     gs.crypto = !film.crypto.empty();
+    gs.records = film.wantsSampleRecords();
     // The camera cone of each 32 x 32 tile of the region at its center, as
     // the CPU's tiles (Renderer::buildTiles, generateCameraRays).
     const int tilesX = (region.width() + 31) / 32, tilesY = (region.height() + 31) / 32;
@@ -1317,7 +1347,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     const uint32_t wavePixels = std::max(1u, kMaxWavePaths / std::max(1u, spp));
     for (uint32_t first = 0; first < regionPixels; first += wavePixels) {
         const uint32_t pixels = std::min(wavePixels, regionPixels - first), paths = pixels * spp;
-        const bool media = m_view.activeVolumeCount > 0;
+        const bool media = m_view.anyMedia();
         const bool fake = m_scene->anyFakeCaustics();
         if (!reserveWave(paths) || !reserveWalks(paths) || !setCount(m_rays[0], paths) || (lpeOn && !reserveLpe(paths)) ||
             (media && !reserveMedia(paths)) || (fake && !reserveFake(paths)))
@@ -1351,6 +1381,7 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
         g.sampleOffset = film.sampleOffset;
         g.lpeStart = lpeOn ? lpe->program.start : lpe::State(0);
         g.filterSeeds = view.anyFiltered;
+        g.records = gs.records;
         if (!launch(m_generate, paths, &g))
             return false;
         // Per depth the queue lengths come back after shading (12 bytes): the
@@ -1568,21 +1599,37 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             if (!launch(m_guideRecord, paths, &f))
                 return false;
         }
-        if (gs.crypto) { // the camera hits' ids, accumulated on the host (D9)
-            m_cryptoMesh.resize(paths);
-            m_cryptoPrim.resize(paths);
-            if (!m_device.download(m_cryptoMesh.data(), CUdeviceptr(m_wave.cryptoMesh), paths * sizeof(uint32_t)) ||
-                !m_device.download(m_cryptoPrim.data(), CUdeviceptr(m_wave.cryptoPrim), paths * sizeof(uint32_t)))
+        if (gs.crypto || gs.records) { // the camera hits, accumulated on the host (D9; M11 P6)
+            CameraSampleRecords &r = m_records;
+            r.reserve(paths);
+            m_samplePixel.resize(paths);
+            m_sampleIndex.resize(paths);
+            const auto get = [&](auto &dst, auto *src) {
+                return m_device.download(dst.data(), CUdeviceptr(src), paths * sizeof(dst[0]));
+            };
+            if (!get(r.mesh, m_wave.cryptoMesh) || !get(r.prim, m_wave.cryptoPrim) ||
+                !get(r.instance, m_wave.cryptoInstance))
                 return false;
+            if (gs.records) {
+                m_sampleRadiance.resize(paths);
+                if (!get(r.uv, m_wave.camUv) || !get(r.t, m_wave.camT) || !get(r.eventT, m_wave.camEventT) ||
+                    !get(r.org, m_wave.camOrg) || !get(r.dir, m_wave.camDir) || !get(r.time, m_wave.camTime) ||
+                    !get(r.alpha, m_wave.alpha) || !get(m_sampleRadiance, m_wave.radiance))
+                    return false;
+            }
             for (uint32_t slot = 0; slot < paths; ++slot) {
-                if (m_cryptoMesh[slot] == kInvalidId)
-                    continue;
                 const uint32_t pixel = first + slot / spp;
                 const int x = region.x0 + int(pixel % uint32_t(region.width())), y = region.y0 + int(pixel / uint32_t(region.width()));
-                accumulateCrypto(*m_scene, film,
-                                 list ? (*list)[pixel] : uint32_t(y) * uint32_t(film.width) + uint32_t(x),
-                                 m_cryptoMesh[slot], m_cryptoPrim[slot]);
+                const uint32_t pix = list ? (*list)[pixel] : uint32_t(y) * uint32_t(film.width) + uint32_t(x);
+                m_samplePixel[slot] = pix;
+                m_sampleIndex[slot] = film.count[pix] + slot % spp; // the counts follow after the waves
+                if (gs.crypto && r.mesh[slot] != kInvalidId)
+                    accumulateCrypto(*m_scene, film, pix, r.mesh[slot], r.prim[slot], r.instance[slot]);
             }
+            if (gs.records)
+                accumulateCameraSamples(*m_scene, camera, gs.globals, film,
+                                        CameraSampleView::of(r, paths, m_samplePixel.data(), m_sampleIndex.data(),
+                                                             m_sampleRadiance.data()));
         }
     }
 

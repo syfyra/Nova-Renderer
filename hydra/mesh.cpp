@@ -846,6 +846,22 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         _lpeTag = HdNovaObjectLpeTag(sd, id); // light path expressions
         _lightSource = HdNovaMeshLightSource(sd, id, defaults); // emissive meshes as lights (M9 D14)
         _visibility = HdNovaObjectVisibility(sd, id); // ray visibility and holdouts (M11 P2)
+        // Light portals (docs/design/M11-P9b.md): Nova's primvars, Karma's,
+        // the render settings' values.
+        {
+            static const TfToken novaPortal("nova:object:isPortal"), karmaPortal("karma:object:isportal"),
+                novaDomes("nova:object:portalDomeLights"), karmaDomes("karma:object:portaldomelights");
+            std::optional<bool> portal = HdNovaFlag(HdNovaConstantPrimvar(sd, id, novaPortal));
+            if (!portal)
+                portal = HdNovaFlag(HdNovaConstantPrimvar(sd, id, karmaPortal));
+            _portal = portal ? *portal : defaults.isPortal > 0;
+            VtValue domes = HdNovaConstantPrimvar(sd, id, novaDomes);
+            if (domes.IsEmpty())
+                domes = HdNovaConstantPrimvar(sd, id, karmaDomes);
+            _portalDomes = !domes.IsEmpty()             ? HdNovaTextList(domes)
+                           : defaults.portalDomeLightsSet ? defaults.portalDomeLights
+                                                          : std::string("*");
+        }
         // Displacement dicing (M4.6): Nova's primvars, Karma's
         // (dicingquality, dicingdepthmin = max, truedisplace), the render
         // settings' Karma values.
@@ -896,6 +912,26 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     const unsigned maxSteps = param->GetMaxMotionSteps();
     _shutter = shutter; // the build helpers' (_BuildMesh)
     const bool newShutter = !(shutter == _sampledShutter) || maxSteps != _sampledMaxSteps;
+
+    // A light portal (docs/design/M11-P9b.md): the mesh renders nothing, its
+    // triangles are the openings the dome lights it serves shine through.
+    // Back to a surface, the mesh is built anew (as after a medium).
+    if (_portal) {
+        if (_meshId != nova::kInvalidId) {
+            param->AcquireSceneForEdit().removeMesh(_meshId);
+            _meshId = nova::kInvalidId;
+        }
+        param->ForgetDisplacedMesh(id);
+        if (_medium.Active())
+            _medium.Remove(*param);
+        _SyncPortal(sd, *param, bits);
+        *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+        return;
+    }
+    if (_portalActive) {
+        param->AcquireSceneForEdit().removePortal(id.GetString());
+        _portalActive = false;
+    }
 
     // A medium bounded by the mesh (docs/design/M11-P5.md): its inside is a
     // volume, the mesh itself renders nothing. Back to a surface, the mesh
@@ -1106,7 +1142,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     if (first || (bits & (HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyInstancer))) {
         HdNovaCryptoNames &names = param->GetCryptoNames(); // cryptomatte ids (D10)
         scene.setMeshCrypto(_meshId, names.Note("__name", HdNovaCryptoObjectName(sd, id, GetInstancerId())),
-                            HdNovaCryptoAttributes(sd, id, names));
+                            HdNovaCryptoAttributes(sd, id, names, GetInstancerId()));
     }
     if (!geometryDirty) { // updateMesh() already carried these
         if (visibilityDirty)
@@ -1128,6 +1164,65 @@ void HdNovaMesh::Finalize(HdRenderParam *renderParam) {
         param->ForgetMeshPath(GetId());
     }
     _medium.Remove(*param);
+    if (_portalActive) {
+        param->AcquireSceneForEdit().removePortal(GetId().GetString());
+        _portalActive = false;
+    }
+}
+
+bool HdNovaMesh::_SyncPortal(HdSceneDelegate *sd, HdNovaRenderParam &param, HdDirtyBits bits) {
+    const SdfPath &id = GetId();
+    const HdDirtyBits geometry = HdChangeTracker::DirtyTopology | HdChangeTracker::DirtyPoints |
+                                 HdChangeTracker::DirtyTransform | HdChangeTracker::DirtyInstancer |
+                                 HdChangeTracker::DirtyInstanceIndex | HdChangeTracker::DirtyVisibility |
+                                 HdChangeTracker::DirtyPrimvar;
+    if (_portalActive && !(bits & geometry))
+        return true;
+    nova::Scene &scene = param.AcquireSceneForEdit();
+    const auto remove = [&] {
+        if (_portalActive)
+            scene.removePortal(id.GetString());
+        _portalActive = false;
+        return false;
+    };
+    if (!IsVisible())
+        return remove();
+    // The control mesh at the frame (portals do not move within the shutter).
+    const VtValue pointsValue = sd->Get(id, HdTokens->points);
+    if (!pointsValue.IsHolding<VtVec3fArray>())
+        return remove();
+    const VtVec3fArray &points = pointsValue.UncheckedGet<VtVec3fArray>();
+    if (_topology.GetNumPoints() > int(points.size()))
+        return remove();
+    HdMeshUtil meshUtil(&_topology, id);
+    VtVec3iArray triangles;
+    VtIntArray primitiveParams;
+    meshUtil.ComputeTriangleIndices(&triangles, &primitiveParams);
+    // World space: the prim's transform, or each instance's.
+    std::vector<nova::Xform34> xforms;
+    const GfMatrix4d xf = sd->GetTransform(id);
+    if (!GetInstancerId().IsEmpty()) {
+        if (auto *instancer = static_cast<HdNovaInstancer *>(sd->GetRenderIndex().GetInstancer(GetInstancerId())))
+            instancer->ComputeInstanceTransforms(id, xf, xforms);
+    } else {
+        xforms.push_back(nova::toXform34(toNova(xf)));
+    }
+    nova::PortalDesc desc;
+    desc.domeLights = _portalDomes;
+    desc.triangles.reserve(xforms.size() * triangles.size() * 3);
+    for (const nova::Xform34 &x : xforms)
+        for (const GfVec3i &t : triangles)
+            for (int k = 0; k < 3; ++k) {
+                const GfVec3f &p = points[size_t(t[k])];
+                desc.triangles.push_back({x.c[0][0] * p[0] + x.c[1][0] * p[1] + x.c[2][0] * p[2] + x.c[3][0],
+                                          x.c[0][1] * p[0] + x.c[1][1] * p[1] + x.c[2][1] * p[2] + x.c[3][1],
+                                          x.c[0][2] * p[0] + x.c[1][2] * p[1] + x.c[2][2] * p[2] + x.c[3][2]});
+            }
+    if (desc.triangles.empty())
+        return remove();
+    scene.setPortal(id.GetString(), desc);
+    _portalActive = true;
+    return true;
 }
 
 nova::MediumShellPtr HdNovaMesh::_BuildShell(HdSceneDelegate *sd, HdNovaRenderParam &param) {

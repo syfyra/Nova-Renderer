@@ -16,6 +16,7 @@ struct Compiled;
 }
 struct UtilityRequest;
 struct CryptoRequest;
+struct DeepRequest;
 struct BakeSettings;
 
 // Where passes render (docs/design/M10.md D1, D15): the CPU, or the GPU with
@@ -93,6 +94,8 @@ struct RenderSettings {
     // Cryptomattes to render (core/film/crypto.h); null: none.
     std::shared_ptr<const std::vector<CryptoRequest>> crypto;
     GuidingSettings guiding;
+    // A deep camera map to render (core/film/film.h); null: none.
+    std::shared_ptr<const DeepRequest> deep;
     // Texture baking (core/bake/bake.h, docs/design/M11-P8.md): the film is
     // a texture tile of the bake meshes; rendered on the CPU. Null: a camera
     // render.

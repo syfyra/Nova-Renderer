@@ -12,9 +12,11 @@
 #include "core/film/filter.h"
 #include "core/film/lpe.h"
 #include "core/integrator/guiding.h"
+#include "core/integrator/camera_samples.h"
 #include "core/integrator/lpe_path.h"
 #include "core/integrator/material_eval.h"
 #include "core/integrator/material_lane.h"
+#include "core/integrator/nested.h"
 #include "core/integrator/settings.h"
 #include "core/integrator/volume_media.h"
 #include "core/math/spectrum.h"
@@ -191,6 +193,7 @@ struct WaveQueues {
     std::vector<float> etaScale;      // product of squared relative indices of refractions (Russian roulette)
     std::vector<Spectrum> sigmaA;     // absorption of the medium the path is in
     std::vector<uint8_t> inMedium;    // the path is inside a refractive, absorbing material
+    std::vector<NestedMedia> nested;  // the media by priority (nested dielectrics, core/integrator/nested.h)
     std::vector<float> coneWidth;     // ray cone at the current ray's origin (core/texture/ray_cone.h)
     std::vector<float> coneSpread;
     // Ray limits (core/scene/ray_limits.h): events per LimitClass so far,
@@ -213,6 +216,10 @@ struct WaveQueues {
     std::vector<uint32_t> prevSet; // its light-linking receiver set (M9 D15, path.h)
     std::vector<lpe::State> lpeState;  // the path's events so far (light path expressions)
     std::vector<uint32_t> firstHitPixels; // the wave's pixels without samples yet (first-hit AOVs)
+    // Per-sample records of the camera hits (filtered utility planes, deep
+    // maps; docs/design/M11-P6.md 4), kept when the film wants them.
+    bool records = false;
+    CameraSampleRecords camera;
 
     RayQueue rays;
     RayQueue nextRays;
@@ -339,9 +346,9 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
 uint64_t renderFirstHits(const Scene &scene, const Camera &camera, const RenderSettings &settings, const TileRect &tile,
                          Film &film, WaveQueues &queues, const uint32_t *pixels = nullptr, uint32_t pixelCount = 0);
 
-// One sample's cryptomatte ids at a camera hit (mesh, primitive) into the
-// film's planes (the GPU gathers the hits, the host accumulates, D9).
-void accumulateCrypto(const Scene &scene, Film &film, uint32_t pixel, MeshId mesh, uint32_t prim);
+// One sample's cryptomatte ids at a camera hit (mesh, primitive, instance)
+// into the film's planes (the GPU gathers the hits, the host accumulates, D9).
+void accumulateCrypto(const Scene &scene, Film &film, uint32_t pixel, MeshId mesh, uint32_t prim, uint32_t instance);
 
 // The shading globals of a render: its frame and fps, and the camera for
 // NDC positions (Global::Pndc, Karma's space:ndc).
