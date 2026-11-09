@@ -17,6 +17,7 @@ namespace nova {
 namespace gpu {
 class GpuRenderer;
 }
+class Baker;
 
 // Progressive renderer: every renderPass() adds one sample to every pixel.
 // Tiles are distributed over TBB worker threads; each tile is one wave.
@@ -121,6 +122,10 @@ private:
     // sample filter, as the change of the LPE sums since the last pass
     // (docs/design/M11-P6.md 4; such renders take one sample per pass).
     void takeLpeSamples();
+    // Texture baking (core/bake/bake.h): one sample per pixel of the tile,
+    // on the CPU; the bake meshes are prepared again when the settings or
+    // the scene change.
+    bool bakePass(const std::function<bool()> &cancel);
 
     const Scene *m_scene = nullptr;
     Camera m_camera;
@@ -172,6 +177,9 @@ private:
     const lpe::Compiled *m_lpeProgram = nullptr; // the program m_lpe was built for
     uint64_t m_lpeVersion = 0;                   // and the scene version
     uint64_t m_lpeGeneration = 0;                // counts m_lpe's builds (the GPU's copy follows it)
+    std::unique_ptr<Baker> m_baker;
+    const BakeSettings *m_bakeBuilt = nullptr; // the settings and scene version m_baker was built for
+    uint64_t m_bakeVersion = 0;
 };
 
 } // namespace nova

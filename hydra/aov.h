@@ -46,6 +46,9 @@ struct HdNovaAovSource {
     int catcherOutput = -1, catcherSlot = -1;
     float catcherAlpha = 0.0f;
     nova::UtilityRequest utility; // Utility
+    // The plane holds per-sample sums (a texture bake's maps, M11 P8): the
+    // value is the sum over the pixel's count.
+    bool perSample = false;
     int utilityIndex = -1;  // the film's plane (Utility)
     nova::CryptoRequest crypto;   // Crypto
     int cryptoIndex = -1;   // the film's plane (Crypto)
@@ -56,12 +59,16 @@ struct HdNovaAovSource {
 };
 
 // Resolves a binding; warns once per AOV that Nova does not fill.
-// Karma's per-var sample filter (driver:parameters:aov:karma:filter,
+// `bake`: the render is a texture bake (docs/design/M11-P8.md): the
+// Texture Baker's raw sources (Nt, Af, __bake_P, N, export_*, ...) are its
+// maps, and every utility plane is filtered per sample.
+// Otherwise Karma's per-var sample filter (driver:parameters:aov:karma:filter,
 // docs/design/M11-P6.md 2) makes a utility plane per-sample; a beauty or LPE
 // var whose filter is not ubox becomes a per-sample utility plane too.
 // `primIdChannel`: a var named PrimId is bound (Karma's object coverage
 // modes depend on it).
-HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool primIdChannel = false);
+HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool bake = false,
+                                 bool primIdChannel = false);
 
 // Whether the bindings hold a var named PrimId.
 bool HdNovaHasPrimIdChannel(HdRenderPassAovBindingVector const &bindings);

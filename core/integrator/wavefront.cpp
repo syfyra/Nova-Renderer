@@ -10,8 +10,8 @@
 
 #include "core/integrator/wavefront.h"
 
+#include "core/bake/bake.h"
 #include "core/integrator/camera_samples.h"
-
 #include "core/bsdf/surface.h"
 #include "core/integrator/holdout.h"
 #include "core/integrator/material_eval.h"
@@ -2418,9 +2418,60 @@ uint32_t traceAoRays(const Scene &scene, UtilityPlane &ao, WaveQueues &q, const 
     return r.size;
 }
 
+// Texture baking (core/bake/bake.h): the camera paths of a wave start at the
+// bake's shading points. Every sample keeps its slot (pixel and count);
+// those with a shading point get a ray towards it, whose hit is known (the
+// first intersection is skipped). The bake's maps accumulate here too.
+static uint64_t generateBakePaths(const Scene &scene, const Camera &camera, const RenderSettings &settings,
+                           const PixelFilter &filter, const TileRect &tile, const uint32_t *pixels, uint32_t pixelCount,
+                           uint32_t samplesPerPixel, Film &film, WaveQueues &q, const Baker &baker) {
+    thread_local BakeScratch s;
+    uint64_t rays = baker.generate(scene, camera, filter, settings.seed, tile, pixels, pixelCount, samplesPerPixel, film, s);
+    rays += baker.accumulate(scene, settings, camera, settings.seed, film, s, false);
+    q.rays.size = 0;
+    for (uint32_t slot = 0; slot < uint32_t(s.samples.size()); ++slot) {
+        const BakeSample &b = s.samples[slot];
+        const int ix = int(b.pixel % uint32_t(film.width)) + camera.imageOriginX;
+        const int iy = int(b.pixel / uint32_t(film.width)) + camera.imageOriginY;
+        const Sampler sampler = Sampler::make(ix, iy, b.index, settings.seed);
+        q.pixel[slot] = b.pixel;
+        q.sampleIndex[slot] = b.index;
+        q.beta[slot] = spectrum(1.0f);
+        q.radiance[slot] = spectrum(0.0f);
+        q.pixelSeed[slot] = sampler.pixelSeed;
+        q.bsdfPdf[slot] = 0.0f;
+        q.diffuseShare[slot] = 1.0f;
+        q.etaScale[slot] = 1.0f;
+        q.sigmaA[slot] = spectrum(0.0f);
+        q.inMedium[slot] = 0;
+        q.coneWidth[slot] = 0.0f;
+        q.coneSpread[slot] = 0.0f;
+        q.eventCounts[slot] = 0;
+        q.limitDither[slot] = sampler.get1D(stream::kLimit);
+        q.lightOnly[slot] = 0;
+        q.afterDiffuse[slot] = 0;
+        q.holdout[slot] = 0;
+        q.prevP[slot] = b.org;
+        q.prevN[slot] = Vec3f{0.0f, 0.0f, 0.0f};
+        q.prevReceiver[slot] = uint8_t(Receiver::None);
+        q.prevSet[slot] = kPrevSetDelta;
+        if (!b.hit)
+            continue;
+        const uint32_t k = q.rays.size;
+        q.rays.push(b.org, b.dir, b.t * 1.0001f + 1e-6f, slot, camera.frameTime,
+                    scene.anyFiltered() ? sampler.get1D(stream::bounce(0, stream::kOpacity)) : 0.0f, RayClass::Camera);
+        q.hitT[k] = b.t;
+        q.hitMesh[k] = b.shade.mesh;
+        q.hitPrim[k] = b.prim;
+        q.hitUv[k] = b.uv;
+        q.hitInstance[k] = b.shade.instance;
+    }
+    return rays;
+}
+
 uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettings &settings,
                     const PixelFilter &filter, const TileRect &tile, const uint32_t *pixels, uint32_t pixelCount,
-                    Film &film, WaveQueues &q, const LpeTables *tables, uint32_t samplesPerPixel) {
+                    Film &film, WaveQueues &q, const LpeTables *tables, uint32_t samplesPerPixel, const Baker *baker) {
     const LpeView lpeView = tables ? tables->view() : LpeView{};
     const LpeView *lpe = tables ? &lpeView : nullptr;
     const uint32_t pixelPaths = pixels ? pixelCount : tile.pixelCount();
@@ -2429,13 +2480,15 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
     uint64_t rays = 0;
     const ClosureContext ctx{&bsdfTables(), kXyzToRec709Grey};
     const ShadeGlobals globals = shadeGlobals(settings, camera);
-    // First-hit AOVs for the pixels without a sample yet.
+    // First-hit AOVs for the pixels without a sample yet (a bake's planes
+    // are its own, per sample).
     q.firstHitPixels.clear();
-    forEachPixel(tile, pixels, pixelCount, film.width, [&](int x, int y, uint32_t) {
-        const uint32_t pix = uint32_t(y) * uint32_t(film.width) + uint32_t(x);
-        if (film.count[pix] == 0)
-            q.firstHitPixels.push_back(pix);
-    });
+    if (!baker)
+        forEachPixel(tile, pixels, pixelCount, film.width, [&](int x, int y, uint32_t) {
+            const uint32_t pix = uint32_t(y) * uint32_t(film.width) + uint32_t(x);
+            if (film.count[pix] == 0)
+                q.firstHitPixels.push_back(pix);
+        });
     if (!q.firstHitPixels.empty()) {
         const bool all = q.firstHitPixels.size() == pixelPaths;
         renderFirstHitAovs(scene, camera, tile, all ? pixels : q.firstHitPixels.data(),
@@ -2443,18 +2496,26 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
                            settings.textureFilterWidth, globals);
         rays += q.firstHitPixels.size();
     }
-    q.records = film.wantsSampleRecords();
+    // Per-sample records of the camera hits (not in bakes: no camera).
+    q.records = !baker && film.wantsSampleRecords();
     if (q.records)
         q.camera.reserve(paths);
-    generateCameraRays(camera, filter, settings.seed, tile, pixels, pixelCount, samplesPerPixel, film, q,
-                       scene.anyFiltered());
+    if (baker)
+        rays += generateBakePaths(scene, camera, settings, filter, tile, pixels, pixelCount, samplesPerPixel, film, q,
+                                  *baker);
+    else
+        generateCameraRays(camera, filter, settings.seed, tile, pixels, pixelCount, samplesPerPixel, film, q,
+                           scene.anyFiltered());
     if (lpe)
         std::fill(q.lpeState.begin(), q.lpeState.begin() + paths, lpe->program.start); // after the camera event
 
-    UtilityPlane *ao = film.utility.empty() ? nullptr : film.findUtility(UtilityKind::Ao);
+    UtilityPlane *ao = film.utility.empty() || baker ? nullptr : film.findUtility(UtilityKind::Ao);
     for (uint32_t depth = 0; depth <= settings.maxDepth && q.rays.size > 0; ++depth) {
         rays += q.rays.size;
-        intersectRays(scene, q, depth, globals);
+        if (baker && depth == 0) // the bake's rays: their hits are known
+            q.lightQuery = false;
+        else
+            intersectRays(scene, q, depth, globals);
         if (q.lightQuery)
             rays += q.rays.size;
         q.aoRays.size = 0;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "aov.h"
+#include "bake.h"
 #include "denoise.h"
 #include "renderParam.h"
 #include "velocitySceneIndex.h"
@@ -203,6 +204,11 @@ public:
     // while it stays the same). Also notes the deep file and the checkpoint
     // product, which the next render uses (OnRenderStarted).
     std::shared_ptr<const nova::DeepRequest> GetDeepRequest();
+    // Texture baking (docs/design/M11-P8.md): whether the settings are a
+    // Karma Texture Baker's, and its settings with the meshes resolved (null:
+    // no bake); the same object while they stay the same.
+    bool IsBaking() const;
+    std::shared_ptr<const nova::BakeSettings> GetBakeSettings();
     // Only called while the render thread is stopped, after GetLpeProgram()
     // and GetUtilityRequests() for the same bindings.
     void SetAovBindings(HdRenderPassAovBindingVector const &bindings);
@@ -278,6 +284,8 @@ private:
     ProductConfig _products, _activeProducts;
     std::set<std::string> _resumeTried; // checkpoint files a render resumed from (or tried)
     int64_t _lastCheckpointNs = 0;
+    std::shared_ptr<const nova::BakeSettings> _bake;
+    std::vector<HdNovaBakeFilter> _bakeFilters; // set with the bindings
     std::mutex _controlMutex;
     std::atomic<bool> _needsReset{false};
     std::atomic<bool> _stoppedByHost{false};

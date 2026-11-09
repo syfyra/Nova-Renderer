@@ -1,5 +1,6 @@
 #include "core/integrator/renderer.h"
 
+#include "core/bake/bake.h"
 #include "core/film/lpe_compile.h"
 #if NOVA_HAS_GPU
 #include "core/gpu/gpu_renderer.h"
@@ -470,7 +471,63 @@ bool Renderer::gpuPass(bool lists, uint32_t spp, const LpeTables *lpe) {
 #endif
 }
 
+bool Renderer::bakePass(const std::function<bool()> &cancel) {
+    std::atomic<bool> cancelled{false};
+    if (!m_baker || m_bakeBuilt != m_settings.bake.get() || m_bakeVersion != m_scene->version()) {
+        if (!m_baker)
+            m_baker = std::make_unique<Baker>();
+        m_baker->build(*m_scene, *m_settings.bake);
+        m_bakeBuilt = m_settings.bake.get();
+        m_bakeVersion = m_scene->version();
+    }
+    syncFilm();
+    m_gpuFilm = false;
+    m_lastPassGpu = false;
+    m_firstHitPass = m_fullPasses == 0;
+    // Lighting outputs path trace from the shading points (the wavefront
+    // with the bake's camera hits); otherwise only the maps.
+    const bool lighting = m_settings.bake->lighting;
+    const LpeTables *lpe = lighting ? lpeTables() : nullptr;
+    if (!m_tiles.empty()) {
+        m_queues->arena.execute([&] {
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, m_tiles.size(), 1), [&](const tbb::blocked_range<size_t> &range) {
+                const ScopedFlushDenormals ftz;
+                WaveQueues &queues = m_queues->perThread.local();
+                thread_local BakeScratch scratch;
+                for (size_t i = range.begin(); i != range.end(); ++i) {
+                    if (cancelled.load(std::memory_order_relaxed))
+                        return;
+                    if (cancel && cancel()) {
+                        cancelled = true;
+                        return;
+                    }
+                    if (lighting) {
+                        m_rays.fetch_add(renderWave(*m_scene, m_camera, m_settings, m_filter, m_tiles[i], nullptr, 0,
+                                                    m_film, queues, lpe, 1, m_baker.get()),
+                                         std::memory_order_relaxed);
+                        continue;
+                    }
+                    uint64_t rays = m_baker->generate(*m_scene, m_camera, m_filter, m_settings.seed, m_tiles[i], nullptr,
+                                                      0, 1, m_film, scratch);
+                    rays += m_baker->accumulate(*m_scene, m_settings, m_camera, m_settings.seed, m_film, scratch, true);
+                    m_rays.fetch_add(rays, std::memory_order_relaxed);
+                }
+            });
+        });
+    }
+    if (cancelled)
+        return false;
+    ++m_film.samples;
+    ++m_pass;
+    ++m_fullPasses;
+    ++m_level;
+    m_fillStride = 1;
+    return true;
+}
+
 bool Renderer::renderPass(const std::function<bool()> &cancel) {
+    if (m_settings.bake && m_scene)
+        return bakePass(cancel);
     std::atomic<bool> cancelled{false};
     // A proxy pass renders one pixel per stride x stride block; after them,
     // pixels with extra proxy samples reach the maximum first and drop out.

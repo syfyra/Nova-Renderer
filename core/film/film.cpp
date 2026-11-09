@@ -24,6 +24,7 @@ uint8_t utilityWidth(UtilityKind kind) {
     case UtilityKind::PixelSamples:
     case UtilityKind::Z:
     case UtilityKind::ObjectId:
+    case UtilityKind::BakeAlpha:
         return 1;
     case UtilityKind::Primvar:
     case UtilityKind::Beauty:

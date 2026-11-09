@@ -82,7 +82,28 @@ enum class UtilityKind : uint8_t {
     // output's value (Lpe, `index`; taken per pass from the film's sums).
     Beauty,
     Lpe,
+    // Texture baking (core/bake/bake.h, docs/design/M11-P8.md): the maps of
+    // Karma's Texture Baker, filtered (coverage averages) like every plane
+    // of a bake.
+    BakeNormal,          // Nt: the shading normal in the bake mesh's tangent frame
+    BakeHeight,          // Ds: the distance from the bake mesh to the shading point
+    BakeVector,          // Vd: the vector from the bake mesh to the shading point
+    BakeVectorTangent,   // Vdt: the same in the tangent frame
+    BakeOcclusion,       // Oc
+    BakeCavity,          // Cv
+    BakeThickness,       // Th
+    BakeCurvature,       // Cu
+    BakeEdge,            // Eg
+    BakeRoundedNormal,   // Rn: the rounded-edge normal in the tangent frame
+    BakeAlpha,           // Af: coverage
+    BakePosition,        // __bake_P: the shading point, in the bake's box
+    BakeShadingNormal,   // N (in a bake)
+    BakeGeometricNormal, // Ng (in a bake)
+    BakeExport,          // export_<name>: a Standard Surface input (or material AOV) at the shading point
 };
+
+// Whether a kind is one of the bake's maps.
+inline bool isBakeKind(UtilityKind kind) { return kind >= UtilityKind::BakeNormal; }
 
 struct UtilityRequest {
     UtilityKind kind = UtilityKind::P;
