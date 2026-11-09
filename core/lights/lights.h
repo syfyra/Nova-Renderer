@@ -140,6 +140,9 @@ struct LightData {
     // background holdouts as it lights other objects, and its shadows are
     // left out of the holdout shadow outputs.
     bool illumBackground = false;
+    // Karma's look-dev headlight casts no shadows (measured, docs/design/
+    // M11-P9a.md): its distant light samples have shadow rays of length 0.
+    bool castsShadows = true;
     NOVA_INLINE bool shadowLinked() const { return shadowCategory != 0xFFFFu; }
     NOVA_INLINE bool neeOnly() const { return shadowLinked() && type != LightType::Dome; }
     // Light filters (docs/design/M11-P4.md): the light's filters in order
@@ -389,7 +392,8 @@ struct LightSample {
 
 NOVA_INLINE LightSample sampleDistantLight(const LightData &light, Vec2f u) {
     LightSample s;
-    s.distance = kInf;
+    s.distance = light.castsShadows ? kInf : 0.0f; // 0: an empty shadow ray, nothing occludes
+
     s.delta = light.delta;
     if (light.delta) {
         s.wi = light.direction;

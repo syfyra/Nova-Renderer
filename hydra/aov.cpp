@@ -57,6 +57,15 @@ bool utilityOf(std::string const &name, nova::UtilityRequest &out) {
         {"ray:velocity", U::Velocity},
         {"AO", U::Ao},
         {"export_basecolor", U::BaseColor},
+        // Karma's outlines (docs/design/M11-P9a.md): the Karma Render
+        // Settings LOP's raw vars.
+        {"outline", U::Outline},
+        {"outline_contour", U::OutlineContour},
+        {"outline_crease", U::OutlineCrease},
+        {"outline_depth", U::OutlineDepth},
+        {"export_outline_id", U::OutlineId},
+        {"export_outline_thickness", U::OutlineThickness},
+        {"export_outline_color", U::OutlineColor},
         // M11 P6 (docs/design/M11-P6.md 3).
         {"ray:mask", U::Mask},
         {"ray:hitstack", U::HitStack},
@@ -153,8 +162,12 @@ static HdNovaAovSource resolveAov(HdRenderPassAovBinding const &binding, bool pr
 
 HdNovaAovSource HdNovaResolveAov(HdRenderPassAovBinding const &binding, bool bake, bool primIdChannel) {
     HdNovaAovSource out = resolveAov(binding, primIdChannel, !bake);
-    if (!bake)
+    if (!bake) {
+        // Karma's outline planes hold per-sample sums (M11 P9a): the mean.
+        out.perSample = out.kind == HdNovaAovKind::Utility && out.utility.kind != nova::UtilityKind::Ao &&
+                        nova::utilityPerSample(out.utility.kind);
         return out;
+    }
     // A bake: the baker's raw sources are its maps; every plane is filtered.
     const std::string source = setting(binding.aovSettings, "sourceName");
     const std::string type = setting(binding.aovSettings, "sourceType");
@@ -292,7 +305,9 @@ static HdNovaAovSource resolveAov(HdRenderPassAovBinding const &binding, bool pr
         if (out.kind == HdNovaAovKind::Utility && !pathExpression.empty() && pathExpression != "CO")
             warnOnce("AOV " + out.describe + ": utility path expression " + pathExpression +
                      " is not supported; the values are those of the camera hit (CO)");
-        if (out.kind == HdNovaAovKind::Utility && out.utility.kind != U::Ao) {
+        // Ao and Karma's outline planes are per-sample sums of their own (the
+        // outline vars' ubox is their mean): no filter.
+        if (out.kind == HdNovaAovKind::Utility && !nova::utilityPerSample(out.utility.kind)) {
             out.utility.filter = filter;
             // Karma's default value offsets raw vars only (measured: an LPE
             // var keeps its value).

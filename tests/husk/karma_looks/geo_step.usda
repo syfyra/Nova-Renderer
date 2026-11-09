@@ -1,0 +1,83 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+    timeCodesPerSecond = 24
+)
+
+# The step and the fold of tests/husk/check_karma_looks.py: the camera of
+# geo_edge.usda sees one emissive object, a card on the left half at z = -5
+# and, as part of the same mesh, a card on the right half 0.4 behind it
+# (a depth step with equal normals, reaching 0.2 under the near card; top
+# half), and a card folded away from the camera by 45 degrees at x = 0 (a
+# convex crease; bottom half). Both edges are at column 160.
+def Xform "World"
+{
+    def Mesh "step" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+        point3f[] points = [(-10, 0.05, -5), (0, 0.05, -5), (0, 10, -5), (-10, 10, -5),
+                            (-0.2, 0.05, -5.4), (20, 0.05, -5.4), (20, 20, -5.4), (-0.2, 20, -5.4)]
+        float3[] extent = [(-10, 0.05, -5.4), (20, 20, -5)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </Looks/front>
+    }
+    def Mesh "fold" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+        point3f[] points = [(-10, -10, -5), (0, -10, -5), (0, -0.05, -5), (-10, -0.05, -5),
+                            (0, -10, -5), (7.0710678, -10, -12.0710678), (7.0710678, -0.05, -12.0710678), (0, -0.05, -5)]
+        float3[] extent = [(-10, -10, -12.0710678), (7.0710678, -0.05, -5)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </Looks/front>
+    }
+    def Mesh "back" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-80, -80, -30), (80, -80, -30), (80, 80, -30), (-80, 80, -30)]
+        float3[] extent = [(-80, -80, -30), (80, 80, -30)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </Looks/back>
+    }
+    def Camera "cam"
+    {
+        float focalLength = 50
+        float horizontalAperture = 36
+        float verticalAperture = 27
+        float2 clippingRange = (0.01, 10000)
+    }
+}
+
+def Scope "Looks"
+{
+    def Material "front"
+    {
+        token outputs:mtlx:surface.connect = </Looks/front/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:emission = 1
+            color3f inputs:emission_color = (0.2, 0.4, 0.6)
+            token outputs:out
+        }
+    }
+    def Material "back"
+    {
+        token outputs:mtlx:surface.connect = </Looks/back/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:emission = 1
+            color3f inputs:emission_color = (0.1, 0.1, 0.1)
+            token outputs:out
+        }
+    }
+}

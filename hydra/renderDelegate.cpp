@@ -23,6 +23,8 @@
 
 #include "core/film/lpe_compile.h"
 
+#include <pxr/base/gf/vec2d.h>
+#include <pxr/base/gf/vec2f.h>
 #include <pxr/base/gf/vec3d.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/gf/vec4f.h>
@@ -946,6 +948,28 @@ TF_DEFINE_PRIVATE_TOKENS(_karma,
     ((dicingDepthMax, "karma:object:dicingdepthmax"))
     ((trueDisplace, "karma:object:truedisplace"))
     ((motionBlur, "karma:object:mblur"))
+    // Outlines and look-dev overrides (docs/design/M11-P9a.md).
+    ((outlineEnable, "karma:global:outline_enable"))
+    ((outlineMode, "karma:global:outline_mode"))
+    ((outlineRadius, "karma:global:outline_radius"))
+    ((outlinePrimary, "karma:global:outline_primary"))
+    ((outlinePrimarySamples, "karma:global:outline_primary_samples"))
+    ((outlinePrimaryStencils, "karma:global:outline_primary_stencils"))
+    ((outlineIntensity, "karma:global:outline_intensity"))
+    ((outlineFitMin, "karma:global:outline_fitmin"))
+    ((outlineFitMax, "karma:global:outline_fitmax"))
+    ((outlineApply, "karma:global:outline_apply"))
+    ((outlineDepthBlend, "karma:global:outline_depthblend"))
+    ((outlineColor, "karma:global:outline_color"))
+    ((outlineDepthScale, "karma:global:outline_depththreshold"))
+    ((overrideLighting, "karma:global:override_lighting"))
+    ((disableLighting, "karma:global:disable_lighting"))
+    ((autoHeadlight, "karma:global:autoheadlight"))
+    ((headAoSamples, "karma:global:head_ao_samples"))
+    ((headAoDistance, "karma:global:head_ao_distance"))
+    ((headFogZ, "karma:global:head_depthcue_z"))
+    ((headFogColor, "karma:global:head_depthcue_color"))
+    ((headFogAlpha, "karma:global:head_depthcue_alpha"))
 );
 
 // A colour from a setting or primvar value (float3/color3f, double3, one
@@ -1201,6 +1225,64 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
     s.oracleMinSamples = minSamples > 0 ? uint32_t(minSamples) : 0u;
     if (IsBaking())
         s.adaptive = false; // bakes take every texel sample (M11 P8)
+
+    // Karma's outlines (docs/design/M11-P9a.md): the render's settings and
+    // the render settings' karma:object:outline_* for objects without their
+    // own. Lines need an outline AOV too (the core checks the film).
+    {
+        nova::OutlineSettings &o = s.outline;
+        const auto num = [&](TfToken const &key, double fallback) {
+            const auto v = HdNovaNumber(karma(key));
+            return v && std::isfinite(*v) ? *v : fallback;
+        };
+        o.enable = HdNovaFlag(karma(_karma->outlineEnable)).value_or(false);
+        o.primary = HdNovaFlag(karma(_karma->outlinePrimary)).value_or(true);
+        o.randomPattern = num(_karma->outlineMode, 0.0) != 0.0;
+        o.radius = float(std::max(0.0, num(_karma->outlineRadius, 1.0)));
+        o.samples = uint32_t(std::clamp(std::lround(num(_karma->outlinePrimarySamples, 4.0)), 1l, 64l));
+        o.stencils = uint32_t(std::clamp(std::lround(num(_karma->outlinePrimaryStencils, 1.0)), 1l, 6l));
+        o.intensity = float(std::max(0.0, num(_karma->outlineIntensity, 1.0)));
+        o.fitMin = float(std::clamp(num(_karma->outlineFitMin, 0.0), 0.0, 1.0));
+        o.fitMax = float(std::clamp(num(_karma->outlineFitMax, 1.0), 0.0, 1.0));
+        o.apply = HdNovaFlag(karma(_karma->outlineApply)).value_or(true);
+        o.depthBlend = float(std::clamp(num(_karma->outlineDepthBlend, 0.0), 0.0, 1.0));
+        if (const auto c = color3(karma(_karma->outlineColor)))
+            for (int i = 0; i < 3; ++i)
+                o.color[i] = std::isfinite((*c)[i]) ? (*c)[i] : 0.0f;
+        o.depthScale = float(std::max(0.0, num(_karma->outlineDepthScale, 1.0)));
+        const nova::OutlineOverrides d = HdNovaOutlineValues([&](TfToken const &key) { return karma(key); });
+        s.objectOutline = nova::resolveObjectOutline(nova::ObjectOutline{}, d);
+    }
+    // Karma's look-dev overrides (docs/design/M11-P9a.md): the light
+    // override (menu label or index), autoheadlight, and the simplified
+    // shading with its occlusion and depth cue fog.
+    {
+        nova::LookDevSettings &l = s.look;
+        const int mode = HdNovaMenuIndex(karma(_karma->overrideLighting), {"Off", "Emissive Objects", "Headlight", "Dome Light"});
+        l.lights = mode == 1 ? nova::LightOverride::EmissiveOnly
+                   : mode == 2 ? nova::LightOverride::Headlight
+                   : mode == 3 ? nova::LightOverride::Dome
+                               : nova::LightOverride::Off;
+        l.autoHeadlight = HdNovaFlag(karma(_karma->autoHeadlight)).value_or(false);
+        l.simplified = HdNovaFlag(karma(_karma->disableLighting)).value_or(false);
+        if (const auto v = HdNovaNumber(karma(_karma->headAoSamples)); v && std::isfinite(*v))
+            l.aoSamples = uint32_t(std::clamp(std::lround(*v), 0l, 64l));
+        if (const auto v = HdNovaNumber(karma(_karma->headAoDistance)); v && std::isfinite(*v) && *v >= 0.0)
+            l.aoDistance = float(std::min(*v, 1e30));
+        const VtValue z = karma(_karma->headFogZ);
+        if (z.IsHolding<GfVec2f>()) {
+            l.fogNear = z.UncheckedGet<GfVec2f>()[0];
+            l.fogFar = z.UncheckedGet<GfVec2f>()[1];
+        } else if (z.IsHolding<GfVec2d>()) {
+            l.fogNear = float(z.UncheckedGet<GfVec2d>()[0]);
+            l.fogFar = float(z.UncheckedGet<GfVec2d>()[1]);
+        }
+        if (const auto c = color3(karma(_karma->headFogColor)))
+            for (int i = 0; i < 3; ++i)
+                l.fogColor[i] = std::isfinite((*c)[i]) ? (*c)[i] : 0.0f;
+        if (const auto v = HdNovaNumber(karma(_karma->headFogAlpha)); v && std::isfinite(*v))
+            l.fogAlpha = float(std::clamp(*v, 0.0, 1.0));
+    }
     _WarnUnsupportedKarmaSettings();
     return s;
 }
@@ -1262,7 +1344,8 @@ void HdNovaRenderDelegate::_WarnUnsupportedKarmaSettings() const {
     // does not honour yet: each warns once per delegate (one stage render)
     // when its value differs from the one Nova's image matches.
     // Performance-only and noise-only properties stay silent; holdouts and
-    // ray visibility are honoured (docs/design/M11-P2.md).
+    // ray visibility are honoured (docs/design/M11-P2.md), outlines and the
+    // look-dev overrides too (docs/design/M11-P9a.md).
     struct Check {
         const char *key;
         const char *what;
@@ -1272,13 +1355,7 @@ void HdNovaRenderDelegate::_WarnUnsupportedKarmaSettings() const {
     static const auto off = [](VtValue const &v) { return !HdNovaFlag(v).value_or(true); };
     static const auto text = [](VtValue const &v) { return !TfStringTrim(HdNovaText(v)).empty(); };
     static const Check checks[] = {
-        {"karma:global:outline_enable", "outlines", on},
         {"karma:global:guiding_enable", "path guiding", on},
-        {"karma:global:disable_lighting", "the headlight look-dev mode (disable lighting)", on},
-        {"karma:global:override_lighting", "the lighting override",
-         [](VtValue const &v) {
-             return HdNovaMenuIndex(v, {"Off", "Emissive Objects", "Headlight", "Dome Light"}) > 0;
-         }},
         {"karma:global:image_blur", "image blur off (camera rays at shutter open)", off},
         {"karma:global:samplefilter", "sample filters", text},
         {"karma:global:globalaovmaterial", "the global AOV material", text},
