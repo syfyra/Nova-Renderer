@@ -8,10 +8,10 @@
 
 # The step and the fold of tests/husk/check_karma_looks.py: the camera of
 # geo_edge.usda sees one emissive object, a card on the left half at z = -5
-# and, as part of the same mesh, a card on the right half 0.4 behind it (a
-# depth step with equal normals; top half), and a card folded away from the
-# camera by 45 degrees at x = 0 (a convex crease; bottom half). Both edges
-# are at column 160.
+# and, as part of the same mesh, a card on the right half 0.4 behind it
+# (a depth step with equal normals, reaching 0.2 under the near card; top
+# half), and a card folded away from the camera by 45 degrees at x = 0 (a
+# convex crease; bottom half). Both edges are at column 160.
 def Xform "World"
 {
     def Mesh "step" (prepend apiSchemas = ["MaterialBindingAPI"])
@@ -19,7 +19,7 @@ def Xform "World"
         int[] faceVertexCounts = [4, 4]
         int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
         point3f[] points = [(-10, 0.05, -5), (0, 0.05, -5), (0, 10, -5), (-10, 10, -5),
-                            (0, 0.05, -5.4), (20, 0.05, -5.4), (20, 20, -5.4), (0, 20, -5.4)]
+                            (-0.2, 0.05, -5.4), (20, 0.05, -5.4), (20, 20, -5.4), (-0.2, 20, -5.4)]
         float3[] extent = [(-10, 0.05, -5.4), (20, 20, -5)]
         uniform token subdivisionScheme = "none"
         rel material:binding = </Looks/front>

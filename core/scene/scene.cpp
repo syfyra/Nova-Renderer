@@ -949,7 +949,8 @@ bool Scene::commit() {
             LightDesc head;
             head.type = LightType::Distant;
             head.intensity = kHeadlightIrradiance;
-            head.angleDeg = 0.0f; // a delta light along the camera's view
+            head.angleDeg = 0.0f;       // a delta light along the camera's view
+            head.castsShadows = false;  // Karma's headlight casts none (measured)
             head.transform = m_headlightToWorld;
             overrides.push_back(head);
         } else if (m_lightOverride == LightOverride::Dome) {
@@ -958,19 +959,13 @@ bool Scene::commit() {
             dome.intensity = kOverrideDomeRadiance;
             overrides.push_back(dome);
         }
-        const auto lightList = [&](const std::optional<LightDesc> &light) -> const LightDesc * {
-            if (!light || !light->visible || m_lightOverride != LightOverride::Off)
-                return nullptr;
-            return &*light;
-        };
         std::vector<const LightDesc *> descs;
         for (const std::optional<LightDesc> &light : m_lights) // id order keeps sampling deterministic
-            if (const LightDesc *d = lightList(light))
-                descs.push_back(d);
+            if (light && light->visible && m_lightOverride == LightOverride::Off)
+                descs.push_back(&*light);
         for (const LightDesc &d : overrides)
             descs.push_back(&d);
-        for (const LightDesc *lightPtr : descs) {
-            const LightDesc *light = lightPtr;
+        for (const LightDesc *light : descs) {
             LightData data = makeLightData(*light);
             filterBegin.push_back(uint32_t(m_lightFilterData.size()));
             for (const std::string &key : light->filters) {

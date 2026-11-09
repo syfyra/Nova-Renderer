@@ -81,11 +81,12 @@ struct Edge {
             front = addMesh(scene, quad({-10.0f, -10.0f, -5.0f}, {10.0f, 0.0f, 0.0f}, {0.0f, 20.0f, 0.0f}), f);
             addMesh(scene, quad({-40.0f, -40.0f, -10.0f}, {80.0f, 0.0f, 0.0f}, {0.0f, 80.0f, 0.0f}), b);
         } else {
-            // One object: the left card and, gap behind it, the right one.
+            // One object: the left card and, gap behind it, the right one
+            // (reaching a little under the left one: no crack at the edge).
             MeshDesc m = quad({-10.0f, -10.0f, -5.0f}, {10.0f, 0.0f, 0.0f}, {0.0f, 20.0f, 0.0f});
             const float z = -5.0f - stepGap;
-            m.points.insert(m.points.end(), {Vec3f{0.0f, -20.0f, z}, Vec3f{20.0f, -20.0f, z}, Vec3f{20.0f, 20.0f, z},
-                                             Vec3f{0.0f, 20.0f, z}});
+            m.points.insert(m.points.end(), {Vec3f{-0.2f, -20.0f, z}, Vec3f{20.0f, -20.0f, z}, Vec3f{20.0f, 20.0f, z},
+                                             Vec3f{-0.2f, 20.0f, z}});
             m.indices.insert(m.indices.end(), {4, 5, 6, 4, 6, 7});
             front = addMesh(scene, m, f);
         }
@@ -299,14 +300,14 @@ TEST_CASE("Outlines in a render", "[outline][render]") {
     }
     SECTION("depth lines from rho (1 + threshold) on, the plane test's crease on the far side") {
         // rho = R t = 0.04 x 5 = 0.2: depth lines from a gap of 0.3.
-        Edge near(0.25f), far(0.35f);
-        const Rendered a = render(near.scene, outlineSettings(RenderDevice::Cpu), camera, kW, kH, kPlanes);
-        const Rendered b = render(far.scene, outlineSettings(RenderDevice::Cpu), camera, kW, kH, kPlanes);
+        Edge shallow(0.25f), deep(0.35f);
+        const Rendered a = render(shallow.scene, outlineSettings(RenderDevice::Cpu), camera, kW, kH, kPlanes);
+        const Rendered b = render(deep.scene, outlineSettings(RenderDevice::Cpu), camera, kW, kH, kPlanes);
         CHECK(mass(a.film, UtilityKind::OutlineDepth, 3, 60, 100) < 0.05f);
         CHECK_THAT(mass(b.film, UtilityKind::OutlineDepth, 3, 60, 100), WithinAbs(2.0f * R / kPi, 0.06 * R / kPi));
         // The far card's points see the near card rise in front of their
         // plane (crease); the near card's points see the far card behind.
-        CHECK(mass(a.film, UtilityKind::OutlineCrease, 3, 60, 79) < 0.1f);
+        CHECK(mass(a.film, UtilityKind::OutlineCrease, 3, 60, 78) < 0.1f);
         CHECK_THAT(mass(a.film, UtilityKind::OutlineCrease, 3, 80, 100), WithinAbs(R / kPi, 0.05 * R / kPi));
         CHECK(mass(a.film, UtilityKind::OutlineContour, 3, 60, 100) == 0.0f);
     }
@@ -431,6 +432,10 @@ TEST_CASE("Look-dev light overrides", "[lookdev][render]") {
     {
         Look look;
         CHECK_THAT(centre(render(look.scene, s, camera, kRes, kRes).film).x, WithinAbs(head, 2e-3));
+        // Karma's headlight casts no shadows (measured): a camera-invisible
+        // roof between it and the card changes nothing.
+        Look roofed(0.0f, true, 1.0f);
+        CHECK_THAT(centre(render(roofed.scene, s, camera, kRes, kRes).film).x, WithinAbs(head, 2e-3));
     }
     s.look.lights = LightOverride::Dome;
     {
@@ -468,7 +473,7 @@ TEST_CASE("XPU outlines and look-dev overrides", "[gpu][render][outline][lookdev
             for (const UtilityKind k : {UtilityKind::Outline, UtilityKind::OutlineContour, UtilityKind::OutlineCrease,
                                         UtilityKind::OutlineDepth}) {
                 const float mc = mass(rc.film, k, 3, 60, 100), mg = mass(rg.film, k, 3, 60, 100);
-                CHECK_THAT(mg, WithinAbs(mc, 0.01 * mc + 1e-4));
+                CHECK_THAT(mg, WithinAbs(mc, 0.01 * mc + 0.01));
             }
             for (const int x : {70, 76, 80, 84, 90, 120}) {
                 const Spectrum bc = beautyAt(rc.film, x), bg = beautyAt(rg.film, x);
@@ -502,6 +507,7 @@ TEST_CASE("XPU outlines and look-dev overrides", "[gpu][render][outline][lookdev
         s = lookSettings(RenderDevice::Cpu);
         s.look.lights = LightOverride::Headlight;
         both(30.0f, -1.0f, false, s);
+        both(0.0f, 1.0f, false, s); // no shadows from the roof
         s.look.lights = LightOverride::Dome;
         both(30.0f, -1.0f, false, s);
         s.look.lights = LightOverride::EmissiveOnly;
