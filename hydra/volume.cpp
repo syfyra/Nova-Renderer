@@ -315,7 +315,7 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
 
     nova::Scene &scene = param->AcquireSceneForEdit();
     if (first)
-        _volumeId = scene.createVolume();
+        _volumeId = scene.createVolume(nova::objectKey(id.GetString())); // stable, not the sync order
     if (rebuild) {
         desc.material = registry.Acquire(GetMaterialId(), scene);
         scene.updateVolume(_volumeId, std::move(desc));

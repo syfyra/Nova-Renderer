@@ -103,7 +103,7 @@ void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath c
 
     nova::Scene &scene = param.AcquireSceneForEdit();
     if (first)
-        _volumeId = scene.createVolume();
+        _volumeId = scene.createVolume(nova::objectKey(id.GetString())); // stable, not the sync order
     desc.material = registry.Acquire(material, scene);
     scene.updateVolume(_volumeId, std::move(desc));
     if (!sampled.empty()) {

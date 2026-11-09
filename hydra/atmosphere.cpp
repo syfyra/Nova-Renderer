@@ -169,7 +169,7 @@ void HdNovaAtmosphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdD
         HdNovaVolumeObjectSettings(sd, id, volume);
         nova::Scene &scene = param.AcquireSceneForEdit();
         if (_volumeId == nova::kInvalidId)
-            _volumeId = scene.createVolume();
+            _volumeId = scene.createVolume(nova::objectKey(id.GetString())); // stable, not the sync order
         scene.updateVolume(_volumeId, std::move(volume));
     }
     *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

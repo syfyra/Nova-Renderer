@@ -214,7 +214,7 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
 
     nova::Scene &scene = static_cast<HdNovaRenderParam *>(renderParam)->AcquireSceneForEdit();
     if (_lightId == nova::kInvalidId)
-        _lightId = scene.createLight();
+        _lightId = scene.createLight(nova::objectKey(id.GetString())); // stable, not the sync order
 
     nova::LightDesc desc;
     desc.type = lightType(_lightType);
@@ -362,7 +362,8 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
         _instanceLightIds.clear();
     } else {
         while (_instanceLightIds.size() + 1 < std::max<size_t>(instanceXf.size(), 1))
-            _instanceLightIds.push_back(scene.createLight());
+            _instanceLightIds.push_back( // instance k > 0 keys by the path and k
+                scene.createLight(nova::objectKey(id.GetString(), _instanceLightIds.size() + 1)));
         while (_instanceLightIds.size() + 1 > std::max<size_t>(instanceXf.size(), 1)) {
             scene.removeLight(_instanceLightIds.back());
             _instanceLightIds.pop_back();
