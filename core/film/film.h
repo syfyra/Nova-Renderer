@@ -31,7 +31,24 @@ enum class UtilityKind : uint8_t {
     BaseColor,    // the material's base color (Karma's export_basecolor)
     ShaderAov,    // a material AOV output by name (kma_aov), 3 values
     Ao,           // ambient occlusion: per sample one cosine ray, unlimited distance (filtered)
+    // Karma's outlines (docs/design/M11-P9a.md, core/integrator/outline.h),
+    // per sample like Ao (filtered): the line (w colour, w); the line types
+    // (colour where the sample found the type, w there); the debug planes
+    // (the camera hit's object id, its outline thickness, the colour).
+    Outline,
+    OutlineContour,
+    OutlineCrease,
+    OutlineDepth,
+    OutlineId,
+    OutlineThickness,
+    OutlineColor,
 };
+
+// Utility planes summed per sample (normalized by the pixel's count) rather
+// than written once at the first hit.
+inline bool utilityPerSample(UtilityKind kind) {
+    return kind == UtilityKind::Ao || (kind >= UtilityKind::Outline && kind <= UtilityKind::OutlineColor);
+}
 
 struct UtilityRequest {
     UtilityKind kind = UtilityKind::P;

@@ -139,6 +139,7 @@ private:
     CUfunction m_generate = nullptr, m_shade = nullptr, m_shadow = nullptr, m_ao = nullptr, m_flush = nullptr;
     CUfunction m_media = nullptr, m_volumes = nullptr, m_fakeStart = nullptr, m_fakeStep = nullptr;
     CUfunction m_walkExit = nullptr;
+    CUfunction m_outlineMain = nullptr, m_outlineRays = nullptr, m_outlineFlags = nullptr, m_outlineFinish = nullptr;
 
     // The scene: its buffers and their views.
     const Scene *m_scene = nullptr;
@@ -208,6 +209,7 @@ private:
 
     // The film.
     DeviceBuffer m_colorSum, m_alphaSum, m_count, m_aoPlane, m_lpeSum, m_lpeLit;
+    DeviceBuffer m_outlinePlanes[kOutlinePlaneCount]; // Karma's outline planes (OutlinePlane order)
     std::vector<uint32_t> m_cryptoMesh, m_cryptoPrim; // a wave's camera hits on the host
     int m_width = 0, m_height = 0;
 };

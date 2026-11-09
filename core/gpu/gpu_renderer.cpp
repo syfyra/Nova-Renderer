@@ -427,7 +427,9 @@ bool GpuRenderer::init(std::string &error) {
         !function(m_shadow, "novaShadow") || !function(m_ao, "novaAo") || !function(m_flush, "novaFlush") ||
         !function(m_media, "novaMedia") || !function(m_volumes, "novaVolumes") ||
         !function(m_fakeStart, "novaFakeStart") || !function(m_fakeStep, "novaFakeStep") ||
-        !function(m_walkExit, "novaWalkExit") ||
+        !function(m_walkExit, "novaWalkExit") || !function(m_outlineMain, "novaOutlineMain") ||
+        !function(m_outlineRays, "novaOutlineRays") || !function(m_outlineFlags, "novaOutlineFlags") ||
+        !function(m_outlineFinish, "novaOutlineFinish") ||
         !m_counts.reserve(m_device, 8 * sizeof(uint32_t)) ||
         !m_device.check(cu.p_cuMemsetD8Async(m_counts.ptr(), 0, m_counts.size(), m_device.stream()), "cuMemsetD8Async")) {
         error = m_device.lastError();
@@ -554,36 +556,40 @@ bool GpuRenderer::setScene(const Scene &scene) {
         g.triangleSlots = put(rec.triangleSlots);
         g.slotMaterial = put(slots);
         g.rayLimits = rec.rayLimits;
+        // An attribute's device copy: the description's arrays with the
+        // geometry, instance-rate ones with every upload.
+        const auto deviceRef = [&](AttributeRef &r) {
+            if (!r.data)
+                return;
+            const bool own = r.source != AttributeSource::Instance;
+            const float *&device = (own ? geo.attributes : attributes)[r.data];
+            if (!device) {
+                // The counts Scene::bindName validated: Uniform is per hit
+                // prim (triangle, sphere, curve segment or point), curve
+                // Corner three values per segment.
+                const size_t corners = rec.desc.isCurves() ? 3 * rec.desc.primitiveCount() : rec.desc.indices.size();
+                const size_t count = r.source == AttributeSource::Constant  ? 1
+                                     : r.source == AttributeSource::Uniform  ? rec.desc.primitiveCount()
+                                     : r.source == AttributeSource::Vertex   ? rec.desc.pointCount()
+                                     : r.source == AttributeSource::Corner   ? corners
+                                     : r.source == AttributeSource::Instance ? rec.instanceCount()
+                                                                             : 0;
+                device = own ? upload(geo.buffers, r.data, count * r.width).ptr : put(r.data, count * r.width).ptr;
+            }
+            r.data = device;
+            if (!r.data)
+                r.source = AttributeSource::None;
+        };
         bindings.clear();
         for (const MeshRecord::MaterialBinding &b : rec.bindings) {
             refs = b.refs;
-            for (AttributeRef &r : refs) {
-                if (!r.data)
-                    continue;
-                // The description's arrays with the geometry, instance-rate
-                // ones with every upload.
-                const bool own = r.source != AttributeSource::Instance;
-                const float *&device = (own ? geo.attributes : attributes)[r.data];
-                if (!device) {
-                    // The counts Scene::bindName validated: Uniform is per hit
-                    // prim (triangle, sphere, curve segment or point), curve
-                    // Corner three values per segment.
-                    const size_t corners =
-                        rec.desc.isCurves() ? 3 * rec.desc.primitiveCount() : rec.desc.indices.size();
-                    const size_t count = r.source == AttributeSource::Constant  ? 1
-                                         : r.source == AttributeSource::Uniform  ? rec.desc.primitiveCount()
-                                         : r.source == AttributeSource::Vertex   ? rec.desc.pointCount()
-                                         : r.source == AttributeSource::Corner   ? corners
-                                         : r.source == AttributeSource::Instance ? rec.instanceCount()
-                                                                                 : 0;
-                    device = own ? upload(geo.buffers, r.data, count * r.width).ptr : put(r.data, count * r.width).ptr;
-                }
-                r.data = device;
-                if (!r.data)
-                    r.source = AttributeSource::None;
-            }
+            for (AttributeRef &r : refs)
+                deviceRef(r);
             bindings.push_back({b.material, put(refs).ptr});
         }
+        g.outline = rec.outline; // Karma's outlines and simplified shading (M11 P9a)
+        g.displayColor = rec.displayColor;
+        deviceRef(g.displayColor);
         g.bindings = put(bindings);
         g.shadowMasks = put(rec.shadowMasks);
         g.fakeCaustics = uint8_t(rec.fakeCaustics);
@@ -842,6 +848,11 @@ bool GpuRenderer::setFilm(const Film &film) {
     m_height = film.height;
     const size_t n = size_t(film.width) * size_t(film.height);
     const UtilityPlane *ao = const_cast<Film &>(film).findUtility(UtilityKind::Ao);
+    for (int plane = 0; plane < kOutlinePlaneCount; ++plane) { // Karma's outline planes
+        const UtilityPlane *p = const_cast<Film &>(film).findUtility(UtilityKind(int(UtilityKind::Outline) + plane));
+        if (p && !m_device.upload(m_outlinePlanes[plane], p->data))
+            return false;
+    }
     return m_device.upload(m_colorSum, film.colorSum.data(), n) && m_device.upload(m_alphaSum, film.alphaSum.data(), n) &&
            m_device.upload(m_count, film.count.data(), n) && (!ao || m_device.upload(m_aoPlane, ao->data)) &&
            m_device.upload(m_lpeSum, film.lpeSum) && m_device.upload(m_lpeLit, film.lpeLit) && m_device.sync();
@@ -923,6 +934,11 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.aoBelow, paths);
     field(w.cryptoMesh, paths);
     field(w.cryptoPrim, paths);
+    field(w.outline, paths);
+    field(w.outlineMain, paths);
+    field(w.outlineRadius, paths);
+    field(w.outlineFlagged, paths);
+    field(w.outlineTypes, paths);
     rays(m_rays[0], 0, paths);
     rays(m_rays[1], 1, paths);
     m_capacity = ok ? paths : 0;
@@ -1159,6 +1175,9 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     UtilityPlane *aoPlane = film.findUtility(UtilityKind::Ao);
     gs.ao = aoPlane != nullptr;
     gs.crypto = !film.crypto.empty();
+    gs.outline = settings.outline; // Karma's outlines and look-dev overrides (M11 P9a)
+    gs.look = settings.look;
+    const bool outlines = outlineOn(settings.outline);
     // The camera cone of each 32 x 32 tile of the region at its center, as
     // the CPU's tiles (Renderer::buildTiles, generateCameraRays).
     const int tilesX = (region.width() + 31) / 32, tilesY = (region.height() + 31) / 32;
@@ -1180,6 +1199,11 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     gf.alphaSum = m_alphaSum.as<float>();
     gf.count = m_count.as<uint32_t>();
     gf.ao = aoPlane ? m_aoPlane.as<float>() : nullptr;
+    for (int plane = 0; plane < kOutlinePlaneCount; ++plane)
+        gf.outline[plane] = film.findUtility(UtilityKind(int(UtilityKind::Outline) + plane)) &&
+                                    m_outlinePlanes[plane].size() > 0
+                                ? m_outlinePlanes[plane].as<float>()
+                                : nullptr;
     gf.width = film.width;
     // Light path expressions: the tables, the device film's sums.
     const bool lpeOn = lpe && film.lpeOutputs > 0;
@@ -1283,6 +1307,44 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 (lpeOn && !m_device.check(cu.p_cuMemsetD32Async(CUdeviceptr(m_wave.partUsed), 0, 1, stream),
                                           "cuMemsetD32Async")))
                 return false;
+            if (outlines && depth == 0) {
+                // Karma's outlines (traceOutlines): the camera hits, then per
+                // stencil point its rays (in aoRays, their hits in the light
+                // arrays, free at depth 0) and the types they flag.
+                OutlineArgs o;
+                o.scene = view;
+                o.settings = gs;
+                o.wave = m_wave;
+                o.rays = r;
+                if (!launch(m_outlineMain, count, &o))
+                    return false;
+                const uint32_t points = outlinePointCount(settings.outline);
+                for (uint32_t point = 0; point < points; ++point) {
+                    o.point = point;
+                    TraceParams stencil;
+                    stencil.org = m_wave.aoRays.org;
+                    stencil.dir = m_wave.aoRays.dir;
+                    stencil.tMax = m_wave.aoRays.tMax;
+                    stencil.time = m_wave.aoRays.time;
+                    stencil.count = m_wave.aoRays.count;
+                    stencil.tMin = m_view.tolerance;
+                    stencil.mesh = m_wave.lightMesh;
+                    stencil.prim = m_wave.lightPrim;
+                    stencil.uv = m_wave.lightUv;
+                    stencil.instance = m_wave.lightInstance;
+                    stencil.hitT = m_wave.lightHitT;
+                    stencil.filter = anyHit;
+                    stencil.seed = m_wave.aoRays.filterSeed;
+                    stencil.rayType = m_wave.aoRays.rayType;
+                    stencil.depth = 0;
+                    if (!setCount(m_wave.aoRays, 0) || !launch(m_outlineRays, count, &o) ||
+                        !m_accel.launch(Raygen::Closest, stencil, count) || !launch(m_outlineFlags, count, &o))
+                        return false;
+                }
+                rays += uint64_t(count) * points; // at most
+                if (!launch(m_outlineFinish, count, &o) || !setCount(m_wave.aoRays, 0))
+                    return false;
+            }
             ShadeArgs s;
             s.scene = view;
             s.film = gf;
@@ -1442,6 +1504,8 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
         f.film = gf;
         f.pixelCount = pixels;
         f.spp = spp;
+        f.outlines = uint8_t(outlines);
+        f.outline = settings.outline;
         if (!launch(m_flush, pixels, &f))
             return false;
         if (gs.crypto) { // the camera hits' ids, accumulated on the host (D9)
@@ -1487,6 +1551,12 @@ bool GpuRenderer::downloadFilm(Film &film) {
     // current sums are their prefix, setFilm), so their capacity is tested.
     const bool lpe = !film.lpeSum.empty() && m_lpeSum.size() >= film.lpeSum.size() * sizeof(Spectrum) &&
                      m_lpeLit.size() >= film.lpeLit.size() * sizeof(Spectrum);
+    for (int plane = 0; plane < kOutlinePlaneCount; ++plane) { // Karma's outline planes
+        UtilityPlane *p = film.findUtility(UtilityKind(int(UtilityKind::Outline) + plane));
+        if (p && m_outlinePlanes[plane].size() >= p->data.size() * sizeof(float) &&
+            !m_device.download(p->data.data(), m_outlinePlanes[plane].ptr(), p->data.size() * sizeof(float)))
+            return false;
+    }
     return m_device.download(film.colorSum.data(), m_colorSum.ptr(), n * sizeof(Spectrum)) &&
            m_device.download(film.alphaSum.data(), m_alphaSum.ptr(), n * sizeof(float)) &&
            (!ao || m_aoPlane.size() < n * sizeof(float) ||

@@ -846,6 +846,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         _lpeTag = HdNovaObjectLpeTag(sd, id); // light path expressions
         _lightSource = HdNovaMeshLightSource(sd, id, defaults); // emissive meshes as lights (M9 D14)
         _visibility = HdNovaObjectVisibility(sd, id); // ray visibility and holdouts (M11 P2)
+        _outline = HdNovaObjectOutline(sd, id);       // Karma's outlines (M11 P9a)
         // Displacement dicing (M4.6): Nova's primvars, Karma's
         // (dicingquality, dicingdepthmin = max, truedisplace), the render
         // settings' Karma values.
@@ -1092,6 +1093,7 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         _appliedLpeTag = _lpeTag;
     }
     scene.setMeshVisibility(_meshId, _visibility); // a no-op while unchanged
+    scene.setMeshOutline(_meshId, _outline);       // a no-op while unchanged
     if (first || !(_lightSource == _appliedLightSource)) {
         scene.setMeshLightSource(_meshId, _lightSource);
         _appliedLightSource = _lightSource;

@@ -5,6 +5,7 @@
 #include "material/registry.h"
 
 #include "core/scene/mesh.h"
+#include "core/scene/outline.h"
 #include "core/scene/ray_limits.h"
 #include "core/scene/visibility.h"
 
@@ -80,6 +81,7 @@ private:
     // Ray visibility and holdout mode (M11 P2): karma:object:rendervisibility
     // and holdoutmode (constant).
     nova::ObjectVisibility _visibility;
+    nova::OutlineOverrides _outline; // Karma's outlines (M11 P9a)
     int _builtSubdivLevel = -1;    // level of the geometry in the scene
     int _builtSubdivRate = -1;     // tessellation rate it was built with (0: control mesh)
     bool _implicitSurface = false; // converted from a UsdGeom implicit prim (sphere, ...)

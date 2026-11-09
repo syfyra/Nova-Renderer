@@ -56,6 +56,15 @@ bool utilityOf(std::string const &name, nova::UtilityRequest &out) {
         {"ray:velocity", U::Velocity},
         {"AO", U::Ao},
         {"export_basecolor", U::BaseColor},
+        // Karma's outlines (docs/design/M11-P9a.md): the Karma Render
+        // Settings LOP's raw vars.
+        {"outline", U::Outline},
+        {"outline_contour", U::OutlineContour},
+        {"outline_crease", U::OutlineCrease},
+        {"outline_depth", U::OutlineDepth},
+        {"export_outline_id", U::OutlineId},
+        {"export_outline_thickness", U::OutlineThickness},
+        {"export_outline_color", U::OutlineColor},
     };
     for (auto const &[n, kind] : table)
         if (name == n) {

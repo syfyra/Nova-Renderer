@@ -111,7 +111,20 @@ void WaveQueues::reserve(uint32_t paths) {
         eqA.resize(paths);
         eqB.resize(paths);
         walks.resize(paths);
+        outline.resize(paths);
+        outlineMain.resize(paths);
+        outlineRadius.resize(paths);
+        outlineValid.resize(paths);
+        outlineFlagged.resize(paths);
+        outlineTypes.resize(paths);
+        outlineSource.resize(paths);
+        outlineHitT.resize(paths);
+        outlineHitMesh.resize(paths);
+        outlineHitPrim.resize(paths);
+        outlineHitInstance.resize(paths);
+        outlineHitUv.resize(paths);
     }
+    outlineRays.reserve(paths);
     rays.reserve(paths);
     nextRays.reserve(paths);
     aoRays.reserve(paths);
@@ -369,6 +382,8 @@ struct FirstHitUtility {
                 }
                 break;
             case UtilityKind::Ao: // per sample (traceAoRays)
+                break;
+            default: // the outline planes: per sample (traceOutlines)
                 break;
             }
         }
@@ -1529,6 +1544,41 @@ void pushShadowDomeRay(const ShadeContext &c, WaveQueues &q, uint32_t p, const P
         lpeAttachParts(q, clampScale(contribution, c.clampNee));
 }
 
+// Karma's simplified shading (disable_lighting, core/integrator/lookdev.h)
+// at a camera hit: the display colour times the facing ratio with the depth
+// cue fog, occluded along one cosine ray around the shading normal within
+// head_ao_distance (a shadow ray carrying it; head_ao_samples 0: none). The
+// path ends here; light path expressions get nothing of it.
+void shadeSimplified(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit &hit, Vec3f wo, Vec3f ng,
+                     Vec3f origin, float time) {
+    const uint32_t p = q.rays.path[k];
+    const LookDevSettings &look = c.settings.look;
+    const MeshRecord &rec = c.scene.meshRecord(hit.mesh);
+    const MeshDesc &d = rec.desc;
+    const uint32_t none[3] = {0, 0, 0};
+    const uint32_t *tri = size_t(hit.prim) * 3 + 2 < d.indices.size() ? &d.indices[size_t(hit.prim) * 3] : none;
+    float v[3];
+    Spectrum display = spectrum(1.0f); // white without a display colour (measured)
+    if (fetchAttribute(rec.displayColor, tri, hit.prim, hit.instance, hit.uv.x, hit.uv.y, 3, v))
+        display = {v[0], v[1], v[2]};
+    const Vec3f n = faceForward(hit.N, ng);
+    const Spectrum base = q.beta[p] * simplifiedShade(look, display, n, wo, hit.t);
+    if (look.aoSamples == 0 || isBlack(base)) {
+        addRadiance(q, p, base);
+        return;
+    }
+    const Vec2f u = Sampler{q.pixelSeed[p], q.sampleIndex[p]}.get2D(stream::kLookAo);
+    const Vec3f dir = Frame::fromNormal(n).toWorld(sampleCosineHemisphere(u));
+    if (dot(dir, ng) <= 0.0f)
+        return; // below the surface: occluded
+    if (c.lpe)
+        lpePartsClear(q);
+    q.shadows.push(origin, dir, nova::fmin(nova::fmax(look.aoDistance, 0.0f), kInf), p, base, time,
+                   shadowRaySeed(q.rays.filterSeed[k]));
+    if (c.lpe)
+        lpeAttachParts(q, 1.0f);
+}
+
 void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit &hit, const SurfaceInputs &inputs,
               const ExternalHit *ext = nullptr) {
     const LightStrategy strategy = c.settings.lightStrategy;
@@ -1634,6 +1684,10 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                               emitter != kInvalidId ? lpeLightStep(*lpe, state, emitter)
                                                     : lpeStep(*lpe, state, lpe::TypeObject, lpe::ScatterNone, tag, 0),
                               contribution);
+        }
+        if (c.settings.look.simplified && c.depth == 0) { // Karma's disable_lighting: nothing else
+            shadeSimplified(c, q, k, hit, wo, ng, leave(ng), time);
+            return;
         }
         if (lightsOnly && !(fake && q.lightOnly[p] && c.depth < c.settings.maxDepth))
             return;
@@ -2448,6 +2502,109 @@ uint32_t traceShadowRays(const Scene &scene, const RenderSettings &settings, con
     return rays;
 }
 
+// Karma's outlines (core/integrator/outline.h, docs/design/M11-P9a.md), after
+// the camera rays' closest hits: per camera hit on an object with outlines
+// the stencil's rays, one pass per stencil point (each a batch of closest
+// hits), give the sample's line; it waits in q.outline for the film (the
+// beauty's composite, the outline planes). Returns the rays traced.
+uint32_t traceOutlines(const Scene &scene, const RenderSettings &settings, WaveQueues &q, const ShadeGlobals &globals) {
+    const OutlineSettings &s = settings.outline;
+    const uint32_t n = q.rays.size;
+    uint32_t valid = 0;
+    for (uint32_t k = 0; k < n; ++k) {
+        const uint32_t p = q.rays.path[k];
+        q.outline[p] = OutlineSample{};
+        q.outlineValid[k] = 0;
+        const MeshId mesh = q.hitMesh[k];
+        if (mesh == kInvalidId)
+            continue;
+        const MeshRecord &rec = scene.meshRecord(mesh);
+        if (!rec.outline.enable)
+            continue;
+        const Vec3f dir = q.rays.dir[k];
+        const SurfaceHit hit = scene.resolveHit(mesh, q.hitPrim[k], q.hitUv[k], q.hitT[k], q.hitInstance[k],
+                                                q.rays.time[k], q.rays.org[k], dir);
+        OutlineMain &m = q.outlineMain[k];
+        m.P = hit.P;
+        m.N = faceForward(hit.N, -dir);
+        const float R = outlineRadius(s, rec.outline, hit.t);
+        m.rho = R * hit.t;
+        m.mesh = mesh;
+        m.instance = q.hitInstance[k];
+        m.object = rec.outline;
+        q.outlineRadius[k] = R;
+        q.outlineValid[k] = 1;
+        q.outlineFlagged[k] = 0;
+        q.outlineTypes[k] = 0;
+        ++valid;
+    }
+    if (valid == 0)
+        return 0;
+    uint32_t rays = 0;
+    const uint32_t points = outlinePointCount(s);
+    HitBatch hits{q.outlineHitT.data(), q.outlineHitMesh.data(), q.outlineHitPrim.data(), q.outlineHitUv.data(),
+                  q.outlineHitInstance.data()};
+    for (uint32_t point = 0; point < points; ++point) {
+        RayQueue &r = q.outlineRays;
+        r.size = 0;
+        for (uint32_t k = 0; k < n; ++k) {
+            if (!q.outlineValid[k])
+                continue;
+            const uint32_t p = q.rays.path[k];
+            const Vec2f offset = outlineOffset(s, point, q.pixelSeed[p], q.sampleIndex[p]);
+            q.outlineSource[r.size] = k;
+            r.push(q.rays.org[k], outlineDirection(q.rays.dir[k], offset, q.outlineRadius[k]), kInf, p, q.rays.time[k],
+                   q.rays.filterSeed[k], RayClass::Camera);
+        }
+        scene.accel().intersect(r.batch(0, &globals), hits);
+        rays += r.size;
+        for (uint32_t i = 0; i < r.size; ++i) {
+            const uint32_t k = q.outlineSource[i];
+            const MeshId mesh = q.outlineHitMesh[i];
+            const bool hit = mesh != kInvalidId;
+            Vec3f P{}, N{};
+            uint32_t instance = 0;
+            if (hit) {
+                const SurfaceHit h = scene.resolveHit(mesh, q.outlineHitPrim[i], q.outlineHitUv[i], q.outlineHitT[i],
+                                                      q.outlineHitInstance[i], r.time[i], r.org[i], r.dir[i]);
+                P = h.P;
+                N = faceForward(h.N, -r.dir[i]);
+                instance = q.outlineHitInstance[i];
+            }
+            const uint8_t flags = outlinePointFlags(q.outlineMain[k], s, hit, mesh, instance, P, N);
+            if (flags) {
+                ++q.outlineFlagged[k];
+                q.outlineTypes[k] |= flags;
+            }
+        }
+    }
+    for (uint32_t k = 0; k < n; ++k) {
+        if (!q.outlineValid[k])
+            continue;
+        const OutlineMain &m = q.outlineMain[k];
+        OutlineSample &o = q.outline[q.rays.path[k]];
+        o.weight = outlineWeight(s, q.outlineFlagged[k], points);
+        o.types = uint8_t(q.outlineTypes[k] | kOutlineValid);
+        o.id = outlineObjectId(m.mesh, m.instance);
+        o.thickness = q.outlineRadius[k] * outlineMeanRadius(s);
+    }
+    return rays;
+}
+
+// A sample's outline (traceOutlines) into the film's outline planes.
+void addOutlinePlanes(Film &film, const RenderSettings &settings, uint32_t pixel, const OutlineSample &o) {
+    for (UtilityPlane &plane : film.utility) {
+        const UtilityKind kind = plane.request.kind;
+        if (kind < UtilityKind::Outline || kind > UtilityKind::OutlineColor)
+            continue;
+        float v[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        outlinePlaneValue(int(kind) - int(UtilityKind::Outline), o, settings.outline.color, v);
+        float *dst = plane.data.data() + size_t(pixel) * plane.width;
+        for (uint8_t c = 0; c < plane.width; ++c)
+            dst[c] += v[c];
+    }
+}
+
 } // namespace
 
 // The ambient occlusion AOV's rays (one per camera hit, D9): unoccluded
@@ -2499,11 +2656,16 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
         std::fill(q.lpeState.begin(), q.lpeState.begin() + paths, lpe->program.start); // after the camera event
 
     UtilityPlane *ao = film.utility.empty() ? nullptr : film.findUtility(UtilityKind::Ao);
+    const bool outlines = outlineOn(settings.outline);
+    if (outlines)
+        std::fill(q.outline.begin(), q.outline.begin() + paths, OutlineSample{});
     for (uint32_t depth = 0; depth <= settings.maxDepth && q.rays.size > 0; ++depth) {
         rays += q.rays.size;
         intersectRays(scene, q, depth, globals);
         if (q.lightQuery)
             rays += q.rays.size;
+        if (outlines && depth == 0)
+            rays += traceOutlines(scene, settings, q, globals);
         q.aoRays.size = 0;
         shadeSurfaces(scene, settings, depth, film, q, ctx, lpe, ao, globals);
         rays += q.walkRays;
@@ -2515,7 +2677,11 @@ uint64_t renderWave(const Scene &scene, const Camera &camera, const RenderSettin
     }
 
     for (uint32_t slot = 0; slot < paths; ++slot) {
-        const Spectrum L = q.radiance[slot];
+        Spectrum L = q.radiance[slot];
+        if (outlines) { // Karma's outlines: the line over the beauty, the outline planes
+            L = outlineComposite(settings.outline, q.outline[slot], isFinite(L) ? L : spectrum(0.0f));
+            addOutlinePlanes(film, settings, q.pixel[slot], q.outline[slot]);
+        }
         if (isFinite(L)) // a NaN/Inf sample counts as black instead of poisoning the pixel
             film.colorSum[q.pixel[slot]] += L;
         ++film.count[q.pixel[slot]];

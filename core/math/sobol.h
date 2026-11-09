@@ -193,6 +193,14 @@ NOVA_INLINE constexpr uint32_t shadowDome(uint32_t depth) { return kShadowDomeBa
 // core/integrator/holdout.h): an Rng seeded with this stream id per depth.
 constexpr uint32_t kPrelitBase = 0x90000u;
 NOVA_INLINE constexpr uint32_t prelit(uint32_t depth) { return kPrelitBase + depth; }
+// Karma's outlines (docs/design/M11-P9a.md, core/integrator/outline.h): the
+// stencil's rotation per ring, or a random pattern's points, from an Rng
+// seeded with this stream id plus the ring or point.
+constexpr uint32_t kOutlineBase = 0xA0000u;
+NOVA_INLINE constexpr uint32_t outline(uint32_t i) { return kOutlineBase + i; }
+// The simplified shading's ambient occlusion ray at the camera hit (Karma's
+// disable_lighting, core/integrator/lookdev.h), 2D.
+constexpr uint32_t kLookAo = 0xB0000u;
 } // namespace stream
 
 } // namespace nova

@@ -10,6 +10,8 @@
 #include "hydra/renderParam.h"
 #include "hydra/velocitySceneIndex.h"
 
+#include <pxr/base/gf/vec2f.h>
+#include <pxr/base/gf/vec3f.h>
 #include <pxr/base/tf/diagnosticMgr.h>
 #include <pxr/base/tf/stringUtils.h>
 #include <pxr/imaging/hd/engine.h>
@@ -291,18 +293,18 @@ TEST_CASE("Unsupported Karma settings warn once", "[hydra][karma][settings][warn
     WarningCatcher catcher;
     HdNovaRenderDelegate d;
     // At the values Nova's image matches: silent.
-    set(d, "karma:global:outline_enable", VtValue(false));
+    set(d, "karma:global:guiding_enable", VtValue(false));
     set(d, "karma:object:blurstyle", VtValue(TfToken("Rotation Blur")));
     set(d, "karma:global:imagefilter", VtValue(std::string(R"([["denoise", {"engine": "optix"}]])")));
     d.GetNovaSettings();
     CHECK(catcher.count("Karma render setting") == 0);
-    set(d, "karma:global:outline_enable", VtValue(true));
+    set(d, "karma:global:guiding_enable", VtValue(true));
     set(d, "karma:object:blurstyle", VtValue(TfToken("Linear Blur")));
     set(d, "karma:global:imagefilter",
         VtValue(std::string(R"([["denoise", {}], ["tonemap", {"operator": "aces"}]])")));
     d.GetNovaSettings();
     d.GetNovaSettings();
-    CHECK(catcher.count("karma:global:outline_enable") == 1);
+    CHECK(catcher.count("karma:global:guiding_enable") == 1);
     CHECK(catcher.count("karma:object:blurstyle") == 1);
     CHECK(catcher.count("'tonemap'") == 1);
     CHECK(catcher.count("'denoise'") == 0);
@@ -390,6 +392,8 @@ const char *kKarmaPrimvars = R"(
         float3 primvars:karma:object:fakecausticscolor = (0.5, 0.5, 0.5) (interpolation = "constant")
         float primvars:karma:object:causticsroughnessclamp = 0.3 (interpolation = "constant")
         bool primvars:karma:object:thinwallatrefractlimit = 0 (interpolation = "constant")
+        bool primvars:karma:object:outline_crease = 0 (interpolation = "constant")
+        float primvars:karma:object:outline_radius = 0.01 (interpolation = "constant")
 )";
 
 void checkKarmaOverrides(nova::RayLimitOverrides const &o, nova::ObjectShading const &s) {
@@ -434,7 +438,80 @@ def Sphere "sphere"
         INFO("shape " << int(shape));
         nova::MeshRecord const &r = rig.record(shape);
         checkKarmaOverrides(r.rayLimits, r.shading);
+        // Karma's outlines (docs/design/M11-P9a.md): the prim's own, the rest the defaults.
+        CHECK(r.outline.radius == 0.01f);
+        CHECK_FALSE(r.outline.crease);
+        CHECK(r.outline.contour);
+        CHECK(r.outline.depthThreshold == 0.5f);
     }
+}
+
+TEST_CASE("Karma's outline and look-dev settings", "[hydra][karma][settings][outline]") {
+    WarningCatcher catcher;
+    HdNovaRenderDelegate d;
+    {
+        const nova::RenderSettings s = d.GetNovaSettings();
+        CHECK_FALSE(s.outline.enable);
+        CHECK(s.look == nova::LookDevSettings{});
+        CHECK(s.objectOutline == nova::ObjectOutline{});
+    }
+    // What the Karma Render Settings LOP authors (bools, ints, floats, a
+    // float3) and the Render Settings LOP's Karma tab (the menu label).
+    set(d, "karma:global:outline_enable", VtValue(true));
+    set(d, "karma:global:outline_mode", VtValue(true));
+    set(d, "karma:global:outline_radius", VtValue(0.5f));
+    set(d, "karma:global:outline_primary_samples", VtValue(8));
+    set(d, "karma:global:outline_primary_stencils", VtValue(2));
+    set(d, "karma:global:outline_intensity", VtValue(2.0f));
+    set(d, "karma:global:outline_fitmin", VtValue(0.1f));
+    set(d, "karma:global:outline_fitmax", VtValue(0.9f));
+    set(d, "karma:global:outline_apply", VtValue(false));
+    set(d, "karma:global:outline_depthblend", VtValue(0.25f));
+    set(d, "karma:global:outline_color", VtValue(GfVec3f(0.0f, 1.0f, 0.0f)));
+    set(d, "karma:global:outline_depththreshold", VtValue(2.0f));
+    set(d, "karma:object:outline_radius", VtValue(0.01f));
+    set(d, "karma:object:outline_crease", VtValue(false));
+    set(d, "karma:global:override_lighting", VtValue(TfToken("Dome Light")));
+    set(d, "karma:global:disable_lighting", VtValue(true));
+    set(d, "karma:global:head_ao_samples", VtValue(0));
+    set(d, "karma:global:head_ao_distance", VtValue(5.0f));
+    set(d, "karma:global:head_depthcue_z", VtValue(GfVec2f(2.0f, 10.0f)));
+    set(d, "karma:global:head_depthcue_color", VtValue(GfVec3f(1.0f, 0.0f, 0.0f)));
+    set(d, "karma:global:head_depthcue_alpha", VtValue(0.5f));
+    set(d, "karma:global:autoheadlight", VtValue(true));
+    const nova::RenderSettings s = d.GetNovaSettings();
+    CHECK(s.outline.enable);
+    CHECK(s.outline.randomPattern);
+    CHECK(s.outline.radius == 0.5f);
+    CHECK(s.outline.samples == 8);
+    CHECK(s.outline.stencils == 2);
+    CHECK(s.outline.intensity == 2.0f);
+    CHECK(s.outline.fitMin == 0.1f);
+    CHECK(s.outline.fitMax == 0.9f);
+    CHECK_FALSE(s.outline.apply);
+    CHECK(s.outline.depthBlend == 0.25f);
+    CHECK(s.outline.color[1] == 1.0f);
+    CHECK(s.outline.color[0] == 0.0f);
+    CHECK(s.outline.depthScale == 2.0f);
+    CHECK(s.objectOutline.radius == 0.01f);
+    CHECK_FALSE(s.objectOutline.crease);
+    CHECK(s.objectOutline.depth);
+    CHECK(s.look.lights == nova::LightOverride::Dome);
+    CHECK(s.look.simplified);
+    CHECK(s.look.aoSamples == 0);
+    CHECK(s.look.aoDistance == 5.0f);
+    CHECK(s.look.fogNear == 2.0f);
+    CHECK(s.look.fogFar == 10.0f);
+    CHECK(s.look.fogColor[0] == 1.0f);
+    CHECK(s.look.fogAlpha == 0.5f);
+    CHECK(s.look.autoHeadlight);
+    // Menus as indices too.
+    set(d, "karma:global:override_lighting", VtValue(2));
+    CHECK(d.GetNovaSettings().look.lights == nova::LightOverride::Headlight);
+    set(d, "karma:global:override_lighting", VtValue(TfToken("Emissive Objects")));
+    CHECK(d.GetNovaSettings().look.lights == nova::LightOverride::EmissiveOnly);
+    // Supported now: no warnings (P1 warned about these).
+    CHECK(catcher.count("Karma render setting") == 0);
 }
 
 TEST_CASE("Nova's per-object primvars win over Karma's", "[hydra][karma][limits]") {

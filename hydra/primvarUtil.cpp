@@ -27,6 +27,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <unordered_map>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -310,6 +311,43 @@ nova::ObjectVisibility HdNovaObjectVisibility(HdSceneDelegate *sd, SdfPath const
             o.holdout = int8_t(HdNovaHoldoutModeValue(sd->Get(id, d.name), id.GetString()));
     }
     return o;
+}
+
+nova::OutlineOverrides HdNovaOutlineValues(std::function<VtValue(TfToken const &)> const &get) {
+    static const TfToken enable("karma:object:outline_enable"), radius("karma:object:outline_radius"),
+        contour("karma:object:outline_contour"), crease("karma:object:outline_crease"),
+        creaseThreshold("karma:object:outline_creasethreshold"), depth("karma:object:outline_depth"),
+        depthThreshold("karma:object:outline_depththreshold");
+    nova::OutlineOverrides o;
+    const auto flag = [&](TfToken const &name, int8_t &out) {
+        if (const auto v = HdNovaFlag(get(name)))
+            out = *v ? 1 : 0;
+    };
+    const auto number = [&](TfToken const &name, float &out) {
+        if (const auto v = HdNovaNumber(get(name)); v && std::isfinite(*v))
+            out = float(std::max(*v, 0.0));
+    };
+    flag(enable, o.enable);
+    flag(contour, o.contour);
+    flag(crease, o.crease);
+    flag(depth, o.depth);
+    number(radius, o.radius);
+    number(creaseThreshold, o.creaseThreshold);
+    number(depthThreshold, o.depthThreshold);
+    return o;
+}
+
+nova::OutlineOverrides HdNovaObjectOutline(HdSceneDelegate *sd, SdfPath const &id) {
+    std::unordered_map<TfToken, VtValue, TfToken::HashFunctor> values;
+    for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant))
+        if (TfStringStartsWith(d.name.GetString(), "karma:object:outline_"))
+            values[d.name] = sd->Get(id, d.name);
+    if (values.empty())
+        return {};
+    return HdNovaOutlineValues([&](TfToken const &name) {
+        const auto it = values.find(name);
+        return it == values.end() ? VtValue() : it->second;
+    });
 }
 
 bool HdNovaIsGeometryPrimvar(TfToken const &name) {

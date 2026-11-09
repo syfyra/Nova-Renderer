@@ -286,7 +286,7 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
         return; // the expression failed: keeps the clear value
     // Accumulated kinds change every pass, the others after the first.
     const bool perPass = kind == Kind::Beauty || kind == Kind::Lpe || kind == Kind::Crypto || kind == Kind::SampleCount ||
-                         (kind == Kind::Utility && source.utility.kind == nova::UtilityKind::Ao);
+                         (kind == Kind::Utility && nova::utilityPerSample(source.utility.kind));
     if (kind == Kind::Crypto && (source.cryptoIndex < 0 || size_t(source.cryptoIndex) >= film.crypto.size()))
         return;
     if (!perPass && !firstHitAovs)
@@ -404,6 +404,12 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
                     const float a = v[0] * inv;
                     const float o[4] = {a, a, a, 1.0f};
                     _WritePixel(i, o, 4, component, componentCount);
+                } else if (nova::utilityPerSample(plane->request.kind)) {
+                    // Karma's outline planes: the samples' mean.
+                    float o[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                    for (uint8_t c = 0; c < plane->width && c < 4; ++c)
+                        o[c] = v[c] * inv;
+                    _WritePixel(i, o, plane->width, component, componentCount);
                 } else if (plane->request.kind == nova::UtilityKind::Face) {
                     // As the prim ids: float images keep the clear value on
                     // the background, int buffers get -1.

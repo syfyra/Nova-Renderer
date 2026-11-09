@@ -211,6 +211,23 @@ struct WaveQueues {
     std::vector<lpe::State> lpeState;  // the path's events so far (light path expressions)
     std::vector<uint32_t> firstHitPixels; // the wave's pixels without samples yet (first-hit AOVs)
 
+    // Karma's outlines (core/integrator/outline.h): per path its camera
+    // sample's line; per camera ray its hit as the stencil compares with
+    // (valid: the hit's object has outlines), its tan radius and the
+    // stencil's flagged rays and line types so far; the stencil's rays (one
+    // per valid camera ray and pass, outlineSource: that ray) and their hits.
+    std::vector<OutlineSample> outline;
+    std::vector<OutlineMain> outlineMain;
+    std::vector<float> outlineRadius;
+    std::vector<uint8_t> outlineValid;
+    std::vector<uint16_t> outlineFlagged;
+    std::vector<uint8_t> outlineTypes;
+    RayQueue outlineRays;
+    std::vector<uint32_t> outlineSource;
+    std::vector<float> outlineHitT;
+    std::vector<uint32_t> outlineHitMesh, outlineHitPrim, outlineHitInstance;
+    std::vector<Vec2f> outlineHitUv;
+
     RayQueue rays;
     RayQueue nextRays;
     RayQueue aoRays; // the ambient occlusion AOV's rays at the camera hits (M6.4)
