@@ -1,6 +1,7 @@
 #include "core/bsdf/surface.h"
 
 #include <algorithm>
+#include <iterator>
 
 namespace nova {
 

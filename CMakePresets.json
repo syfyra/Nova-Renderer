@@ -24,12 +24,30 @@
       "inherits": "base",
       "generator": "Ninja",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    },
+    {
+      "name": "core",
+      "displayName": "Core only, without Houdini (Ninja, Release; system libraries)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "NOVA_CORE_ONLY": "ON", "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "core-sanitize",
+      "displayName": "Core only with AddressSanitizer and UBSan, float casts included (GCC or Clang)",
+      "inherits": "core",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined,float-cast-overflow -fno-sanitize-recover=all -fno-omit-frame-pointer"
+      }
     }
   ],
   "buildPresets": [
     { "name": "release", "configurePreset": "vs2022", "configuration": "Release" },
     { "name": "relwithdebinfo", "configurePreset": "vs2022", "configuration": "RelWithDebInfo" },
-    { "name": "ninja", "configurePreset": "ninja" }
+    { "name": "ninja", "configurePreset": "ninja" },
+    { "name": "core", "configurePreset": "core" },
+    { "name": "core-sanitize", "configurePreset": "core-sanitize" }
   ],
   "testPresets": [
     {
@@ -41,6 +59,16 @@
     {
       "name": "ninja",
       "configurePreset": "ninja",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "core",
+      "configurePreset": "core",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "core-sanitize",
+      "configurePreset": "core-sanitize",
       "output": { "outputOnFailure": true }
     }
   ]

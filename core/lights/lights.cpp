@@ -147,6 +147,9 @@ LightData buildLightData(const LightDesc &desc) {
         d.area = kTwoPi * radial * 2.0f * length(d.axisU);
         break;
     }
+    case LightType::Triangle: // the scene builds these itself (emissive triangles, volume emission)
+    case LightType::Volume:
+        break;
     }
 
     setupShaping(desc, d);

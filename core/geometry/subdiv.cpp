@@ -415,7 +415,7 @@ bool tessellateSubdiv(const SubdivMeshDesc &d, int rate, MeshDesc &out, const Te
     out.points.assign(numPoints * steps, Vec3f{0.0f, 0.0f, 0.0f});
     out.normals.assign(numPoints * steps, Vec3f{0.0f, 0.0f, 0.0f});
     out.indices.assign(numTris * 3, 0u);
-    std::vector<int32_t> copySource(size_t(copyStart[size_t(numFaces)]), -1);
+    std::vector<int32_t> copySource(static_cast<size_t>(copyStart[size_t(numFaces)]), -1);
     // The output attributes, one per usable primvar, in the same order.
     out.attributes.clear();
     for (const Primvar &p : primvars) {

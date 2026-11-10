@@ -1400,15 +1400,6 @@ bool Scene::commit() {
 
 namespace {
 
-// The inverse of the affine point map p -> x p.x + y p.y + z p.z + t
-// (Cramer's rule on the cofactors).
-Vec3f inversePoint(const Affine3f &a, Vec3f q) {
-    const Vec3f d = q - a.t;
-    const float det = a.determinant();
-    const float inv = det != 0.0f ? 1.0f / det : 0.0f;
-    return Vec3f{dot(d, cross(a.y, a.z)), dot(d, cross(a.z, a.x)), dot(d, cross(a.x, a.y))} * inv;
-}
-
 Affine3f toAffine(const Xform34 &x) {
     Affine3f a;
     a.x = {x.c[0][0], x.c[0][1], x.c[0][2]};

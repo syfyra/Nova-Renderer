@@ -72,6 +72,14 @@ if(MSVC)
     target_compile_options(nova_tests PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)
 endif()
 
+include(Catch)
+# A core-only build (NOVA_CORE_ONLY) ends here: the Hydra, CVEX, volume-bridge,
+# husk and Houdini tests below need Houdini.
+if(NOVA_CORE_ONLY)
+    catch_discover_tests(nova_tests DISCOVERY_MODE PRE_TEST)
+    return()
+endif()
+
 # CUDA compile check (docs/design/M3.md K14): the kernel-side core headers
 # must build as device code, so a host-only construct breaks the build now and
 # not only in M10. Never run; skipped without a CUDA compiler.
@@ -112,7 +120,6 @@ add_custom_command(TARGET nova_hydra_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:nova_volume>" "$<TARGET_FILE_DIR:nova_hydra_tests>")
 
 # tbb12.dll and the pxr DLLs come from Houdini's bin directory.
-include(Catch)
 catch_discover_tests(nova_tests
     DISCOVERY_MODE PRE_TEST
     DL_PATHS "${HFS}/bin"

@@ -28,8 +28,8 @@ void fillAndRun(const Scene &scene, MaterialId material, const MaterialRecord &r
     };
 
     // Attribute bindings of the lanes (primvars and the tangent uv set).
-    const AttributeRef *refs[N];
-    const uint32_t *triangles[N];
+    const AttributeRef *refs[N] = {};
+    const uint32_t *triangles[N] = {};
     if (!p.primvarBindings.empty() || p.tangentUv >= 0) {
         for (int l = 0; l < N; ++l) {
             const SurfaceHit &hit = hits[lane(l)];
@@ -221,7 +221,7 @@ float evaluateOpacity(const Scene &scene, MaterialId material, const SurfaceHit 
     Spectrum opacity = rec.resolved.c(surface_field::opacity);
     float threshold = rec.resolved.f(surface_field::opacityThreshold);
     for (const shading::OutputBinding &o : op->outputs) {
-        float v[4];
+        float v[4] = {};
         for (int k = 0; k < o.width; ++k)
             v[k] = o.uniform ? rec.opacityUniforms[o.index + size_t(k)] : rows[o.index + size_t(k)];
         if (o.field == surface_field::opacity)
