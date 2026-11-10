@@ -265,8 +265,9 @@ Geometry, lights and sampling (M2):
 
 ## Tests
 
-Tests (`ctest --preset release`). A build without Houdini (`cmake --preset core`, see the README) has the unit tests
-of the first row only (`ctest --preset core`):
+Tests (`ctest --preset release`), by label. A build without Houdini (`cmake --preset core`, see the README) has only
+the unit tests of the first row (`ctest --preset core`; `ctest --preset core-sanitize` runs them under
+AddressSanitizer and UBSan), and those that need a GPU report as skipped.
 
 | Label | Contents |
 |---|---|

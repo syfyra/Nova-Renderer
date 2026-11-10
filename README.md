@@ -154,7 +154,8 @@ ctest --preset core
   names existing ones and `-DNOVA_FETCH_NANOVDB=OFF` turns the download off.
 - **Not built:** the Hydra delegate, the Houdini package, `nova_cli`, `nova_imgcmp` and the GPU backend. Their
   tests, and the unit tests that need a GPU, do not run.
-- **Sanitizers:** `cmake --preset core-sanitize` builds the same targets with AddressSanitizer and UBSan.
+- **Sanitizers:** `cmake --preset core-sanitize` builds the same targets with AddressSanitizer and UBSan (float
+  casts included; a finding stops the test).
 - **Continuous integration:** [`.github/workflows/core.yml`](.github/workflows/core.yml) runs both presets on every
   pull request.
 
@@ -177,6 +178,8 @@ Karma reference images needs a Karma license. See [`docs/reference.md`](docs/ref
 | `tests/` | Catch2 unit tests, husk and CLI test scenes, the Karma reference scenes and images, Houdini UI tests |
 | `docs/` | The plan, design notes per milestone, research notes, benchmarks, the bug audit, the [reference](docs/reference.md) |
 | `third_party/` | NVIDIA FLIP (header only) and the Hošek–Wilkie sky model data |
+| `cmake/` | Where the libraries come from: Houdini (`NovaHoudini.cmake`), CUDA and OptiX (`NovaOptiX.cmake`), or the system in a core-only build (`NovaStandalone.cmake`) |
+| `.github/workflows/` | Continuous integration: the core-only build and its unit tests on Linux |
 
 ## Documentation
 
