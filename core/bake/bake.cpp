@@ -140,10 +140,13 @@ void Baker::Surface::index(Vec2f origin) {
         }
         if (!(hi[0] >= 0.0f && hi[1] >= 0.0f && lo[0] <= 1.0f && lo[1] <= 1.0f))
             return false;
-        x0 = std::clamp(int(std::floor(lo[0] * float(g))), 0, g - 1);
-        y0 = std::clamp(int(std::floor(lo[1] * float(g))), 0, g - 1);
-        x1 = std::clamp(int(std::floor(hi[0] * float(g))), 0, g - 1);
-        y1 = std::clamp(int(std::floor(hi[1] * float(g))), 0, g - 1);
+        // Clamped as floats: a corner far outside the tile (uv of 1e7, or
+        // infinite) is beyond int's range, and the triangle still covers
+        // every cell up to the tile's edge.
+        x0 = clampToInt(std::floor(lo[0] * float(g)), 0, g - 1);
+        y0 = clampToInt(std::floor(lo[1] * float(g)), 0, g - 1);
+        x1 = clampToInt(std::floor(hi[0] * float(g)), 0, g - 1);
+        y1 = clampToInt(std::floor(hi[1] * float(g)), 0, g - 1);
         return true;
     };
     for (const Tri &t : tris) {

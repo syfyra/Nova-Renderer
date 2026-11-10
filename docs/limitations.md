@@ -1,0 +1,112 @@
+# Known limitations
+
+The current limitations of Nova 0.1.0 in one place. Each entry names what happens instead and where the behaviour
+comes from (the warning in the code, or the design note that deferred it). The per-milestone "Not yet" lines in
+[`reference.md`](reference.md) and the "Deferred" tables in [`design/`](design/) describe the state at the end of
+their milestone; where a later milestone delivered an item (holdout LPEs, light filters, mesh-bounded media,
+`ray:hituv`, deep and checkpoint products), it is not listed here.
+
+The list was compiled from the warnings the code prints (`HD_NOVA_WARN`, `warnOnce` and the core's `[Nova]`
+messages) and from the design notes, each checked against the code.
+
+## Platform and build
+
+| Limitation | What happens instead |
+|---|---|
+| The Hydra delegate, the Houdini package, `nova_cli`, `nova_imgcmp` and the installer build on **Windows x64 with Houdini 22.0** only (`cmake/NovaHoudini.cmake` names Houdini's Windows import libraries). | The renderer core, its unit tests and `nova_bsdf_precompute` build without Houdini on Linux (`cmake --preset core`, see the README). |
+| Nova XPU needs an **RTX 50 series** GPU: the kernels are compiled for `sm_120` only (`core/CMakeLists.txt`, `CUDA_ARCHITECTURES "120"`). The CUDA driver and OptiX are loaded through Windows' loader (`core/gpu/cuda_api.cpp`). | Other GPUs and machines without one render on the CPU, with one message. |
+| A CPU with **AVX2** is required (the SIMD shading VM). | No fallback. |
+| Debug configurations do not exist in the full build, because Houdini ships release libraries only. | Release and RelWithDebInfo; the core-only build has no such limit. |
+| The husk, reference and Houdini tests need a Houdini installation, some a license or a GUI; regenerating the Karma references needs a Karma license. | Continuous integration (`.github/workflows/core.yml`) covers the core's unit tests only. |
+
+## Nova XPU (GPU)
+
+| Limitation | What happens instead | Source |
+|---|---|---|
+| GPU and CPU do not render together; one GPU is used. | The GPU renders alone; the CPU is the fallback. | `design/M10.md` D15, 2.2 |
+| Textures are not loaded on demand. | Past the GPU texture budget the finest MIP levels of the largest textures are left out, with a message. | `core/gpu/gpu_renderer.cpp` |
+| VEX materials do not run on the GPU. | Grey stand-ins with one warning, as in Karma XPU. | `core/gpu/gpu_renderer.cpp` |
+| Ray queries from shading (`kma_ao`, distance, curvature, rounded edges) do not trace on the GPU. | Their default values. | `design/M10.md` |
+| Shadow-link categories beyond the 7th are not separated on the GPU. | Every object shadows those lights, with a message. | `core/gpu/gpu_renderer.cpp` |
+| Materials and volume shaders that need more rows than the device VM has. | The GPU uses their uniform inputs (volumes: density only), with a message. | `core/gpu/gpu_renderer.cpp` |
+| The Texture Baker does not bake on the GPU. | Nova XPU bakes on the CPU. | `design/M11-P8.md` |
+| The OptiX denoiser does not work on the renderer's GPU memory. | Its images go through host memory. | `reference.md` (M10) |
+
+## Lights
+
+| Limitation | What happens instead | Source |
+|---|---|---|
+| At most **64 light-link and 64 shadow-link categories** (distinct link collections) per scene. | Lights of further categories light, or are shadowed by, every object; one message. | `Scene::computeLinks`, `core/scene/scene.cpp` |
+| Dome texture formats other than `latlong` (`mirroredBall`, `angular`, `cubeMapVerticalCross`). | Read as latlong, with a warning. | `hydra/light.cpp` |
+| Ellipsoid lights (a non-uniformly scaled sphere light). | A sphere of the mean radius, with a warning. | `hydra/light.cpp` |
+| IES profiles (`shaping:ies:file`) and `treatAsLine`. | Ignored: the light keeps its plain distribution; a line light renders as a cylinder. | not read in `hydra/light.cpp` |
+| Moving or deforming emissive meshes are not light sources. | They stay plain emitters (found by BSDF sampling only), with a message. | `core/scene/scene.cpp` |
+| Emission of VEX materials is never sampled as a light. | Plain emitter. | `design/M9.md` |
+| A volume whose size changes over the shutter is not a light source (bug audit R1-36). | Its emission is collected unbiased along the rays. | `core/volume/build.cpp` |
+| Heavily instanced emissive meshes have no two-level light tree. | Flattened to one light per triangle and instance; a message above the budget. | `design/M9.md` 2.2 |
+| Light filters other than Karma's blocker; filter spaces other than world. | Ignored with a warning; world space. | `hydra/lightFilter.cpp` |
+| `misbias`, `activeradius`, `pointradius` and `contribs` light properties. | Ignored. | `design/M9.md` 2.2 |
+
+## Materials
+
+| Limitation | What happens instead | Source |
+|---|---|---|
+| Karma Hair `coat`; Karma Fur's medulla and second R lobe. | Rendered without them, with a warning. | `hydra/material/translator.cpp` |
+| `sss_traceset` (walks across objects that share a name). | Walks stay inside their object. | `design/M9.md` D10 |
+| `surfacematerial`'s `backsurfaceshader`. | The front shader on both sides, with a warning. | `hydra/material/translator.cpp` |
+| Retroreflective lobes. | Reflect normally, with a warning. | `hydra/material/translator.cpp` |
+| Dispersion. | Ignored, with a warning (it needs spectral rendering). | `hydra/material/translator.cpp` |
+| Six of MaterialX 1.39's 746 node definitions, and nodes outside it. | The node's default outputs, with a warning. | `hydra/material/translator.cpp` |
+| String or filename `geompropvalueuniform` (a texture file per prim, face or instance). | The image's default, with a warning. | `design/M4.md` |
+| Trace sets and object-space distances of the ray-query nodes; `scope:self` of rounded edges. | All objects, world space, with a warning. | `hydra/material/translator.cpp` |
+| Principled Shader: packed colour, the `vdisp` input, noise displacement, dispersion, rounded edges, `opdef:` textures. | Ignored with a warning. | `hydra/material/principled.cpp` |
+| VEX materials: AOV exports other than the mapped `export_*` names, fake caustics through them, ray-tracing VEX (`trace`, `gather`, `illuminance`), light, lens, fog and volume VEX shaders. | Opaque to fake-caustic rays; a shader that traces fails to compile and the preview material renders; the other shader kinds are ignored with a warning. | `design/M5.md` |
+| UDIM sets inside packages (`.usdz`). | The texture fails to load, with an error. | `hydra/textureConvert.cpp` |
+
+## Geometry
+
+| Limitation | What happens instead | Source |
+|---|---|---|
+| Indexed curves. | Rendered with their points in order, with a warning. | `hydra/curves.cpp` |
+| `nurbsCurves` prims. | Not rendered (Houdini's SOP Import never authors them). | `design/M9.md` |
+| Authored normals on subdivided meshes; subdivision of bilinear meshes and UsdGeom implicit prims. | Normals come from the limit surface; those prims stay polygonal. | `reference.md` |
+| Long round linear curves (bug audit R1-11). | Reprojected onto the tube, leaving with an error-bounded offset. | `bug-audit-2026-11.md` |
+| Two exactly coplanar overlapping surfaces. | Which one a ray reports follows the accelerator's traversal and can change between runs. | `bug-audit-2026-11.md` section 7 |
+| `motion:blurScale`, `motion:nonlinearSampleCount` and `motion:velocityScale` (UsdGeomMotionAPI). | Ignored. | `design/M8.md` |
+
+## Volumes
+
+| Limitation | What happens instead | Source |
+|---|---|---|
+| `volumefilter` other than a box of width 1; tricubic lookups. | Box/trilinear, with a warning. | `hydra/volume.cpp` |
+| Karma CPU's lattice-deformation velocity blur. | Velocity blur as a lookup offset. | `design/M8.md` |
+| Instanced media bounded by surfaces. | Render nothing, with a warning. | `hydra/mesh.cpp`, `hydra/sphere.cpp` |
+| Field prims other than VDB and Houdini volumes; VDB grids of value types other than the scalar and vector ones the bridge converts. | The field is skipped, with a warning. | `hydra/field.cpp`, `houdini/volume_bridge/bridge.cpp` |
+| Cryptomatte ids for volumes. | Volumes have no cryptomatte coverage. | `design/M8.md` 2.2 |
+| Karma's step-rate settings (`volumesteprate`, `volumeshadowsteprate`, `volumequality`, `volumesamplingchannel`). | Ignored: Nova tracks without bias at any setting; fire is slower than Karma at its default step rate. | `design/M8.md` D16 |
+
+## Output and baking
+
+| Limitation | What happens instead | Source |
+|---|---|---|
+| Karma render settings without a Nova equivalent. | One warning per stage that names them: "the image differs from Karma's". | `hydra/renderDelegate.cpp` |
+| Utility path expressions other than `CO` (`aov:karma:utilitypathexpression`). | The values of the camera hit, with a warning. | `hydra/aov.cpp` |
+| AOV sources Nova does not know; render product types other than raster, `karma:deep` and `karma:checkpoint`. | The plane keeps its clear value; the product is skipped; each with a warning. | `hydra/aov.cpp`, `hydra/renderDelegate.cpp` |
+| Temporal denoising. | Each frame is denoised by itself. | `design/M7.md` D9 |
+| Texture Baker: textures for trace bias, trace max distance and trace skew; bake trace sets; some image filters. | The global values; every visible object; the filter is skipped; each with a warning. | `hydra/bake.cpp` |
+
+## Removed since this list was started
+
+- **The core built only with MSVC against a Houdini installation.** It also builds with GCC on Linux against
+  system libraries, without Houdini (`NOVA_CORE_ONLY`, `cmake/NovaStandalone.cmake`); all of its unit tests pass
+  there.
+- **No continuous integration.** `.github/workflows/core.yml` builds the core and runs its unit tests on every pull
+  request, also under AddressSanitizer and UBSan.
+- **Shading on values beyond int's range depended on the device.** A noise position past 2^31, an infinite octave
+  count or a NaN hue was converted to int with undefined behaviour: INT_MIN on x86, a saturated value or 0 on the
+  GPU. The conversions are defined now (`toInt`, `core/math/common.h`) and give what the CPU gave.
+- **The Texture Baker lost triangles with a UV corner far outside the tile** (from u = 1e6 with a full lookup
+  grid): they were in no cell of the grid.
+- **A checkpoint with a short adaptive-sampling array loaded** and was then read past its end.
+
+The last three are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 9.

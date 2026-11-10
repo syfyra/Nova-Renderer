@@ -85,13 +85,13 @@ void MemorySampler::sample2D(const TexSampler &sampler, const TexQuery &q, float
         // Texel space: x right, y down from the top row.
         const float x = s * float(tex.width), y = (1.0f - t) * float(tex.height);
         if (slot.filter == TexFilter::Closest) {
-            const int ix = int(std::floor(x)), iy = int(std::floor(y));
+            const int ix = toInt(std::floor(x)), iy = toInt(std::floor(y));
             for (int c = 0; c < channels; ++c)
                 out[size_t(c) * q.count + l] = texel(ix, iy, c);
             continue;
         }
         const float fx = x - 0.5f, fy = y - 0.5f;
-        const int x0 = int(std::floor(fx)), y0 = int(std::floor(fy));
+        const int x0 = toInt(std::floor(fx)), y0 = toInt(std::floor(fy));
         const float ax = fx - float(x0), ay = fy - float(y0);
         for (int c = 0; c < channels; ++c) {
             const float top = texel(x0, y0, c) * (1.0f - ax) + texel(x0 + 1, y0, c) * ax;

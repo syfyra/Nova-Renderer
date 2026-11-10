@@ -323,6 +323,67 @@ TEST_CASE("A resumed checkpoint equals the uninterrupted render", "[render][chec
     CHECK(!resumed.loadCheckpoint(bytes.data(), bytes.size() - 1));
 }
 
+// The adaptive sampler's state is ten arrays of one value per pixel. A
+// checkpoint in which any of them has another size is refused: the oracle
+// would index it by pixel.
+TEST_CASE("Checkpoints with a short adaptive-sampling array are refused", "[render][checkpoint]") {
+    EdgeScene s;
+    RenderSettings settings = baseSettings(64);
+    settings.adaptive = true;
+    const auto setup = [&](Renderer &r) {
+        r.setScene(&s.scene);
+        r.setSettings(settings);
+        r.setCamera(s.camera);
+        r.resize(12, 12);
+    };
+    Renderer first;
+    setup(first);
+    for (int pass = 0; pass < 3; ++pass)
+        first.renderPass({});
+    std::vector<uint8_t> bytes;
+    first.saveCheckpoint(bytes);
+    {
+        Renderer resumed;
+        setup(resumed);
+        REQUIRE(resumed.loadCheckpoint(bytes.data(), bytes.size()));
+    }
+    // The file: an 8-byte magic, 8 uint32 of progress, then arrays (a uint64
+    // count and the elements): the film, three of bytes, one of uint32, one
+    // of Spectrum, five of float; then the guiding trailer.
+    const size_t elementSize[11] = {1, 1, 1, 1, 4, sizeof(Spectrum), 4, 4, 4, 4, 4};
+    size_t offset[11], count[11];
+    size_t at = 8 + 8 * sizeof(uint32_t);
+    for (int a = 0; a < 11; ++a) {
+        uint64_t n = 0;
+        REQUIRE(at + sizeof(n) <= bytes.size());
+        std::memcpy(&n, bytes.data() + at, sizeof(n));
+        offset[a] = at;
+        count[a] = size_t(n);
+        at += sizeof(n) + size_t(n) * elementSize[a];
+    }
+    REQUIRE(at <= bytes.size());
+    for (int a = 1; a < 11; ++a) {
+        REQUIRE(count[a] == 144); // the oracle is on: one value per pixel
+        // The same file with array a one element short.
+        std::vector<uint8_t> shortened = bytes;
+        const uint64_t n = count[a] - 1;
+        std::memcpy(shortened.data() + offset[a], &n, sizeof(n));
+        const auto last = shortened.begin() + std::ptrdiff_t(offset[a] + sizeof(n) + size_t(n) * elementSize[a]);
+        shortened.erase(last, last + std::ptrdiff_t(elementSize[a]));
+        Renderer resumed;
+        setup(resumed);
+        INFO("array " << a);
+        CHECK(!resumed.loadCheckpoint(shortened.data(), shortened.size()));
+    }
+    // A fill stride of 0 (hosts divide by it) is refused too.
+    std::vector<uint8_t> stride = bytes;
+    const uint32_t zero = 0;
+    std::memcpy(stride.data() + 8 + 3 * sizeof(uint32_t), &zero, sizeof(zero));
+    Renderer resumed;
+    setup(resumed);
+    CHECK(!resumed.loadCheckpoint(stride.data(), stride.size()));
+}
+
 // A checkpoint resumes only into the same planes: a plane of the same kind
 // but another source (a primvar's name, an LPE output, holdout prefixes, the
 // default value, a cryptomatte's primvar, the deep map's settings) is

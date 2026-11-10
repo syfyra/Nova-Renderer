@@ -48,12 +48,11 @@ add_library(nova_core STATIC
 
 target_include_directories(nova_core PUBLIC "${PROJECT_SOURCE_DIR}")
 target_compile_features(nova_core PUBLIC cxx_std_20)
-# OpenSubdiv 3.7 comes from Houdini as a static /MD archive (libosdCPU_md.lib,
-# declared as Houdini::Dep::osdCPU); its headers are in $HFS/toolkit/include,
-# which Nova::TBB already adds.
+# TBB, OpenSubdiv and NanoVDB come from Houdini (cmake/NovaHoudini.cmake) or,
+# in a core-only build, from the system (cmake/NovaStandalone.cmake).
 target_link_libraries(nova_core
-    PUBLIC  Nova::TBB
-    PRIVATE embree Houdini::Dep::osdCPU
+    PUBLIC  Nova::TBB Nova::NanoVDB
+    PRIVATE embree Nova::OpenSubdiv
 )
 if(NOVA_HAS_OPTIX)
     target_link_libraries(nova_core PRIVATE Nova::OptiX)
@@ -114,4 +113,12 @@ if(MSVC)
     # Generated tables: 9-digit literals round-trip to the stored floats.
     set_source_files_properties(bsdf/tables/bsdf_tables.cpp PROPERTIES COMPILE_OPTIONS /wd4305)
     target_compile_definitions(nova_core PUBLIC NOMINMAX _USE_MATH_DEFINES)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    # GCC and Clang: the instruction sets of /arch:AVX2 (the SIMD shading VM
+    # is in headers, hence PUBLIC), and no FMA contraction, as MSVC's
+    # /fp:precise and the GPU kernels' --fmad=false: one image on every build.
+    target_compile_options(nova_core PUBLIC -march=haswell -mtune=generic -ffp-contract=off)
+    target_compile_options(nova_core PRIVATE -Wall)
+else()
+    message(FATAL_ERROR "Nova: nova_core needs an x86-64 CPU with AVX2 (CMAKE_SYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}).")
 endif()

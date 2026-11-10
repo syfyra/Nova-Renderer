@@ -7,6 +7,8 @@ target_link_libraries(nova_bsdf_precompute PRIVATE Nova::TBB)
 if(MSVC)
     target_compile_options(nova_bsdf_precompute PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8 /arch:AVX2)
     target_compile_definitions(nova_bsdf_precompute PRIVATE NOMINMAX _USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
+else()
+    target_compile_options(nova_bsdf_precompute PRIVATE -march=haswell -mtune=generic -ffp-contract=off)
 endif()
 
 # Regenerates core/bsdf/tables/bsdf_tables.cpp (minutes of CPU time; not
@@ -21,8 +23,14 @@ set(_nova_table_inputs
     "${PROJECT_SOURCE_DIR}/core/bsdf/diffuse.h"
     "${PROJECT_SOURCE_DIR}/core/bsdf/sheen.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
+# Houdini's TBB is in $HFS/bin; a core-only build finds the system's by itself.
+if(NOVA_CORE_ONLY)
+    set(_nova_table_env)
+else()
+    set(_nova_table_env ${CMAKE_COMMAND} -E env "PATH=${HFS}/bin;$ENV{PATH}")
+endif()
 add_custom_target(nova_bsdf_tables
-    COMMAND ${CMAKE_COMMAND} -E env "PATH=${HFS}/bin;$ENV{PATH}"
+    COMMAND ${_nova_table_env}
             $<TARGET_FILE:nova_bsdf_precompute> -o "${PROJECT_SOURCE_DIR}/core/bsdf/tables/bsdf_tables.cpp"
             --hash-inputs ${_nova_table_inputs}
     DEPENDS nova_bsdf_precompute

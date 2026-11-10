@@ -863,7 +863,14 @@ bool Renderer::loadCheckpoint(const uint8_t *data, size_t size) {
         return false;
     const size_t n = m_film.pixelCount();
     const bool oracle = progress[4] != 0 && m_settings.adaptive;
-    if (oracle && (active.size() != n || checked.size() != n || half.size() != n || lumAlpha.size() != n))
+    // The oracle indexes each of its arrays by pixel (initOracle): a file
+    // with a shorter one is refused, not read past its end.
+    if (oracle)
+        for (const size_t size : {active.size(), evaluated.size(), noisy.size(), checked.size(), half.size(),
+                                  halfAlpha.size(), dsq.size(), lum.size(), dsqAlpha.size(), lumAlpha.size()})
+            if (size != n)
+                return false;
+    if (progress[3] == 0 || progress[3] > 65536u) // the fill stride: hosts divide by it
         return false;
     if (!m_film.load(film.data(), film.size()))
         return false;

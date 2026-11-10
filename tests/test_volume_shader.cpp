@@ -22,6 +22,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <limits>
 #include <random>
 
 using Catch::Matchers::WithinAbs;
@@ -395,4 +396,28 @@ TEST_CASE("Time-driven volume shaders are bounded at the render's frame", "[volu
         // Tight: the time times the density's maximum (1.8).
         CHECK(*std::max_element(rec.majorant.begin(), rec.majorant.end()) < 1.01f * time * 1.8f);
     }
+}
+
+TEST_CASE("The multiple-scattering start level is defined for every float", "[volume][shader]") {
+    // The level is a shader output: its conversion to an int is clamped, so
+    // an infinite or NaN level neither converts out of range nor overflows
+    // the level difference (volume_point.h).
+    const float nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+    VolumeInputs in = volumeDefaults();
+    in.set(volume_field::scattering, Spectrum{1.0f, 1.0f, 1.0f});
+    in.set(volume_field::extinctionModifier, 0.5f);
+    const auto scatteringAt = [&](float level, uint32_t depth) {
+        in.set(volume_field::modifierStartLevel, level);
+        return volumePointOf(in, depth).scattering.x;
+    };
+    CHECK(scatteringAt(1.0f, 0) == 1.0f); // before the start level
+    CHECK_THAT(scatteringAt(1.0f, 1), WithinRel(std::exp(-0.5f), 1e-6f));
+    CHECK_THAT(scatteringAt(1.0f, 3), WithinRel(std::exp(-1.5f), 1e-6f));
+    CHECK_THAT(scatteringAt(1.4f, 1), WithinRel(std::exp(-0.5f), 1e-6f)); // rounds to level 1
+    CHECK_THAT(scatteringAt(-2.0f, 0), WithinRel(std::exp(-1.5f), 1e-6f));
+    CHECK(scatteringAt(inf, 1000) == 1.0f); // never starts
+    CHECK(scatteringAt(1e30f, 1000) == 1.0f);
+    CHECK(scatteringAt(-inf, 0) == 0.0f); // started long ago: exp(-0.5 * 2^20)
+    CHECK(scatteringAt(-1e30f, 0) == 0.0f);
+    CHECK_THAT(scatteringAt(nan, 0), WithinRel(std::exp(-0.5f), 1e-6f)); // level 0
 }

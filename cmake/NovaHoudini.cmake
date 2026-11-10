@@ -6,6 +6,8 @@
 #   HFS              Houdini installation root
 #   Houdini::*       imported targets from $HFS/toolkit/cmake/HoudiniConfig.cmake
 #   Nova::TBB        Houdini's oneTBB without the rest of the HDK
+#   Nova::OpenSubdiv Houdini's OpenSubdiv (osdCPU)
+#   Nova::NanoVDB    Houdini's header-only NanoVDB
 #   Nova::OIIO       Houdini's OpenImageIO (namespace HOIIO_*, not part of HoudiniConfig)
 #   Nova::MaterialX  Houdini's MaterialX Core + Format (not part of HoudiniConfig)
 
@@ -34,6 +36,18 @@ add_library(Nova::TBB ALIAS nova_tbb)
 target_include_directories(nova_tbb SYSTEM INTERFACE "${HFS}/toolkit/include")
 target_link_libraries(nova_tbb INTERFACE Houdini::Dep::tbb)
 target_compile_definitions(nova_tbb INTERFACE __TBB_NO_IMPLICIT_LINKAGE=1)
+
+# OpenSubdiv 3.7 comes from Houdini as a static /MD archive (libosdCPU_md.lib,
+# declared as Houdini::Dep::osdCPU) and NanoVDB 32.6 as headers; both have
+# their headers in $HFS/toolkit/include. A core-only build takes them from the
+# system instead (NovaStandalone.cmake).
+add_library(nova_opensubdiv INTERFACE)
+add_library(Nova::OpenSubdiv ALIAS nova_opensubdiv)
+target_include_directories(nova_opensubdiv SYSTEM INTERFACE "${HFS}/toolkit/include")
+target_link_libraries(nova_opensubdiv INTERFACE Houdini::Dep::osdCPU)
+add_library(nova_nanovdb INTERFACE)
+add_library(Nova::NanoVDB ALIAS nova_nanovdb)
+target_include_directories(nova_nanovdb SYSTEM INTERFACE "${HFS}/toolkit/include")
 
 # OpenImageIO ships with Houdini (OpenImageIO_sidefx.dll in $HFS/bin) but has
 # no target in HoudiniConfig. Its headers need Imath, which does.

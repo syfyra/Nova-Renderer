@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -168,4 +169,78 @@ TEST_CASE("Voronoi distances and seed points (kma_voronoinoise)", "[noise]") {
         CHECK(d[1] <= d[2]);
         CHECK(nova::length(pts[0] - p) == Catch::Approx(d[0]).margin(1e-5));
     }
+}
+
+TEST_CASE("Noise is defined for positions beyond int's range", "[noise]") {
+    // A position of 1e12 (a runaway multiply in a shader graph), an infinity
+    // or a NaN has no int cell. The cell is INT_MIN there on every device
+    // (toInt), and the lattice arithmetic around it does not overflow.
+    const float nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+    const int intMin = std::numeric_limits<int>::min();
+    for (float x : {2147483648.0f, 3.0e9f, -3.74721e9f, 1e30f, -1e30f, inf, -inf, nan})
+        CHECK(noise::floorInt(x) == intMin);
+    CHECK(noise::floorInt(-2147483648.0f) == intMin);
+    CHECK(noise::floorInt(2147483520.5f) == 2147483520);
+    CHECK(noise::floorInt(-1.5f) == -2);
+    // The neighbour of the lowest cell stays the lowest cell.
+    CHECK(noise::cellCoord(intMin, -1) == -2147483648.0f);
+    CHECK(noise::cellCoord(intMin, 1) == -2147483648.0f); // rounds to the same float
+    CHECK(noise::cellCoord(5, -1) == 4.0f);
+    CHECK(noise::cellCoord(16777216, 1) == float(16777217)); // as float(X + offset)
+
+    // Every out-of-range position is the same cell, so cell noise and Worley
+    // agree for all of them, and are what the finite cell INT_MIN gives.
+    const float big[] = {3.0e9f, -3.74721e9f, 1e30f, -1e30f};
+    const float cellRef = noise::cell(Vec2f{-2147483648.0f, 0.25f});
+    for (float x : big)
+        CHECK(noise::cell(Vec2f{x, 0.25f}) == cellRef);
+    CHECK(noise::cell(Vec2f{inf, 0.25f}) == cellRef);
+    CHECK(noise::cell(Vec2f{nan, 0.25f}) == cellRef);
+    for (float x : big) {
+        float d2[3], d3[3];
+        Vec2f m2;
+        Vec3f m3;
+        noise::worley(Vec2f{x, 0.5f}, 1.0f, d2, m2);
+        noise::worley(Vec3f{0.5f, x, -x}, 1.0f, d3, m3);
+        for (int k = 0; k < 3; ++k) {
+            CHECK(std::isfinite(d2[k]));
+            CHECK(std::isfinite(d3[k]));
+        }
+        // Perlin's fade of the huge fraction is not finite there; the calls
+        // are here for the sanitizer build (no overflow, no undefined cast).
+        (void)noise::perlin(Vec2f{x, 0.5f});
+        (void)noise::perlin(Vec3f{x, -x, 0.5f});
+        (void)noise::perlinV3(Vec3f{x, -x, 0.5f});
+    }
+    // A NaN hue takes the switch's default case; nothing is read out of range.
+    const Vec3f rgb = noise::hsvToRgb({nan, 0.5f, 0.75f});
+    CHECK(rgb.x == 0.75f);
+}
+
+TEST_CASE("fractal noise with an infinite or NaN octave count has no octave", "[shading][noise][vm]") {
+    // The octave count is a float input; its conversion to an int is defined
+    // (toInt): out of range and NaN give no octave, a count above 32 gives 32.
+    const float nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+    const auto fractalAt = [](float octaves) {
+        IrGraph g;
+        IrBuilder b(g);
+        const Ref uv = b.swizzle(b.global(Global::P), 0, 1);
+        b.output(0, 1, b.fractal(uv, b.newParam(1), b.constant(2.0f), b.constant(0.5f), 1));
+        const float params[1] = {octaves};
+        const float P[3] = {0.37f, 1.21f, -0.6f};
+        const float *globals[int(Global::Count)] = {};
+        globals[int(Global::P)] = P;
+        const float *primvars[2] = {nullptr, nullptr};
+        std::vector<float> values;
+        evaluateGraph(g, params, globals, primvars, values);
+        return values[size_t(g.outputs[0].value) * 4];
+    };
+    const Vec2f p{0.37f, 1.21f};
+    CHECK(fractalAt(3.0f) == noise::fractal(p, 3, 2.0f, 0.5f));
+    CHECK(fractalAt(1000.0f) == noise::fractal(p, 32, 2.0f, 0.5f));
+    CHECK(fractalAt(-4.0f) == 0.0f);
+    CHECK(fractalAt(inf) == 0.0f);
+    CHECK(fractalAt(-inf) == 0.0f);
+    CHECK(fractalAt(nan) == 0.0f);
+    CHECK(fractalAt(1e12f) == 0.0f);
 }
