@@ -190,10 +190,10 @@ function mockInvoke(cmd, args) {
   const params = new URLSearchParams(location.search);
   if (cmd === 'system_info')
     return Promise.resolve({
-      version: '0.1.0', houdini_minor: '22.0', payload_mb: 17.4, uninstall: params.has('uninstall'),
+      version: '0.1.1', houdini_minor: '22.0', payload_mb: 17.4, uninstall: params.has('uninstall'),
       default_dir: 'C:\\Users\\you\\AppData\\Local\\Programs\\Nova',
       installed: params.has('installed') || params.has('uninstall')
-        ? { dir: 'C:\\Users\\you\\AppData\\Local\\Programs\\Nova', version: '0.1.0', packages: [] } : null,
+        ? { dir: 'C:\\Users\\you\\AppData\\Local\\Programs\\Nova', version: '0.1.1', packages: [] } : null,
       houdinis: [
         { version: '22.0.466', minor: '22.0', supported: true, path: '', packages: 'C:\\Users\\you\\Documents\\houdini22.0\\packages' },
         ...(params.has('other') ? [{ version: '21.0.512', minor: '21.0', supported: false, path: '', packages: '' }] : []),
@@ -211,7 +211,7 @@ function mockInvoke(cmd, args) {
           clearInterval(timer);
           if (params.has('running')) reject('HOUDINI_RUNNING:houdinifx.exe');
           else if (params.has('notnova') && cmd === 'run_install') reject('NOT_NOVA:' + args.dir);
-          else resolve({ dir: args && args.dir, version: '0.1.0', packages: [] });
+          else resolve({ dir: args && args.dir, version: '0.1.1', packages: [] });
         }
       }, 60);
     });
