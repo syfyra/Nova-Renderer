@@ -235,3 +235,22 @@ Also found: tests that compare light and BSDF sampling under a constant dome can
 - The regression tests were run on the old code first: all fail there but V-3's (not real); V-1's scene crashed the test process (seen in its XPU test, which renders it on the CPU first). V-6's test also fails with its fix reverted in place.
 - Golden check (nova_cli, 16 samples): all 38 reference scenes bit-identical to the pre-fix build (no reference scene has several suns on a shadowed atmosphere ground, volumes at the ground, a Pndc-dependent shadow, constrain-roughness with fake caustics, shadow-invisible surfaces with volumes or shells of more than 32 crossings).
 - Tests after merging main (1152bfe): ctest 686/686 (`reference_cli_karma_atmosphere` skipped by design), `[gpu]` 49 test cases (6251 assertions) pass.
+
+## 9. Sanitizer pass on the core-only build
+
+The core builds without Houdini with GCC on Linux (`cmake --preset core`, the README's "Core only, without Houdini"). Its unit tests were run there for the first time under a second compiler, and under AddressSanitizer and UBSan with float-cast checks (`cmake --preset core-sanitize`); the checkpoint loader and the light path expression compiler were read and fuzzed for malformed input.
+
+- GCC 13, Release, before any change to the code: 392 test cases, 387 pass, the 5 that need a GPU skip. No test depends on MSVC's library or on its code generation.
+- AddressSanitizer and LeakSanitizer: no finding in those test cases. UBSan: the conversions of S-1, nothing else.
+- After the fixes, with the 6 new test cases: `ctest --preset core` and `ctest --preset core-sanitize` run 398 tests, 393 pass and 5 skip.
+- Light path expressions: 210 000 random expressions through `lpe::compile` and `lpe::matches` under the sanitizers, no finding.
+
+| ID | Severity | Defect | Fix | Regression test |
+|---|---|---|---|---|
+| S-1 | medium | Floats were converted to int beyond int's range or as NaN, which is undefined: x86 gives INT_MIN, CUDA saturates and turns NaN into 0, so CPU and GPU could shade such values differently. Sites: the noise cell of a position (`floorInt`), Worley's neighbour cells (`INT_MIN - 1` also overflowed), `hsvToRgb`'s hue sector, the fractal opcode's octave count, the volume shader's multiple-scattering start level (`lround`), `MemorySampler`'s texel coordinates (`core/shading/noise.h`, `core/shading/ops.h`, `core/volume/volume_point.h`, `core/texture/memory_sampler.cpp`) | `toInt` (`core/math/common.h`): truncation, INT_MIN out of range and for NaN, what the CPU gave. Worley sums its neighbour cells in 64 bits. The start level is clamped before `lround` (NaN: level 0). In-range values convert as before. | "toInt and clampToInt are defined for every float", "Noise is defined for positions beyond int's range", "fractal noise with an infinite or NaN octave count has no octave", "The multiple-scattering start level is defined for every float"; the `core-sanitize` run of "Random programs agree bit for bit in every executor" |
+| S-2 | medium | The Texture Baker's lookup grid converted a triangle's cell range to int before clamping it: a UV corner past 2^31 grid cells (u = 1e9 with 17 triangles, from u = 1e6 with the full 2048 grid) became cell 0, the range was empty and the triangle was in no cell, so texels inside it found nothing (`core/bake/bake.cpp`, `Baker::Surface::index`) | Clamped as a float first (`clampToInt`). | "Bake: a triangle with a corner far outside the tile is still found" (fails before the fix) |
+| S-3 | low | `Renderer::loadCheckpoint` checked four of the adaptive sampler's ten per-pixel arrays against the pixel count; a file with a shorter `evaluated`, `noisy`, `halfAlpha`, `dsq`, `lum` or `dsqAlpha` array loaded and the oracle read past its end. A fill stride of 0 loaded too (`core/integrator/renderer.cpp`) | All ten arrays must have one value per pixel; a stride of 0 or beyond 65536 is refused. | "Checkpoints with a short adaptive-sampling array are refused" (the old loader accepts 6 of the 10 shortened files and the zero stride) |
+
+Portability fixes GCC needed: a vector constructor in `core/geometry/subdiv.cpp` that GCC parses as a function declaration, and `<iterator>` in `core/bsdf/surface.cpp`.
+
+Not covered by this pass: the GPU kernels and the Windows build. `toInt` and `clampToInt` are plain inline functions in a kernel-side header, but neither `kernels.cu` nor the MSVC build was compiled here, and no `[gpu]` test ran. The Hydra delegate, the bridges and the installer were not built or run under a sanitizer.

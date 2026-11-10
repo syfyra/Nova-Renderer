@@ -76,7 +76,9 @@ include(Catch)
 # A core-only build (NOVA_CORE_ONLY) ends here: the Hydra, CVEX, volume-bridge,
 # husk and Houdini tests below need Houdini.
 if(NOVA_CORE_ONLY)
-    catch_discover_tests(nova_tests DISCOVERY_MODE PRE_TEST)
+    # Catch2 exits with 4 when the one test it ran skipped itself (the tests
+    # that need a GPU): skipped for ctest, not failed.
+    catch_discover_tests(nova_tests DISCOVERY_MODE PRE_TEST PROPERTIES SKIP_RETURN_CODE 4)
     return()
 endif()
 

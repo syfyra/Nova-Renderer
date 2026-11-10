@@ -104,6 +104,9 @@ Light properties (on UsdLux lights, Karma's names; Nova's own `inputs:nova:light
 
 ## Features by milestone
 
+The "Not yet" lines below describe each milestone as it ended; later milestones delivered some of those items.
+`docs/limitations.md` lists what is missing now.
+
 After M10 a bug audit fixed 71 verified defects across the renderer, Hydra, the bridges and the installer; the findings, fixes, tests and remaining limitations are in `docs/bug-audit-2026-11.md`.
 
 Karma's Solaris nodes (M11, `docs/design/M11.md`, one design note per package `docs/design/M11-P1.md` ... `M11-P9c.md`): scenes built with the twelve visible Karma LOP types render in Nova as in Karma, on CPU and XPU, each feature measured against Karma CPU first and checked by a `tests/husk/check_karma_*.py` test:
@@ -262,7 +265,8 @@ Geometry, lights and sampling (M2):
 
 ## Tests
 
-Tests (`ctest --preset release`):
+Tests (`ctest --preset release`). A build without Houdini (`cmake --preset core`, see the README) has the unit tests
+of the first row only (`ctest --preset core`):
 
 | Label | Contents |
 |---|---|

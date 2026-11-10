@@ -74,8 +74,11 @@ Nova was built milestone by milestone. The plan's milestones M0 to M10 ([`docs/P
 Karma-compatibility milestone M11 ([`docs/design/M11.md`](docs/design/M11.md)) are complete, with a design note per
 milestone in [`docs/design/`](docs/design/). About 690 automated tests cover it: unit
 tests, husk and command-line renders, statistical comparisons against Karma references, and isolated Houdini
-sessions. Known differences from Karma and remaining limitations are documented in the design notes and in
-[`docs/bug-audit-2026-11.md`](docs/bug-audit-2026-11.md).
+sessions. The current limitations are listed in [`docs/limitations.md`](docs/limitations.md); known differences
+from Karma are documented in the design notes and in [`docs/bug-audit-2026-11.md`](docs/bug-audit-2026-11.md).
+
+The renderer core (`nova_core`) and its unit tests also build on Linux without Houdini
+([Core only, without Houdini](#core-only-without-houdini)); the Hydra delegate and Nova XPU do not yet.
 
 Requirements at run time:
 
@@ -133,7 +136,31 @@ MSVC toolchain.
 
 See [`tools/installer/README.md`](tools/installer/README.md).
 
-**Tests.** The husk, reference and Houdini tests run Houdini in an isolated environment with an empty preference
+### Core only, without Houdini
+
+`nova_core`, its Catch2 unit tests (`nova_tests`) and `nova_bsdf_precompute` build against system libraries, with
+GCC on Linux; neither Houdini, Windows nor vcpkg is needed. This is the default configuration away from Windows
+(`-DNOVA_CORE_ONLY=ON`, [`cmake/NovaStandalone.cmake`](cmake/NovaStandalone.cmake)). On Ubuntu 24.04:
+
+```sh
+sudo apt install cmake ninja-build g++ libembree-dev libtbb-dev libosd-dev catch2
+cmake --preset core
+cmake --build --preset core
+ctest --preset core
+```
+
+- **Libraries:** Embree 4, oneTBB, OpenSubdiv and Catch2 3 from the system. The NanoVDB 32.6 headers (the version
+  Houdini 22.0 ships) are fetched from the OpenVDB repository at configure time; `-DNOVA_NANOVDB_INCLUDE_DIR=<dir>`
+  names existing ones and `-DNOVA_FETCH_NANOVDB=OFF` turns the download off.
+- **Not built:** the Hydra delegate, the Houdini package, `nova_cli`, `nova_imgcmp` and the GPU backend. Their
+  tests, and the unit tests that need a GPU, do not run.
+- **Sanitizers:** `cmake --preset core-sanitize` builds the same targets with AddressSanitizer and UBSan.
+- **Continuous integration:** [`.github/workflows/core.yml`](.github/workflows/core.yml) runs both presets on every
+  pull request.
+
+### Tests
+
+The husk, reference and Houdini tests run Houdini in an isolated environment with an empty preference
 directory, so installed packages never interfere and a running Houdini session is never touched. Regenerating the
 Karma reference images needs a Karma license. See [`docs/reference.md`](docs/reference.md#tests) and
 [`tests/reference/README.md`](tests/reference/README.md).
@@ -157,7 +184,8 @@ Karma reference images needs a Karma license. See [`docs/reference.md`](docs/ref
   features of each milestone with their measured differences to Karma, tools and tests.
 - [`docs/design/`](docs/design/): design notes per milestone. M11 covers Karma's Solaris nodes, one note per package.
 - [`docs/benchmarks.md`](docs/benchmarks.md): performance measurements, CPU and GPU.
-- [`docs/bug-audit-2026-11.md`](docs/bug-audit-2026-11.md): audits, fixes and remaining limitations.
+- [`docs/limitations.md`](docs/limitations.md): the current limitations in one place.
+- [`docs/bug-audit-2026-11.md`](docs/bug-audit-2026-11.md): audits, fixes and the limitations they left.
 - [`docs/PLAN.md`](docs/PLAN.md): the original milestone plan, in German.
 
 ## License
