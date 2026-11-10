@@ -1484,7 +1484,8 @@ LightSample sampleVolumeLight(const ShadeContext &c, WaveQueues &q, uint32_t p, 
     // A shell's cells reach past it; there is no medium outside (M11-P5).
     if (rec.desc.shell && !shellContains(rec.desc.shell->view(), object))
         return ls;
-    const Vec3f world = c.scene.volumeToWorld(light.volume, time).point(object);
+    const Affine3f toWorld = c.scene.volumeToWorld(light.volume, time);
+    const Vec3f world = toWorld.point(object);
     const Vec3f d = world - origin;
     const float r2 = dot(d, d);
     if (!(r2 > 0.0f))
@@ -1494,7 +1495,11 @@ LightSample sampleVolumeLight(const ShadeContext &c, WaveQueues &q, uint32_t p, 
     ls.distance = r;
     VolumeEvaluator &eval = q.volumes.get(c.scene, light.volume, c.globals);
     ls.Li = eval(object, world, ls.wi, time, uint8_t(RayClass::Shadow), c.depth).emission * (1.0f / sigma);
-    ls.pdf = pdf01 / float(cells.count) / rec.cellVolume * r2 / sigma;
+    // The cell's world volume at the path's time (a resizing volume's changes).
+    const float cellVolume = lightCellVolume(rec.cellVolume, rec.lightResizes, toWorld);
+    if (!(cellVolume > 0.0f))
+        return LightSample{};
+    ls.pdf = pdf01 / float(cells.count) / cellVolume * r2 / sigma;
     return ls;
 }
 

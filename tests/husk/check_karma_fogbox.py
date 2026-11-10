@@ -21,6 +21,9 @@ through Nova XPU where a GPU is present) and is compared with:
 - emission: an absorbing emitter with volumeuniform: (e / a)(1 - exp(-1)),
   where Karma reads 23 % brighter (its uniform-volume emission estimate); the
   same cube without volumeuniform renders nothing in Karma, the medium in Nova;
+- instances: uniform volumes under a point instancer (one instance twice as
+  deep) and as native instances (one at half its size): every instance is a
+  medium, 1 - exp(-depth), as in Karma (plain USD, no LOP);
 - noise: the Fog Box with Add Noise authors a Volume prim with an in-memory
   SOP density field (no mesh), rendered through M8's volumes; the scene is
   regenerated at test time by fogbox_scenes.py in an isolated hython (which
@@ -119,6 +122,10 @@ CHECKS = [
     ("emission", front(-1.5), 2, 0.125 * E1, 0.002, "uniform emitter B (Karma 0.0970)"),
     ("emission", front(-1.5), 3, E1, 0.006, "uniform emitter alpha (Karma 0.6329)"),
     ("emission", front(1.5), 0, 0.5 * E1, 0.004, "the emitter without volumeuniform (Karma: nothing)"),
+    ("instances", front(-2.25), 3, E1, 0.006, "point instance of a unit cube (Karma 0.6328)"),
+    ("instances", front(-0.75), 3, 1.0 - math.exp(-2.0), 0.006, "point instance twice as deep (Karma 0.8663)"),
+    ("instances", front(0.75), 3, E1, 0.006, "native instance of a unit cube (Karma 0.6337)"),
+    ("instances", front(2.25), 3, 1.0 - math.exp(-0.5), 0.006, "native instance at half size (Karma 0.3928)"),
 ]
 
 # The noise scene (generated at test time): box A scatters, box B absorbs;
@@ -166,7 +173,8 @@ def main():
     check(gen.returncode == 0 and os.path.exists(os.path.join(generated, "noise.usda")),
           "the Fog Box LOP writes the noise scene and its volumes")
     scenes = {name: os.path.join(SCENES, name + ".usda")
-              for name in ["absorb", "density_source", "overlap", "shadow", "scatter", "inside", "emission"]}
+              for name in ["absorb", "density_source", "overlap", "shadow", "scatter", "inside", "emission",
+                           "instances"]}
     scenes["noise"] = os.path.join(generated, "noise.usda")
     for renderer in args.renderers.split(","):
         tag = renderer.replace(" ", "_")

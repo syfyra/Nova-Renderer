@@ -26,6 +26,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
 PXR_NAMESPACE_USING_DIRECTIVE
 using Catch::Matchers::WithinAbs;
 
@@ -142,6 +146,59 @@ def Scope "mtl"
 }
 )";
 
+// Instanced media: a point instancer over a fog cube and a fog sphere, and
+// two native instances of a fog cube.
+const char *kInstancedStage = R"(#usda 1.0
+def PointInstancer "inst"
+{
+    point3f[] positions = [(0, 0, 0), (3, 0, 0), (0, 4, 0)]
+    int[] protoIndices = [0, 0, 1]
+    rel prototypes = [</inst/protos/box>, </inst/protos/ball>]
+    def Scope "protos"
+    {
+        def Mesh "box" (prepend apiSchemas = ["MaterialBindingAPI"])
+        {
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 3, 2, 1, 0, 1, 5, 4, 3, 7, 6, 2, 0, 4, 7, 3, 1, 2, 6, 5, 4, 5, 6, 7]
+            point3f[] points = [(-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5), (-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </mtl/fog>
+            bool[] primvars:karma:object:volumeuniform = [1] (interpolation = "constant")
+            float primvars:touch = 0 (interpolation = "constant")
+        }
+        def Sphere "ball" (prepend apiSchemas = ["MaterialBindingAPI"])
+        {
+            double radius = 0.5
+            rel material:binding = </mtl/fog>
+            bool[] primvars:karma:object:volumeuniform = [1] (interpolation = "constant")
+            float primvars:touch = 0 (interpolation = "constant")
+        }
+    }
+}
+def Scope "mtl"
+{
+    def Material "fog"
+    {
+        token outputs:kma:volume.connect = </mtl/fog/v.outputs:out>
+        def Shader "v"
+        {
+            uniform token info:id = "kma_volume"
+            color3f inputs:absorption = (0.5, 0.5, 0.5)
+            token outputs:out
+        }
+    }
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </mtl/grey/s.outputs:out>
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            token outputs:out
+        }
+    }
+}
+)";
+
 struct Driver {
     UsdStageRefPtr stage;
     std::unique_ptr<HdNovaRenderDelegate> delegate = std::make_unique<HdNovaRenderDelegate>();
@@ -150,10 +207,13 @@ struct Driver {
     HdRenderPassSharedPtr pass;
     HdTaskSharedPtrVector tasks;
     HdEngine engine;
+    std::vector<std::string> touched; // the media gprims (their primvars:touch)
 
-    Driver() {
+    explicit Driver(char const *text = kStage,
+                    std::vector<std::string> prims = {"/fog/render/volume", "/ball"})
+        : touched(std::move(prims)) {
         SdfLayerRefPtr layer = SdfLayer::CreateAnonymous(".usda");
-        layer->ImportFromString(kStage);
+        layer->ImportFromString(text);
         stage = UsdStage::Open(layer);
         index.reset(HdRenderIndex::New(delegate.get(), HdDriverVector()));
         UsdImagingCreateSceneIndicesInfo info;
@@ -183,9 +243,24 @@ struct Driver {
     void touch() {
         static float t = 0.0f;
         t += 1.0f;
-        stage->GetAttributeAtPath(SdfPath("/fog/render/volume.primvars:touch")).Set(t);
-        stage->GetAttributeAtPath(SdfPath("/ball.primvars:touch")).Set(t);
+        for (std::string const &prim : touched)
+            stage->GetAttributeAtPath(SdfPath(prim + ".primvars:touch")).Set(t);
         sync();
+    }
+    // The active volumes of the gprim at `path` (instanced: one per
+    // instance; UsdImaging re-roots a point instancer's prototypes under
+    // <path>/ForInstancer<hash>), ordered by their bounds' lower corner.
+    std::vector<const nova::VolumeRecord *> volumes(std::string const &path) {
+        std::vector<const nova::VolumeRecord *> out;
+        for (nova::VolumeId id : scene().activeVolumes()) {
+            std::string const &name = scene().volumeRecord(id).desc.name;
+            if (name == path || name.rfind(path + "/", 0) == 0)
+                out.push_back(&scene().volumeRecord(id));
+        }
+        std::sort(out.begin(), out.end(), [](const nova::VolumeRecord *a, const nova::VolumeRecord *b) {
+            return a->lower.x != b->lower.x ? a->lower.x < b->lower.x : a->lower.y < b->lower.y;
+        });
+        return out;
     }
     HdNovaRenderParam &param() { return *static_cast<HdNovaRenderParam *>(delegate->GetRenderParam()); }
     nova::Scene &scene() { return param().GetScene(); }
@@ -289,5 +364,92 @@ TEST_CASE("Gprims with volume materials become media bounded by their surface", 
         d.sync();
         CHECK(d.volume("/ball") == nullptr);
         CHECK(d.scene().activeVolumes().size() == 1);
+    }
+}
+
+// Instanced media (docs/design/M11-P5.md F9): every instance is a volume of
+// its own with the gprim's shell, at the instance's transform. They rendered
+// nothing before (a warning).
+TEST_CASE("Instanced gprims with volume materials are media at every instance", "[hydra][volume][shell][instancing]") {
+    Driver d(kInstancedStage, {"/inst/protos/box", "/inst/protos/ball"});
+    CHECK(d.liveMeshes() == 0);
+    REQUIRE(d.scene().activeVolumes().size() == 3);
+    std::vector<const nova::VolumeRecord *> boxes = d.volumes("/inst/protos/box");
+    std::vector<const nova::VolumeRecord *> balls = d.volumes("/inst/protos/ball");
+    REQUIRE(boxes.size() == 2);
+    REQUIRE(balls.size() == 1);
+    // One shell, shared; each instance at its position.
+    CHECK(boxes[0]->desc.shell == boxes[1]->desc.shell);
+    CHECK(boxes[0]->desc.shell->kind == nova::ShellKind::Triangles);
+    CHECK_THAT(boxes[0]->lower.x, WithinAbs(-0.5, 1e-4));
+    CHECK_THAT(boxes[0]->upper.x, WithinAbs(0.5, 1e-4));
+    CHECK_THAT(boxes[1]->lower.x, WithinAbs(2.5, 1e-4));
+    CHECK_THAT(boxes[1]->upper.x, WithinAbs(3.5, 1e-4));
+    CHECK(balls[0]->desc.shell->kind == nova::ShellKind::Sphere);
+    CHECK_THAT(balls[0]->lower.y, WithinAbs(3.5, 1e-4));
+    CHECK_THAT(balls[0]->upper.y, WithinAbs(4.5, 1e-4));
+    // Stable, distinct keys (the path and the instance), so images do not
+    // depend on the sync order.
+    CHECK(boxes[0]->key != boxes[1]->key);
+
+    const UsdPrim inst = d.stage->GetPrimAtPath(SdfPath("/inst"));
+    SECTION("moved instances move their media") {
+        inst.GetAttribute(TfToken("positions")).Set(VtVec3fArray{{0, 0, 0}, {5, 0, 0}, {0, -4, 0}});
+        d.sync();
+        boxes = d.volumes("/inst/protos/box");
+        balls = d.volumes("/inst/protos/ball");
+        REQUIRE(boxes.size() == 2);
+        REQUIRE(balls.size() == 1);
+        CHECK_THAT(boxes[1]->lower.x, WithinAbs(4.5, 1e-4));
+        CHECK_THAT(balls[0]->upper.y, WithinAbs(-3.5, 1e-4));
+    }
+    SECTION("the instance count follows the instancer") {
+        inst.GetAttribute(TfToken("positions")).Set(VtVec3fArray{{0, 0, 0}, {3, 0, 0}, {0, 4, 0}, {6, 0, 0}, {9, 0, 0}});
+        inst.GetAttribute(TfToken("protoIndices")).Set(VtIntArray{0, 0, 1, 0, 0});
+        d.sync();
+        boxes = d.volumes("/inst/protos/box");
+        REQUIRE(boxes.size() == 4);
+        CHECK_THAT(boxes[3]->lower.x, WithinAbs(8.5, 1e-4));
+        CHECK(d.volumes("/inst/protos/ball").size() == 1);
+        inst.GetAttribute(TfToken("positions")).Set(VtVec3fArray{{0, 4, 0}, {3, 0, 0}});
+        inst.GetAttribute(TfToken("protoIndices")).Set(VtIntArray{1, 0});
+        d.sync();
+        boxes = d.volumes("/inst/protos/box");
+        REQUIRE(boxes.size() == 1);
+        CHECK_THAT(boxes[0]->lower.x, WithinAbs(2.5, 1e-4));
+        CHECK(d.volumes("/inst/protos/ball").size() == 1);
+        CHECK(d.scene().activeVolumes().size() == 2);
+        // No instance of the box left: nothing of it renders.
+        inst.GetAttribute(TfToken("positions")).Set(VtVec3fArray{{0, 4, 0}});
+        inst.GetAttribute(TfToken("protoIndices")).Set(VtIntArray{1});
+        d.sync();
+        CHECK(d.volumes("/inst/protos/box").empty());
+        CHECK(d.scene().activeVolumes().size() == 1);
+    }
+    SECTION("a hidden instancer hides its media, and shows them again") {
+        const UsdAttribute visibility = inst.CreateAttribute(TfToken("visibility"), SdfValueTypeNames->Token);
+        visibility.Set(TfToken("invisible"));
+        d.sync();
+        CHECK(d.scene().activeVolumes().empty());
+        visibility.Set(TfToken("inherited"));
+        d.sync();
+        CHECK(d.scene().activeVolumes().size() == 3);
+    }
+    SECTION("a surface material makes the instances surfaces again, and back") {
+        d.stage->GetPrimAtPath(SdfPath("/inst/protos/box"))
+            .GetRelationship(TfToken("material:binding"))
+            .SetTargets({SdfPath("/mtl/grey")});
+        d.sync();
+        d.touch();
+        CHECK(d.volumes("/inst/protos/box").empty());
+        CHECK(d.liveMeshes() == 1);
+        CHECK(d.scene().activeVolumes().size() == 1); // the ball
+        d.stage->GetPrimAtPath(SdfPath("/inst/protos/box"))
+            .GetRelationship(TfToken("material:binding"))
+            .SetTargets({SdfPath("/mtl/fog")});
+        d.sync();
+        d.touch();
+        CHECK(d.volumes("/inst/protos/box").size() == 2);
+        CHECK(d.liveMeshes() == 0);
     }
 }

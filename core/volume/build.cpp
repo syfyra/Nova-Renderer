@@ -496,6 +496,7 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
     rec.lightCells = Distribution1D{};
     rec.lightPower = 0.0f;
     rec.cellVolume = 0.0f;
+    rec.lightResizes = false;
     rec.lower = {1.0f, 1.0f, 1.0f};
     rec.upper = {-1.0f, -1.0f, -1.0f};
     rec.program = material ? material->desc.program->volume.get() : nullptr;
@@ -649,32 +650,40 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
         }
         // A light source (D13): its cells in proportion to their emission
         // bound, which covers every emitting point.
-        // The light-sample pdf divides by one cell's world volume, a constant:
-        // a volume whose motion changes its size over the shutter is no
-        // light source (as moving emissive meshes, M9 D14), its emission is
-        // still collected where paths cross it.
+        // The light-sample pdf divides by one cell's world volume: a
+        // constant, unless the volume's motion changes its size over the
+        // shutter. Then cellVolume is the cell's object-space volume and the
+        // samplers multiply it by |det| of the transform at the ray's time
+        // (lightResizes; lightCellVolume() in medium_track.h): the map is
+        // affine, so every cell scales alike and the cells' distribution
+        // holds at every time. The power: the mean over the motion steps.
         float detLo = kInfinity, detHi = 0.0f;
+        double detSum = 0.0;
         for (const Affine3f &m : objectToWorld) {
             const float det = std::fabs(m.determinant());
             detLo = std::min(detLo, det);
             detHi = std::max(detHi, det);
+            detSum += det;
         }
-        const bool resized = detHi > detLo * (1.0f + 1e-4f);
-        if (d.light && resized)
-            std::fprintf(stderr, "[Nova] volume %s: its size changes over the shutter; it is not a light source\n",
-                         d.name.c_str());
-        if (d.light && !resized) {
+        rec.lightResizes = d.light && detHi > detLo * (1.0f + 1e-4f);
+        if (d.light) {
             const float k = float(rec.layout.k);
-            rec.cellVolume = std::fabs(rec.indexToObject.determinant() * objectToWorld.front().determinant()) * k * k * k;
+            rec.cellVolume = rec.lightResizes
+                                 ? std::fabs(rec.indexToObject.determinant()) * k * k * k
+                                 : std::fabs(rec.indexToObject.determinant() * objectToWorld.front().determinant()) * k * k * k;
+            // One cell's world volume for the power (resizing: the steps' mean).
+            const double worldCell = rec.lightResizes
+                                         ? double(rec.cellVolume) * detSum / double(objectToWorld.size())
+                                         : double(rec.cellVolume);
             std::vector<float> weight(cells);
             double sum = 0.0;
             for (size_t i = 0; i < cells; ++i) {
                 weight[i] = std::isfinite(bounds[i].emission) ? std::max(bounds[i].emission, 0.0f) : 0.0f;
                 sum += weight[i];
             }
-            if (sum > 0.0 && rec.cellVolume > 0.0f) {
+            if (sum > 0.0 && rec.cellVolume > 0.0f && worldCell > 0.0) {
                 rec.lightCells.build(weight.data(), uint32_t(cells));
-                rec.lightPower = float(4.0 * kPi * sum * double(rec.cellVolume));
+                rec.lightPower = float(4.0 * kPi * sum * worldCell);
             }
         }
     }

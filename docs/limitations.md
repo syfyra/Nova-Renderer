@@ -1,6 +1,6 @@
 # Known limitations
 
-The current limitations of Nova 0.1.0 in one place. Each entry names what happens instead and where the behaviour
+The current limitations of Nova 0.1.1 in one place. Each entry names what happens instead and where the behaviour
 comes from (the warning in the code, or the design note that deferred it). The per-milestone "Not yet" lines in
 [`reference.md`](reference.md) and the "Deferred" tables in [`design/`](design/) describe the state at the end of
 their milestone; where a later milestone delivered an item (holdout LPEs, light filters, mesh-bounded media,
@@ -29,6 +29,7 @@ messages) and from the design notes, each checked against the code.
 | Ray queries from shading (`kma_ao`, distance, curvature, rounded edges) do not trace on the GPU. | Their default values. | `design/M10.md` |
 | Shadow-link categories beyond the 7th are not separated on the GPU. | Every object shadows those lights, with a message. | `core/gpu/gpu_renderer.cpp` |
 | Materials and volume shaders that need more rows than the device VM has. | The GPU uses their uniform inputs (volumes: density only), with a message. | `core/gpu/gpu_renderer.cpp` |
+| At most 8 volume spans along one ray segment on the GPU (a volume is one span, a medium bounded by a concave mesh may be several). | Further spans along that ray are left out; the CPU has no limit. A long row of instanced fog boxes seen end-on can reach it. | `core/gpu/kernels.cu` (`GpuSpans`) |
 | The Texture Baker does not bake on the GPU. | Nova XPU bakes on the CPU. | `design/M11-P8.md` |
 | The OptiX denoiser does not work on the renderer's GPU memory. | Its images go through host memory. | `reference.md` (M10) |
 
@@ -42,7 +43,6 @@ messages) and from the design notes, each checked against the code.
 | IES profiles (`shaping:ies:file`) and `treatAsLine`. | Ignored: the light keeps its plain distribution; a line light renders as a cylinder. | not read in `hydra/light.cpp` |
 | Moving or deforming emissive meshes are not light sources. | They stay plain emitters (found by BSDF sampling only), with a message. | `core/scene/scene.cpp` |
 | Emission of VEX materials is never sampled as a light. | Plain emitter. | `design/M9.md` |
-| A volume whose size changes over the shutter is not a light source (bug audit R1-36). | Its emission is collected unbiased along the rays. | `core/volume/build.cpp` |
 | Heavily instanced emissive meshes have no two-level light tree. | Flattened to one light per triangle and instance; a message above the budget. | `design/M9.md` 2.2 |
 | Light filters other than Karma's blocker; filter spaces other than world. | Ignored with a warning; world space. | `hydra/lightFilter.cpp` |
 | `misbias`, `activeradius`, `pointradius` and `contribs` light properties. | Ignored. | `design/M9.md` 2.2 |
@@ -67,7 +67,6 @@ messages) and from the design notes, each checked against the code.
 
 | Limitation | What happens instead | Source |
 |---|---|---|
-| Indexed curves. | Rendered with their points in order, with a warning. | `hydra/curves.cpp` |
 | `nurbsCurves` prims. | Not rendered (Houdini's SOP Import never authors them). | `design/M9.md` |
 | Authored normals on subdivided meshes; subdivision of bilinear meshes and UsdGeom implicit prims. | Normals come from the limit surface; those prims stay polygonal. | `reference.md` |
 | Long round linear curves (bug audit R1-11). | Reprojected onto the tube, leaving with an error-bounded offset. | `bug-audit-2026-11.md` |
@@ -80,7 +79,6 @@ messages) and from the design notes, each checked against the code.
 |---|---|---|
 | `volumefilter` other than a box of width 1; tricubic lookups. | Box/trilinear, with a warning. | `hydra/volume.cpp` |
 | Karma CPU's lattice-deformation velocity blur. | Velocity blur as a lookup offset. | `design/M8.md` |
-| Instanced media bounded by surfaces. | Render nothing, with a warning. | `hydra/mesh.cpp`, `hydra/sphere.cpp` |
 | Field prims other than VDB and Houdini volumes; VDB grids of value types other than the scalar and vector ones the bridge converts. | The field is skipped, with a warning. | `hydra/field.cpp`, `houdini/volume_bridge/bridge.cpp` |
 | Cryptomatte ids for volumes. | Volumes have no cryptomatte coverage. | `design/M8.md` 2.2 |
 | Karma's step-rate settings (`volumesteprate`, `volumeshadowsteprate`, `volumequality`, `volumesamplingchannel`). | Ignored: Nova tracks without bias at any setting; fire is slower than Karma at its default step rate. | `design/M8.md` D16 |
@@ -110,3 +108,12 @@ messages) and from the design notes, each checked against the code.
 - **A checkpoint with a short adaptive-sampling array loaded** and was then read past its end.
 
 The last three are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 9.
+
+- **Instanced media bounded by surfaces rendered nothing.** A Fog Box under a point instancer or as a native
+  instance renders at every instance, as in Karma CPU (`hydra/medium.cpp`, `design/M11-P5.md` section 7.1).
+- **Indexed curves were rendered with their points in order.** Curve vertices and their vertex-rate primvars are
+  read through Hydra's curve indices (`hydra/curves.cpp`).
+- **A volume whose size changes over the shutter was not a light source** (bug audit R1-36). It is light-sampled
+  with the cell's volume at the path's time (`core/volume/build.cpp`).
+
+These three are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 10.

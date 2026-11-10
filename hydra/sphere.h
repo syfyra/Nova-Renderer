@@ -42,7 +42,6 @@ private:
     unsigned _sampledMaxSteps = 0;
     uint64_t _builtDisplacement = 0; // signature of the displaced build (0: analytic)
     HdNovaMedium _medium;            // a medium bounded by the sphere (docs/design/M11-P5.md)
-    bool _warnedMediumInstances = false;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -59,7 +59,16 @@ struct MediumVolume {
     ShellView shell;
     uint8_t visibility = kVisibleAll;
     uint8_t holdout = 0; // HoldoutMode
+    // The light's size changes over the shutter: cellVolume is the cell's
+    // object-space volume (VolumeRecord::lightResizes; lightCellVolume()).
+    bool lightResizes = false;
 };
+
+// One light cell's world volume under the volume's object-to-world transform
+// at the ray's time: a constant unless the volume's motion resizes it.
+NOVA_INLINE float lightCellVolume(float cellVolume, bool resizes, const Affine3f &objectToWorld) {
+    return resizes ? cellVolume * std::fabs(objectToWorld.determinant()) : cellVolume;
+}
 
 // A volume a ray crosses: [t0, t1) and the ray in the volume's reference
 // index space and object space (t stays the world distance).
@@ -372,6 +381,12 @@ private:
         const bool collects = m_gather && !mediumAbsorbsOnly(v.vol, m_ray) &&
                               (v.vol.lightIndex != 0xFFFFFFFFu ? m_gather->lights : m_gather->objects);
         v.majorant = collects || !v.vol.extinctionMajorant ? v.vol.majorant : v.vol.extinctionMajorant;
+        // A resizing light's cell at this ray's time, for the MIS weights of
+        // the emission it collects (gatherEmission).
+        if (v.vol.lightResizes && collects) {
+            v.vol.cellVolume = lightCellVolume(v.vol.cellVolume, true, m_media.volumeToWorld(s.id, m_ray.time));
+            v.vol.lightResizes = false;
+        }
         m_active.push_back(v);
     }
 

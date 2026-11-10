@@ -889,6 +889,42 @@ TEST_CASE("XPU volumes: media, volume lights, equiangular", "[gpu][render][volum
     CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.005 * cpuMean));
 }
 
+// A volume light that doubles its size while it moves over the shutter
+// (R1-36): its light samples and their MIS weights take the cell's world
+// volume at the path's time, on the GPU as on the CPU.
+TEST_CASE("XPU volume lights that change size over the shutter", "[gpu][render][volume][motion]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    MeshDesc ground = makeQuad(3.0f);
+    ground.setDisplayColor(spectrum(0.5f));
+    scene.updateMesh(scene.createMesh(), ground);
+    const MaterialId fire = scene.createMaterial();
+    scene.updateMaterial(fire, medium({0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {2.0f, 1.0f, 0.5f}, 0.0f));
+    VolumeDesc flame;
+    flame.fields.push_back({"density", "density", cubeGrid(1.0f, 8, 1.0 / 16.0), Affine3f{}});
+    flame.material = fire;
+    flame.light = true;
+    const VolumeId flameId = scene.createVolume();
+    scene.updateVolume(flameId, flame);
+    Mat4 close = translation({0.3f, 0.0f, 1.0f});
+    close.m[0][0] = close.m[1][1] = close.m[2][2] = 2.0;
+    scene.updateVolumeMotion(flameId, {translation({-0.3f, 0.0f, 0.8f}), close});
+    scene.commit();
+    REQUIRE(scene.lights().size() == 1);
+    REQUIRE(scene.volumeRecord(flameId).lightResizes);
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 2.5f, 32, 32);
+    const Render cpu = render(scene, camera, 32, 32, 256, RenderDevice::Cpu, 3, true);
+    const Render gpu = render(scene, camera, 32, 32, 256, RenderDevice::Xpu, 3, true);
+    REQUIRE(gpu.gpu);
+    const double closePx = closePixels(cpu.film, gpu.film), cpuMean = luminanceMean(cpu.film),
+                 gpuMean = luminanceMean(gpu.film);
+    INFO("pixels within 1e-3: " << closePx << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
+    CHECK(closePx >= 0.9);
+    CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.005 * cpuMean));
+}
+
 // docs/design/M11-P5.md: media bounded by surfaces on the GPU (the shells'
 // crossings in medium_track.h): a fog box scattering with a heavier shadow
 // density (ray:isshadowray), a noise sphere (fractal3d in P), an emitting

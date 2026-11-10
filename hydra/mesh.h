@@ -111,7 +111,7 @@ private:
     // at the shutter's middle step).
     nova::MediumShellPtr _BuildShell(HdSceneDelegate *sceneDelegate, HdNovaRenderParam &param);
     HdNovaMedium _medium;
-    bool _warnedMediumMotion = false, _warnedMediumInstances = false;
+    bool _warnedMediumMotion = false;
     // A light portal (docs/design/M11-P9b.md) instead of a surface: whether
     // the mesh is one (nova:object:isPortal, karma:object:isportal, the
     // render settings'), the dome lights it serves, and whether the scene

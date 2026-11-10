@@ -195,13 +195,35 @@ bool HdNovaBasisCurves::_Build(HdSceneDelegate *sd, HdNovaShutter const &shutter
                                HdNovaObjectDefaults const &defaults, nova::MeshDesc &desc) const {
     const SdfPath &id = GetId();
     const HdBasisCurvesTopology topology = sd->GetBasisCurvesTopology(id);
-    if (topology.HasIndices())
-        HD_NOVA_WARN("%s: indexed curves are not supported; rendered with their points in order", id.GetText());
     const nova::CurveBasis basis = basisOf(topology);
-    const CurveLayout layout = layoutOf(topology, basis);
+    CurveLayout layout = layoutOf(topology, basis);
+    // The points the curves need: one per curve vertex, in order.
     size_t authored = 0;
     for (int c : topology.GetCurveVertexCounts())
         authored += c > 0 ? size_t(c) : 0;
+    // Indexed curves (Hydra's curveIndices): curve vertex i is point
+    // indices[i], and so are its vertex-rate primvars (widths, normals,
+    // shading primvars), which stay per point; the curves need the points up
+    // to the largest index. Varying and uniform values stay per curve.
+    if (topology.HasIndices()) {
+        const VtIntArray &indices = topology.GetCurveIndices();
+        bool valid = indices.size() >= authored;
+        size_t points = 0;
+        for (size_t i = 0; valid && i < authored; ++i) {
+            valid = indices[i] >= 0;
+            points = std::max(points, size_t(std::max(indices[i], 0)) + 1);
+        }
+        if (!valid) {
+            HD_NOVA_WARN("%s: the curve indices do not cover the curve vertex counts (or are negative)", id.GetText());
+            return false;
+        }
+        for (uint32_t &s : layout.source)
+            s = uint32_t(indices[s]);
+        for (uint32_t &r : layout.reflect)
+            if (r != CurveLayout::kNone)
+                r = uint32_t(indices[r]);
+        authored = points;
+    }
 
     std::vector<VtVec3fArray> steps;
     if (!HdNovaSampleVec3fArray(sd, id, HdTokens->points, shutter, maxSteps, &steps) || steps.empty() ||

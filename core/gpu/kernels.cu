@@ -273,7 +273,8 @@ __device__ LightSample sampleVolumeLight(const GpuScene &sc, const GpuSettings &
     // A shell's cells reach past it; there is no medium outside (M11-P5).
     if (v.medium.shell.kind != ShellKind::None && !shellContains(v.medium.shell, object))
         return ls;
-    const Vec3f world = v.toWorld(time).point(object);
+    const Affine3f toWorld = v.toWorld(time);
+    const Vec3f world = toWorld.point(object);
     const Vec3f d = world - origin;
     const float r2 = dot(d, d);
     if (!(r2 > 0.0f))
@@ -283,7 +284,11 @@ __device__ LightSample sampleVolumeLight(const GpuScene &sc, const GpuSettings &
     ls.distance = r;
     ls.Li = evaluateVolume(v, st.globals, object, world, ls.wi, time, uint8_t(RayClass::Shadow), depth).emission *
             (1.0f / sigma);
-    ls.pdf = pdf01 / float(cells.count) / v.medium.cellVolume * r2 / sigma;
+    // The cell's world volume at the path's time (a resizing volume's changes).
+    const float cellVolume = lightCellVolume(v.medium.cellVolume, v.medium.lightResizes, toWorld);
+    if (!(cellVolume > 0.0f))
+        return LightSample{};
+    ls.pdf = pdf01 / float(cells.count) / cellVolume * r2 / sigma;
     return ls;
 }
 

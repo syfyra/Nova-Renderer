@@ -1,0 +1,141 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Camera "cam"
+    {
+        float2 clippingRange = (0.1, 100)
+        float horizontalAperture = 60
+        token projection = "orthographic"
+        float verticalAperture = 20
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def PointInstancer "fogs"
+    {
+        point3f[] positions = [(-2.25, 0, 0), (-0.75, 0, 0)]
+        int[] protoIndices = [0, 0]
+        rel prototypes = </World/fogs/proto>
+        float3[] scales = [(1, 1, 1), (1, 1, 2)]
+
+        def Cube "proto" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            rel material:binding = </mtl/absorb>
+            bool[] primvars:karma:object:volumeuniform = [1] (
+                interpolation = "constant"
+            )
+            double size = 1
+        }
+    }
+
+    def Xform "copyA" (
+        instanceable = true
+        references = </_FogAsset>
+    )
+    {
+        double3 xformOp:translate = (0.75, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "copyB" (
+        instanceable = true
+        references = </_FogAsset>
+    )
+    {
+        float3 xformOp:scale = (0.5, 0.5, 0.5)
+        double3 xformOp:translate = (2.25, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+}
+
+class Xform "_FogAsset"
+{
+    def Cube "cube" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </mtl/absorb>
+        bool[] primvars:karma:object:volumeuniform = [1] (
+            interpolation = "constant"
+        )
+        double size = 1
+    }
+}
+
+def Scope "mtl"
+{
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </mtl/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def Material "absorb"
+    {
+        token outputs:kma:volume.connect = </mtl/absorb/v.outputs:out>
+
+        def Shader "v"
+        {
+            uniform token info:id = "kma_volume"
+            color3f inputs:absorption = (1, 1, 1)
+            token outputs:out
+        }
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "s"
+    {
+        rel camera = </World/cam>
+        float karma:global:colorlimit = 1000000000
+        float karma:global:colorlimitindirect = 1000000000
+        token karma:global:convergence_mode = "Path Traced"
+        int karma:global:pathtracedsamples = 256
+        string karma:global:pixelfilter = "box"
+        float karma:global:pixelfilterscale = 0.000001
+        float nova:clampIndirect = 0
+        token nova:pixelFilter = "box"
+        float nova:pixelFilterScale = 0
+        int nova:samples = 256
+        rel products = </Render/Products/p>
+        int2 resolution = (180, 60)
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "p"
+        {
+            rel orderedVars = </Render/Vars/C>
+            token productName = "out.exr"
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+        }
+    }
+}
+

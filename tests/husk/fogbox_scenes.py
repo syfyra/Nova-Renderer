@@ -326,6 +326,64 @@ EMIT_WORLD = '''
     }'''
 scene('emission', [], 'front', materials=EMIT_MTL, world=EMIT_WORLD)
 
+# 9. Instanced uniform volumes (no LOP: plain USD): a point instancer over
+#    an absorbing unit cube (the second instance twice as deep) and two
+#    native instances of the same cube (the second at half its size). Every
+#    instance is a medium: alpha = 1 - exp(-depth).
+INSTANCE_MTL = '''
+    def Material "absorb"
+    {
+        token outputs:kma:volume.connect = </mtl/absorb/v.outputs:out>
+        def Shader "v"
+        {
+            uniform token info:id = "kma_volume"
+            color3f inputs:absorption = (1, 1, 1)
+            token outputs:out
+        }
+    }'''
+INSTANCE_WORLD = '''
+    def PointInstancer "fogs"
+    {
+        point3f[] positions = [(-2.25, 0, 0), (-0.75, 0, 0)]
+        float3[] scales = [(1, 1, 1), (1, 1, 2)]
+        int[] protoIndices = [0, 0]
+        rel prototypes = [</World/fogs/proto>]
+        def Cube "proto" (prepend apiSchemas = ["MaterialBindingAPI"])
+        {
+            double size = 1
+            rel material:binding = </mtl/absorb>
+            bool[] primvars:karma:object:volumeuniform = [1] (interpolation = "constant")
+        }
+    }
+    def Xform "copyA" (
+        instanceable = true
+        references = </_FogAsset>
+    )
+    {
+        double3 xformOp:translate = (0.75, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+    def Xform "copyB" (
+        instanceable = true
+        references = </_FogAsset>
+    )
+    {
+        double3 xformOp:translate = (2.25, 0, 0)
+        float3 xformOp:scale = (0.5, 0.5, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }'''
+INSTANCE_ASSET = '''
+class Xform "_FogAsset"
+{
+    def Cube "cube" (prepend apiSchemas = ["MaterialBindingAPI"])
+    {
+        double size = 1
+        rel material:binding = </mtl/absorb>
+        bool[] primvars:karma:object:volumeuniform = [1] (interpolation = "constant")
+    }
+}'''
+scene('instances', [], 'front', light=INSTANCE_ASSET, materials=INSTANCE_MTL, world=INSTANCE_WORLD)
+
 # The reference scene: three Fog Boxes (a white box around a grey block, a
 # coloured tilted box, a dark box casting no shadow) on a ground under a key
 # light; single scattering plus the light past it (volume limit 0, both

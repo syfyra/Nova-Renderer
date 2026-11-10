@@ -194,23 +194,19 @@ void HdNovaSphere::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         }
         param->ForgetDisplacedMesh(id);
         param->GetMaterials().BindMesh(id, {GetMaterialId()});
-        if (!GetInstancerId().IsEmpty()) {
-            if (!_warnedMediumInstances)
-                HD_NOVA_WARN("medium %s: instanced media bounded by surfaces are not supported; it renders nothing",
-                             id.GetText());
-            _warnedMediumInstances = true;
-            _medium.Remove(*param);
-        } else {
-            const bool fresh = !_medium.Active();
-            nova::MediumShellPtr shell;
-            if (fresh || newShutter || (bits & (HdChangeTracker::DirtyPoints | HdChangeTracker::DirtyTopology |
-                                                 HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyExtent))) {
-                const std::vector<float> radii = sampleRadius(sd, id, shutter, maxSteps);
-                shell = nova::makeSphereShell(nova::Vec3f{0.0f, 0.0f, 0.0f}, radii[(radii.size() - 1) / 2]);
-            }
-            _medium.Sync(sd, *param, id, GetMaterialId(), IsVisible(), GetPrimId(), shell,
-                         fresh || newShutter || (bits & HdChangeTracker::DirtyTransform), shutter);
+        // Instanced: one volume per instance (HdNovaMedium).
+        const bool fresh = !_medium.Active();
+        nova::MediumShellPtr shell;
+        if (fresh || newShutter || (bits & (HdChangeTracker::DirtyPoints | HdChangeTracker::DirtyTopology |
+                                             HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyExtent))) {
+            const std::vector<float> radii = sampleRadius(sd, id, shutter, maxSteps);
+            shell = nova::makeSphereShell(nova::Vec3f{0.0f, 0.0f, 0.0f}, radii[(radii.size() - 1) / 2]);
         }
+        _medium.Sync(sd, *param, id, GetMaterialId(), IsVisible(), GetPrimId(), shell,
+                     fresh || newShutter ||
+                         (bits & (HdChangeTracker::DirtyTransform | HdChangeTracker::DirtyInstancer |
+                                  HdChangeTracker::DirtyInstanceIndex)),
+                     shutter, GetInstancerId());
         _sampledShutter = shutter;
         _sampledMaxSteps = maxSteps;
         *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;

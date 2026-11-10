@@ -31,22 +31,31 @@ class HdNovaRenderParam;
 bool HdNovaIsMedium(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &material,
                     HdNovaMaterialRegistry const &registry);
 
-// The scene volume of a gprim that is a medium.
+// The scene volumes of a gprim that is a medium: one, or one per instance of
+// an instanced gprim (point instancers and native instances, every nesting
+// level flattened), which share the shell and the material and differ in
+// their transforms.
 class HdNovaMedium {
 public:
     bool Active() const { return _volumeId != nova::kInvalidId; }
-    // Creates or updates the volume: `shell` is the gprim's new shell in its
+    // Creates or updates the volumes: `shell` is the gprim's new shell in its
     // object space (null: keep the last one; the first call needs one),
-    // `transformDirty` resamples its transform over `shutter` (the gprim's:
-    // the frame alone with Karma's per-object motion blur off).
+    // `transformDirty` resamples the transforms over `shutter` (the gprim's:
+    // the frame alone with Karma's per-object motion blur off). `instancer`
+    // is the gprim's instancer (empty: none), synced by the caller; its
+    // changes count as a dirty transform.
     void Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath const &id, SdfPath const &material, bool visible,
-              int primId, nova::MediumShellPtr shell, bool transformDirty, HdNovaShutter const &shutter);
-    // Removes the volume (the gprim is a surface again, or goes away).
+              int primId, nova::MediumShellPtr shell, bool transformDirty, HdNovaShutter const &shutter,
+              SdfPath const &instancer = SdfPath());
+    // Removes the volumes (the gprim is a surface again, or goes away).
     void Remove(HdNovaRenderParam &param);
 
 private:
-    nova::VolumeId _volumeId = nova::kInvalidId;
+    nova::VolumeId _volumeId = nova::kInvalidId;  // the gprim's, or its first instance's
+    std::vector<nova::VolumeId> _instanceVolumeIds; // of the instances after the first
     nova::MediumShellPtr _shell;
+    bool _instanced = false;
+    bool _noInstances = false; // an instancer without (visible) instances: the volume is kept, hidden
     bool _warnedOpen = false;
 };
 

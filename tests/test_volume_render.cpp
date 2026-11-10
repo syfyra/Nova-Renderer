@@ -298,10 +298,15 @@ TEST_CASE("Ratio tracking is unbiased on a heterogeneous field", "[volume][track
     CHECK(std::fabs(z) < 3.5);
 }
 
-TEST_CASE("Volumes that change size over the shutter are no light sources", "[volume][render][light]") {
-    // A volume light's sample pdf divides by one cell's world volume: a
-    // volume scaled over the shutter is no light source (its emission is
-    // collected where paths cross it, unbiased); moved alone, it is one.
+TEST_CASE("Volumes that change size over the shutter are light sources", "[volume][render][light]") {
+    // A volume light's sample pdf divides by one cell's world volume. Moved
+    // alone, that is a constant; scaled over the shutter, it is the cell's
+    // volume at the ray's time (VolumeRecord::lightResizes: cellVolume is
+    // then the object-space cell, times |det| of the transform at that
+    // time), and the light's power takes the mean over the motion steps.
+    // Such volumes were no light sources before (R1-36); the images are
+    // checked in test_volume_scatter.cpp.
+    float power[2] = {0.0f, 0.0f};
     for (const bool grows : {false, true}) {
         INFO("grows " << grows);
         Scene scene;
@@ -319,7 +324,19 @@ TEST_CASE("Volumes that change size over the shutter are no light sources", "[vo
         scene.updateVolumeMotion(id, {Mat4::identity(), end});
         scene.commit();
         const VolumeRecord &rec = scene.volumeRecord(id);
-        CHECK((rec.lightPower > 0.0f) == !grows);
-        CHECK((rec.lightIndex != kInvalidId) == !grows);
+        CHECK(rec.lightPower > 0.0f);
+        CHECK(rec.lightIndex != kInvalidId);
+        CHECK(rec.lightResizes == grows);
+        power[grows] = rec.lightPower;
+        // One cell's world volume at the shutter's ends: 1 and 8 times the
+        // cell when it doubles its size.
+        const float open = std::fabs(scene.volumeToWorld(id, 0.0f).determinant());
+        const float close = std::fabs(scene.volumeToWorld(id, 1.0f).determinant());
+        CHECK_THAT(open, WithinAbs(1.0, 1e-4));
+        CHECK_THAT(close, WithinAbs(grows ? 8.0 : 1.0, 1e-3));
     }
+    // The mean volume over the shutter: the scale goes from 1 to 2, the
+    // integral of s^3 is 3.75 (the build samples the motion finely).
+    INFO("power moved " << power[0] << ", grown " << power[1]);
+    CHECK_THAT(power[1], WithinAbs(3.75 * power[0], 0.05 * 3.75 * power[0]));
 }

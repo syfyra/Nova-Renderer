@@ -90,6 +90,7 @@ MediumVolume mediumVolume(const VolumeRecord &rec) {
     v.lightIndex = rec.lightIndex;
     v.lightCells = rec.lightCells.view();
     v.cellVolume = rec.cellVolume;
+    v.lightResizes = rec.lightResizes;
     v.objectToIndex = rec.objectToIndex;
     if (rec.desc.shell)
         v.shell = rec.desc.shell->view();

@@ -1,6 +1,7 @@
 #include "medium.h"
 
 #include "diagnostics.h"
+#include "instancer.h"
 #include "motion.h"
 #include "primvarUtil.h"
 #include "renderParam.h"
@@ -59,6 +60,46 @@ std::vector<nova::VolumeConstant> constantsOf(HdSceneDelegate *sd, SdfPath const
     return out;
 }
 
+// The object-to-world transforms of every instance of an instanced medium
+// (flattened over the nesting levels, the gprim's own transform first): per
+// instance its uniform steps over the shutter, or one transform when it does
+// not move. The instances at the frame alone when their number changes
+// within the shutter (as instanced surfaces).
+std::vector<std::vector<nova::Mat4>> instanceSteps(HdSceneDelegate *sd, SdfPath const &id,
+                                                   HdNovaInstancer const &instancer, HdNovaShutter const &shutter,
+                                                   unsigned maxSteps) {
+    HdNovaTransformSamples prototype;
+    HdNovaSampleTransformSamples(sd, id, shutter, &prototype);
+    const unsigned n = std::max(instancer.GetMotionStepCount(shutter, maxSteps), prototype.StepCount(shutter, maxSteps));
+    std::vector<std::vector<nova::Mat4>> out;
+    std::vector<GfMatrix4d> xf;
+    bool sampled = n > 1;
+    for (unsigned s = 0; s < n && sampled; ++s) {
+        const float t = shutter.TimeAt(float(s) / float(n - 1));
+        instancer.ComputeInstanceTransformsAt(id, prototype.At(t), shutter, t, xf);
+        if (s == 0)
+            out.assign(xf.size(), std::vector<nova::Mat4>());
+        else if (xf.size() != out.size())
+            sampled = false;
+        for (size_t k = 0; sampled && k < xf.size(); ++k)
+            out[k].push_back(toNova(xf[k]));
+    }
+    if (!sampled) {
+        const float t = shutter.FrameOffset();
+        instancer.ComputeInstanceTransformsAt(id, prototype.At(t), shutter, t, xf);
+        out.assign(xf.size(), std::vector<nova::Mat4>());
+        for (size_t k = 0; k < xf.size(); ++k)
+            out[k].push_back(toNova(xf[k]));
+    }
+    // An instance at rest keeps its exact transform (no keys).
+    for (std::vector<nova::Mat4> &steps : out)
+        if (steps.size() > 1 && std::all_of(steps.begin() + 1, steps.end(), [&](nova::Mat4 const &m) {
+                return std::equal(&m.m[0][0], &m.m[0][0] + 16, &steps[0].m[0][0]);
+            }))
+            steps.resize(1);
+    return out;
+}
+
 } // namespace
 
 bool HdNovaIsMedium(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &material,
@@ -76,7 +117,7 @@ bool HdNovaIsMedium(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &mater
 
 void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath const &id, SdfPath const &material,
                         bool visible, int primId, nova::MediumShellPtr shell, bool transformDirty,
-                        HdNovaShutter const &shutter) {
+                        HdNovaShutter const &shutter, SdfPath const &instancerId) {
     if (shell)
         _shell = std::move(shell);
     if (!_shell) { // nothing inside: no volume
@@ -97,31 +138,65 @@ void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath c
     desc.shell = _shell;
     HdNovaVolumeObjectSettings(sd, id, desc, param.GetObjectDefaults());
     desc.constants = constantsOf(sd, id, material.IsEmpty() ? std::vector<std::string>{} : registry.GetVolumeFields(material));
-    std::vector<GfMatrix4d> sampled;
+    // The transforms over the shutter, per volume: the gprim's own, or one
+    // set per instance (Karma renders every instance of a uniform volume,
+    // measured: tests/husk/check_karma_fogbox.py `instances`).
     const bool first = _volumeId == nova::kInvalidId;
-    if (first || transformDirty)
-        HdNovaSampleTransform(sd, id, shutter, param.GetMaxMotionSteps(), &sampled);
+    const bool instanced = !instancerId.IsEmpty();
+    const bool resample = first || transformDirty || instanced != _instanced;
+    std::vector<std::vector<nova::Mat4>> steps;
+    if (resample) {
+        _instanced = instanced;
+        _noInstances = false;
+        if (instanced) {
+            if (auto *instancer = static_cast<HdNovaInstancer *>(sd->GetRenderIndex().GetInstancer(instancerId)))
+                steps = instanceSteps(sd, id, *instancer, shutter, param.GetMaxMotionSteps());
+            _noInstances = steps.empty();
+        } else {
+            std::vector<GfMatrix4d> sampled;
+            HdNovaSampleTransform(sd, id, shutter, param.GetMaxMotionSteps(), &sampled);
+            steps.emplace_back();
+            for (GfMatrix4d const &m : sampled)
+                steps.back().push_back(toNova(m));
+        }
+    }
+    const size_t count = resample ? std::max<size_t>(steps.size(), 1) : _instanceVolumeIds.size() + 1;
 
     nova::Scene &scene = param.AcquireSceneForEdit();
+    // Stable keys, not the sync order: the path, and the instance's index
+    // behind the first.
     if (first)
-        _volumeId = scene.createVolume(nova::objectKey(id.GetString())); // stable, not the sync order
+        _volumeId = scene.createVolume(nova::objectKey(id.GetString()));
+    while (_instanceVolumeIds.size() + 1 < count)
+        _instanceVolumeIds.push_back(scene.createVolume(nova::objectKey(id.GetString(), _instanceVolumeIds.size() + 1)));
+    while (_instanceVolumeIds.size() + 1 > count) {
+        scene.removeVolume(_instanceVolumeIds.back());
+        _instanceVolumeIds.pop_back();
+    }
     desc.material = registry.Acquire(material, scene);
-    scene.updateVolume(_volumeId, std::move(desc));
+    if (_noInstances)
+        desc.visible = false;
     // Ray visibility and holdouts (docs/design/M11-P2.md D15), as a surface's.
-    scene.setVolumeVisibility(_volumeId, HdNovaObjectVisibility(sd, id));
-    if (!sampled.empty()) {
-        std::vector<nova::Mat4> steps;
-        for (GfMatrix4d const &m : sampled)
-            steps.push_back(toNova(m));
-        scene.updateVolumeMotion(_volumeId, steps);
+    const nova::ObjectVisibility visibility = HdNovaObjectVisibility(sd, id);
+    for (size_t k = 0; k < count; ++k) {
+        const nova::VolumeId volume = k == 0 ? _volumeId : _instanceVolumeIds[k - 1];
+        scene.updateVolume(volume, k + 1 < count ? desc : std::move(desc));
+        scene.setVolumeVisibility(volume, visibility);
+        if (k < steps.size() && !steps[k].empty())
+            scene.updateVolumeMotion(volume, steps[k]);
     }
 }
 
 void HdNovaMedium::Remove(HdNovaRenderParam &param) {
     if (_volumeId != nova::kInvalidId) {
-        param.AcquireSceneForEdit().removeVolume(_volumeId);
+        nova::Scene &scene = param.AcquireSceneForEdit();
+        scene.removeVolume(_volumeId);
+        for (nova::VolumeId volume : _instanceVolumeIds)
+            scene.removeVolume(volume);
         _volumeId = nova::kInvalidId;
+        _instanceVolumeIds.clear();
     }
+    _instanced = _noInstances = false;
     _shell.reset();
 }
 

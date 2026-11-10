@@ -157,9 +157,15 @@ struct VolumeRecord {
     // A light source (VolumeDesc::light with emission): its cells by their
     // emission bounds times their world volume, the sum's power (4 pi
     // times), one cell's world volume, and its index in Scene::lights().
+    // A volume whose motion changes its size over the shutter (lightResizes):
+    // cellVolume is the cell's object-space volume, to be multiplied by
+    // |det| of the object-to-world transform at the ray's time (an affine
+    // map scales every cell alike, so the cells' distribution holds at every
+    // time); its power takes the mean over the motion steps.
     Distribution1D lightCells;
     float lightPower = 0.0f;
     float cellVolume = 0.0f;
+    bool lightResizes = false;
     uint32_t lightIndex = kInvalidId;
     // Velocity blur (VolumeDesc::velocity): the fields of the components (-1:
     // none; all three or no blur) and the largest lookup offset, in object

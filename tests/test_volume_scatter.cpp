@@ -568,6 +568,79 @@ TEST_CASE("Emissive volumes as light sources", "[volume][light]") {
     CHECK_THAT(smokeMean(ds), WithinAbs(smokeMean(bs), 0.05 * smokeMean(bs)));
 }
 
+TEST_CASE("A volume light that changes size over the shutter is light-sampled without bias", "[volume][light][motion]") {
+    // The emitting cube above the grey ground, growing to twice its size (8
+    // times its volume) while it moves over the shutter. Its light samples
+    // divide by the cell's world volume at the path's time (R1-36: such a
+    // volume was no light source before, since one constant cell volume
+    // would bias them: with the shutter-open volume the ground would be lit
+    // by the mean of 1 / s^3, 0.375 of the light). Collecting the emission
+    // with continuations only (not a light), MIS and light samples alone
+    // give the same ground.
+    const auto build = [](Scene &scene, bool light, bool grows) {
+        const MaterialId ground = scene.createMaterial();
+        MaterialDesc grey;
+        grey.inputs = lambertDefaults(spectrum(0.5f));
+        scene.updateMaterial(ground, grey);
+        const MeshId quad = scene.createMesh();
+        scene.updateMesh(quad, makeQuad(3.0f));
+        scene.setMeshMaterials(quad, {ground});
+        const MaterialId fire = scene.createMaterial();
+        scene.updateMaterial(fire, medium({0.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {2.0f, 1.0f, 0.5f}, 0.0f));
+        VolumeDesc desc;
+        desc.fields.push_back({"density", "density", cubeGrid(1.0f, 8, 1.0 / 16.0), Affine3f{}});
+        desc.material = fire;
+        desc.light = light;
+        const VolumeId id = scene.createVolume();
+        scene.updateVolume(id, desc);
+        Mat4 open = translation({-0.3f, 0.0f, 0.8f}), close = translation({0.3f, 0.0f, 1.0f});
+        if (grows) // else moved alone
+            close.m[0][0] = close.m[1][1] = close.m[2][2] = 2.0;
+        scene.updateVolumeMotion(id, {open, close});
+        scene.commit();
+    };
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 2.5f, 16, 16);
+    // The ground the cube never covers (the outer two pixel rings), which
+    // only the fire lights.
+    const auto groundMean = [](const Film &f) {
+        double m = 0.0;
+        int n = 0;
+        for (int y = 0; y < 16; ++y)
+            for (int x = 0; x < 16; ++x)
+                if (x < 2 || x > 13 || y < 2 || y > 13) {
+                    m += pixelMean(f, x, y).x;
+                    ++n;
+                }
+        return m / double(n);
+    };
+    for (const bool grows : {true, false}) {
+        INFO("grows " << grows);
+        Scene plain, lit;
+        build(plain, false, grows);
+        build(lit, true, grows);
+        CHECK(plain.lights().empty());
+        REQUIRE(lit.lights().size() == 1);
+        CHECK(lit.lights()[0].type == LightType::Volume);
+        Options o;
+        o.spp = 1024;
+        o.maxDepth = 3;
+        o.volumeLimit = 0.0f;
+        const double collisions = groundMean(render(plain, camera, 16, o));
+        const double mis = groundMean(render(lit, camera, 16, o));
+        o.strategy = LightStrategy::LightOnly;
+        const double lightOnly = groundMean(render(lit, camera, 16, o));
+        o.strategy = LightStrategy::BsdfOnly;
+        const double bsdfOnly = groundMean(render(lit, camera, 16, o));
+        INFO("ground: collisions only " << collisions << ", MIS " << mis << ", light samples only " << lightOnly
+                                        << ", continuations only " << bsdfOnly);
+        CAPTURE(collisions, mis, lightOnly, bsdfOnly);
+        CHECK(collisions > 0.005);
+        CHECK_THAT(mis, WithinAbs(collisions, 0.03 * collisions));
+        CHECK_THAT(lightOnly, WithinAbs(collisions, 0.03 * collisions));
+        CHECK_THAT(bsdfOnly, WithinAbs(collisions, 0.03 * collisions));
+    }
+}
+
 TEST_CASE("Volumes inside glass", "[volume][scatter]") {
     // The white furnace cube inside a smooth glass sphere of IOR 1 (no
     // reflection, no bending): paths cross the glass as delta events, scatter

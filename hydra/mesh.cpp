@@ -947,19 +947,15 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         }
         param->ForgetDisplacedMesh(id);
         param->GetMaterials().BindMesh(id, {GetMaterialId()}); // material edits re-sync it
-        if (!GetInstancerId().IsEmpty()) {
-            if (!_warnedMediumInstances)
-                HD_NOVA_WARN("medium %s: instanced media bounded by surfaces are not supported; it renders nothing",
-                             id.GetText());
-            _warnedMediumInstances = true;
-            _medium.Remove(*param);
-        } else {
-            const bool fresh = !_medium.Active();
-            const bool shellDirty = fresh || newShutter || (bits & (HdChangeTracker::DirtyTopology | HdChangeTracker::DirtyPoints));
-            _medium.Sync(sd, *param, id, GetMaterialId(), IsVisible(), GetPrimId(),
-                         shellDirty ? _BuildShell(sd, *param) : nullptr,
-                         fresh || newShutter || (bits & HdChangeTracker::DirtyTransform), shutter);
-        }
+        // Instanced: one volume per instance (HdNovaMedium).
+        const bool fresh = !_medium.Active();
+        const bool shellDirty = fresh || newShutter || (bits & (HdChangeTracker::DirtyTopology | HdChangeTracker::DirtyPoints));
+        _medium.Sync(sd, *param, id, GetMaterialId(), IsVisible(), GetPrimId(),
+                     shellDirty ? _BuildShell(sd, *param) : nullptr,
+                     fresh || newShutter ||
+                         (bits & (HdChangeTracker::DirtyTransform | HdChangeTracker::DirtyInstancer |
+                                  HdChangeTracker::DirtyInstanceIndex)),
+                     shutter, GetInstancerId());
         _sampledShutter = shutter;
         _sampledMaxSteps = maxSteps;
         *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
