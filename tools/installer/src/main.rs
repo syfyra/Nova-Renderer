@@ -533,15 +533,26 @@ fn uninstall(opts: &Options, dir: &Path, progress: &dyn Fn(f64, &str)) -> Result
     Ok(())
 }
 
+// The install an uninstall removes: --dir; else the install this executable
+// sits in (its manifest is there), registered or not; else the registered
+// install (a setup executable run with --uninstall from anywhere else). The
+// executable's own install comes before the registered one: the uninstaller of
+// a second, unregistered install (--no-register, a studio or test folder)
+// must remove that install, never the registered one.
+fn choose_uninstall_dir(dir: Option<&Path>, here: Option<&Path>, registered: Option<&Path>) -> Option<PathBuf> {
+    if let Some(d) = dir {
+        return Some(d.to_path_buf());
+    }
+    if let Some(h) = here.filter(|h| read_manifest(h).is_some()) {
+        return Some(h.to_path_buf());
+    }
+    registered.map(Path::to_path_buf)
+}
+
 fn uninstall_dir(opts: &Options) -> Option<PathBuf> {
-    if let Some(d) = &opts.dir {
-        return Some(d.clone());
-    }
-    if let Some(i) = registered() {
-        return Some(PathBuf::from(i.dir));
-    }
-    let here = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    read_manifest(&here).map(|_| here)
+    let here = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+    let registered = registered().map(|i| PathBuf::from(i.dir));
+    choose_uninstall_dir(opts.dir.as_deref(), here.as_deref(), registered.as_deref())
 }
 
 // ---- The window's commands ------------------------------------------------
@@ -787,6 +798,38 @@ mod tests {
         let opts = Options { packages_root: d.clone(), register: false, uninstall: true, dir: Some(d.clone()) };
         assert_eq!(uninstall(&opts, &d, &|_, _| {}), Err(format!("NOT_NOVA:{}", d.display())));
         assert_eq!(fs::read_to_string(d.join("nova").join("src").join("file")).unwrap(), "mine");
+    }
+
+    // Without --dir an uninstaller removes the install it sits in; only an
+    // executable outside any install falls back to the registered one (before,
+    // the registered install came first: the uninstaller of an unregistered
+    // copy removed the registered install instead of its own).
+    #[test]
+    fn uninstall_removes_the_install_the_executable_sits_in() {
+        let d = scratch("uninstall_target");
+        let manifest = "{\"dir\": \"x\", \"version\": \"0.1.1\", \"packages\": []}";
+        let (own, registered, downloads, foreign, chosen) =
+            (d.join("own"), d.join("registered"), d.join("downloads"), d.join("foreign"), d.join("chosen"));
+        for f in [&own, &registered, &downloads, &foreign] {
+            fs::create_dir_all(f).unwrap();
+        }
+        fs::write(own.join(MANIFEST), manifest).unwrap();
+        fs::write(registered.join(MANIFEST), manifest).unwrap();
+        fs::write(foreign.join(MANIFEST), "{\"name\": \"someone else's\"}").unwrap();
+        // The uninstaller of an unregistered install, another one registered.
+        assert_eq!(choose_uninstall_dir(None, Some(&own), Some(&registered)), Some(own.clone()));
+        // The registered install's own uninstaller.
+        assert_eq!(choose_uninstall_dir(None, Some(&registered), Some(&registered)), Some(registered.clone()));
+        // A setup executable outside any install, or beside a manifest that
+        // is not Nova's: the registered install, else none.
+        assert_eq!(choose_uninstall_dir(None, Some(&downloads), Some(&registered)), Some(registered.clone()));
+        assert_eq!(choose_uninstall_dir(None, Some(&foreign), Some(&registered)), Some(registered.clone()));
+        assert_eq!(choose_uninstall_dir(None, Some(&downloads), None), None);
+        assert_eq!(choose_uninstall_dir(None, None, None), None);
+        // --dir decides, wherever the executable is.
+        assert_eq!(choose_uninstall_dir(Some(&chosen), Some(&own), Some(&registered)), Some(chosen.clone()));
+        // An unregistered install without another one registered.
+        assert_eq!(choose_uninstall_dir(None, Some(&own), None), Some(own));
     }
 
     #[test]

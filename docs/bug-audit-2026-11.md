@@ -267,3 +267,9 @@ Three documented limitations, each removed with tests of the new behaviour (the 
 
 - Golden check (nova_cli, 16 samples), on main at cee101e with these changes: all 38 reference scenes bit-identical to the hashes saved after M11 (no reference scene has an instanced medium, indexed curves or a resizing volume light; volume lights of constant size keep their expressions).
 - Tests on main at cee101e with these changes: ctest 705/705 (`reference_cli_karma_atmosphere` skipped by design), among them the `[gpu]` cases and `husk_karma_fogbox`.
+
+## 11. Installer: which install an uninstaller removes
+
+| ID | Severity | Defect | Fix | Regression test |
+|---|---|---|---|---|
+| I-1 | medium | Without `--dir`, `--uninstall` removed the registered install before the one the executable sits in: the `Uninstall Nova.exe` of a second, unregistered install (`--no-register`: a studio or test folder) removed the registered install (its `nova` folder, its package file, and with registration on its Apps & features entry) and left its own in place. Found while testing the 0.1.1 installer in a temporary folder, where it removed the machine's registered install (restored by reinstalling) (`tools/installer/src/main.rs` `uninstall_dir`) | The order is `--dir`, then the install the executable sits in (Nova's manifest beside it), then the registered install (a setup executable run with `--uninstall` from elsewhere); `choose_uninstall_dir` holds the rule. The window's uninstall mode uses the same choice. | `uninstall_removes_the_install_the_executable_sits_in` in the installer's unit tests (8 pass). End to end, with another install registered: a test install made with `--dir`, `--packages-root` and `--no-register` and then removed by its own uninstaller with `--uninstall --silent` alone leaves no file of its own and the registered install unchanged (registry entry, package file and its backup, `hdNova.dll` hash, file count). |

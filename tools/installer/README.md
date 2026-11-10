@@ -41,6 +41,11 @@ NovaSetup-0.1.1.exe --silent [--dir <folder>] [--packages-root <folder>] [--no-r
 `--no-register` leaves Apps & features alone (and any registered install). Relative folders are made absolute
 against the current directory. Exit code 0 on success.
 
+Which install `--uninstall` removes: the one in `--dir`; without it, the install the executable sits in (an
+`Uninstall Nova.exe` removes its own install, registered or not); an executable outside any install (the setup
+run with `--uninstall`) removes the registered one. In the 0.1.0 installer the registered install came before the
+executable's own, so the uninstaller of a second, unregistered install removed the registered install instead.
+
 ## Building
 
 Needs the Rust MSVC toolchain (`rustup`), WebView2 (part of Windows 11) and an installed package in `dist/nova`:
