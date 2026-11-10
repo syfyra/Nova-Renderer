@@ -7,6 +7,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <limits>
+
 using namespace nova;
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
@@ -76,4 +78,30 @@ TEST_CASE("Ray origin offset moves to the normal side", "[math]") {
         CHECK(dot(q - p, n) > 0.0f);
         CHECK(length(q - p) < 1e-2f * std::fmax(1.0f, maxComponent(absolute(p))));
     }
+}
+
+TEST_CASE("toInt and clampToInt are defined for every float", "[math]") {
+    const float nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+    const int intMin = std::numeric_limits<int>::min();
+    // In range: truncation, as the plain conversion.
+    CHECK(toInt(0.0f) == 0);
+    CHECK(toInt(-0.0f) == 0);
+    CHECK(toInt(2.9f) == 2);
+    CHECK(toInt(-2.9f) == -2);
+    CHECK(toInt(2147483520.0f) == 2147483520); // the largest float below 2^31
+    CHECK(toInt(-2147483648.0f) == intMin);
+    // Out of range and NaN: INT_MIN (what x86's conversion gives).
+    for (float x : {2147483648.0f, 3.0e9f, -3.0e9f, 1e30f, -1e30f, inf, -inf, nan})
+        CHECK(toInt(x) == intMin);
+
+    CHECK(clampToInt(3.7f, 0, 10) == 3);
+    CHECK(clampToInt(-0.5f, 0, 10) == 0);
+    CHECK(clampToInt(-5.0f, -3, 10) == -3);
+    CHECK(clampToInt(10.0f, 0, 10) == 10);
+    CHECK(clampToInt(1e12f, 0, 2047) == 2047);
+    CHECK(clampToInt(-1e12f, 0, 2047) == 0);
+    CHECK(clampToInt(inf, 0, 2047) == 2047);
+    CHECK(clampToInt(-inf, 0, 2047) == 0);
+    CHECK(clampToInt(nan, 5, 2047) == 5);
+    CHECK(clampToInt(3.0e9f, 0, std::numeric_limits<int>::max()) == std::numeric_limits<int>::max());
 }

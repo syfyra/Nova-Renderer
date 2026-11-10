@@ -50,4 +50,17 @@ constexpr uint32_t kInvalidId = 0xFFFFFFFFu;
 NOVA_FORCEINLINE float fmin(float a, float b) { return (b < a || a != a) ? b : a; }
 NOVA_FORCEINLINE float fmax(float a, float b) { return (b > a || a != a) ? b : a; }
 
+// float -> int with a defined result for every input. The plain conversion is
+// undefined beyond int's range and for NaN, and the devices disagree there:
+// x86 gives INT_MIN, CUDA saturates and turns NaN into 0.
+//
+// toInt truncates and gives INT_MIN wherever x86 did (out of range, NaN), so
+// shading on values run wild (a noise position of 1e12, an infinite octave
+// count) stays what the CPU rendered and is the same on the GPU.
+NOVA_FORCEINLINE int toInt(float x) {
+    return (x >= -2147483648.0f && x < 2147483648.0f) ? int(x) : (-2147483647 - 1);
+}
+// clampToInt truncates x clamped to [lo, hi]; a NaN gives lo.
+NOVA_FORCEINLINE int clampToInt(float x, int lo, int hi) { return x >= float(hi) ? hi : (x > float(lo) ? int(x) : lo); }
+
 } // namespace nova

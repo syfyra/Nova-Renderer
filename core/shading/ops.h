@@ -319,7 +319,8 @@ NOVA_INLINE void evalProcedural(Op op, uint32_t imm, const float *a, const float
         }
         return;
     case Op::Fractal: {
-        const int octaves = int(b[0]) < 0 ? 0 : (int(b[0]) > 32 ? 32 : int(b[0]));
+        const int count = toInt(b[0]); // defined for a NaN or infinite input (INT_MIN: no octave)
+        const int octaves = count < 0 ? 0 : (count > 32 ? 32 : count);
         const float lac = c[0], dimish = c[1];
         auto f = [&](bool shifted) {
             return dim == 2 ? fractal(shifted ? p2 + Vec2f{19.0f, 193.0f} : p2, octaves, lac, dimish)

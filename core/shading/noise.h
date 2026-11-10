@@ -14,7 +14,11 @@
 
 namespace nova::shading::noise {
 
-NOVA_INLINE int floorInt(float x) { return int(std::floor(x)); }
+// Defined for every x (toInt): INT_MIN beyond int's range and for NaN.
+NOVA_INLINE int floorInt(float x) { return toInt(std::floor(x)); }
+// The neighbour cell X + offset as the float the cell hashes take. A 64-bit
+// sum: X is INT_MIN for positions beyond int's range.
+NOVA_INLINE float cellCoord(int X, int offset) { return float(int64_t(X) + int64_t(offset)); }
 NOVA_INLINE float floorFrac(float x, int &i) {
     i = floorInt(x);
     return x - float(i);
@@ -263,7 +267,7 @@ NOVA_INLINE void worley(Vec2f p, float jitter, float d[3], Vec2f &minpos) {
     minpos = {0.0f, 0.0f};
     for (int x = -1; x <= 1; ++x)
         for (int y = -1; y <= 1; ++y) {
-            const Vec3f t = cellV3(Vec2f{float(x + X), float(y + Y)});
+            const Vec3f t = cellV3(Vec2f{cellCoord(X, x), cellCoord(Y, y)});
             const Vec2f c{float(x) + ((t.x - 0.5f) * jitter + 0.5f), float(y) + ((t.y - 0.5f) * jitter + 0.5f)};
             const Vec2f diff = c - local;
             const float dist = dot(diff, diff);
@@ -288,7 +292,7 @@ NOVA_INLINE void worley(Vec3f p, float jitter, float d[3], Vec3f &minpos) {
     for (int x = -1; x <= 1; ++x)
         for (int y = -1; y <= 1; ++y)
             for (int z = -1; z <= 1; ++z) {
-                const Vec3f t = cellV3(Vec3f{float(x + X), float(y + Y), float(z + Z)});
+                const Vec3f t = cellV3(Vec3f{cellCoord(X, x), cellCoord(Y, y), cellCoord(Z, z)});
                 const Vec3f c{float(x) + ((t.x - 0.5f) * jitter + 0.5f), float(y) + ((t.y - 0.5f) * jitter + 0.5f),
                               float(z) + ((t.z - 0.5f) * jitter + 0.5f)};
                 const Vec3f diff = c - local;
@@ -358,7 +362,7 @@ NOVA_INLINE Vec3f hsvToRgb(Vec3f hsv) {
     if (s < 0.0001f)
         return {v, v, v};
     h = 6.0f * (h - std::floor(h));
-    const int hi = int(std::trunc(h));
+    const int hi = toInt(std::trunc(h)); // a NaN hue: INT_MIN, the default case
     const float f = h - float(hi);
     const float p = v * (1.0f - s), q = v * (1.0f - s * f), t = v * (1.0f - s * (1.0f - f));
     switch (hi) {

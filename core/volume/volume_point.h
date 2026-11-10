@@ -38,7 +38,10 @@ NOVA_INLINE VolumePoint volumePointOf(const VolumeInputs &in, uint32_t depth) {
     out.scattering = nonNegative(in.c(volume_field::scattering));
     out.absorption = nonNegative(in.c(volume_field::absorption));
     out.emission = in.c(volume_field::emission);
-    const int start = int(std::lround(in.f(volume_field::modifierStartLevel)));
+    // The level is clamped before the conversion: lround is undefined out of
+    // range and for NaN (level 0 here), as is the level difference below.
+    const float level = in.f(volume_field::modifierStartLevel);
+    const int start = level != level ? 0 : int(std::lround(clampTo(level, -1048576.0f, 1048576.0f)));
     if (int(depth) >= start) {
         const float m = in.f(volume_field::extinctionModifier), e = m < 0.0f ? 0.0f : m;
         if (e > 0.0f) {

@@ -178,6 +178,41 @@ TEST_CASE("Bake: quads split along their second and fourth corners", "[bake]") {
     CHECK(p.P.x == Approx(1.0125f).margin(1e-4));
 }
 
+TEST_CASE("Bake: a triangle with a corner far outside the tile is still found", "[bake]") {
+    // The lookup grid's cell range of a triangle was converted to int before
+    // it was clamped: a corner at u = 1e9 (grid coordinate 4e9, beyond int)
+    // became cell 0, the range was empty and the triangle was in no cell.
+    Scene scene;
+    MeshDesc low;
+    std::vector<float> st;
+    const auto triangle = [&](Vec3f p0, Vec3f p1, Vec3f p2, Vec2f t0, Vec2f t1, Vec2f t2) {
+        const uint32_t base = uint32_t(low.points.size());
+        low.points.insert(low.points.end(), {p0, p1, p2});
+        low.indices.insert(low.indices.end(), {base, base + 1, base + 2});
+        low.normals.insert(low.normals.end(), 3, Vec3f{0, 0, 1});
+        st.insert(st.end(), {t0.x, t0.y, t1.x, t1.y, t2.x, t2.y});
+    };
+    triangle({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0.6f, 0.1f}, {1e9f, 0.1f}, {0.6f, 0.9f});
+    for (int i = 0; i < 16; ++i) { // 17 triangles: a 4 x 4 grid
+        const float u = 0.02f + 0.03f * float(i);
+        triangle({u, 0, 5}, {u + 0.01f, 0, 5}, {u, 0.01f, 5}, {u, 0.01f}, {u + 0.01f, 0.01f}, {u, 0.02f});
+    }
+    low.attributes.push_back({"st", AttributeRate::Vertex, 2, st});
+    const MeshId id = scene.createMesh();
+    scene.updateMesh(id, low);
+    scene.commit();
+    BakeSettings s;
+    s.low = {id};
+    Baker baker;
+    baker.build(scene, s);
+    BakePoint p;
+    REQUIRE(baker.lookup({0.8f, 0.3f}, p)); // inside the far-reaching triangle, in grid cell (3, 1)
+    CHECK(p.P.y == Approx(0.25f).margin(1e-3));
+    CHECK(p.P.z == Approx(0.0f).margin(1e-6));
+    REQUIRE(baker.lookup({0.025f, 0.012f}, p)); // a small triangle
+    CHECK(p.P.z == Approx(5.0f));
+}
+
 TEST_CASE("Bake: texture-space lookup, UDIM tiles and the trace maps", "[bake]") {
     Scene scene;
     // Low: the unit square at z = 0 in UDIM 1002 (u in [1, 2]), hidden.
