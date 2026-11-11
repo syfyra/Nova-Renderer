@@ -9,7 +9,7 @@ const listen = tauri ? tauri.event.listen : mockListen;
 const appWindow = tauri ? tauri.window.getCurrentWindow() : null;
 
 const $ = (id) => document.getElementById(id);
-const state = { info: null, minors: new Set(), busy: false, installed: null };
+const state = { info: null, minors: new Set(), busy: false, installed: null, experimental: false };
 
 function escape(text) {
   return String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -58,12 +58,28 @@ function renderHoudini() {
   });
 }
 
+// The card Nova XPU would render on (info.xpu: the NVIDIA driver's first
+// device and what Nova XPU does with it). One it is built for but not tested
+// on gets the option that turns it on; unticked, Nova XPU renders on the CPU.
 function renderGpu() {
-  const nvidia = state.info.gpus.find((g) => g.nvidia);
-  const gpu = nvidia || state.info.gpus[0];
-  const name = gpu ? gpu.name : 'No graphics card found';
-  const detail = nvidia ? 'Nova XPU available' : 'No NVIDIA GPU: Nova XPU will use the CPU';
-  $('gpu').innerHTML = `${escape(name)}<span class="sub">${escape(detail)}</span>`;
+  const info = state.info, xpu = info.xpu;
+  const nvidia = info.gpus.find((g) => g.nvidia);
+  const gpu = nvidia || info.gpus[0];
+  const name = xpu ? xpu.name : gpu ? gpu.name : 'No graphics card found';
+  if (xpu && xpu.support === 'experimental') {
+    const detail = 'Experimental: use it for Nova XPU (not tested on this card yet). Off: CPU.';
+    $('gpu').innerHTML =
+      `<label class="check"><input type="checkbox" id="experimental" ${state.experimental ? 'checked' : ''}>` +
+      `<span>${escape(name)}<span class="sub" title="${escape(detail)}">${escape(detail)}</span></span></label>`;
+    $('experimental').addEventListener('change', (e) => { state.experimental = e.target.checked; });
+    return;
+  }
+  const detail = xpu
+    ? (xpu.support === 'tested' ? 'Nova XPU available'
+      : 'Older than Nova XPU supports (RTX 20 / GTX 16 or newer): Nova XPU will use the CPU')
+    : nvidia ? 'The NVIDIA driver did not answer: Nova XPU needs driver 590 or newer'
+      : 'No NVIDIA GPU: Nova XPU will use the CPU';
+  $('gpu').innerHTML = `${escape(name)}<span class="sub" title="${escape(detail)}">${escape(detail)}</span>`;
 }
 
 function renderNote() {
@@ -102,7 +118,8 @@ async function run() {
   show('progress', 'Step 2 of 3', { label: 'Cancel', disabled: true }, { label: removing ? 'Remove' : 'Install', disabled: true });
   try {
     if (removing) await invoke('run_uninstall');
-    else state.installed = await invoke('run_install', { dir: $('dir').value.trim(), minors: [...state.minors] });
+    else state.installed = await invoke('run_install',
+      { dir: $('dir').value.trim(), minors: [...state.minors], experimental: state.experimental });
     state.busy = false;
     donePage();
   } catch (e) {
@@ -157,6 +174,7 @@ async function start() {
     $('start-title').textContent = `Install Nova ${info.version}`;
     $('dir').value = info.default_dir;
     state.minors.add(info.houdini_minor); // also before Houdini is installed
+    state.experimental = !!info.experimental_gpus; // kept as it is where the option is not shown
     renderHoudini();
     renderGpu();
     renderNote();
@@ -200,6 +218,13 @@ function mockInvoke(cmd, args) {
       ],
       gpus: params.has('nogpu') ? [{ name: 'Intel(R) UHD Graphics 770', nvidia: false, memory_gb: 0.1 }]
         : [{ name: 'NVIDIA GeForce RTX 5080', nvidia: true, memory_gb: 15.6 }],
+      // ?oldgpu: a card Nova XPU is not tested on (the option); ?ancient: one
+      // it does not support; ?nodriver: an NVIDIA card whose driver is silent.
+      xpu: params.has('nogpu') || params.has('nodriver') ? null
+        : params.has('oldgpu') ? { name: 'NVIDIA GeForce RTX 3070', capability: '8.6', support: 'experimental' }
+          : params.has('ancient') ? { name: 'NVIDIA GeForce GTX 1080', capability: '6.1', support: 'old' }
+            : { name: 'NVIDIA GeForce RTX 5080', capability: '12.0', support: 'tested' },
+      experimental_gpus: params.has('experimental'),
     });
   if (cmd === 'run_install' || cmd === 'run_uninstall')
     return new Promise((resolve, reject) => {

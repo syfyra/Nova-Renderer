@@ -28,6 +28,15 @@ const HOUDINI_MINOR: &str = "22.0";
 const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\NovaForHoudini";
 const UNINSTALLER: &str = "Uninstall Nova.exe";
 const MANIFEST: &str = "install.json";
+// Nova XPU's rule for GPUs (core/gpu/device.cpp, core/CMakeLists.txt; build.ps1
+// hands the two lists over): compute capabilities as major * 10 + minor. A GPU
+// below the oldest architecture the kernels are built for renders on the CPU;
+// one that runs the code of an architecture Nova XPU has been tested on
+// renders on the GPU; any other is experimental and renders on the GPU only
+// with this variable set, which the package file does when the option is on.
+const EXPERIMENTAL_ENV: &str = "NOVA_XPU_EXPERIMENTAL_GPUS";
+const GPU_MIN_ARCH: Option<&str> = option_env!("NOVA_GPU_MIN_ARCH");
+const GPU_TESTED_ARCHS: Option<&str> = option_env!("NOVA_GPU_TESTED_ARCHS");
 
 #[derive(Serialize, Clone)]
 struct Houdini {
@@ -45,12 +54,25 @@ struct Gpu {
     memory_gb: f64,
 }
 
+// The GPU Nova XPU renders on, the CUDA driver's first device, and what Nova
+// XPU does with it: "tested", "experimental" or "old" (xpu_support).
+#[derive(Serialize, Clone)]
+struct Xpu {
+    name: String,
+    capability: String,
+    support: String,
+}
+
 // What an installation left behind (its manifest, install.json).
 #[derive(Serialize, Deserialize, Clone)]
 struct Installed {
     dir: String,
     version: String,
     packages: Vec<String>,
+    // Whether its package files turn the experimental GPU support on
+    // (manifests before 0.1.3 lack it: off).
+    #[serde(default)]
+    experimental_gpus: bool,
 }
 
 #[derive(Serialize)]
@@ -59,6 +81,11 @@ struct SystemInfo {
     houdini_minor: String,
     houdinis: Vec<Houdini>,
     gpus: Vec<Gpu>,
+    // None without an NVIDIA driver that answers.
+    xpu: Option<Xpu>,
+    // The option's state to start from: the command line's, else the
+    // installed Nova's.
+    experimental_gpus: bool,
     default_dir: String,
     installed: Option<Installed>,
     uninstall: bool,
@@ -72,12 +99,15 @@ struct Progress {
 }
 
 // Where the run puts things: the Houdini preference root (Documents, or
-// --packages-root), whether it registers the uninstaller, and the mode.
+// --packages-root), whether it registers the uninstaller, the mode, and the
+// experimental GPU support (--experimental-gpus, --no-experimental-gpus;
+// neither: as the install it replaces had it, off for a new one).
 struct Options {
     packages_root: PathBuf,
     register: bool,
     uninstall: bool,
     dir: Option<PathBuf>,
+    experimental: Option<bool>,
 }
 
 fn forward(p: &Path) -> String {
@@ -245,6 +275,73 @@ fn find_gpus() -> Vec<Gpu> {
     out
 }
 
+// What Nova XPU does with a GPU of a compute capability (major * 10 + minor),
+// by the renderer's rule: code for X.y runs on every X.z with z >= y.
+fn xpu_support(capability: u32) -> &'static str {
+    let min = GPU_MIN_ARCH.and_then(|s| s.trim().parse::<u32>().ok()).unwrap_or(75);
+    if capability < min {
+        return "old";
+    }
+    let tested = GPU_TESTED_ARCHS
+        .unwrap_or("120")
+        .split([',', ';'])
+        .filter_map(|a| a.trim().parse::<u32>().ok())
+        .any(|a| a / 10 == capability / 10 && a % 10 <= capability % 10);
+    if tested { "tested" } else { "experimental" }
+}
+
+// The CUDA driver's first device, the one Nova XPU renders on: its name and
+// compute capability, asked from nvcuda.dll as the renderer does. None
+// without an NVIDIA driver, or when it does not answer within five seconds
+// (a driver that hangs must not hang the setup window).
+fn find_xpu() -> Option<Xpu> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(unsafe { query_cuda() });
+    });
+    let (name, capability) = rx.recv_timeout(std::time::Duration::from_secs(5)).ok().flatten()?;
+    Some(Xpu { name, capability: format!("{}.{}", capability / 10, capability % 10), support: xpu_support(capability).into() })
+}
+
+unsafe fn query_cuda() -> Option<(String, u32)> {
+    use std::ffi::c_void;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LoadLibraryW(name: *const u16) -> *mut c_void;
+        fn GetProcAddress(module: *mut c_void, name: *const u8) -> *mut c_void;
+    }
+    // cuda.h: CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR and _MINOR.
+    const MAJOR: i32 = 75;
+    const MINOR: i32 = 76;
+    let dll_name: Vec<u16> = "nvcuda.dll\0".encode_utf16().collect();
+    let dll = LoadLibraryW(dll_name.as_ptr());
+    if dll.is_null() {
+        return None;
+    }
+    let export = |name: &[u8]| {
+        let p = GetProcAddress(dll, name.as_ptr());
+        (!p.is_null()).then_some(p)
+    };
+    let init: extern "system" fn(u32) -> i32 = std::mem::transmute(export(b"cuInit\0")?);
+    let device: extern "system" fn(*mut i32, i32) -> i32 = std::mem::transmute(export(b"cuDeviceGet\0")?);
+    let device_name: extern "system" fn(*mut u8, i32, i32) -> i32 = std::mem::transmute(export(b"cuDeviceGetName\0")?);
+    let attribute: extern "system" fn(*mut i32, i32, i32) -> i32 = std::mem::transmute(export(b"cuDeviceGetAttribute\0")?);
+    let (mut dev, mut major, mut minor) = (0i32, 0i32, 0i32);
+    let mut text = [0u8; 256];
+    if init(0) != 0
+        || device(&mut dev, 0) != 0
+        || device_name(text.as_mut_ptr(), text.len() as i32, dev) != 0
+        || attribute(&mut major, MAJOR, dev) != 0
+        || attribute(&mut minor, MINOR, dev) != 0
+        || major < 0
+        || minor < 0
+    {
+        return None;
+    }
+    let len = text.iter().position(|&c| c == 0).unwrap_or(text.len());
+    Some((String::from_utf8_lossy(&text[..len]).trim().to_string(), (major * 10 + minor) as u32))
+}
+
 // Houdini processes that may have Nova's DLLs loaded (they cannot be replaced
 // while loaded).
 fn running_houdini() -> Vec<String> {
@@ -310,13 +407,23 @@ fn default_dir() -> PathBuf {
     dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(r"C:\Nova")).join("Programs").join("Nova")
 }
 
-fn package_json(nova: &Path) -> String {
+// Houdini's package file for the install in `nova`; with the experimental
+// GPU support on it also sets the variable Nova XPU asks for (device.cpp).
+fn package_json(nova: &Path, experimental: bool) -> String {
+    let more = if experimental { format!(",\n        {{ \"{EXPERIMENTAL_ENV}\": \"1\" }}") } else { String::new() };
     format!(
-        "{{\n    \"enable\": \"houdini_version >= '{min}' and houdini_version < '{max}'\",\n    \"load_package_once\": true,\n    \"env\": [\n        {{ \"NOVA\": \"{dir}\" }}\n    ],\n    \"hpath\": \"$NOVA\"\n}}\n",
+        "{{\n    \"enable\": \"houdini_version >= '{min}' and houdini_version < '{max}'\",\n    \"load_package_once\": true,\n    \"env\": [\n        {{ \"NOVA\": \"{dir}\" }}{more}\n    ],\n    \"hpath\": \"$NOVA\"\n}}\n",
         min = HOUDINI_MINOR,
         max = next_minor(HOUDINI_MINOR),
         dir = forward(nova)
     )
+}
+
+// The experimental GPU support an install into `dir` gets when nothing says
+// otherwise: as the install it replaces had it (the one in `dir`, else the
+// registered one when this install takes its place), off for a new one.
+fn kept_experimental(opts: &Options, dir: &Path) -> bool {
+    read_manifest(dir).or_else(|| if opts.register { registered() } else { None }).map_or(false, |i| i.experimental_gpus)
 }
 
 fn next_minor(minor: &str) -> String {
@@ -341,7 +448,13 @@ fn dir_size(dir: &Path) -> u64 {
         .unwrap_or(0)
 }
 
-fn install(opts: &Options, dir: &Path, minors: &[String], progress: &dyn Fn(f64, &str)) -> Result<Installed, String> {
+fn install(
+    opts: &Options,
+    dir: &Path,
+    minors: &[String],
+    experimental: bool,
+    progress: &dyn Fn(f64, &str),
+) -> Result<Installed, String> {
     let running = running_houdini();
     if !running.is_empty() {
         return Err(format!("HOUDINI_RUNNING:{}", running.join(", ")));
@@ -377,7 +490,12 @@ fn install(opts: &Options, dir: &Path, minors: &[String], progress: &dyn Fn(f64,
     // A manifest from the start, so that a retry after a failed install
     // recognises its own partial nova folder.
     if read_manifest(dir).is_none() {
-        let provisional = Installed { dir: dir.to_string_lossy().to_string(), version: VERSION.to_string(), packages: Vec::new() };
+        let provisional = Installed {
+            dir: dir.to_string_lossy().to_string(),
+            version: VERSION.to_string(),
+            packages: Vec::new(),
+            experimental_gpus: experimental,
+        };
         let text = serde_json::to_string_pretty(&provisional).unwrap_or_default();
         // An earlier uninstaller's cleanup may remove the empty folder just
         // created: once more.
@@ -451,7 +569,7 @@ fn install(opts: &Options, dir: &Path, minors: &[String], progress: &dyn Fn(f64,
         let folder = opts.packages_root.join(format!("houdini{minor}")).join("packages");
         fs::create_dir_all(&folder).map_err(|e| err(&format!("cannot create {}", folder.display()), &e))?;
         let file = folder.join("nova.json");
-        let text = package_json(&nova);
+        let text = package_json(&nova, experimental);
         if let Ok(old) = fs::read_to_string(&file) {
             if !old.contains(&forward(&nova)) && !folder.join("nova.json.bak").exists() {
                 fs::rename(&file, folder.join("nova.json.bak")).map_err(|e| err("cannot keep the old package file", &e))?;
@@ -461,7 +579,8 @@ fn install(opts: &Options, dir: &Path, minors: &[String], progress: &dyn Fn(f64,
         packages.push(file.to_string_lossy().to_string());
     }
 
-    let installed = Installed { dir: dir.to_string_lossy().to_string(), version: VERSION.to_string(), packages };
+    let installed =
+        Installed { dir: dir.to_string_lossy().to_string(), version: VERSION.to_string(), packages, experimental_gpus: experimental };
     fs::write(dir.join(MANIFEST), serde_json::to_string_pretty(&installed).unwrap_or_default())
         .map_err(|e| err("cannot write the install manifest", &e))?;
 
@@ -572,6 +691,8 @@ fn system_info(state: tauri::State<State>) -> SystemInfo {
         houdini_minor: HOUDINI_MINOR.into(),
         houdinis: find_houdinis(&opts.packages_root),
         gpus: find_gpus(),
+        xpu: if opts.uninstall { None } else { find_xpu() },
+        experimental_gpus: opts.experimental.unwrap_or_else(|| installed.as_ref().map_or(false, |i| i.experimental_gpus)),
         default_dir: opts
             .dir
             .clone()
@@ -627,15 +748,16 @@ async fn run_install(
     state: tauri::State<'_, State>,
     dir: String,
     minors: Vec<String>,
+    experimental: bool,
 ) -> Result<Installed, String> {
     let (root, register) = {
         let o = state.0.lock().unwrap();
         (o.packages_root.clone(), o.register)
     };
     tauri::async_runtime::spawn_blocking(move || {
-        let opts = Options { packages_root: root, register, uninstall: false, dir: None };
+        let opts = Options { packages_root: root, register, uninstall: false, dir: None, experimental: Some(experimental) };
         let progress = emitter(window);
-        install(&opts, &absolute(PathBuf::from(dir.trim())), &minors, &progress)
+        install(&opts, &absolute(PathBuf::from(dir.trim())), &minors, experimental, &progress)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -649,7 +771,7 @@ async fn run_uninstall(window: tauri::Window, state: tauri::State<'_, State>) ->
     };
     let dir = dir.ok_or("Nova is not installed")?;
     tauri::async_runtime::spawn_blocking(move || {
-        let opts = Options { packages_root: root, register, uninstall: true, dir: None };
+        let opts = Options { packages_root: root, register, uninstall: true, dir: None, experimental: None };
         let progress = emitter(window);
         uninstall(&opts, &dir, &progress)
     })
@@ -674,6 +796,13 @@ fn parse_args() -> (Options, bool) {
         register: !args.iter().any(|a| a == "--no-register"),
         uninstall: args.iter().any(|a| a == "--uninstall"),
         dir: value("--dir").map(|d| absolute(PathBuf::from(d))),
+        experimental: if args.iter().any(|a| a == "--no-experimental-gpus") {
+            Some(false)
+        } else if args.iter().any(|a| a == "--experimental-gpus") {
+            Some(true)
+        } else {
+            None
+        },
     };
     (opts, args.iter().any(|a| a == "--silent"))
 }
@@ -697,7 +826,13 @@ fn silent(opts: Options) -> i32 {
                 find_houdinis(&opts.packages_root).into_iter().filter(|h| h.supported).map(|h| h.minor).collect();
             if found.is_empty() { vec![HOUDINI_MINOR.to_string()] } else { found }
         };
-        install(&opts, &dir, &minors, &progress).map(|i| println!("Installed Nova {} to {}", i.version, i.dir))
+        let experimental = opts.experimental.unwrap_or_else(|| kept_experimental(&opts, &dir));
+        install(&opts, &dir, &minors, experimental, &progress).map(|i| {
+            println!("Installed Nova {} to {}", i.version, i.dir);
+            if i.experimental_gpus {
+                println!("Experimental GPU support is on ({EXPERIMENTAL_ENV}=1 in the package file)");
+            }
+        })
     };
     match result {
         Ok(()) => 0,
@@ -795,7 +930,7 @@ mod tests {
         let d = scratch("uninstall_foreign");
         fs::create_dir_all(d.join("nova").join("src")).unwrap();
         fs::write(d.join("nova").join("src").join("file"), "mine").unwrap();
-        let opts = Options { packages_root: d.clone(), register: false, uninstall: true, dir: Some(d.clone()) };
+        let opts = Options { packages_root: d.clone(), register: false, uninstall: true, dir: Some(d.clone()), experimental: None };
         assert_eq!(uninstall(&opts, &d, &|_, _| {}), Err(format!("NOT_NOVA:{}", d.display())));
         assert_eq!(fs::read_to_string(d.join("nova").join("src").join("file")).unwrap(), "mine");
     }
@@ -854,8 +989,8 @@ mod tests {
         for f in [&ours, &restored, &foreign] {
             fs::create_dir_all(f.parent().unwrap()).unwrap();
         }
-        fs::write(&ours, package_json(&nova)).unwrap();
-        fs::write(&restored, package_json(&nova)).unwrap();
+        fs::write(&ours, package_json(&nova, false)).unwrap();
+        fs::write(&restored, package_json(&nova, true)).unwrap();
         fs::write(restored.with_file_name("nova.json.bak"), "theirs").unwrap();
         fs::write(&foreign, "theirs").unwrap();
         let list: Vec<String> = [&ours, &restored, &foreign].iter().map(|f| f.to_string_lossy().to_string()).collect();
@@ -894,5 +1029,64 @@ mod tests {
         let _ = running.wait();
         assert!(!exe.exists());
         assert!(!d.exists());
+    }
+
+    // Nova XPU's rule for GPUs as the renderer has it (the same table as in
+    // tests/test_gpu_fixes.cpp): built for 7.5, 8.0 and 12.0, tested on 12.0.
+    #[test]
+    fn gpus_are_classified_as_the_renderer_does() {
+        let table = [
+            (61, "old"),
+            (70, "old"),
+            (75, "experimental"),
+            (86, "experimental"),
+            (89, "experimental"),
+            (90, "experimental"),
+            (100, "experimental"),
+            (120, "tested"),
+            (121, "tested"),
+            (130, "experimental"),
+        ];
+        for (capability, support) in table {
+            assert_eq!(xpu_support(capability), support, "compute capability {capability}");
+        }
+    }
+
+    // The driver query itself: with an NVIDIA driver it names the first
+    // device and classifies it; without one it reports none (and returns).
+    #[test]
+    fn the_cuda_driver_names_its_first_device() {
+        match find_xpu() {
+            Some(x) => {
+                println!("{} (compute capability {}): {}", x.name, x.capability, x.support);
+                assert!(!x.name.is_empty());
+                assert!(x.capability.split('.').all(|p| p.parse::<u32>().is_ok()));
+                assert!(["old", "experimental", "tested"].contains(&x.support.as_str()));
+            }
+            None => println!("no NVIDIA driver answered"),
+        }
+    }
+
+    #[test]
+    fn package_file_turns_experimental_gpus_on_only_when_asked() {
+        let nova = PathBuf::from(r"C:\Nova\nova");
+        let off: serde_json::Value = serde_json::from_str(&package_json(&nova, false)).unwrap();
+        let on: serde_json::Value = serde_json::from_str(&package_json(&nova, true)).unwrap();
+        assert_eq!(off["env"].as_array().unwrap().len(), 1);
+        assert_eq!(off["env"][0]["NOVA"], "C:/Nova/nova");
+        assert_eq!(on["env"].as_array().unwrap().len(), 2);
+        assert_eq!(on["env"][0]["NOVA"], "C:/Nova/nova");
+        assert_eq!(on["env"][1][EXPERIMENTAL_ENV], "1");
+        assert_eq!(on["hpath"], "$NOVA");
+    }
+
+    #[test]
+    fn manifests_before_the_option_read_as_off() {
+        let d = scratch("manifest_option");
+        fs::write(d.join(MANIFEST), "{\"dir\": \"x\", \"version\": \"0.1.2\", \"packages\": []}").unwrap();
+        assert!(!read_manifest(&d).unwrap().experimental_gpus);
+        fs::write(d.join(MANIFEST), "{\"dir\": \"x\", \"version\": \"0.1.3\", \"packages\": [], \"experimental_gpus\": true}")
+            .unwrap();
+        assert!(read_manifest(&d).unwrap().experimental_gpus);
     }
 }
