@@ -30,29 +30,49 @@ jobs:
         preset: [core, core-sanitize]
     steps:
       - uses: actions/checkout@v4
-      # The runner's package mirror fails at times: on 2026-11-11 three runs in a
-      # row ended here with exit code 100 after twelve minutes of timeouts. So:
-      # short timeouts, three attempts, from the second on Ubuntu's own archive
-      # in place of the runner's mirror, and apt's own error lines as annotations.
+      # The runner's package sources fail at times: on 2026-11-11 the indexes of
+      # noble-updates, noble-backports and noble-security could not be fetched
+      # from any of the runner's three mirrors for hours, and every run ended
+      # here. Three attempts with short timeouts: the runner's setup, then
+      # Ubuntu's own archive in place of the runner's mirror of it, then another
+      # mirror of the archive. What apt says went wrong goes into annotations.
       - name: Install Embree, oneTBB, OpenSubdiv and Catch2
         shell: bash
         run: |
-          options="-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any"
           packages="ninja-build libembree-dev libtbb-dev libosd-dev catch2"
-          for attempt in 1 2 3; do
-            if sudo apt-get $options update 2>&1 | tee apt.log &&
-               sudo apt-get $options install -y --no-install-recommends $packages 2>&1 | tee -a apt.log; then
-              if [ "$attempt" -gt 1 ]; then echo "::notice title=apt-get::installed at attempt $attempt"; fi
-              exit 0
-            fi
-            grep -E '^(E|W|Err):' apt.log | sort -u | tail -n 3 | while IFS= read -r line; do
-              echo "::warning title=apt-get attempt $attempt::$line"
-            done || true
-            for list in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
-              if [ -f "$list" ]; then sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$list"; fi
-            done
-            sleep 20
+          quick="-o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
+          lists="/etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources"
+          # apt's E: lines, and the reason it prints under an Err: line.
+          report() {
+            { grep -E '^E:' apt.log | sort -u | head -n 3
+              grep -A1 -E '^Err:' apt.log | grep -E '^ +[^ ]' | sort -u | head -n 2; } |
+              while IFS= read -r line; do echo "::warning title=apt-get attempt $1::$line"; done || true
+          }
+          # update with the given options (an index that cannot be fetched fails it), then install.
+          attempt() {
+            sudo apt-get $quick -o APT::Update::Error-Mode=any $1 update 2>&1 | tee apt.log &&
+              sudo apt-get $quick install -y --no-install-recommends $packages 2>&1 | tee -a apt.log
+          }
+          if attempt ""; then exit 0; fi
+          report 1
+          for list in $lists; do
+            if [ -f "$list" ]; then sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$list"; fi
           done
+          if attempt ""; then echo "::notice title=apt-get::installed from archive.ubuntu.com (attempt 2)"; exit 0; fi
+          report 2
+          # Another mirror, and an index past its Valid-Until date is accepted
+          # there: a mirror that lags is better than no build, and the packages
+          # are verified by the archive's signatures all the same.
+          for list in $lists; do
+            if [ -f "$list" ]; then
+              sudo sed -i -E 's#https?://(azure\.archive|archive|security)\.ubuntu\.com/ubuntu#https://mirrors.edge.kernel.org/ubuntu#g' "$list"
+            fi
+          done
+          if attempt "-o Acquire::Check-Valid-Until=false"; then
+            echo "::notice title=apt-get::installed from mirrors.edge.kernel.org (attempt 3)"
+            exit 0
+          fi
+          report 3
           echo "::error title=apt-get::the packages could not be installed in three attempts"
           exit 1
       # The NanoVDB 32.6 headers are fetched by the configure step.
