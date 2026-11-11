@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -224,6 +225,40 @@ TEST_CASE("Light edits update the tree consistently", "[lights][tree]") {
                 }
         }
     }
+}
+
+// A commit that leaves the lights where they are sums the tree's powers
+// again instead of building it (D11). The sums must be the build's, bit for
+// bit: the build added an interior node's lights one by one and the update
+// its two children, which rounds differently from three lights on, so an
+// edited scene chose lights with probabilities one ulp off a freshly loaded
+// one's and rendered other last bits (found by tests/test_ipr_fuzz.cpp).
+TEST_CASE("A light tree whose powers are summed again equals one built anew", "[lights][tree]") {
+    Scene edited, fresh;
+    addStreet(edited, 300, 4u);
+    addStreet(fresh, 300, 4u);
+    edited.commit();
+    fresh.commit();
+    const LightTreeView built = edited.lightTree();
+    REQUIRE(built.nodeCount > 500); // 300 spheres and the street's other bounded lights
+    const std::vector<LightTreeNode> before(built.nodes, built.nodes + built.nodeCount);
+    // The street's first light again, as it is: nothing moves.
+    Rng desc = Rng::make(4u, 0u, 0u);
+    LightDesc s;
+    s.type = LightType::Sphere;
+    s.radius = 0.05f;
+    s.intensity = 1.0f + 9.0f * desc.next();
+    s.color = {desc.next(), desc.next(), desc.next()};
+    s.transform = translation({40.0f * desc.next() - 20.0f, 40.0f * desc.next() - 20.0f, 0.5f + 2.0f * desc.next()});
+    edited.updateLight(0, s);
+    REQUIRE(edited.commit());
+    const LightTreeView a = edited.lightTree(), b = fresh.lightTree();
+    REQUIRE(a.nodeCount == b.nodeCount);
+    uint32_t differing = 0;
+    for (uint32_t k = 0; k < a.nodeCount; ++k)
+        differing += std::memcmp(&a.nodes[k], &b.nodes[k], sizeof(LightTreeNode)) != 0;
+    CHECK(differing == 0);
+    CHECK(std::memcmp(a.nodes, before.data(), before.size() * sizeof(LightTreeNode)) == 0);
 }
 
 TEST_CASE("The light tree estimates direct light without bias and with less noise", "[lights][tree]") {

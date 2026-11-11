@@ -177,6 +177,13 @@ void LightTree::buildNode(std::vector<std::pair<uint32_t, LightBounds>> &items, 
     }
     m_nodes[index] = nodeOf(all);
     m_nodes[index].child = second;
+    // The power as update() and refit() sum it, child by child. `all` adds
+    // the lights one by one, which rounds differently from three lights on:
+    // a tree whose powers were summed again (any commit that leaves the
+    // lights where they are) then chose lights with probabilities one ulp
+    // off those of the same tree built anew, and an edited scene rendered
+    // other last bits than the same scene loaded fresh.
+    m_nodes[index].phi = m_nodes[index + 1].phi + m_nodes[second].phi;
     linkInterior(m_nodes[index], m_nodes[index + 1], m_nodes[second]);
 }
 
