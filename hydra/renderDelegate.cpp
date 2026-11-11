@@ -3,6 +3,7 @@
 #include "atmosphere.h"
 #include "camera.h"
 #include "diagnostics.h"
+#include "pathUtil.h"
 #include "field.h"
 #include "instancer.h"
 #include "light.h"
@@ -618,7 +619,7 @@ bool HdNovaRenderDelegate::_ResumeCheckpoint() {
     const std::string &path = _activeProducts.checkpointPath;
     if (path.empty() || !_activeProducts.resume || _renderer.passes() != 0 || !_resumeTried.insert(path).second)
         return false;
-    std::ifstream in(std::filesystem::u8path(path), std::ios::binary);
+    std::ifstream in(HdNovaPath(path), std::ios::binary);
     if (!in)
         return false;
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -651,7 +652,7 @@ void HdNovaRenderDelegate::_SaveCheckpoint() {
     signature = fnv1a(&camera.ndcToView, sizeof(camera.ndcToView), signature);
     signature = fnv1a(&_renderer.settings().seed, sizeof(uint32_t), signature);
     // Written next to the file and renamed: an interrupted save keeps the last one.
-    const std::filesystem::path target = std::filesystem::u8path(path);
+    const std::filesystem::path target = HdNovaPath(path);
     std::filesystem::path temp = target;
     temp += ".tmp";
     std::error_code ec;
@@ -934,7 +935,7 @@ void HdNovaRenderDelegate::_RenderLoop() {
             _WriteDeep();
             if (!_activeProducts.checkpointPath.empty()) {
                 std::error_code ec;
-                std::filesystem::remove(std::filesystem::u8path(_activeProducts.checkpointPath), ec);
+                std::filesystem::remove(HdNovaPath(_activeProducts.checkpointPath), ec);
             }
         } else if (!_activeProducts.checkpointPath.empty() &&
                    double(nowNs() - _lastCheckpointNs) * 1e-9 >= _activeProducts.checkpointSeconds) {

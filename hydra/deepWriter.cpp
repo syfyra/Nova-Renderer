@@ -1,5 +1,7 @@
 #include "deepWriter.h"
 
+#include "pathUtil.h"
+
 #include <OpenImageIO/deepdata.h>
 #include <OpenImageIO/imageio.h>
 
@@ -134,7 +136,7 @@ bool HdNovaWriteDeepImage(nova::Film const &film, HdNovaDeepOutput const &out, s
         }
 
     std::error_code ec;
-    const std::filesystem::path path = std::filesystem::u8path(out.path);
+    const std::filesystem::path path = HdNovaPath(out.path);
     if (path.has_parent_path())
         std::filesystem::create_directories(path.parent_path(), ec);
     auto output = OIIO::ImageOutput::create(out.path);

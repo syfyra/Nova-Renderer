@@ -12,6 +12,7 @@
 
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -157,6 +158,15 @@ void onAbort(int) {
 
 namespace nova_cli {
 
+void useUtf8Console() {
+    static UINT previous = 0;
+    previous = GetConsoleOutputCP(); // 0: no console (output to a file or a pipe)
+    if (previous == 0 || previous == CP_UTF8 || GetACP() != CP_UTF8)
+        return;
+    if (SetConsoleOutputCP(CP_UTF8))
+        std::atexit([] { SetConsoleOutputCP(previous); });
+}
+
 void installCrashHandler() {
     g_request = CreateEventA(nullptr, TRUE, FALSE, nullptr);
     g_done = CreateEventA(nullptr, TRUE, FALSE, nullptr);
@@ -185,6 +195,7 @@ void printCallStack() {
 
 namespace nova_cli {
 void installCrashHandler() {}
+void useUtf8Console() {}
 void printCallStack() {}
 } // namespace nova_cli
 

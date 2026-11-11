@@ -1,6 +1,7 @@
 #include "textureConvert.h"
 
 #include "diagnostics.h"
+#include "pathUtil.h"
 
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/imagebufalgo.h>
@@ -82,7 +83,7 @@ fs::path tempPath(fs::path const &out) {
 #else
     const int pid = 0;
 #endif
-    return out.parent_path() / fs::u8path(utf8(out.stem()) + ".tmp" + std::to_string(pid) + "_" +
+    return out.parent_path() / HdNovaPath(utf8(out.stem()) + ".tmp" + std::to_string(pid) + "_" +
                                           std::to_string(counter.fetch_add(1)) + utf8(out.extension()));
 }
 
@@ -101,7 +102,7 @@ bool commit(fs::path const &tmp, fs::path const &out, std::string &error) {
 
 bool stat(SourceFile &f) {
     std::error_code ec;
-    const fs::path p = fs::u8path(f.path);
+    const fs::path p = HdNovaPath(f.path);
     f.size = fs::file_size(p, ec);
     if (ec)
         return false;
@@ -121,7 +122,7 @@ std::string udimToken(std::string const &path) {
 // The existing tiles of a UDIM pattern (in the token's form), sorted.
 std::vector<SourceFile> udimTiles(std::string const &pattern, std::string const &token) {
     std::vector<SourceFile> tiles;
-    const fs::path p = fs::u8path(pattern);
+    const fs::path p = HdNovaPath(pattern);
     const std::string name = utf8(p.filename());
     const size_t at = name.find(token);
     if (at == std::string::npos)
@@ -156,7 +157,7 @@ std::vector<SourceFile> udimTiles(std::string const &pattern, std::string const 
 }
 
 std::string lowerExtension(std::string const &path) {
-    return OIIO::Strutil::lower(utf8(fs::u8path(path).extension()));
+    return OIIO::Strutil::lower(utf8(HdNovaPath(path).extension()));
 }
 
 // Houdini's own image formats, which OIIO cannot read: .rat and .pic
@@ -172,8 +173,8 @@ bool houdiniImage(std::string const &path) {
 std::string houdiniBin() {
     const std::string hfs = TfGetenv("HFS");
     std::error_code ec;
-    if (!hfs.empty() && fs::is_directory(fs::u8path(hfs) / "bin", ec))
-        return utf8(fs::u8path(hfs) / "bin");
+    if (!hfs.empty() && fs::is_directory(HdNovaPath(hfs) / "bin", ec))
+        return utf8(HdNovaPath(hfs) / "bin");
 #ifdef _WIN32
     HMODULE module = GetModuleHandleW(L"OpenImageIO_sidefx.dll");
     if (module) {
@@ -220,7 +221,7 @@ std::wstring quoteArgument(std::wstring const &arg) {
 // by the file name) (true on success).
 bool runImaketx(std::string const &source, std::string const &target, bool stored, std::string &error) {
     const std::string bin = houdiniBin();
-    const fs::path tool = fs::u8path(bin) / "imaketx.exe";
+    const fs::path tool = HdNovaPath(bin) / "imaketx.exe";
     std::error_code ec;
     if (bin.empty() || !fs::exists(tool, ec)) {
         error = "Houdini's imaketx was not found (needed for .rat files)";
@@ -231,8 +232,8 @@ bool runImaketx(std::string const &source, std::string const &target, bool store
     // would open a console window in Houdini's GUI (the viewport). It
     // inherits no handles and prints nothing that is needed.
     const std::wstring exe = tool.wstring();
-    std::wstring commandLine = quoteArgument(exe) + L" " + quoteArgument(fs::u8path(source).wstring()) + L" " +
-                               quoteArgument(fs::u8path(target).wstring());
+    std::wstring commandLine = quoteArgument(exe) + L" " + quoteArgument(HdNovaPath(source).wstring()) + L" " +
+                               quoteArgument(HdNovaPath(target).wstring());
     commandLine += stored ? L" -m builtin -l 0" : L" --disableparse";
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
@@ -263,7 +264,7 @@ bool runImaketx(std::string const &source, std::string const &target, bool store
 // into `target` (half, scene-linear, tiled 64, MIP-mapped).
 bool convertOne(SourceFile const &file, std::string const &target, std::string const &colorSpace,
                 std::string const &layer, std::string &error) {
-    const fs::path out = fs::u8path(target);
+    const fs::path out = HdNovaPath(target);
     const fs::path tmp = tempPath(out);
     bool ok;
     {
@@ -336,27 +337,27 @@ std::string directUdimName(std::string const &pattern, std::string const &token,
             return pattern;
     }
     uint64_t key = fnv1a(kLinkVersion);
-    key = fnv1a(utf8(fs::u8path(pattern).lexically_normal()), key);
+    key = fnv1a(utf8(HdNovaPath(pattern).lexically_normal()), key);
     for (SourceFile const &f : files)
         key = fnv1a(f.tile + "|" + std::to_string(f.size) + "|" + std::to_string(f.mtime), key);
-    const std::string name = utf8(fs::u8path(pattern).filename());
+    const std::string name = utf8(HdNovaPath(pattern).filename());
     const size_t at = name.find(token);
     if (at == std::string::npos)
         return pattern;
-    const std::string prefix = utf8(fs::u8path(HdNovaTextureCacheDir(options)) / fs::u8path(name.substr(0, at))) +
+    const std::string prefix = utf8(HdNovaPath(HdNovaTextureCacheDir(options)) / HdNovaPath(name.substr(0, at))) +
                                "_" + hex(key) + ".";
     const std::string suffix = name.substr(at + token.size());
     std::error_code ec;
-    fs::create_directories(fs::u8path(prefix).parent_path(), ec);
+    fs::create_directories(HdNovaPath(prefix).parent_path(), ec);
     for (SourceFile const &f : files) {
-        const fs::path out = fs::u8path(prefix + f.tile + suffix);
+        const fs::path out = HdNovaPath(prefix + f.tile + suffix);
         if (fs::exists(out, ec))
             continue; // linked before
         const fs::path tmp = tempPath(out);
-        fs::create_hard_link(fs::u8path(f.path), tmp, ec);
+        fs::create_hard_link(HdNovaPath(f.path), tmp, ec);
         if (ec) { // another volume
             fs::remove(tmp, ec);
-            fs::copy_file(fs::u8path(f.path), tmp, ec);
+            fs::copy_file(HdNovaPath(f.path), tmp, ec);
         }
         std::string error = ec ? ec.message() : std::string();
         const bool ok = !ec && commit(tmp, out, error);
@@ -396,7 +397,7 @@ std::string HdNovaTextureCacheDir(HdNovaTextureOptions const &options) {
         return options.cacheDir;
     const std::string houdiniTemp = TfGetenv("HOUDINI_TEMP_DIR");
     std::error_code ec;
-    const fs::path base = !houdiniTemp.empty() ? fs::u8path(houdiniTemp) : fs::temp_directory_path(ec);
+    const fs::path base = !houdiniTemp.empty() ? HdNovaPath(houdiniTemp) : fs::temp_directory_path(ec);
     return utf8(base / "nova_tx");
 }
 
@@ -415,13 +416,13 @@ std::string HdNovaLocalizeTexture(std::string const &path, HdNovaTextureOptions 
     }
     // Named by the packaged file and the package's size and time.
     const std::string inner = ArSplitPackageRelativePathInner(path).second;
-    const fs::path innerName = fs::u8path(inner).filename();
+    const fs::path innerName = HdNovaPath(inner).filename();
     uint64_t key = fnv1a(kPackagedVersion);
     key = fnv1a(path + "|" + std::to_string(package.size) + "|" + std::to_string(package.mtime), key);
-    const fs::path dir = fs::u8path(HdNovaTextureCacheDir(options));
+    const fs::path dir = HdNovaPath(HdNovaTextureCacheDir(options));
     std::error_code ec;
     fs::create_directories(dir, ec);
-    const fs::path out = dir / fs::u8path(utf8(innerName.stem()) + "_" + hex(key) + utf8(innerName.extension()));
+    const fs::path out = dir / HdNovaPath(utf8(innerName.stem()) + "_" + hex(key) + utf8(innerName.extension()));
     if (fs::exists(out, ec))
         return utf8(out); // extracted before
     const std::shared_ptr<ArAsset> asset = ArGetResolver().OpenAsset(ArResolvedPath(path));
@@ -467,12 +468,12 @@ std::string HdNovaReadableTexture(std::string const &path, HdNovaTextureOptions 
         return {};
     }
     // Named by the file and the pipeline (decoding goes through the OCIO config).
-    const uint64_t key = fnv1a(utf8(fs::u8path(local).lexically_normal()) + "|" + std::to_string(f.size) + "|" +
+    const uint64_t key = fnv1a(utf8(HdNovaPath(local).lexically_normal()) + "|" + std::to_string(f.size) + "|" +
                                    std::to_string(f.mtime) + ratPipeline(stored));
-    const fs::path dir = fs::u8path(HdNovaTextureCacheDir(options));
+    const fs::path dir = HdNovaPath(HdNovaTextureCacheDir(options));
     std::error_code ec;
     fs::create_directories(dir, ec);
-    const fs::path out = dir / fs::u8path(utf8(fs::u8path(local).stem()) + "_" + hex(key) + ".exr");
+    const fs::path out = dir / HdNovaPath(utf8(HdNovaPath(local).stem()) + "_" + hex(key) + ".exr");
     if (fs::exists(out, ec))
         return utf8(out); // converted before
     const fs::path tmp = tempPath(out);
@@ -554,21 +555,21 @@ HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &path, std::string 
     // reused; other files keep their names.
     uint64_t key = fnv1a(kFormatVersion);
     key = fnv1a(r.colorSpace + "|" + HdNovaSceneLinearTransformId(r.colorSpace) + "|" + layer + "|" +
-                    utf8(fs::u8path(path).lexically_normal()) + (rat ? ratPipeline(stored) : std::string()),
+                    utf8(HdNovaPath(path).lexically_normal()) + (rat ? ratPipeline(stored) : std::string()),
                 key);
     for (SourceFile const &f : files)
         key = fnv1a(f.tile + "|" + std::to_string(f.size) + "|" + std::to_string(f.mtime), key);
-    std::string stem = utf8(fs::u8path(local).stem());
+    std::string stem = utf8(HdNovaPath(local).stem());
     if (r.udim)
         stem = stem.substr(0, stem.find(token));
-    const fs::path dir = fs::u8path(HdNovaTextureCacheDir(options));
+    const fs::path dir = HdNovaPath(HdNovaTextureCacheDir(options));
     std::error_code ec;
     fs::create_directories(dir, ec);
-    const std::string base = utf8(dir / fs::u8path(stem + "_" + hex(key)));
+    const std::string base = utf8(dir / HdNovaPath(stem + "_" + hex(key)));
     r.lookupPath = r.udim ? base + "." + token + ".exr" : base + ".exr";
     for (SourceFile const &f : files) {
         const std::string target = r.udim ? base + "." + f.tile + ".exr" : base + ".exr";
-        if (fs::exists(fs::u8path(target), ec))
+        if (fs::exists(HdNovaPath(target), ec))
             continue; // converted before
         std::string error;
         SourceFile source = f;
