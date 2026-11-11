@@ -14,6 +14,8 @@
 #include "core/film/lpe_compile.h"
 #include "core/geometry/curves.h"
 #include "core/gpu/device.h"
+#include "core/gpu/embedded.h"
+#include "core/gpu/gpu_renderer.h"
 #include "core/lights/sky.h"
 #include "core/math/frame.h"
 #include "core/math/rng.h"
@@ -30,9 +32,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 using namespace nova;
@@ -2718,3 +2723,204 @@ TEST_CASE("XPU on large rotated polygons", "[gpu][render][robust]") {
         CHECK_THAT(luminanceMean(gpu.film), WithinAbs(0.5, 0.005));
     }
 }
+
+namespace {
+
+// The Cornell box (diffuse walls, a rough metal, glass) with a block of fog
+// and a ball that scatters under its surface: surfaces, a medium and
+// subsurface walks in one image.
+void mixedScene(Scene &scene) {
+    namespace sf = surface_field;
+    cornellBox(scene);
+    const MaterialId fog = scene.createMaterial();
+    scene.updateMaterial(fog, medium({0.4f, 0.4f, 0.4f}, {0.1f, 0.1f, 0.1f}, {0.0f, 0.0f, 0.0f}, 0.3f));
+    VolumeDesc smoke;
+    smoke.fields.push_back({"density", "density", cubeGrid(1.0f, 8, 1.0 / 8.0), Affine3f{}});
+    smoke.material = fog;
+    const VolumeId smokeId = scene.createVolume();
+    scene.updateVolume(smokeId, smoke);
+    scene.updateVolumeMotion(smokeId, {translation({0.0f, 0.6f, 0.2f})});
+    MaterialDesc skin;
+    skin.inputs = standardSurfaceDefaults();
+    skin.inputs.set(sf::subsurfaceWeight, 1.0f);
+    skin.inputs.set(sf::subsurfaceColor, Spectrum{0.9f, 0.6f, 0.4f});
+    skin.inputs.set(sf::subsurfaceRadius, Spectrum{1.0f, 0.4f, 0.2f});
+    skin.inputs.set(sf::subsurfaceScale, 0.2f);
+    const MaterialId skinId = scene.createMaterial();
+    scene.updateMaterial(skinId, skin);
+    MeshDesc ball = makeSphere(0.3f, 48, 24);
+    ball.transform = translation({-0.4f, 0.3f, 0.5f});
+    const MeshId ballId = scene.createMesh();
+    scene.updateMesh(ballId, ball);
+    scene.setMeshMaterials(ballId, {skinId});
+    scene.commit();
+}
+
+struct MixedRender {
+    Film film;
+    uint32_t wave = 0; // the most paths of a wave
+    bool gpu = true;
+};
+
+// mixedScene on Nova XPU with light path expressions, 8 samples.
+MixedRender renderMixed(const Scene &scene, int size) {
+    const auto compiled = std::make_shared<lpe::Compiled>(lpe::compile({"C<RD>L", "C<RD>.+L", "C<TS>.*", "CV.*L"}));
+    REQUIRE(compiled->ok());
+    MixedRender r;
+    Renderer renderer;
+    RenderSettings settings;
+    settings.device = RenderDevice::Xpu;
+    settings.maxSamples = 8;
+    settings.lpe = compiled;
+    renderer.setScene(&scene);
+    renderer.setSettings(settings);
+    renderer.setCamera(makePerspectiveCamera({0.0f, 1.0f, 3.6f}, 0.05, 0.036, size, size));
+    renderer.resize(size, size);
+    while (!renderer.converged()) {
+        renderer.renderPass({});
+        r.gpu = r.gpu && renderer.lastPassOnGpu();
+    }
+    r.wave = renderer.gpuWavePaths();
+    r.film = renderer.film();
+    return r;
+}
+
+// The beauty, the alpha, the counts and the light path expressions' sums, bit for bit.
+bool sameSums(const Film &a, const Film &b) {
+    const auto same = [](const std::vector<Spectrum> &x, const std::vector<Spectrum> &y) {
+        return x.size() == y.size() && std::memcmp(x.data(), y.data(), x.size() * sizeof(Spectrum)) == 0;
+    };
+    return same(a.colorSum, b.colorSum) && a.alphaSum == b.alphaSum && a.count == b.count && !a.lpeSum.empty() &&
+           same(a.lpeSum, b.lpeSum);
+}
+
+} // namespace
+
+// Waves sized to the device (docs/design/M10.md D16, section 8): with little
+// memory free (NOVA_XPU_MEMORY_MB plans as on a card that had only that much
+// free) a pass renders in smaller waves. A wave holds whole pixels and every
+// pixel owns its sums, so the image is the same bit for bit.
+TEST_CASE("XPU renders in smaller waves when memory is short", "[gpu][render][memory]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    const auto setMemory = [](const char *megabytes) {
+#if defined(_WIN32)
+        _putenv_s("NOVA_XPU_MEMORY_MB", megabytes);
+#else
+        if (*megabytes)
+            setenv("NOVA_XPU_MEMORY_MB", megabytes, 1);
+        else
+            unsetenv("NOVA_XPU_MEMORY_MB");
+#endif
+    };
+    Scene scene;
+    mixedScene(scene);
+    const int size = 288; // 82944 pixels: more than the smallest wave holds
+    const MixedRender whole = renderMixed(scene, size);
+    setMemory("1"); // nothing left to plan with: the smallest wave
+    const MixedRender small = renderMixed(scene, size);
+    setMemory("");
+    REQUIRE(whole.gpu);
+    REQUIRE(small.gpu);
+    INFO("waves of " << whole.wave << " and " << small.wave << " paths");
+    CHECK(small.wave == 65536u);
+    CHECK(whole.wave >= small.wave);
+    CHECK(whole.wave <= (1u << 21));
+    CHECK(uint32_t(size * size) > small.wave); // several waves a pass
+    CHECK(sameSums(whole.film, small.film));
+    CHECK(luminanceMean(whole.film) > 0.01);
+}
+
+// The plan is made once; when a wave's buffers fail for lack of memory later
+// (an edit or another program took it), the pass goes on with waves of half
+// the paths instead of ending on the CPU. Here buffers above 16 MB fail: the
+// light path expressions' parts of a 147456-path wave are larger (21 MB).
+TEST_CASE("XPU halves its waves when the device runs out of memory", "[gpu][render][memory]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    mixedScene(scene);
+    const int size = 384;
+    const MixedRender whole = renderMixed(scene, size);
+    gpu::Device::setAllocationLimit(size_t(16) << 20);
+    const MixedRender halved = renderMixed(scene, size);
+    gpu::Device::setAllocationLimit(0);
+    REQUIRE(whole.gpu);
+    REQUIRE(halved.gpu);
+    INFO("waves of " << whole.wave << " and " << halved.wave << " paths");
+    CHECK(halved.wave < whole.wave);
+    CHECK(halved.wave >= 65536u);
+    CHECK(halved.wave < uint32_t(size * size));
+    CHECK(sameSums(whole.film, halved.film));
+}
+
+#if defined(NOVA_TEST_OLD_KERNELS_ARCH)
+namespace {
+
+// Whether the device runs code assembled for NOVA_GPU_CHECK_ARCH.
+bool runsOldKernels(std::string &why) {
+    gpu::Device device;
+    if (!device.init(why))
+        return false;
+    const int built = NOVA_TEST_OLD_KERNELS_ARCH, has = device.computeCapability();
+    if (has / 10 == built / 10 && has % 10 >= built % 10)
+        return true;
+    why = "the older architectures' kernels are assembled for sm_" + std::to_string(built) +
+          " (NOVA_GPU_CHECK_ARCH), this GPU is " + device.description();
+    return false;
+}
+
+// NOVA_TEST_OLD_KERNELS (not empty, not 0) runs every GPU test of this
+// executable on the older architectures' kernels (ctest's
+// xpu_older_architecture_kernels), where the device can run them.
+const bool kOldKernelsEverywhere = [] {
+    char *value = nullptr;
+    size_t size = 0;
+#if defined(_WIN32)
+    const bool on = _dupenv_s(&value, &size, "NOVA_TEST_OLD_KERNELS") == 0 && value && *value && std::strcmp(value, "0") != 0;
+    std::free(value);
+#else
+    (void)size;
+    value = std::getenv("NOVA_TEST_OLD_KERNELS");
+    const bool on = value && *value && std::strcmp(value, "0") != 0;
+#endif
+    std::string why;
+    if (!on || !runsOldKernels(why)) {
+        if (on)
+            std::fprintf(stderr, "NOVA_TEST_OLD_KERNELS: %s\n", why.c_str());
+        return false;
+    }
+    std::fprintf(stderr, "NOVA_TEST_OLD_KERNELS: every GPU test runs the older architectures' kernels\n");
+    gpu::GpuRenderer::setKernelImage(gpu::kNovaKernelsOld_words);
+    return true;
+}();
+
+} // namespace
+
+// nvcc compiles the kernels for GPUs before the RTX 50 series with another
+// compiler than for those from it on (docs/design/M10.md, section 8), so the
+// two groups run different code from the same source. The tests' build
+// assembles the older group's PTX for the test machine's GPU
+// (nova_gpu_kernels_old): rendering with it and with the embedded kernels
+// gives the same image bit for bit, as --fmad=false and IEEE arithmetic
+// promise. This is what an RTX 20, 30 or 40 runs, up to the assembler's
+// target and the hardware.
+TEST_CASE("XPU kernels of the older architectures render the same image", "[gpu][render][arch]") {
+    std::string why;
+    if (!runsOldKernels(why))
+        SKIP("not run: " << why);
+    Scene scene;
+    mixedScene(scene);
+    gpu::GpuRenderer::setKernelImage(nullptr);
+    const MixedRender embedded = renderMixed(scene, 128);
+    gpu::GpuRenderer::setKernelImage(gpu::kNovaKernelsOld_words);
+    const MixedRender older = renderMixed(scene, 128);
+    gpu::GpuRenderer::setKernelImage(kOldKernelsEverywhere ? gpu::kNovaKernelsOld_words : nullptr);
+    REQUIRE(embedded.gpu);
+    REQUIRE(older.gpu);
+    CHECK(sameSums(embedded.film, older.film));
+    CHECK(luminanceMean(embedded.film) > 0.01);
+}
+#endif

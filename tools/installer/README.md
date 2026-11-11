@@ -18,8 +18,15 @@ The installer of Nova for Houdini: one executable, `dist/NovaSetup-<version>.exe
   returns when Nova is uninstalled.
 - Adds "Nova for Houdini" to Apps & features (`HKCU\...\Uninstall\NovaForHoudini`) with the uninstaller.
 - Refuses to replace Nova's files while Houdini, hython, husk or hbatch runs (Windows locks loaded DLLs).
-- Shows the Houdini installations and the graphics card it finds (Nova XPU needs an NVIDIA GPU; without one it
-  renders on the CPU).
+- Shows the Houdini installations and the graphics card Nova XPU would render on: it asks the NVIDIA driver
+  (`nvcuda.dll`) for its first device's name and compute capability, as the renderer does, and applies the
+  renderer's rule (`xpu_support` in `src/main.rs`; `build.ps1` hands over the lists of `core/CMakeLists.txt`):
+  - a card Nova XPU is tested on (the RTX 50 series): "Nova XPU available";
+  - a card it is built for but not tested on (RTX 20, 30, 40, GTX 16): a check box, off by default, that turns
+    the **experimental GPU support** on. The package file then also sets `NOVA_XPU_EXPERIMENTAL_GPUS=1`,
+    without which Nova XPU renders on the CPU on such a card. An update keeps the choice (`install.json`
+    records it);
+  - an older card, no NVIDIA card or a driver that does not answer: Nova XPU will use the CPU.
 
 ## The window
 
@@ -28,18 +35,22 @@ graphics), progress, done; the uninstaller shows remove, progress, done. The col
 near-black text and buttons, its orange only in small accents (progress bar, focus, check mark, the dot of the mark);
 no motion. The interface is `ui/` (HTML, CSS, JavaScript); `src/main.rs` is the backend. Opened in a browser
 (`python -m http.server --directory tools/installer/ui`), the interface runs against a mock backend:
-`?installed`, `?uninstall`, `?running`, `?notnova`, `?nogpu`, `?other` show its states.
+`?installed`, `?uninstall`, `?running`, `?notnova`, `?nogpu`, `?other` show its states, `?oldgpu` (with
+`&experimental`: ticked), `?ancient` and `?nodriver` those of the Graphics row.
 
 ## Command line
 
 ```
 NovaSetup-0.1.2.exe --silent [--dir <folder>] [--packages-root <folder>] [--no-register]
+                    [--experimental-gpus | --no-experimental-gpus]
 "Uninstall Nova.exe" --uninstall [--silent]
 ```
 
 `--packages-root` replaces `Documents` as the parent of `houdini22.0\packages` (tests, studio setups),
 `--no-register` leaves Apps & features alone (and any registered install). Relative folders are made absolute
-against the current directory. Exit code 0 on success.
+against the current directory. Exit code 0 on success. `--experimental-gpus` turns the experimental GPU support
+on and `--no-experimental-gpus` off, whatever card the machine has; with neither an update keeps what the
+install had and a new install has it off.
 
 Which install `--uninstall` removes: the one in `--dir`; without it, the install the executable sits in (an
 `Uninstall Nova.exe` removes its own install, registered or not); an executable outside any install (the setup
@@ -56,5 +67,7 @@ powershell -ExecutionPolicy Bypass -File tools\installer\build.ps1
 ```
 
 `build.ps1` zips `dist/nova` into `payload/nova.zip`, takes the version from `CMakeLists.txt` and writes
-`dist/NovaSetup-<version>.exe`. The icon is `icons/icon.svg` (the O of the Nova logo); `make_icon.py` (Houdini's
+`dist/NovaSetup-<version>.exe`. It first checks that the build (`build/vs2022`, or `-Build <folder>`) holds Nova
+XPU's kernels for the release's GPU architectures (`NOVA_GPU_ARCHS` in its CMake cache) and refuses a shorter
+list, which is a development build that runs on fewer cards (`-DevelopmentKernels` packages it anyway). The icon is `icons/icon.svg` (the O of the Nova logo); `make_icon.py` (Houdini's
 Python) renders it into `icons/icon.ico` and `icons/preview.png`.

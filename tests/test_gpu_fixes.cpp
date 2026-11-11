@@ -692,3 +692,175 @@ TEST_CASE("XPU applies texture budget changes without a scene edit", "[gpu][rend
     CHECK(sameFilm(same, everything));
     CHECK(!sameFilm(budgeted, everything));
 }
+
+// The device (docs/design/M10.md, section 8): its description for messages,
+// NOVA_XPU_DEVICE (an index in the driver's list; one it lacks is refused
+// with the variable's name, so Nova XPU falls back to the CPU and says why),
+// and NOVA_XPU_MEMORY_MB (the memory to plan with, as on a smaller card).
+TEST_CASE("XPU device: description, selection, memory to plan with", "[gpu][device]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    const auto set = [](const char *name, const char *value) {
+#if defined(_WIN32)
+        _putenv_s(name, value);
+#else
+        if (*value)
+            setenv(name, value, 1);
+        else
+            unsetenv(name);
+#endif
+    };
+    {
+        gpu::Device device;
+        REQUIRE(device.init(why));
+        INFO(device.description());
+        CHECK(device.computeCapability() >= 75);
+        CHECK(device.processors() > 0);
+        CHECK(device.description().rfind(device.name(), 0) == 0);
+        CHECK(device.description().find("compute capability " + std::to_string(device.computeCapability() / 10) + "." +
+                                        std::to_string(device.computeCapability() % 10)) != std::string::npos);
+        CHECK(device.totalMemory() > 0);
+        CHECK(device.freeMemory() > 0);
+        CHECK(device.freeMemory() <= device.totalMemory());
+    }
+    for (const char *index : {"99", "-1", "first", "0x0"}) {
+        INFO("NOVA_XPU_DEVICE=" << index);
+        set("NOVA_XPU_DEVICE", index);
+        gpu::Device device;
+        std::string error;
+        CHECK(!device.init(error));
+        CHECK(error.find("NOVA_XPU_DEVICE") != std::string::npos);
+        set("NOVA_XPU_DEVICE", "");
+    }
+    {
+        set("NOVA_XPU_DEVICE", "0");
+        gpu::Device device;
+        std::string error;
+        CHECK(device.init(error));
+        set("NOVA_XPU_DEVICE", "");
+    }
+    {
+        set("NOVA_XPU_MEMORY_MB", "64");
+        gpu::Device device;
+        std::string error;
+        REQUIRE(device.init(error));
+        CHECK(device.freeMemory() <= (size_t(64) << 20));
+        // What is allocated since comes off the cap.
+        gpu::DeviceBuffer buffer;
+        REQUIRE(buffer.reserve(device, size_t(48) << 20));
+        CHECK(device.freeMemory() <= (size_t(16) << 20));
+        set("NOVA_XPU_MEMORY_MB", "");
+    }
+    {
+        set("NOVA_XPU_MEMORY_MB", "many"); // not a number: no cap
+        gpu::Device device;
+        std::string error;
+        REQUIRE(device.init(error));
+        set("NOVA_XPU_MEMORY_MB", "");
+        CHECK(device.freeMemory() > (size_t(64) << 20));
+    }
+}
+
+// GPUs of an architecture Nova XPU is built for but has not run on (every
+// one before the RTX 50 series: docs/design/M10.md, section 8) render on the
+// GPU only on request, NOVA_XPU_EXPERIMENTAL_GPUS, which the installer's
+// option sets. The device here reports another compute capability
+// (Device::setCapabilityOverride), so those branches run on this machine.
+TEST_CASE("XPU on an untested GPU architecture is experimental", "[gpu][device][experimental]") {
+    using Support = gpu::Device::Support;
+    // The rule with the release's lists (built for 7.5, 8.0 and 12.0, tested on 12.0).
+    if (gpu::Device::support(75) == Support::TooOld) {
+        WARN("a development build (NOVA_GPU_ARCHS without 75): the release's rule is not checked");
+    } else {
+        CHECK(gpu::Device::support(61) == Support::TooOld); // GTX 10 series
+        CHECK(gpu::Device::support(70) == Support::TooOld);
+        CHECK(gpu::Device::support(75) == Support::Experimental); // RTX 20, GTX 16
+        CHECK(gpu::Device::support(86) == Support::Experimental); // RTX 30
+        CHECK(gpu::Device::support(89) == Support::Experimental); // RTX 40
+        CHECK(gpu::Device::support(90) == Support::Experimental); // no code: the driver compiles
+        CHECK(gpu::Device::support(100) == Support::Experimental);
+        CHECK(gpu::Device::support(120) == Support::Tested); // RTX 50
+        CHECK(gpu::Device::support(121) == Support::Tested);
+        CHECK(gpu::Device::support(130) == Support::Experimental);
+    }
+
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    const auto request = [](const char *value) {
+#if defined(_WIN32)
+        _putenv_s("NOVA_XPU_EXPERIMENTAL_GPUS", value);
+#else
+        if (*value)
+            setenv("NOVA_XPU_EXPERIMENTAL_GPUS", value, 1);
+        else
+            unsetenv("NOVA_XPU_EXPERIMENTAL_GPUS");
+#endif
+    };
+    struct Restore {
+        ~Restore() {
+            gpu::Device::setCapabilityOverride(0);
+#if defined(_WIN32)
+            _putenv_s("NOVA_XPU_EXPERIMENTAL_GPUS", "");
+#else
+            unsetenv("NOVA_XPU_EXPERIMENTAL_GPUS");
+#endif
+        }
+    } restore;
+    Scene scene;
+    simpleScene(scene);
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 1.0f, 32, 32);
+
+    // As an RTX 30 (8.6) without the request: refused with the way to turn
+    // it on, and Nova XPU renders on the CPU.
+    request("");
+    gpu::Device::setCapabilityOverride(86);
+    for (const char *off : {"", "0"}) {
+        request(off);
+        gpu::Device device;
+        std::string error;
+        CHECK(!device.init(error));
+        INFO(error);
+        CHECK(error.find("compute capability 8.6") != std::string::npos);
+        CHECK(error.find("has not been tested") != std::string::npos);
+        CHECK(error.find("NOVA_XPU_EXPERIMENTAL_GPUS=1") != std::string::npos);
+        CHECK(error.find("installer") != std::string::npos);
+    }
+    request("");
+    const Render refused = render(scene, camera, 32, 32, 4, RenderDevice::Xpu, 3);
+    CHECK(!refused.gpu);
+
+    // With the request it renders on the GPU and says that it is experimental.
+    request("1");
+    {
+        gpu::Device device;
+        std::string error;
+        REQUIRE(device.init(error));
+        CHECK(device.experimental());
+        CHECK(device.computeCapability() == 86);
+    }
+    const Render tried = render(scene, camera, 32, 32, 4, RenderDevice::Xpu, 3);
+    CHECK(tried.gpu);
+    CHECK(tried.film.count == refused.film.count);
+
+    // As a GTX 10 series card (6.1): too old, request or not.
+    gpu::Device::setCapabilityOverride(61);
+    {
+        gpu::Device device;
+        std::string error;
+        CHECK(!device.init(error));
+        INFO(error);
+        CHECK(error.find("compute capability 6.1") != std::string::npos);
+        CHECK(error.find("older than Nova XPU supports") != std::string::npos);
+    }
+
+    // The device as it is: experimental only if its own architecture is.
+    gpu::Device::setCapabilityOverride(0);
+    {
+        gpu::Device device;
+        std::string error;
+        REQUIRE(device.init(error));
+        CHECK(device.experimental() == (gpu::Device::support(device.computeCapability()) == Support::Experimental));
+    }
+}

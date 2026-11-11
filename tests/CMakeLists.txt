@@ -67,6 +67,20 @@ if(TARGET nova_gpu_programs)
     target_sources(nova_tests PRIVATE test_gpu_accel.cpp test_gpu_render.cpp test_gpu_fixes.cpp test_gpu_guiding.cpp)
     target_link_libraries(nova_tests PRIVATE Nova::OptiX)
 endif()
+# The kernels as GPUs before the RTX 50 series get them, built for the test
+# machine's GPU (core/CMakeLists.txt): test_gpu_render.cpp renders with them
+# and with the embedded ones, the same image.
+if(TARGET nova_gpu_kernels_old)
+    get_target_property(_nova_check_arch nova_gpu_kernels_old NOVA_GPU_CHECK_ARCH)
+    set(_nova_old_bin "${CMAKE_CURRENT_BINARY_DIR}/generated/kernels_old_bin.cpp")
+    add_custom_command(OUTPUT "${_nova_old_bin}"
+        COMMAND ${CMAKE_COMMAND} "-DINPUTS=$<TARGET_OBJECTS:nova_gpu_kernels_old>" "-DOUT=${_nova_old_bin}"
+                -DNAME=kNovaKernelsOld -P "${PROJECT_SOURCE_DIR}/core/gpu/embed.cmake"
+        DEPENDS nova_gpu_kernels_old $<TARGET_OBJECTS:nova_gpu_kernels_old> "${PROJECT_SOURCE_DIR}/core/gpu/embed.cmake"
+        COMMAND_EXPAND_LISTS VERBATIM)
+    target_sources(nova_tests PRIVATE "${_nova_old_bin}")
+    target_compile_definitions(nova_tests PRIVATE NOVA_TEST_OLD_KERNELS_ARCH=${_nova_check_arch})
+endif()
 target_compile_definitions(nova_tests PRIVATE NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 if(MSVC)
     target_compile_options(nova_tests PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)
@@ -157,6 +171,15 @@ catch_discover_tests(nova_volume_tests
     DL_PATHS "${HFS}/bin"
     PROPERTIES LABELS volume ENVIRONMENT "HFS=${HFS}"
 )
+
+# Every GPU test again on the kernels GPUs before the RTX 50 series get
+# (nova_gpu_kernels_old above; test_gpu_render.cpp loads them for the whole
+# run with NOVA_TEST_OLD_KERNELS): what those cards run, on this one.
+if(TARGET nova_gpu_kernels_old)
+    add_test(NAME xpu_older_architecture_kernels COMMAND nova_tests "[gpu]")
+    set_tests_properties(xpu_older_architecture_kernels PROPERTIES LABELS gpu TIMEOUT 900 SKIP_RETURN_CODE 4
+        ENVIRONMENT "NOVA_TEST_OLD_KERNELS=1;PATH=${HFS}/bin\\;$ENV{PATH}")
+endif()
 
 # The renderer checks again with the sampling-free fallback (docs/design/M5.md,
 # notes on M5.4): it must stay unbiased.

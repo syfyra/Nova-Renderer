@@ -83,8 +83,12 @@ The renderer core (`nova_core`) and its unit tests also build on Linux without H
 Requirements at run time:
 
 - A CPU with AVX2.
-- For Nova XPU, an NVIDIA GPU of the RTX 50 series (Blackwell, compute capability 12.0) with a current driver.
-  The kernels are built for that architecture. Other GPUs and machines without one render on the CPU.
+- For Nova XPU, an NVIDIA GPU with driver 590 or newer. It is developed and tested on an RTX 5080: the RTX 50
+  series renders on the GPU as installed. The RTX 20, 30 and 40 and the GTX 16 series (compute capability 7.5
+  and up) are **experimental**: Nova XPU is built for them and that code is checked on the RTX 5080, but it has
+  not run on such a card yet. The installer offers to turn it on for such a card (`NOVA_XPU_EXPERIMENTAL_GPUS=1`
+  does the same); otherwise Nova XPU renders on the CPU there ([`docs/limitations.md`](docs/limitations.md)).
+  Other GPUs (AMD, Intel, older NVIDIA) and machines without one render on the CPU.
 
 ## Quick start
 
@@ -126,6 +130,10 @@ cmake --install build/vs2022 --config Release
 - **First configure:** it builds Embree through vcpkg, which takes about 20 minutes. Later configures restore it
   from vcpkg's binary cache.
 - **Configurations:** only Release and RelWithDebInfo exist, because Houdini ships release libraries only.
+- **Nova XPU's kernels** are compiled for three GPU architectures (`NOVA_GPU_ARCHS`, default `75;80;120`: RTX 20 and
+  GTX 16, RTX 30 and 40, RTX 50), which takes about 8 minutes whenever kernel-side code changes.
+  `-DNOVA_GPU_ARCHS=120` builds for the RTX 50 series alone in about half the time; that is a development build,
+  and `tools\installer\build.ps1` refuses to package it.
 - **Install step:** it writes the Houdini package to `dist/` (`dist/nova.json` and `dist/nova/`).
 
 **Installer.** `tools\installer\build.ps1` packs `dist/nova` into `dist/NovaSetup-0.1.2.exe`; it needs Rust with the
