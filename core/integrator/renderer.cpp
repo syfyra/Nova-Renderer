@@ -877,9 +877,9 @@ bool Renderer::loadCheckpoint(const uint8_t *data, size_t size) {
     // The oracle indexes each of its arrays by pixel (initOracle): a file
     // with a shorter one is refused, not read past its end.
     if (oracle)
-        for (const size_t size : {active.size(), evaluated.size(), noisy.size(), checked.size(), half.size(),
-                                  halfAlpha.size(), dsq.size(), lum.size(), dsqAlpha.size(), lumAlpha.size()})
-            if (size != n)
+        for (const size_t length : {active.size(), evaluated.size(), noisy.size(), checked.size(), half.size(),
+                                    halfAlpha.size(), dsq.size(), lum.size(), dsqAlpha.size(), lumAlpha.size()})
+            if (length != n)
                 return false;
     if (progress[3] == 0 || progress[3] > 65536u) // the fill stride: hosts divide by it
         return false;
