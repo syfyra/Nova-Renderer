@@ -1164,10 +1164,11 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
             s.limits.fakeStyle.bsdf = *v;
         if (const auto c = color3(karma(_karma->fakeColor)))
             for (int i = 0; i < 3; ++i)
-                s.limits.fakeStyle.color[i] = std::max((*c)[i], 0.0f);
+                // non-finite: the default, as for the object's own property (HdNovaObjectOverrides)
+                s.limits.fakeStyle.color[i] = std::isfinite((*c)[i]) ? std::clamp((*c)[i], 0.0f, 1e30f) : 1.0f;
         if (const auto c = color3(karma(_karma->fakeOpacity)))
             for (int i = 0; i < 3; ++i)
-                s.limits.fakeStyle.opacity[i] = std::clamp((*c)[i], 0.0f, 1.0f);
+                s.limits.fakeStyle.opacity[i] = std::isfinite((*c)[i]) ? std::clamp((*c)[i], 0.0f, 1.0f) : 1.0f;
         if (const auto v = HdNovaNumber(karma(_karma->fakeDarken)))
             s.limits.fakeStyle.fresnelDarken = float(std::clamp(*v, 0.0, 1.0));
         // Karma's defaults differ from Nova's: no internal reflection, a 0.2

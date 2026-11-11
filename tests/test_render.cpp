@@ -931,42 +931,6 @@ TEST_CASE("Camera-visible lights on a wall win ties only by precision", "[render
     }
 }
 
-namespace {
-
-// Rotation by `degrees` about `axis` (row-vector convention, as Mat4).
-Mat4 rotationAbout(Vec3f axis, double degrees) {
-    const double l = std::sqrt(double(dot(axis, axis)));
-    const double x = axis.x / l, y = axis.y / l, z = axis.z / l;
-    const double a = degrees * double(kPi) / 180.0, c = std::cos(a), s = std::sin(a), t = 1.0 - c;
-    const double r[3][3] = {{t * x * x + c, t * x * y - s * z, t * x * z + s * y},
-                            {t * x * y + s * z, t * y * y + c, t * y * z - s * x},
-                            {t * x * z - s * y, t * y * z + s * x, t * z * z + c}}; // column-vector form
-    Mat4 m = Mat4::identity();
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j)
-            m.m[i][j] = r[j][i];
-    return m;
-}
-
-// A quad of half-size `half` in the local plane z = `z`, baked into world
-// space by `rotation` (like SOP output: the corners carry the rotation).
-MeshDesc rotatedQuad(float half, float z, const Mat4 &rotation) {
-    MeshDesc m = makeQuad(half);
-    for (Vec3f &p : m.points)
-        p = rotation.transformPoint({p.x, p.y, z});
-    return m;
-}
-
-struct Orientation {
-    Vec3f axis;
-    double degrees;
-};
-const Orientation kOrientations[] = {{{1.0f, 1.0f, 0.0f}, 37.0},  {{0.3f, -0.7f, 0.2f}, 61.0},
-                                     {{-0.5f, 0.2f, 0.9f}, 23.0}, {{0.8f, 0.1f, -0.4f}, 77.0},
-                                     {{0.1f, 0.9f, 0.3f}, 49.0},  {{-0.6f, -0.6f, 0.5f}, 12.0}};
-
-} // namespace
-
 // The float error of a hit distance grows with the coordinates of the
 // triangle hit, not with the camera's or the hit point's: a light flush with a
 // large rotated wall seen from close by must not z-fight with it (Embree's
@@ -1312,5 +1276,142 @@ TEST_CASE("Progressive rendering is deterministic", "[render]") {
         CHECK(a[i].x == b[i].x);
         CHECK(a[i].y == b[i].y);
         CHECK(a[i].z == b[i].z);
+    }
+}
+
+// A Lambertian plane under a uniform dome reflects albedo x radiance at every
+// point: a plane does not see itself. The intersector's error is ulps of the
+// polygon's corners as seen from the ray's origin, and for a polygon that is
+// not axis-aligned (Embree is exact for axis-aligned ones) those lie beyond
+// the ulps of the hit point that offsetRayOrigin() moves a ray by: rays
+// started inside the error and found the polygon again. A rotated polygon
+// lost 0.4 % of its light at 60 units across, 3 % at 200 and over 20 % at
+// 2000, in bands (leaveSurface(), core/scene/ray.h).
+TEST_CASE("Large rotated polygons do not shadow themselves", "[render][robust]") {
+    for (const float half : {10.0f, 1000.0f, 30000.0f})
+        for (const Orientation &o : kOrientations) {
+            INFO("half-size " << half << ", rotated " << o.degrees << " degrees about (" << o.axis.x << ", "
+                              << o.axis.y << ", " << o.axis.z << ")");
+            const Mat4 rotation = rotationAbout(o.axis, o.degrees);
+            Scene scene;
+            MeshDesc plane = rotatedQuad(half, 0.0f, rotation);
+            plane.setDisplayColor(spectrum(0.5f));
+            scene.updateMesh(scene.createMesh(), plane);
+            LightDesc dome;
+            dome.type = LightType::Dome;
+            scene.updateLight(scene.createLight(), dome);
+            scene.commit();
+
+            Renderer renderer;
+            RenderSettings settings;
+            settings.maxSamples = 64;
+            renderer.setScene(&scene);
+            renderer.setSettings(settings);
+            // From 3 units above the plane's centre, along its normal.
+            Camera camera = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 1.0, 1.0, 16, 16, 0.01, 100.0);
+            camera.viewToWorld = translation({0.0f, 0.0f, 3.0f}) * rotation;
+            camera.worldToView = inverse(camera.viewToWorld);
+            renderer.setCamera(camera);
+            renderer.resize(16, 16);
+            renderToConvergence(renderer);
+            const Film &film = renderer.film();
+            double mean = 0.0, darkest = 1.0;
+            for (size_t i = 0; i < film.colorSum.size(); ++i) {
+                const double v = double(film.colorSum[i].x) / double(film.count[i]);
+                mean += v / double(film.colorSum.size());
+                darkest = std::min(darkest, v);
+            }
+            CHECK_THAT(mean, WithinAbs(0.5, 0.005));
+            CHECK(darkest > 0.45); // no pixel in a band of self-shadowing
+        }
+}
+
+// The same for a mesh far from its own origin that a transform brings back
+// (a set modelled where it stands in the city and re-centred for the shot):
+// the intersector rounds a ray's origin to the mesh's own coordinates, 5000
+// here, far coarser than the ulps of the world-space hit point.
+TEST_CASE("Meshes far from their own origin do not shadow themselves", "[render][robust]") {
+    const Vec3f away{5000.0f, -3000.0f, 2000.0f};
+    for (const Orientation &o : kOrientations) {
+        INFO("rotated " << o.degrees << " degrees about (" << o.axis.x << ", " << o.axis.y << ", " << o.axis.z << ")");
+        const Mat4 rotation = rotationAbout(o.axis, o.degrees);
+        Scene scene;
+        MeshDesc plane = rotatedQuad(5.0f, 0.0f, rotation);
+        for (Vec3f &p : plane.points)
+            p = p + away;
+        plane.transform = translation({-away.x, -away.y, -away.z});
+        plane.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), plane);
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        scene.updateLight(scene.createLight(), dome);
+        scene.commit();
+
+        Renderer renderer;
+        RenderSettings settings;
+        settings.maxSamples = 64;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        Camera camera = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 1.0, 1.0, 16, 16, 0.01, 100.0);
+        camera.viewToWorld = translation({0.0f, 0.0f, 3.0f}) * rotation;
+        camera.worldToView = inverse(camera.viewToWorld);
+        renderer.setCamera(camera);
+        renderer.resize(16, 16);
+        renderToConvergence(renderer);
+        const Film &film = renderer.film();
+        double mean = 0.0;
+        for (size_t i = 0; i < film.colorSum.size(); ++i)
+            mean += double(film.colorSum[i].x) / double(film.count[i]) / double(film.colorSum.size());
+        CHECK_THAT(mean, WithinAbs(0.5, 0.005));
+    }
+}
+
+// The offset that takes a ray off the polygon it leaves is that polygon's
+// alone: a small sheet 0.5 above a ground throws the same shadow whether or
+// not something far away stretches the scene's bounds.
+TEST_CASE("Shadows near surfaces do not depend on the scene's extent", "[render][robust]") {
+    auto render = [](float farAway) {
+        Scene scene;
+        MeshDesc ground = makeQuad(10.0f);
+        ground.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), ground);
+        MeshDesc sheet = makeQuad(1.0f);
+        sheet.transform = translation({0.0f, 0.0f, 0.5f});
+        sheet.setDisplayColor(Spectrum{0.8f, 0.2f, 0.2f});
+        scene.updateMesh(scene.createMesh(), sheet);
+        if (farAway > 0.0f) {
+            MeshDesc far = makeQuad(1.0f);
+            far.transform = translation({farAway, 0.0f, 0.0f});
+            scene.updateMesh(scene.createMesh(), far);
+        }
+        LightDesc rect;
+        rect.type = LightType::Rect;
+        rect.intensity = 40.0f;
+        rect.width = 0.5f;
+        rect.height = 0.5f;
+        rect.transform = translation({4.0f, 0.0f, 5.0f}); // emits along -Z, down on the ground
+        scene.updateLight(scene.createLight(), rect);
+        scene.commit();
+        Renderer renderer;
+        RenderSettings settings;
+        settings.maxSamples = 64;
+        settings.maxDepth = 1;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 10.0f}, 3.0f, 48, 48));
+        renderer.resize(48, 48);
+        renderToConvergence(renderer);
+        return renderer.film();
+    };
+    const Film near = render(0.0f), far = render(1e6f);
+    // The sheet's shadow reaches from x = -1.56 to 0.67 on the ground (the
+    // light stands at x = 4): the strip beside the sheet, pixel 13 at
+    // x = -1.3, is dark; pixels 6 and 41 are lit ground, 20 and 28 the sheet.
+    const float shadow = pixelMean(near, 13, 24).x, lit = pixelMean(near, 41, 24).x;
+    CHECK(lit > 0.01f);
+    CHECK(shadow < 0.05f * lit);
+    for (const int x : {6, 13, 20, 28, 41}) {
+        INFO("pixel " << x);
+        CHECK_THAT(pixelMean(far, x, 24).x, WithinAbs(pixelMean(near, x, 24).x, 0.02f * lit));
     }
 }

@@ -61,16 +61,17 @@ __forceinline__ __device__ unsigned shapeMesh() { return params.walks ? optixGet
 
 } // namespace
 
-// Closest hits (Embree's tnear 0: Nova offsets the origins).
+// Closest hits from the rays' origins on (tmin 0, as Embree's tnear): Nova
+// offsets the origins by the error of the shape they leave (leaveSurface).
 extern "C" __global__ void __raygen__closest() {
     unsigned i;
     if (!rayIndex(i))
         return;
-    if (!(params.tMax[i] > params.tMin)) { // an empty segment: no hit (OptiX wants tmin <= tmax)
+    if (!(params.tMax[i] > 0.0f)) { // an empty segment: no hit (OptiX wants tmin <= tmax)
         params.mesh[i] = 0xFFFFFFFFu;
         return;
     }
-    optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), params.tMin, params.tMax[i], rayTime(i), 255,
+    optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), 0.0f, params.tMax[i], rayTime(i), 255,
                   OPTIX_RAY_FLAG_NONE, 0, 1, 0);
     if (!optixHitObjectIsHit()) {
         params.mesh[i] = 0xFFFFFFFFu;
@@ -95,7 +96,7 @@ extern "C" __global__ void __raygen__occluded() {
         return;
     const unsigned c = params.category ? params.category[i] : 0xFFFFu;
     const unsigned mask = c < 7 ? 1u << c : 0x80u;
-    if (!(params.tMax[i] > params.tMin)) {
+    if (!(params.tMax[i] > 0.0f)) {
         // An empty segment (a light that casts no shadows, M11 P9a): nothing
         // occludes; OptiX wants tmin <= tmax.
         if (!params.probeBackground)
@@ -110,7 +111,7 @@ extern "C" __global__ void __raygen__occluded() {
         // Every such ray is probed: phase 1 skips fake-caustic blockers.
         if (!params.rayType || !(params.rayType[i] & nova::kRayFromBackground))
             return;
-        optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), params.tMin, params.tMax[i], rayTime(i),
+        optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), 0.0f, params.tMax[i], rayTime(i),
                       0xFFu, OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT, 0, 1, 0);
         if (optixHitObjectIsHit()) {
             params.occluded[i] = 0;
@@ -119,7 +120,7 @@ extern "C" __global__ void __raygen__occluded() {
         return;
     }
     // Filtered meshes' any-hit decides (their instances allow it).
-    optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), params.tMin, params.tMax[i], rayTime(i), mask,
+    optixTraverse(params.handle, f3(params.org[i]), f3(params.dir[i]), 0.0f, params.tMax[i], rayTime(i), mask,
                   OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT, 0, 1, 0);
     params.occluded[i] = optixHitObjectIsHit() ? 1 : 0;
 }
@@ -139,11 +140,10 @@ extern "C" __global__ void __raygen__walk() {
     const gpu::MeshGas gas = params.gas[mesh];
     const Affine3f toObject = inverseAffine(instanceToWorld(wk.meshes[mesh].view, wk.instance[i], time));
     // The walk starts on the surface itself; its first segment skips the
-    // entry surface with a minimum distance of the order of the hit point's
-    // rounding.
+    // entry surface with a minimum distance (walkEntryDistance,
+    // core/scene/ray.h).
     const Vec3f P = wk.P[i];
-    const float scale = fmaxf(fmaxf(fabsf(P.x), fabsf(P.y)), fmaxf(fabsf(P.z), 1.0f));
-    const float tMinEntry = 64.0f * 1.1920929e-7f * scale;
+    const float tMinEntry = wk.entry[i];
     const auto trace = [&](Vec3f org, Vec3f dir, float tMax, float &t, uint32_t &prim, Vec2f &uv) {
         const bool entry = org.x == P.x && org.y == P.y && org.z == P.z;
         unsigned payload = mesh;
@@ -194,21 +194,36 @@ __forceinline__ __device__ T atRayTime(const T *v, uint32_t n, const nova::gpu::
 // Embree's sphere points, which glass needs) or when the any-hit filter
 // ignored the entry (cut-out opacity sees the far side, as Embree offers
 // the back hit to its filter).
+//
+// The roots come from the ray's closest approach to the centre, not from
+// b^2 - a c: that difference of two squares of the distance cancels for a
+// small sphere seen from afar, and rays leaving such a sphere started
+// inside it and met its far side: points of radius 0.04 to 0.09 five units
+// from the camera rendered 11 % too dark once the rays' tmin was 0 (the
+// scene-wide tMin they had before hid it). Haines et al., "Precision
+// Improvements for Ray/Sphere Intersection", Ray Tracing Gems (2019), ch. 7.
 extern "C" __global__ void __intersection__sphere() {
     const nova::gpu::ShapeData &s = params.shapes[shapeMesh()];
     const unsigned prim = optixGetPrimitiveIndex();
     const float3 o = optixGetObjectRayOrigin(), d = optixGetObjectRayDirection();
     const nova::Vec3f c = atRayTime(s.centers, s.count * s.steps, s, prim);
     const float r = atRayTime(s.radii, s.radiusCount, s, prim);
-    const float ox = o.x - c.x, oy = o.y - c.y, oz = o.z - c.z;
+    const float fx = o.x - c.x, fy = o.y - c.y, fz = o.z - c.z;
     const float a = d.x * d.x + d.y * d.y + d.z * d.z;
-    const float b = ox * d.x + oy * d.y + oz * d.z;
-    const float cc = ox * ox + oy * oy + oz * oz - r * r;
-    const float disc = b * b - a * cc;
-    if (!(disc >= 0.0f) || !(a > 0.0f))
+    if (!(a > 0.0f))
         return;
-    const float q = sqrtf(disc);
-    const float t0 = (-b - q) / a, t1 = (-b + q) / a;
+    // a t^2 - 2 b t + cc = 0. Its discriminant over a is r^2 minus the
+    // squared distance of the centre from the ray.
+    const float b = -(fx * d.x + fy * d.y + fz * d.z);
+    const float k = b / a;
+    const float lx = fx + k * d.x, ly = fy + k * d.y, lz = fz + k * d.z;
+    const float disc = r * r - (lx * lx + ly * ly + lz * lz);
+    if (!(disc >= 0.0f))
+        return;
+    const float cc = fx * fx + fy * fy + fz * fz - r * r;
+    const float q = b + copysignf(sqrtf(a * disc), b);
+    const float ta = q / a, tb = q != 0.0f ? cc / q : ta;
+    const float t0 = fminf(ta, tb), t1 = fmaxf(ta, tb);
     const float tmin = optixGetRayTmin(), tmax = optixGetRayTmax();
     if (t0 > tmin && t0 < tmax)
         optixReportIntersection(t0, 0);

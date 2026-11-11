@@ -29,9 +29,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <string>
 
@@ -180,6 +182,73 @@ bool endsWith(const std::string &s, const char *suffix) {
     return true;
 }
 
+// Whether a .vdb file's header, file-level metadata and grid count are all
+// there; `why` says what is not. OpenVDB reads them without checking its
+// stream: in a file cut off inside them (a cache whose write was
+// interrupted) the lengths it reads are whatever was in memory, and it
+// allocates and loops for minutes. A file version newer than this OpenVDB
+// reads makes it warn and then read on the same way. Only what is certain
+// fails here: a length that runs past the end of the file, or a newer
+// version. Files this cannot judge (no VDB header, a version before the
+// current header layout) are left to the readers.
+bool vdbHeaderComplete(const std::string &path, std::string &why) {
+    std::ifstream in(std::filesystem::path(std::u8string(path.begin(), path.end())), std::ios::binary | std::ios::ate);
+    if (!in)
+        return true;
+    const uint64_t size = uint64_t(in.tellg());
+    in.seekg(0);
+    uint64_t at = 0;
+    const auto read = [&](void *out, uint64_t n) {
+        if (at + n > size)
+            return false;
+        in.read(static_cast<char *>(out), std::streamsize(n));
+        at += n;
+        return bool(in);
+    };
+    const auto skip = [&](uint64_t n) {
+        if (at + n > size)
+            return false;
+        at += n;
+        in.seekg(std::streamoff(at));
+        return bool(in);
+    };
+    const auto cutOff = [&] {
+        why = "the file ends inside its header (" + std::to_string(size) + " bytes; not written completely?)";
+        return false;
+    };
+    static const unsigned char kMagic[8] = {' ', 'B', 'D', 'V', 0, 0, 0, 0};
+    unsigned char magic[8];
+    if (!read(magic, 8) || std::memcmp(magic, kMagic, 8) != 0)
+        return true; // no VDB header: the readers say so
+    uint32_t version = 0;
+    if (!read(&version, 4))
+        return cutOff();
+    if (version > openvdb::OPENVDB_FILE_VERSION) {
+        why = "its file version " + std::to_string(version) + " is newer than this OpenVDB reads (" +
+              std::to_string(uint32_t(openvdb::OPENVDB_FILE_VERSION)) + ")";
+        return false;
+    }
+    if (version < openvdb::OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION)
+        return true; // an older header layout
+    // The library version (two 32-bit numbers), the grid-offsets flag and
+    // the UUID's 36 characters.
+    if (!skip(4 + 4 + 1 + 36))
+        return cutOff();
+    // File-level metadata: a count, then per entry a name, a type name and a
+    // value, each a 32-bit length and that many bytes; then the grid count.
+    uint32_t count = 0;
+    if (!read(&count, 4))
+        return cutOff();
+    for (uint32_t i = 0; i < count; ++i)
+        for (int part = 0; part < 3; ++part) {
+            uint32_t length = 0;
+            if (!read(&length, 4) || !skip(length))
+                return cutOff();
+        }
+    uint32_t grids = 0;
+    return read(&grids, 4) ? true : cutOff();
+}
+
 // A .vdb file read with OpenVDB: the fieldIndex-th grid named fieldName
 // (any grid of that name if the index is out of range).
 bool loadVdbFile(const nova::VolumeFieldRequest &r, nova::VolumeFieldGrids &out, std::string *error) {
@@ -218,6 +287,11 @@ public:
     bool load(const nova::VolumeFieldRequest &r, nova::VolumeFieldGrids &out, std::string *error) override {
         std::lock_guard lock(m_mutex);
         out.grids.clear();
+        if (std::string why; !r.houdiniField && endsWith(r.filePath, ".vdb") && !vdbHeaderComplete(r.filePath, why)) {
+            if (error)
+                *error = r.filePath + ": " + why;
+            return false;
+        }
         void *p = nullptr;
         if (m_sopVol.vdb)
             p = r.houdiniField ? m_sopVol.houdini(r.filePath.c_str(), r.fieldName.c_str(), r.fieldIndex)

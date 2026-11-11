@@ -270,6 +270,114 @@ def main():
         check("/World/mtl/red" in manifest, f"the sidecar of a bare product is in the cwd: {sorted(manifest)}")
         check("cannot write" not in proc.stderr, f"the sidecar is written: {proc.stderr.strip()[:300]}")
 
+    # 11. Broken stages end with a message instead of a crash or a wait
+    #     without end (each did one or the other; docs/bug-audit-2026-11.md,
+    #     section 12). cli() gives a render 60 seconds.
+    broken = textwrap.dedent("""        #usda 1.0
+        def Xform "World"
+        {
+            def Mesh "ground"
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(-5, 0, 5), (5, 0, 5), (5, 0, -5), (-5, 0, -5)]
+                uniform token subdivisionScheme = "none"
+            }
+            def Mesh "broken"
+            {
+                int[] faceVertexCounts = COUNTS
+                int[] faceVertexIndices = INDICES
+                point3f[] points = [(-1, 1, 0), (1, 1, 0), (1, 2, 0), (-1, 2, 0)]
+            }
+            def SphereLight "lamp"
+            {
+                bool inputs:enableColorTemperature = 1
+                float inputs:colorTemperature = KELVIN
+                double3 xformOp:translate = (0, 4, 2)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+            def Camera "cam"
+            {
+                float focalLength = FOCAL
+                double3 xformOp:translate = (0, 1.5, 8)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+        }
+        def Scope "Render"
+        {
+            def RenderSettings "rs"
+            {
+                rel camera = </World/cam>
+                rel products = </Render/product>
+                int2 resolution = (16, 12)
+                float pixelAspectRatio = ASPECT
+                float4 dataWindowNDC = WINDOW
+                int nova:samples = 2
+            }
+            def RenderProduct "product"
+            {
+                token productName = "broken.exr"
+                rel orderedVars = [</Render/beauty>, </Render/N>, </Render/N2>]
+            }
+            def RenderVar "beauty"
+            {
+                token dataType = "color4f"
+                string sourceName = "C.*[LO]"
+                token sourceType = "lpe"
+            }
+            def RenderVar "N"
+            {
+                token dataType = "normal3f"
+                string sourceName = "N"
+            }
+            def RenderVar "N2"
+            {
+                token dataType = "normal3f"
+                string sourceName = "N"
+                string driver:parameters:aov:name = "SECOND"
+            }
+        }
+        """)
+    plain = {"COUNTS": "[4]", "INDICES": "[0, 1, 2, 3]", "KELVIN": "5000", "FOCAL": "35", "ASPECT": "1",
+             "WINDOW": "(0, 0, 1, 1)", "SECOND": "N2"}
+    cases = (
+        ("plain", {}, 0, None),
+        ("index_int_max", {"INDICES": "[0, 1, 2147483647, 3]"}, 0, "is inconsistent"),
+        ("count_int_max", {"COUNTS": "[2147483647]"}, 0, "is inconsistent"),
+        ("kelvin_nan", {"KELVIN": "nan"}, 0, "emits nothing"),
+        ("focal_nan", {"FOCAL": "nan"}, 0, "gives no rays"),
+        ("focal_inf", {"FOCAL": "inf"}, 0, "gives no rays"),
+        ("aspect_zero", {"ASPECT": "0"}, 0, "pixelAspectRatio"),
+        ("aspect_nan", {"ASPECT": "nan"}, 0, "pixelAspectRatio"),
+        ("window_nan", {"WINDOW": "(nan, 0, inf, 1)"}, 0, "dataWindowNDC"),
+        ("duplicate_part", {"SECOND": "N"}, 2, "two RenderVars named 'N'"),
+    )
+    for name, changes, expect, needle in cases:
+        text = broken
+        for key, value in {**plain, **changes}.items():
+            text = text.replace(key, value)
+        scene = os.path.join(args.out, f"broken_{name}.usda")
+        with open(scene, "w") as f:
+            f.write(text)
+        image = os.path.join(args.out, f"broken_{name}.exr")
+        if os.path.exists(image):
+            os.remove(image)
+        proc = cli(args, scene, "/Render/rs", image, expect=expect)
+        if proc is None:
+            continue
+        if needle is None:
+            check("Warning" not in proc.stderr and "nova_cli:" not in proc.stderr,
+                  f"the intact stage renders without a message: {proc.stderr.strip()[:200]}")
+        else:
+            check(proc.stderr.count(needle) == 1, f"{name}: '{needle}' is reported once: {proc.stderr.strip()[:300]}")
+        if expect == 0:
+            info = parts(args, image) if os.path.exists(image) else []
+            check(len(info) == 3 and info[0]["size"] == (16, 12) and info[0]["par"] == 1.0,
+                  f"{name}: the image is written, 3 parts of 16x12 with square pixels: "
+                  f"{[(i.get('size'), i.get('par')) for i in info]}")
+        else:
+            check(not os.path.exists(image), f"{name}: no image is written")
+
     print(f"{len(FAILURES)} failure(s)")
     return 1 if FAILURES else 0
 

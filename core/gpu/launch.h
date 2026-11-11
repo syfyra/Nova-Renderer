@@ -47,11 +47,6 @@ struct TraceParams {
     float *tMax = nullptr;
     const float *time = nullptr;
     const uint32_t *count = nullptr;
-    // Hits closer than this are ignored: OptiX's triangle test errs by the
-    // scale of the triangle's corners, so rays leaving a large polygon near
-    // the origin (offsetRayOrigin scales with the point) found it again.
-    // The scene's intersection tolerance (Scene::intersectionTolerance).
-    float tMin = 0.0f;
     // Closest hits: the mesh (kInvalidId: a miss), primitive, barycentrics
     // or curve u, and instance number within the mesh.
     uint32_t *mesh = nullptr;

@@ -7,6 +7,7 @@
 #include "hydra/renderPass.h"
 
 #include "hydra/denoise.h"
+#include "hydra/motion.h"
 
 #include "core/denoise/denoiser.h"
 #include "core/film/lpe_compile.h"
@@ -14,6 +15,7 @@
 #include <pxr/base/gf/half.h>
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/range1f.h>
+#include <pxr/base/gf/vec2i.h>
 #include <pxr/base/gf/vec4d.h>
 #include <pxr/base/gf/vec4f.h>
 #include <pxr/base/gf/vec4h.h>
@@ -22,11 +24,13 @@
 #include <pxr/imaging/hd/rprimCollection.h>
 #include <pxr/imaging/hd/tokens.h>
 
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <future>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -45,6 +49,17 @@ struct TestCamera final : HdCamera {
         SetZ(10.0);
     }
     void SetZ(double z) { _transform = GfMatrix4d(1.0).SetTranslate(GfVec3d(0.0, 0.0, z)); }
+    void SetTransform(GfMatrix4d const &m) { _transform = m; }
+    void SetFocalLength(float f) { _focalLength = f; }
+    void SetAperture(float horizontal, float vertical) {
+        _horizontalAperture = horizontal;
+        _verticalAperture = vertical;
+    }
+    void SetClippingRange(float nearPlane, float farPlane) { _clippingRange = GfRange1f(nearPlane, farPlane); }
+    void SetShutter(double open, double close) {
+        _shutterOpen = open;
+        _shutterClose = close;
+    }
 };
 
 // A delegate with one color buffer and a render pass, without a render index.
@@ -504,4 +519,134 @@ TEST_CASE("A paused render stops before its first proxy pass", "[hydra]") {
     rig.delegate->Resume(); // lets a render that ignored the request end
     stop.wait();
     CHECK(stopped);
+}
+
+// A camera that gives no rays (a NaN parameter, a zero aperture or scale,
+// equal clipping planes) ends the render with its buffers cleared.
+// A NaN in the view never equals the view of the last Execute, so the pass
+// used to restart the render on every Execute: husk and nova_cli waited
+// forever, a viewport never came to rest.
+TEST_CASE("A camera that gives no rays converges with cleared buffers", "[hydra][robust]") {
+    Rig rig(64, 48, 4);
+    const float nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+    const GfVec4f clear(0.25f, 0.5f, 0.75f, 1.0f);
+    HdRenderPassAovBinding binding;
+    binding.aovName = HdAovTokens->color;
+    binding.renderBuffer = rig.buffer;
+    binding.clearValue = VtValue(clear);
+    rig.state->SetAovBindings({binding});
+
+    SECTION("NaN focal length") { rig.camera.SetFocalLength(nan); }
+    SECTION("zero aperture") { rig.camera.SetAperture(0.0f, 0.0f); }
+    SECTION("infinite aperture") { rig.camera.SetAperture(inf, inf); } // one alone: the window policy conforms it
+    SECTION("equal clipping planes") { rig.camera.SetClippingRange(0.0f, 0.0f); }
+    SECTION("NaN clipping planes") { rig.camera.SetClippingRange(nan, 1000.0f); }
+    SECTION("NaN transform") { rig.camera.SetTransform(GfMatrix4d(1.0).SetTranslate(GfVec3d(nan, 0.0, 10.0))); }
+    SECTION("zero scale") { rig.camera.SetTransform(GfMatrix4d(1.0).SetScale(0.0)); }
+    REQUIRE(rig.executeUntilConverged(5.0));
+    CHECK(rig.buffer->IsConverged());
+    const auto cleared = [&] {
+        const GfVec4f *rgba = static_cast<const GfVec4f *>(rig.buffer->Map());
+        const int n = int(std::count(rgba, rgba + 64 * 48, clear));
+        rig.buffer->Unmap();
+        return n;
+    };
+    CHECK(cleared() == 64 * 48); // nothing was rendered
+
+    // A camera with rays again: the render runs.
+    rig.camera.SetFocalLength(35.0f);
+    rig.camera.SetAperture(36.0f, 24.0f);
+    rig.camera.SetClippingRange(0.1f, 1000.0f);
+    rig.camera.SetZ(10.0);
+    rig.execute();
+    CHECK_FALSE(rig.pass->IsConverged());
+    REQUIRE(rig.executeUntilConverged(10.0));
+    CHECK(rig.samples() == 4);
+    CHECK(cleared() == 0); // the empty scene: transparent black
+}
+
+// A shutter that is not finite has no interval to sample motion over: the
+// frame renders as with motion blur off. A NaN shutter never equalled the
+// shutter the scene was sampled with, so every Execute resampled the scene
+// and the render never started.
+TEST_CASE("A shutter that is not finite renders the frame", "[hydra][robust]") {
+    Rig rig(64, 48, 4);
+    const double nan = std::numeric_limits<double>::quiet_NaN(), inf = std::numeric_limits<double>::infinity();
+    SECTION("NaN") { rig.camera.SetShutter(nan, nan); }
+    SECTION("NaN close") { rig.camera.SetShutter(-0.25, nan); }
+    SECTION("infinite") { rig.camera.SetShutter(-inf, inf); }
+    SECTION("beyond float") { rig.camera.SetShutter(-1e300, 1e300); }
+    REQUIRE(rig.executeUntilConverged(5.0));
+    CHECK(rig.samples() == 4);
+    CHECK(HdNovaResolveShutter(nan, 0.5, false, false) == HdNovaShutter{});
+    CHECK(HdNovaResolveShutter(-0.25, inf, false, false) == HdNovaShutter{});
+    CHECK(HdNovaResolveShutter(-0.25, 0.25, false, false).IsBlurred()); // a finite shutter is kept
+}
+
+// HdRenderPassAovBinding's equality calls a clear value or an AOV setting
+// that holds a NaN different from itself, so bindings with one looked new on
+// every Execute and restarted the render each time.
+TEST_CASE("NaN clear values and AOV settings do not restart the render forever", "[hydra][robust]") {
+    Rig rig(64, 48, 4);
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    HdRenderPassAovBinding binding;
+    binding.aovName = HdAovTokens->color;
+    binding.renderBuffer = rig.buffer;
+    binding.clearValue = VtValue(GfVec4f(0.0f));
+    SECTION("clear value") { binding.clearValue = VtValue(GfVec4f(nan, 0.0f, 0.0f, 0.0f)); }
+    SECTION("AOV setting") {
+        binding.aovSettings[TfToken("driver:parameters:aov:clearValue")] = VtValue(GfVec4f(nan, 0.0f, 0.0f, 0.0f));
+    }
+    SECTION("float AOV setting") { binding.aovSettings[TfToken("driver:parameters:aov:weight")] = VtValue(nan); }
+    rig.state->SetAovBindings({binding});
+    REQUIRE(rig.executeUntilConverged(5.0));
+    CHECK(rig.samples() == 4);
+}
+
+// A pixel aspect ratio that is no ratio (zero, negative, NaN) counts as
+// square pixels instead of a camera window without rays.
+TEST_CASE("A pixel aspect ratio that is not positive counts as square pixels", "[hydra][robust]") {
+    Rig rig(64, 48, 4);
+    const float par = GENERATE(0.0f, -2.0f, std::numeric_limits<float>::quiet_NaN());
+    rig.delegate->SetRenderSetting(TfToken("resolution"), VtValue(GfVec2i(64, 48)));
+    rig.delegate->SetRenderSetting(TfToken("pixelAspectRatio"), VtValue(par));
+    REQUIRE(rig.executeUntilConverged(5.0));
+    CHECK(rig.samples() == 4); // rendered, not the cleared buffers of a camera without rays
+}
+
+// A finite value beyond half's range stays finite in a half buffer (the
+// largest half): converted plainly it became infinite, so a very bright
+// emitter, or a bright light seen in a mirror, left inf pixels in half
+// images. Values that are not finite pass as they are.
+TEST_CASE("Half render buffers keep finite values finite", "[hydra][robust]") {
+    HdNovaRenderBuffer buffer(SdfPath("/rb"), nullptr);
+    REQUIRE(buffer.Allocate(GfVec3i(2, 1, 1), HdFormatFloat16Vec4, false));
+    const float inf = std::numeric_limits<float>::infinity();
+    const float rgba[8] = {1e30f, -1e30f, 65504.0f, 70000.0f, inf, -inf, 0.25f, -65505.0f};
+    buffer.WriteRgba(rgba);
+    const GfHalf *h = static_cast<const GfHalf *>(buffer.Map());
+    CHECK(float(h[0]) == 65504.0f);
+    CHECK(float(h[1]) == -65504.0f);
+    CHECK(float(h[2]) == 65504.0f);
+    CHECK(float(h[3]) == 65504.0f);
+    CHECK(float(h[4]) == inf);
+    CHECK(float(h[5]) == -inf);
+    CHECK(float(h[6]) == 0.25f);
+    CHECK(float(h[7]) == -65504.0f);
+    buffer.Unmap();
+}
+
+// An image no memory holds (a resolution or data window off by orders of
+// magnitude) fails to allocate instead of throwing through the host or
+// wrapping to a smaller buffer.
+TEST_CASE("A render buffer no memory holds fails to allocate", "[hydra][robust]") {
+    HdNovaRenderBuffer buffer(SdfPath("/rb"), nullptr);
+    const int huge = std::numeric_limits<int>::max();
+    CHECK_FALSE(buffer.Allocate(GfVec3i(huge, huge, 1), HdFormatFloat32Vec4, false));
+    CHECK(buffer.GetWidth() == 0);
+    CHECK(buffer.GetHeight() == 0);
+    CHECK_FALSE(buffer.Allocate(GfVec3i(1 << 30, 1 << 30, 1), HdFormatFloat32Vec4, false)); // 2^64 bytes: wraps to 0
+    CHECK(buffer.GetWidth() == 0);
+    REQUIRE(buffer.Allocate(GfVec3i(4, 2, 1), HdFormatFloat32Vec4, false));
+    CHECK(buffer.GetWidth() == 4);
 }

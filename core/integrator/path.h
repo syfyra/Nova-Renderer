@@ -60,7 +60,7 @@ NOVA_INLINE Receiver closureReceiver(const ClosureList &cl) {
 // enters it (M9 D4), else off the surface.
 NOVA_FORCEINLINE Vec3f leaveHit(const SurfaceHit &hit, Vec3f ng, bool tube, Vec3f d) {
     return tube ? tubeRayOrigin(hit.P, hit.N, hit.tangent, hit.curveRadius, d, hit.curveExitEps)
-                : offsetRayOrigin(hit.P, dot(d, ng) >= 0.0f ? ng : -ng);
+                : leaveSurface(hit.P, dot(d, ng) >= 0.0f ? ng : -ng, hit.leave);
 }
 
 // A path's light-linking receiver set (prevSet, docs/design/M9.md D15): its

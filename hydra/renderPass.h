@@ -79,6 +79,12 @@ private:
     // A batch render (husk) whose camera is not in the stage: reported once
     // and converged at once, so the render ends instead of waiting forever.
     bool _missingCamera = false;
+    // The camera gives no rays (a NaN parameter, a zero aperture or scale,
+    // equal clipping planes): reported once; the buffers hold their clear
+    // values and count as converged until the view is valid again. A NaN in
+    // the view would otherwise never equal the view of the last Execute and
+    // restart the render every time.
+    bool _invalidView = false;
     // The render settings' per-object defaults changed when this pass was
     // created, after prims had used the old ones (a pass recreated in a
     // session): the first execute re-syncs them.

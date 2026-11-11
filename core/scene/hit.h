@@ -39,6 +39,20 @@ struct SurfaceHit {
     // scale of the float error of the ray's hit distance (Embree intersects
     // relative to the corners), see nearestCameraLight().
     float extent = 0.0f;
+    // The scale of the intersector's error along the normal for a ray that
+    // leaves this hit (leaveSurface(), core/scene/ray.h); such a ray meets
+    // the shape again unless it starts farther out than a few ulps of it.
+    // The intersectors test a triangle in the mesh's own space, relative to
+    // the ray's origin there. Two parts: the corners' largest distance from
+    // the hit per axis (on the CPU weighted by the normal's components:
+    // Embree's distance is a dot product with the normal, exact where the
+    // triangle is axis-aligned and off by ulps of the mixed terms where it
+    // is not; on the GPU the largest of the three, as OptiX's test errs for
+    // axis-aligned triangles too), and the hit's own coordinates in that
+    // space weighted by the normal (the origin is rounded to them there,
+    // which matters for a mesh far from its own origin). In world units.
+    // Spheres and points: their radius.
+    float leave = 0.0f;
     MeshId mesh = kInvalidId;
     uint32_t instance = 0; // index into the mesh's instance list (the instanceId AOV)
     uint32_t prim = kInvalidId;
@@ -150,7 +164,9 @@ NOVA_INLINE SurfaceHit resolveSphereHit(const Rec &rec, MeshId meshId, float t, 
         hit.dudP = xf.normal(gu) * (1.0f / det);
         hit.dvdP = xf.normal(gv) * (1.0f / det);
     }
-    hit.extent = maxComponent(absolute(hit.P)) + radius * nova::fmax(nova::fmax(length(xf.x), length(xf.y)), length(xf.z));
+    const float worldRadius = radius * nova::fmax(nova::fmax(length(xf.x), length(xf.y)), length(xf.z));
+    hit.extent = maxComponent(absolute(hit.P)) + worldRadius;
+    hit.leave = worldRadius;
     hit.mesh = meshId;
     hit.instance = instance;
     hit.prim = 0;
@@ -300,6 +316,7 @@ NOVA_INLINE SurfaceHit resolvePointHit(const Rec &rec, MeshId meshId, uint32_t p
     hit.N = hit.Ng = normalize(N);
     hit.uv = {0.0f, 0.0f};
     hit.extent = maxComponent(absolute(center)) + radius;
+    hit.leave = radius;
     hit.mesh = meshId;
     hit.instance = instance;
     hit.prim = prim;
@@ -378,6 +395,23 @@ NOVA_INLINE SurfaceHit resolveMeshHit(const Rec &rec, MeshId meshId, uint32_t pr
     hit.prim = prim;
     hit.Pobject = o[0] * w + o[1] * uv.x + o[2] * uv.y;
     hit.Nobject = normalize(cross(o[1] - o[0], o[2] - o[0]));
+    {
+        // SurfaceHit::leave: the corners' reach from the hit per axis of
+        // the mesh's own space and the hit's coordinates there, times the
+        // instance's largest scale.
+        const Vec3f reach = componentMax(absolute(o[0] - hit.Pobject),
+                                         componentMax(absolute(o[1] - hit.Pobject), absolute(o[2] - hit.Pobject)));
+        const Vec3f across = absolute(hit.Nobject);
+#if defined(__CUDA_ARCH__)
+        const float along = maxComponent(reach) + dot(across, absolute(hit.Pobject));
+#else
+        const float along = dot(across, reach + absolute(hit.Pobject));
+#endif
+        const float s0 = dot(p1 - p0, p1 - p0), o0 = dot(o[1] - o[0], o[1] - o[0]);
+        const float s1 = dot(p2 - p0, p2 - p0), o1 = dot(o[2] - o[0], o[2] - o[0]);
+        const float scale2 = nova::fmax(o0 > 0.0f ? s0 / o0 : 1.0f, o1 > 0.0f ? s1 / o1 : 1.0f);
+        hit.leave = along * std::sqrt(scale2);
+    }
 
     if (!m.normals.empty()) {
         Vec3f nc[3];

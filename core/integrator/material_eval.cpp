@@ -112,6 +112,7 @@ void fillAndRun(const Scene &scene, MaterialId material, const MaterialRecord &r
             lanes[l].tangent = hit.tangent;
             lanes[l].curveRadius = hit.curveRadius;
             lanes[l].curveExitEps = hit.curveExitEps;
+            lanes[l].leave = hit.leave;
         }
         tex.queries = ray.queries;
         tex.lanes = lanes;

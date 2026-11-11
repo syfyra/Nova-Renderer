@@ -1092,6 +1092,7 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         wk.P[j] = hit.P;
         wk.ng[j] = ng;
         wk.medium[j] = cl.lobe[s.lobe].subsurface;
+        wk.entry[j] = walkEntryDistance(hit.P, hit.leave);
         return;
     }
     // A transmission through a refracting interface changes the medium, also
@@ -1834,7 +1835,7 @@ extern "C" __global__ void novaWalkExit(const ShadeArgs a) {
         resolveMeshHit(mesh.view, meshId, wk.prim[i], wk.uv[i], wk.t[i], instance, time, wk.org[i], dir);
     const Vec3f ng = faceForward(hit.Ng, dir); // out of the medium
     const Vec3f n = faceForward(hit.N, ng);
-    const Vec3f origin = offsetRayOrigin(hit.P, ng);
+    const Vec3f origin = leaveSurface(hit.P, ng, hit.leave);
     const Sampler sampler{w.pixelSeed[p], w.sampleIndex[p]};
     const LpeView &lpe = sc.lpe;
     GpuFilm film = a.film;
@@ -2281,7 +2282,7 @@ extern "C" __global__ void novaFakeStep(const ShadeArgs a) {
         if (isBlack(T))
             return;
     }
-    const Vec3f next = offsetRayOrigin(hit.P, faceForward(hit.Ng, dir));
+    const Vec3f next = leaveSurface(hit.P, faceForward(hit.Ng, dir), hit.leave);
     float left = w.fakeLeft[i];
     if (left < kInf)
         left -= dot(next - org, dir);

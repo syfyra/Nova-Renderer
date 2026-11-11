@@ -20,8 +20,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <exception>
+#include <limits>
 #include <set>
 #include <string>
 
@@ -50,11 +53,28 @@ bool HdNovaRenderBuffer::Allocate(GfVec3i const &dimensions, HdFormat format, bo
                 dimensions[2]);
         return false;
     }
+    // An image no memory holds (a resolution or data window off by orders of
+    // magnitude) fails here instead of throwing through the host.
+    const size_t pixelSize = HdDataSizeOfFormat(format);
+    const size_t pixels = size_t(dimensions[0]) * size_t(dimensions[1]); // below 2^62
+    bool allocated = pixelSize == 0 || pixels <= std::numeric_limits<size_t>::max() / pixelSize; // no wrapped size
+    if (allocated) {
+        try {
+            _data.assign(pixels * pixelSize, 0);
+        } catch (std::exception const &) { // std::bad_alloc, std::length_error
+            allocated = false;
+        }
+    }
+    if (!allocated) {
+        HD_NOVA_WARN("cannot allocate render buffer %s (%dx%d pixels of %zu bytes)", GetId().GetText(), dimensions[0],
+                     dimensions[1], pixelSize);
+        _Deallocate();
+        return false;
+    }
     _width = unsigned(dimensions[0]);
     _height = unsigned(dimensions[1]);
     _format = format;
-    _pixelSize = HdDataSizeOfFormat(format);
-    _data.assign(size_t(_width) * _height * _pixelSize, 0);
+    _pixelSize = pixelSize;
     _converged = false;
     return true;
 }
@@ -156,17 +176,25 @@ void HdNovaRenderBuffer::_WritePixel(size_t index, const float *values, int coun
         case HdFormatFloat32:
             reinterpret_cast<float *>(dst)[c] = values[c];
             break;
-        case HdFormatFloat16:
-            reinterpret_cast<GfHalf *>(dst)[c] = GfHalf(values[c]);
+        case HdFormatFloat16: {
+            // A finite value beyond half's range stays finite, the largest
+            // half: converted plainly it is infinite, and a bright light in
+            // a mirror or a very bright emitter became inf pixels in half
+            // images. Values that are not finite pass as they are.
+            constexpr float kHalfMax = 65504.0f;
+            const float v = values[c];
+            reinterpret_cast<GfHalf *>(dst)[c] = GfHalf(std::isfinite(v) ? std::clamp(v, -kHalfMax, kHalfMax) : v);
             break;
+        }
         case HdFormatUNorm8:
             dst[c] = uint8_t(std::clamp(values[c], 0.0f, 1.0f) * 255.0f + 0.5f);
             break;
         case HdFormatSNorm8:
             reinterpret_cast<int8_t *>(dst)[c] = int8_t(std::clamp(values[c], -1.0f, 1.0f) * 127.0f);
             break;
-        case HdFormatInt32:
-            reinterpret_cast<int32_t *>(dst)[c] = int32_t(values[c]);
+        case HdFormatInt32: // defined for every float: NaN is 0, the rest within int's range
+            reinterpret_cast<int32_t *>(dst)[c] =
+                std::isnan(values[c]) ? 0 : int32_t(std::clamp(values[c], -2147483648.0f, 2147483520.0f));
             break;
         default:
             break;

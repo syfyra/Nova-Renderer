@@ -61,7 +61,7 @@ struct Batch {
     // when d enters it (M9 D4, as path rays), else as push().
     void push(const QueryLane &lane, Vec3f d, float maxT, float filterSeed) {
         org.push_back(lane.tube ? tubeRayOrigin(lane.P, lane.N, lane.tangent, lane.curveRadius, d, lane.curveExitEps)
-                                : offsetRayOrigin(lane.P, faceForward(lane.Ng, d)));
+                                : leaveSurface(lane.P, faceForward(lane.Ng, d), lane.leave));
         dir.push_back(d);
         tMax.push_back(maxT);
         time.push_back(lane.time);

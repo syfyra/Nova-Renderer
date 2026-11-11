@@ -112,7 +112,7 @@ add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oi
     test_hydra_holdouts.cpp
     test_hydra_filters.cpp
     test_hydra_sky.cpp test_hydra_medium.cpp test_hydra_karma_settings.cpp test_hydra_resync.cpp
-    test_hydra_curves.cpp)
+    test_hydra_curves.cpp test_hydra_robust.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nova_hydra_tests PRIVATE hdNova_objects Catch2::Catch2WithMain
     Houdini::Dep::pxr_usd Houdini::Dep::pxr_usdGeom Houdini::Dep::pxr_usdShade Houdini::Dep::pxr_usdImaging)

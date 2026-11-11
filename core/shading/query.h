@@ -35,6 +35,9 @@ struct QueryLane {
     bool tube = false;
     Vec3f tangent{0.0f, 0.0f, 0.0f};
     float curveRadius = 0.0f, curveExitEps = 0.0f;
+    // The shape's reach from the hit (SurfaceHit::leave): query rays leave
+    // the surface as path rays do (leaveSurface).
+    float leave = 0.0f;
 };
 
 // The output width of a query.
