@@ -222,9 +222,13 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     desc.type = lightType(_lightType);
 
     GfVec3f color = lightParam<GfVec3f>(sd, id, HdLightTokens->color, GfVec3f(1.0f));
-    if (lightParam<bool>(sd, id, HdLightTokens->enableColorTemperature, false))
-        color = GfCompMult(color, UsdLuxBlackbodyTemperatureAsRgb(
-                                      lightParam<float>(sd, id, HdLightTokens->colorTemperature, 6500.0f)));
+    if (lightParam<bool>(sd, id, HdLightTokens->enableColorTemperature, false)) {
+        // UsdLuxBlackbodyTemperatureAsRgb clamps the temperature, but a NaN
+        // passes its clamp and indexes its table far out of bounds: the
+        // light then counts as one with a non-finite color (below).
+        const float kelvin = lightParam<float>(sd, id, HdLightTokens->colorTemperature, 6500.0f);
+        color = std::isnan(kelvin) ? GfVec3f(kelvin) : GfCompMult(color, UsdLuxBlackbodyTemperatureAsRgb(kelvin));
+    }
     desc.color = {color[0], color[1], color[2]};
     desc.intensity = lightParam<float>(sd, id, HdLightTokens->intensity, 1.0f);
     desc.exposure = lightParam<float>(sd, id, HdLightTokens->exposure, 0.0f);
@@ -334,7 +338,8 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     // The core turns non-finite emission off; say why the light is dark.
     const nova::Spectrum emission = desc.color * (desc.intensity * std::exp2(desc.exposure));
     if (!nova::isFinite(emission))
-        HD_NOVA_WARN("light %s has a non-finite color, intensity or exposure and emits nothing", id.GetText());
+        HD_NOVA_WARN("light %s has a non-finite color, color temperature, intensity or exposure and emits nothing",
+                     id.GetText());
     if (desc.type == nova::LightType::Sphere && !desc.treatAsPoint) {
         const double sx = xf.GetRow3(0).GetLength(), sy = xf.GetRow3(1).GetLength(), sz = xf.GetRow3(2).GetLength();
         if (std::max({sx, sy, sz}) > 1.001 * std::min({sx, sy, sz}))

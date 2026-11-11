@@ -41,7 +41,10 @@ struct HdNovaShutter {
 // instantaneousShutter collapses the shutter to its open time.
 inline HdNovaShutter HdNovaResolveShutter(double open, double close, bool disableMotionBlur, bool instantaneousShutter) {
     HdNovaShutter s;
-    if (disableMotionBlur)
+    // A non-finite shutter (a NaN shutter:open) has no interval to sample,
+    // and a NaN would never compare equal to the shutter the scene was
+    // sampled with: the render pass would resample it on every Execute.
+    if (disableMotionBlur || !std::isfinite(float(open)) || !std::isfinite(float(close)))
         return s;
     s.open = float(open);
     s.close = instantaneousShutter ? float(open) : float(close);

@@ -4,7 +4,10 @@
 # CVEX bridge (nova_cvex.dll, copied next to the executable) and with it
 # Houdini's VEX libraries; scenes without them never do.
 
-add_executable(nova_cli main.cpp sampler.cpp)
+add_executable(nova_cli main.cpp sampler.cpp crash.cpp)
+if(WIN32)
+    target_link_libraries(nova_cli PRIVATE dbghelp) # crash.cpp: call stacks
+endif()
 target_link_libraries(nova_cli PRIVATE
     hdNova_objects # nova_core, Nova::OIIO, the delegate's pxr libraries and compile options
     Houdini::Dep::pxr_usd

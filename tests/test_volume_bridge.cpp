@@ -10,6 +10,12 @@
 
 #include <windows.h>
 
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 
 using Catch::Matchers::WithinAbs;
@@ -84,4 +90,65 @@ TEST_CASE("The volume bridge reports fields it cannot read", "[volume][bridge]")
     r.fieldName = "density";
     CHECK_FALSE(bridge()->load(r, out, &error));
     CHECK_FALSE(error.empty());
+}
+
+// A .vdb cut off inside its header (a cache whose write was interrupted), or
+// of a file version newer than the library reads, is refused before OpenVDB
+// sees it: OpenVDB reads the header's lengths without checking its stream
+// and then allocates and loops for minutes (a file of 64 bytes did not come
+// back within a minute, one of 1 KB after 22 s).
+TEST_CASE("The volume bridge refuses .vdb files with an incomplete header", "[volume][bridge][robust]") {
+    std::ifstream in(kPyro, std::ios::binary);
+    const std::string whole((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    REQUIRE(whole.size() > 4096);
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / ("nova_vdb_header_" + std::to_string(GetCurrentProcessId()));
+    std::filesystem::create_directories(dir);
+    const auto write = [&](const char *name, const std::string &bytes) {
+        const std::filesystem::path path = dir / name;
+        std::ofstream(path, std::ios::binary).write(bytes.data(), std::streamsize(bytes.size()));
+        return path.string();
+    };
+    nova::VolumeFieldRequest r;
+    r.fieldName = "density";
+    nova::VolumeFieldGrids out;
+    std::string error;
+    const auto seconds = [&] {
+        const auto start = std::chrono::steady_clock::now();
+        const bool loaded = bridge()->load(r, out, &error);
+        const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        CHECK_FALSE(loaded);
+        return s;
+    };
+
+    for (const size_t size : {size_t(12), size_t(40), size_t(64), size_t(200), size_t(1024)}) {
+        INFO(size << " bytes");
+        r.filePath = write("cut.vdb", whole.substr(0, size));
+        error.clear();
+        CHECK(seconds() < 2.0);
+        CHECK(error.find("ends inside its header") != std::string::npos);
+        CHECK(out.grids.empty());
+    }
+
+    // A file version beyond the library's.
+    std::string newer = whole;
+    const uint32_t version = 100000;
+    std::memcpy(newer.data() + 8, &version, 4);
+    r.filePath = write("newer.vdb", newer);
+    error.clear();
+    CHECK(seconds() < 2.0);
+    CHECK(error.find("newer") != std::string::npos);
+
+    // Files cut off behind the header are the readers' to report, and the
+    // whole file still loads.
+    r.filePath = write("half.vdb", whole.substr(0, whole.size() / 2));
+    error.clear();
+    CHECK(seconds() < 10.0);
+    CHECK(error.find("ends inside its header") == std::string::npos);
+    r.filePath = write("whole.vdb", whole);
+    CHECK(bridge()->load(r, out, &error));
+    CHECK(out.grids.size() == 1);
+
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }

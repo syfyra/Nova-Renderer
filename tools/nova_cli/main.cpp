@@ -13,6 +13,7 @@
 // Exit codes: 0 ok, 1 render or I/O failure, 2 usage/configuration error,
 // 3 timeout before convergence.
 
+#include "crash.h"
 #include "sampler.h"
 
 #include <pxr/pxr.h>
@@ -367,6 +368,16 @@ bool computeJob(UsdStageRefPtr const &stage, Options const &opt, RenderJob &job)
                 std::fprintf(stderr, "nova_cli: no RenderVars for product %s\n", p.outputPath.c_str());
                 return false;
             }
+            // An EXR's parts need unique names: said now, not after the render
+            // when the file cannot be written.
+            for (size_t i = 0; i < p.aovs.size(); ++i)
+                for (size_t j = 0; j < i; ++j)
+                    if (p.aovs[i].partName == p.aovs[j].partName) {
+                        std::fprintf(stderr, "nova_cli: product %s has two RenderVars named '%s' (%s and %s)\n",
+                                     p.outputPath.c_str(), p.aovs[i].partName.c_str(), p.aovs[j].aovName.GetText(),
+                                     p.aovs[i].aovName.GetText());
+                        return false;
+                    }
             // husk writes the beauty "C" as the first part.
             std::stable_partition(p.aovs.begin(), p.aovs.end(), [](Aov const &a) { return a.partName == "C"; });
             job.products.push_back(std::move(p));
@@ -404,6 +415,26 @@ bool computeJob(UsdStageRefPtr const &stage, Options const &opt, RenderJob &job)
                 cam && cam.GetHorizontalApertureAttr().Get(&apW, job.time) &&
                 cam.GetVerticalApertureAttr().Get(&apH, job.time) && apW > 0.0f && apH > 0.0f)
                 p.pixelAspectRatio = (apW / apH) / (float(p.resolution[0]) / float(p.resolution[1]));
+        }
+        // Values no image has: OpenEXR rejects the header of a pixel aspect
+        // ratio that is not positive, and a NaN window has no pixels.
+        if (!(std::isfinite(p.pixelAspectRatio) && p.pixelAspectRatio > 0.0f)) {
+            std::fprintf(stderr, "nova_cli: product %s: pixelAspectRatio %g is not a positive number, using 1\n",
+                         p.outputPath.c_str(), double(p.pixelAspectRatio));
+            p.pixelAspectRatio = 1.0f;
+        }
+        // Likewise a window whose pixel coordinates leave int's range (the
+        // image itself is the limit of what fits in memory long before).
+        const GfVec2f lo = p.dataWindowNDC.GetMin(), hi = p.dataWindowNDC.GetMax();
+        const auto pixels = [](float ndc, int size) { return std::fabs(double(ndc) * double(size)); };
+        constexpr double kMaxPixel = 1e9;
+        if (!std::isfinite(lo[0]) || !std::isfinite(lo[1]) || !std::isfinite(hi[0]) || !std::isfinite(hi[1]) ||
+            pixels(lo[0], p.resolution[0]) > kMaxPixel || pixels(hi[0], p.resolution[0]) > kMaxPixel ||
+            pixels(lo[1], p.resolution[1]) > kMaxPixel || pixels(hi[1], p.resolution[1]) > kMaxPixel) {
+            std::fprintf(stderr, "nova_cli: product %s: dataWindowNDC (%g, %g, %g, %g) is no window of the image, "
+                                 "using the whole image\n",
+                         p.outputPath.c_str(), double(lo[0]), double(lo[1]), double(hi[0]), double(hi[1]));
+            p.dataWindowNDC = GfRange2f(GfVec2f(0.0f), GfVec2f(1.0f));
         }
     }
     if (!opt.output.empty()) job.products.front().outputPath = opt.output;
@@ -708,7 +739,13 @@ public:
         if (!TfStringStartsWith(warning.GetCommentary(), "Nova: "))
             print("Warning", warning);
     }
-    void IssueError(TfError const &error) override { print("Error", error); }
+    void IssueError(TfError const &error) override {
+        print("Error", error);
+        // Where it was posted from (USD's errors name only their own line).
+        static const bool stacks = std::getenv("NOVA_CLI_ERROR_STACKS") != nullptr;
+        if (stacks)
+            nova_cli::printCallStack();
+    }
     void IssueFatalError(TfCallContext const &, std::string const &msg) override {
         std::fprintf(stderr, "Fatal error: %s\n", msg.c_str());
         _UnhandledAbort();
@@ -761,6 +798,7 @@ bool registerPlugins() {
 } // namespace
 
 int main(int argc, char **argv) {
+    nova_cli::installCrashHandler();
     Options opt;
     if (!parseArgs(argc, argv, opt)) {
         usage();
@@ -830,10 +868,12 @@ int main(int argc, char **argv) {
         const GfVec2f origin(float(extent.GetMinX()), float(extent.GetMinY()));
         std::vector<HdRenderBuffer *> buffers;
         HdRenderPassAovBindingVector bindings;
+        bool allocated = true;
         for (size_t i = 0; i < p.aovs.size(); ++i) {
             const SdfPath id(TfStringPrintf("/__nova_cli/aov%zu", i));
             auto *rb = static_cast<HdRenderBuffer *>(delegate->CreateBprim(HdPrimTypeTokens->renderBuffer, id));
-            rb->Allocate(GfVec3i(extent.GetWidth(), extent.GetHeight(), 1), p.aovs[i].format, false);
+            allocated = rb->Allocate(GfVec3i(extent.GetWidth(), extent.GetHeight(), 1), p.aovs[i].format, false) &&
+                        allocated;
             buffers.push_back(rb);
 
             HdRenderPassAovBinding b;
@@ -846,6 +886,16 @@ int main(int argc, char **argv) {
                 source = it->second.UncheckedGet<TfToken>();
             b.clearValue = delegate->GetDefaultAovDescriptor(source).clearValue; // empty = no clear
             bindings.push_back(std::move(b));
+        }
+        if (!allocated) { // the delegate said why
+            std::fprintf(stderr, "nova_cli: product %s: no image of %dx%d pixels with %zu AOV(s)\n",
+                         p.outputPath.c_str(), extent.GetWidth(), extent.GetHeight(), p.aovs.size());
+            for (HdRenderBuffer *rb : buffers) {
+                rb->Finalize(delegate->GetRenderParam());
+                delegate->DestroyBprim(rb);
+            }
+            status = 2;
+            break;
         }
         state->SetAovBindings(bindings);
         GfRect2i dataWindow = dw;

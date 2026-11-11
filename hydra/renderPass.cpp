@@ -23,6 +23,7 @@
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/imaging/hd/xformSchema.h>
 
+#include <algorithm>
 #include <cmath>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -103,6 +104,57 @@ GfMatrix4d karmaConformedWindow(GfMatrix4d const &projection, CameraUtilConformW
     return conformed;
 }
 
+// A pixel aspect ratio a camera window can be conformed to; anything else
+// (zero, negative, NaN) counts as square pixels.
+double validPixelAspect(double aspect) { return std::isfinite(aspect) && aspect > 0.0 ? aspect : 1.0; }
+
+// Finite as the floats the core traces with.
+bool isFinite(GfMatrix4d const &m) {
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            if (!std::isfinite(float(m[i][j])))
+                return false;
+    return true;
+}
+
+// A matrix rays can be unprojected through.
+bool isInvertible(GfMatrix4d const &m) {
+    if (!isFinite(m))
+        return false;
+    double det = 0.0;
+    const GfMatrix4d inverse = m.GetInverse(&det);
+    return det != 0.0 && std::isfinite(det) && isFinite(inverse);
+}
+
+// VtValue equality in which a NaN equals itself: values that hold one (a
+// clear value, an AOV setting) are unequal to themselves and are compared
+// by their hash, which is taken from their bits.
+bool sameValue(VtValue const &a, VtValue const &b) {
+    if (a == b)
+        return true;
+    return !(a == a) && !(b == b) && a.GetTypeid() == b.GetTypeid() && a.GetHash() == b.GetHash();
+}
+
+// HdRenderPassAovBinding's equality with sameValue(): bindings that hold a
+// NaN would otherwise differ from themselves and restart the render on
+// every Execute.
+bool sameBindings(HdRenderPassAovBindingVector const &a, HdRenderPassAovBindingVector const &b) {
+    if (a.size() != b.size())
+        return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].aovName != b[i].aovName || a[i].renderBuffer != b[i].renderBuffer ||
+            a[i].renderBufferId != b[i].renderBufferId || !sameValue(a[i].clearValue, b[i].clearValue) ||
+            a[i].aovSettings.size() != b[i].aovSettings.size())
+            return false;
+        for (auto const &[key, value] : a[i].aovSettings) {
+            const auto other = b[i].aovSettings.find(key);
+            if (other == b[i].aovSettings.end() || !sameValue(value, other->second))
+                return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 HdNovaRenderPass::HdNovaRenderPass(HdRenderIndex *index, HdRprimCollection const &collection,
@@ -126,7 +178,7 @@ HdNovaRenderPass::~HdNovaRenderPass() {
 
 bool HdNovaRenderPass::IsConverged() const {
     // A render stopped by the host will not change any more.
-    if (_delegate->IsStoppedByHost() || _missingCamera)
+    if (_delegate->IsStoppedByHost() || _missingCamera || _invalidView)
         return true;
     if (_bindings.empty())
         return false;
@@ -150,6 +202,10 @@ HdNovaRenderPass::View HdNovaRenderPass::_ComputeView(HdRenderPassStateSharedPtr
                          cam->GetFocusDistance() > 0.0f && cam->GetFocalLength() > 0.0f;
         view.lensRadius = dof ? cam->GetFocalLength() / (2.0f * cam->GetFStop()) : 0.0f;
         view.focusDistance = dof ? cam->GetFocusDistance() : 0.0f;
+        // A lens that is not finite (an infinite focus distance or focal
+        // length) has no focus plane to aim the rays at: a pinhole.
+        if (!std::isfinite(view.lensRadius) || !std::isfinite(view.focusDistance))
+            view.lensRadius = view.focusDistance = 0.0f;
     }
 
     const CameraUtilFraming &framing = state->GetFraming();
@@ -167,7 +223,8 @@ HdNovaRenderPass::View HdNovaRenderPass::_ComputeView(HdRenderPassStateSharedPtr
         const GfVec2f size = display.GetSize();
         const HdCamera *cam = state->GetCamera();
         if (cam && size[0] > 0.0f && size[1] > 0.0f) {
-            const double aspect = double(framing.pixelAspectRatio) * double(size[0]) / double(size[1]);
+            const double aspect =
+                validPixelAspect(double(framing.pixelAspectRatio)) * double(size[0]) / double(size[1]);
             // The viewport conforms like Houdini's own drawing (CameraUtil),
             // final renders (nova_cli) like Karma.
             const bool viewport = _delegate->GetRenderSetting<bool>(_tokens->viewport, false);
@@ -204,7 +261,8 @@ HdNovaRenderPass::View HdNovaRenderPass::_ComputeView(HdRenderPassStateSharedPtr
         resolution = GfVec2i(width, height); // the buffer is the whole image
         view.projection = state->GetProjectionMatrix();
     } else {
-        const double pixelAspect = _delegate->GetRenderSetting<float>(_tokens->pixelAspectRatio, 1.0f);
+        const double pixelAspect =
+            validPixelAspect(_delegate->GetRenderSetting<float>(_tokens->pixelAspectRatio, 1.0f));
         const double aspect = pixelAspect * double(resolution[0]) / double(resolution[1]);
         // husk passes the conform policy as a render setting, not as an override.
         const CameraUtilConformWindowPolicy policy =
@@ -364,6 +422,36 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     if (const auto *novaCamera = dynamic_cast<const HdNovaCamera *>(hdCamera))
         if (novaCamera->GetMotionSteps().size() >= 2 && novaCamera->GetSampledShutter() == shutter)
             view.cameraMotion = novaCamera->GetMotionSteps();
+
+    // A camera that gives no rays: a NaN or infinite parameter, a zero
+    // aperture or scale, equal clipping planes. Nothing is rendered; the
+    // buffers hold their clear values and count as converged
+    // (husk and nova_cli would otherwise wait forever: a NaN never equals the
+    // view of the last Execute, so every Execute would restart the render).
+    if (!isInvertible(hdCamera->GetTransform()) || !isInvertible(view.worldToView) ||
+        !isInvertible(view.projection) || !std::all_of(view.cameraMotion.begin(), view.cameraMotion.end(), isFinite)) {
+        if (!_invalidView || !sameBindings(bindings, _bindings)) {
+            thread.StopRender();
+            // The bindings first: they switch int buffers of float images to
+            // float32, so the clear value is written as a float.
+            _delegate->SetAovBindings(bindings);
+            for (const HdRenderPassAovBinding &b : bindings)
+                if (auto *rb = static_cast<HdNovaRenderBuffer *>(b.renderBuffer)) {
+                    rb->Clear(b.clearValue);
+                    rb->SetConverged(true);
+                }
+            _bindings = bindings;
+        }
+        if (!_invalidView) {
+            HD_NOVA_WARN("the camera %s gives no rays (a non-finite or singular transform or projection: a NaN "
+                         "parameter, a zero aperture or scale, equal clipping planes); nothing to render",
+                         hdCamera->GetId().GetText());
+            _invalidView = true;
+        }
+        return;
+    }
+    const bool viewRestored = _invalidView; // the buffers hold clear values: render again
+    _invalidView = false;
     // Compare setting values rather than the delegate's settings version:
     // Houdini sends many unrelated keys (houdini:frame, houdini:interactive...).
     nova::RenderSettings settings = _delegate->GetNovaSettings();
@@ -415,7 +503,7 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     for (HdNovaLightFilter *filter : param.SpaceFilters())
         filter->RefreshSpace(param);
 
-    bool restart = _delegate->ConsumeNeedsReset();
+    bool restart = _delegate->ConsumeNeedsReset() || viewRestored;
     const HdNovaDenoiseConfig denoise = _delegate->GetDenoiseConfig();
     restart |= !(denoise == _denoise);
     // Texture settings: new conversions apply to textures prepared from now
@@ -429,14 +517,20 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     restart |= !(view == _view);
     restart |= width != _width || height != _height;
     restart |= param.GetEditVersion() != _editVersion || scene.version() != _sceneVersion;
-    restart |= settings != _settings;
-    restart |= bindings != _bindings;
+    // Settings that hold a NaN differ from themselves: compared plainly they
+    // would look new on every Execute and restart the render each time. They
+    // count as changed once, when the NaN arrives (the delegate reads its
+    // settings NaN-free; this keeps a setting that slips through from
+    // hanging husk).
+    restart |= settings != _settings && (settings == settings || _settings == _settings);
+    const bool bindingsChanged = !sameBindings(bindings, _bindings);
+    restart |= bindingsChanged;
     if (!restart)
         return;
     // New buffers or a new size start empty; otherwise the buffers keep the
     // last image until the first pass of the restart replaces it (a moving
     // camera restarts every frame).
-    const bool newBuffers = bindings != _bindings || width != _width || height != _height;
+    const bool newBuffers = bindingsChanged || width != _width || height != _height;
 
     thread.StopRender();
     // Interrupting the old render flags a reset; this restart covers it.

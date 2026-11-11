@@ -70,6 +70,36 @@ nova::Mat4 toNova(GfMatrix4d const &m) {
 
 nova::Vec3f toNova(GfVec3f const &v) { return {v[0], v[1], v[2]}; }
 
+// Whether the topology's arrays agree with each other and with `pointCount`
+// points; `why` says what does not. Hydra's helpers (HdMeshUtil,
+// Hd_VertexAdjacency) and the tessellator trust them: a face that runs past
+// faceVertexIndices makes them read past the array, or loop over as many
+// corners as the count claims, and HdMeshTopology::GetNumPoints() is the
+// largest index plus one, which wraps for INT_MAX and never sees a negative
+// index.
+bool topologyFits(HdMeshTopology const &topology, size_t pointCount, std::string &why) {
+    VtIntArray const &counts = topology.GetFaceVertexCounts();
+    VtIntArray const &indices = topology.GetFaceVertexIndices();
+    size_t corners = 0;
+    for (int c : counts) {
+        if (c < 0) {
+            why = TfStringPrintf("a face has %d vertices", c);
+            return false;
+        }
+        corners += size_t(c);
+        if (corners > indices.size()) {
+            why = TfStringPrintf("its faces need more than its %zu face-vertex indices", indices.size());
+            return false;
+        }
+    }
+    for (int i : indices)
+        if (i < 0 || size_t(i) >= pointCount) {
+            why = TfStringPrintf("it references point %d but has %zu points", i, pointCount);
+            return false;
+        }
+    return true;
+}
+
 // Returns the interpolation of a primvar, or false if it is not authored.
 bool findPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name, HdInterpolation &interp) {
     for (int i = 0; i < HdInterpolationCount; ++i) {
@@ -442,10 +472,9 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
     const uint32_t steps = uint32_t(pointSteps.size());
 
     // Inconsistent data (e.g. points and indices from different time samples)
-    // would make the topology helpers read past the points array.
-    if (_topology.GetNumPoints() > int(pointCount)) {
-        HD_NOVA_WARN("mesh %s references %d points but has %zu, skipping it", id.GetText(),
-                _topology.GetNumPoints(), pointCount);
+    // would make the topology helpers read past the arrays.
+    if (std::string why; !topologyFits(_topology, pointCount, why)) {
+        HD_NOVA_WARN("mesh %s is inconsistent (%s), skipping it", id.GetText(), why.c_str());
         return false;
     }
 
@@ -1197,7 +1226,7 @@ bool HdNovaMesh::_SyncPortal(HdSceneDelegate *sd, HdNovaRenderParam &param, HdDi
     if (!pointsValue.IsHolding<VtVec3fArray>())
         return remove();
     const VtVec3fArray &points = pointsValue.UncheckedGet<VtVec3fArray>();
-    if (_topology.GetNumPoints() > int(points.size()))
+    if (std::string why; !topologyFits(_topology, points.size(), why))
         return remove();
     HdMeshUtil meshUtil(&_topology, id);
     VtVec3iArray triangles;
@@ -1245,7 +1274,7 @@ nova::MediumShellPtr HdNovaMesh::_BuildShell(HdSceneDelegate *sd, HdNovaRenderPa
         _warnedMediumMotion = true;
     }
     VtVec3fArray const &points = steps[(steps.size() - 1) / 2];
-    if (_topology.GetNumPoints() > int(points.size()))
+    if (std::string why; !topologyFits(_topology, points.size(), why))
         return nullptr;
     // The control mesh (subdivision surfaces bound their medium by their hull).
     HdMeshUtil meshUtil(&_topology, id);
