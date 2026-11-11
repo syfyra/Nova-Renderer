@@ -2,6 +2,9 @@
 # nova_core and its Catch2 unit tests on Linux, built with GCC against system
 # libraries. The Hydra delegate, the Houdini package, nova_cli and the GPU
 # backend need Houdini on Windows and are not built here.
+#
+# A step that fails puts the lines that say why into annotations (::error::),
+# which the checks API returns without a login: the log itself needs one.
 name: core
 
 on:
@@ -27,14 +30,50 @@ jobs:
         preset: [core, core-sanitize]
     steps:
       - uses: actions/checkout@v4
+      # The runner's package mirror fails at times: on 2026-11-11 three runs in a
+      # row ended here with exit code 100 after twelve minutes of timeouts. So:
+      # short timeouts, three attempts, from the second on Ubuntu's own archive
+      # in place of the runner's mirror, and apt's own error lines as annotations.
       - name: Install Embree, oneTBB, OpenSubdiv and Catch2
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build libembree-dev libtbb-dev libosd-dev catch2
+          options="-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o APT::Update::Error-Mode=any"
+          packages="ninja-build libembree-dev libtbb-dev libosd-dev catch2"
+          for attempt in 1 2 3; do
+            if sudo apt-get $options update 2>&1 | tee apt.log &&
+               sudo apt-get $options install -y --no-install-recommends $packages 2>&1 | tee -a apt.log; then
+              if [ "$attempt" -gt 1 ]; then echo "::notice title=apt-get::installed at attempt $attempt"; fi
+              exit 0
+            fi
+            grep -E '^(E|W|Err):' apt.log | sort -u | tail -n 3 | while IFS= read -r line; do
+              echo "::warning title=apt-get attempt $attempt::$line"
+            done || true
+            for list in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+              if [ -f "$list" ]; then sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$list"; fi
+            done
+            sleep 20
+          done
+          echo "::error title=apt-get::the packages could not be installed in three attempts"
+          exit 1
       # The NanoVDB 32.6 headers are fetched by the configure step.
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }}
+        shell: bash
+        run: |
+          cmake --build --preset ${{ matrix.preset }} 2>&1 | tee build.log || {
+            grep -E ': (fatal )?error:|undefined reference|^FAILED:' build.log | head -n 10 | while IFS= read -r line; do
+              echo "::error title=build::$line"
+            done || true
+            exit 1
+          }
       - name: Test
-        run: ctest --preset ${{ matrix.preset }}
+        shell: bash
+        run: |
+          ctest --preset ${{ matrix.preset }} 2>&1 | tee ctest.log || {
+            grep -E '\((Failed|Timeout|SEGFAULT|Subprocess aborted|Not Run)\)$|tests failed out of|SUMMARY: [A-Za-z]*Sanitizer|runtime error:' ctest.log |
+              sort -u | head -n 10 | while IFS= read -r line; do
+              echo "::error title=ctest::$line"
+            done || true
+            exit 1
+          }
