@@ -838,8 +838,22 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
                       TfToken const &) {
     auto *param = static_cast<HdNovaRenderParam *>(renderParam);
     const SdfPath &id = GetId();
-    const HdDirtyBits bits = *dirtyBits;
     const bool first = _meshId == nova::kInvalidId;
+
+    // A final render dices every frame from that frame's own camera, which
+    // the render pass knows only after this sync. A mesh diced from the view
+    // therefore waits for the pass to confirm it: it keeps its geometry and
+    // what is dirty, and the pass asks for the sync that builds it (once per
+    // frame, where building here and again for the new view would be twice).
+    if (!first && _builtDisplacement && _dicingDepth < 0 && param->DicingViewPending()) {
+        _deferredBits |= *dirtyBits & HdChangeTracker::AllSceneDirtyBits;
+        param->NoteWaitingMesh(id);
+        *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
+        return;
+    }
+    *dirtyBits |= _deferredBits;
+    _deferredBits = 0;
+    const HdDirtyBits bits = *dirtyBits;
 
     if (bits & HdChangeTracker::DirtyMaterialId)
         SetMaterialId(sd->GetMaterialId(id));
@@ -1039,6 +1053,10 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         mixFloat(param->GetDicingQualityScale());
         mixFloat(param->GetOffscreenQuality());
         mix(uint64_t(int64_t(_dicingDepth)));
+        // Diced from the view: another view is another tessellation (a
+        // fixed rate is the same from everywhere).
+        if (_dicingDepth < 0)
+            mix(param->GetDicingViewKey());
         // The Time and Frame globals are evaluated here, not per sample.
         if (readsTime) {
             mixFloat(param->GetFrame());

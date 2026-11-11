@@ -106,6 +106,9 @@ private:
     int _dicingDepth = -1;
     bool _displacementEnabled = true;
     uint64_t _builtDisplacement = 0;
+    // What a sync left undone while the mesh waited for a final render's
+    // dicing view (HdNovaRenderParam::DicingViewPending).
+    HdDirtyBits _deferredBits = 0;
     // A medium bounded by the mesh (docs/design/M11-P5.md) instead of a
     // surface: its scene volume, and the shell (the control mesh triangulated,
     // at the shutter's middle step).

@@ -84,9 +84,11 @@ public:
     }
 
     // Displacement dicing (M4.6). The view meshes dice with is the render
-    // camera's at the first frame (camera moves do not re-dice, as Karma's
-    // default); until it is known, displaced meshes wait undisplaced and the
-    // render pass re-syncs them. Meshes sync in parallel: locked.
+    // camera's: in the viewport the first one (camera moves do not re-dice,
+    // as Karma's default), in a final render the one of every frame, so a
+    // frame of a sequence is diced as the frame rendered alone. Until it is
+    // known, displaced meshes wait undisplaced and the render pass re-syncs
+    // them. Meshes sync in parallel: locked.
     nova::DicingView GetDicingView() const {
         std::lock_guard lock(_dicingMutex);
         return _dicingView;
@@ -94,6 +96,39 @@ public:
     void SetDicingView(nova::DicingView const &view) {
         std::lock_guard lock(_dicingMutex);
         _dicingView = view;
+        _dicingViewKey = DicingViewKey(view);
+    }
+    // What tells two dicing views apart (0: no view). Of the values' bits, so
+    // a view never differs from itself.
+    static uint64_t DicingViewKey(nova::DicingView const &view) {
+        if (!view.valid)
+            return 0;
+        uint64_t h = 1469598103934665603ull;
+        auto mix = [&h](void const *data, size_t size) {
+            const auto *bytes = static_cast<unsigned char const *>(data);
+            for (size_t i = 0; i < size; ++i)
+                h = (h ^ bytes[i]) * 1099511628211ull;
+        };
+        const float values[9] = {view.perspective ? 1.0f : 0.0f, view.eye.x,     view.eye.y,
+                                 view.eye.z,                     view.forward.x, view.forward.y,
+                                 view.forward.z,                 view.pixelsPerUnit, view.nearDistance};
+        mix(values, sizeof(values));
+        mix(view.worldToClip.m, sizeof(view.worldToClip.m));
+        return h | 1;
+    }
+    uint64_t GetDicingViewKey() const {
+        std::lock_guard lock(_dicingMutex);
+        return _dicingViewKey;
+    }
+    // A final render's next frame may dice from another view, which the
+    // render pass knows only after the prims' sync: until it has confirmed
+    // the view, meshes diced from it keep what they have and wait
+    // (HdNovaMesh::Sync), so that they dice once per frame, not twice.
+    void SetDicingViewPending() { _dicingViewPending = true; }
+    bool DicingViewPending() const { return _dicingViewPending.load(); }
+    void NoteWaitingMesh(SdfPath const &mesh) {
+        std::lock_guard lock(_dicingMutex);
+        _waitingMeshes.insert(mesh);
     }
     float GetDicingQualityScale() const { return _dicingQualityScale; }
     float GetOffscreenQuality() const { return _offscreenQuality; }
@@ -121,10 +156,12 @@ public:
         _waitingMeshes.erase(mesh);
         _timeMeshes.erase(mesh);
     }
+    // The meshes that wait for the dicing view, which is confirmed with this.
     std::vector<SdfPath> TakeWaitingMeshes() {
         std::lock_guard lock(_dicingMutex);
         std::vector<SdfPath> out(_waitingMeshes.begin(), _waitingMeshes.end());
         _waitingMeshes.clear();
+        _dicingViewPending = false;
         return out;
     }
     std::vector<SdfPath> DisplacedMeshes() const {
@@ -141,12 +178,14 @@ public:
     // meshes that read the time (their displacement signature includes it).
     float GetFrame() const { return _frame; }
     float GetFps() const { return _fps; }
-    void SetFrame(float frame, float fps) {
+    // Returns whether the frame or the rate is another.
+    bool SetFrame(float frame, float fps) {
         if (frame == _frame && fps == _fps)
-            return;
+            return false;
         _frame = frame;
         _fps = fps;
         _frameChanged = true;
+        return true;
     }
     bool TakeFrameChanged() { return _frameChanged.exchange(false); }
 
@@ -228,6 +267,8 @@ private:
     uint64_t _subdivMaxTriangles = 8000000;
     mutable std::mutex _dicingMutex;
     nova::DicingView _dicingView;
+    uint64_t _dicingViewKey = 0;
+    std::atomic<bool> _dicingViewPending{false};
     float _dicingQualityScale = 1.0f, _offscreenQuality = 0.1f;
     std::set<SdfPath> _displacedMeshes, _waitingMeshes, _timeMeshes;
     float _frame = 1.0f, _fps = 24.0f;

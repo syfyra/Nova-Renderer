@@ -462,11 +462,14 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     // A Karma Texture Baker's settings (M11 P8): the film is a texture tile.
     settings.bake = _delegate->GetBakeSettings();
 
-    // Displacement dicing (M4.6): the first view sets where meshes dice from
-    // (camera moves do not re-dice); displaced meshes waiting for it, meshes
-    // of new dicing settings, of materials whose displacement changed and,
-    // on a new frame, those whose displacement reads the time are re-synced
-    // before rendering.
+    // Displacement dicing (M4.6): the view sets where meshes dice from. The
+    // viewport keeps its first one (camera moves do not re-dice); a final
+    // render (husk, nova_cli) dices every frame from that frame's own camera,
+    // so a frame of a sequence is the frame rendered alone. Displaced meshes
+    // waiting for the view, meshes diced from another one, meshes of new
+    // dicing settings, of materials whose displacement changed and, on a new
+    // frame, those whose displacement reads the time are re-synced before
+    // rendering.
     {
         param.SetFrame(settings.frame, settings.fps);
         SdfPathVector resync;
@@ -477,13 +480,25 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
             param.SetDicingSettings(qualityScale, offscreen);
             resync = param.DisplacedMeshes(); // includes the time-dependent ones
         }
-        if (!param.GetDicingView().valid && view.ndcScale[1] > 0.0f) {
-            param.SetDicingView(dicingViewOf(view.worldToView, view.projection, 2.0f / view.ndcScale[1]));
+        if (view.ndcScale[1] > 0.0f) {
+            const nova::DicingView dicing = dicingViewOf(view.worldToView, view.projection, 2.0f / view.ndcScale[1]);
+            const bool known = param.GetDicingView().valid;
+            const bool viewport = _delegate->GetRenderSetting<bool>(_tokens->viewport, false);
+            if (!known || (!viewport && HdNovaRenderParam::DicingViewKey(dicing) != param.GetDicingViewKey())) {
+                param.SetDicingView(dicing);
+                // Meshes of a fixed rate keep their geometry (their sync
+                // finds nothing changed).
+                if (known)
+                    for (SdfPath const &p : param.DisplacedMeshes())
+                        resync.push_back(p);
+            }
             for (SdfPath const &p : param.TakeWaitingMeshes())
                 resync.push_back(p);
         }
         for (SdfPath const &p : param.GetMaterials().TakePendingMeshes())
             resync.push_back(p);
+        std::sort(resync.begin(), resync.end());
+        resync.erase(std::unique(resync.begin(), resync.end()), resync.end());
         if (!resync.empty())
             if (HdRenderIndex *index = GetRenderIndex()) {
                 thread.StopRender();

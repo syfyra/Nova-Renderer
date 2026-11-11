@@ -239,6 +239,10 @@ private:
     void _WriteDeep();
     // houdini:frame and houdini:fps (1 and 24 when not set).
     void _FrameAndFps(float &frame, float &fps) const;
+    // The frame's own number for the sampler's seed: husk's `randomseed`
+    // render setting, else the one husk would send for houdini:frame (0
+    // without either).
+    uint64_t _FrameRandomSeed() const;
 
     static const TfTokenVector SUPPORTED_RPRIM_TYPES;
     static const TfTokenVector SUPPORTED_SPRIM_TYPES;
