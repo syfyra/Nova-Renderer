@@ -35,7 +35,7 @@ A hip file saved before the package was installed needs *Initialize Parameters >
 | `int nova:samples` | 64 | Samples per pixel. |
 | `token nova:pixelFilter` | `gauss` | The pixel reconstruction filter. (`gauss`, `box`, `triangle`, `blackman`, `blackmanharris`, `point`) |
 | `float nova:pixelFilterScale` | 1 | Multiplies the filter's width (0: point sampling). |
-| `int nova:seed` | 0 | Varies the sample pattern between renders of the same frame. |
+| `int nova:seed` | 0 | Varies the sample pattern between renders of the same frame. The pattern is the seed's and the frame's: husk's per-frame `randomseed` render setting (the frame times 705 600 000; computed from `houdini:frame` for hosts that do not send it) is added to the seed, so an animation's noise changes from frame to frame, as Karma's, and a frame has one pattern, rendered alone or in a sequence. |
 | `float nova:clampIndirect` | 10 | Clamps indirect light per sample against fireflies (0: off). |
 | `int nova:maxDepth` | 64 | A safety cap on the scattering events of a path; the per-type limits decide the look. |
 | `float nova:object:diffuseLimit` | 1 | Diffuse bounces (fractions dither between the neighbouring integers). Past the limit, rays only collect light. |
@@ -215,7 +215,7 @@ Material workflow in Solaris (M4, `docs/design/M4.md`):
   - Not yet: room maps (hair, fur and point clouds: M9).
 - **Ray queries from shading:** `kma_ao` and MaterialX `ambientocclusion`, `kma_distance`, `kma_curvature` and `kma_roundededge` trace rays from the shading point, with Karma's measured estimators.
 - **Generic MaterialX surfaces:** any pbrlib BSDF graph (layer, mix, add, multiply over every 1.39 leaf, including Burley and the generalized Schlick with F82), glTF PBR, Disney principled, Lama, and mixes of surface shaders (`mix_surfaceshader`, native models included). Expanded through their own nodegraphs, Standard Surface, OpenPBR and UsdPreviewSurface give the native BSDFs.
-- **Displacement:** float, vector (Karma's tangent frame) and UsdPreviewSurface displacement in object space. Meshes and spheres are diced from the camera at Karma's dicing quality (`primvars:nova:dicingQuality`, 0.5 = 2-pixel micropolygons), subdivision surfaces on their limit surface, polygon meshes bilinearly. The dicing is watertight, motion-blurred like Karma's, and IPR edits of a displacement re-dice only the bound meshes.
+- **Displacement:** float, vector (Karma's tangent frame) and UsdPreviewSurface displacement in object space. Meshes and spheres are diced from the camera at Karma's dicing quality (`primvars:nova:dicingQuality`, 0.5 = 2-pixel micropolygons), subdivision surfaces on their limit surface, polygon meshes bilinearly. The dicing is watertight, motion-blurred like Karma's, and IPR edits of a displacement re-dice only the bound meshes. A final render (husk, nova_cli) dices every frame from that frame's camera, so a frame of a sequence is diced as the frame rendered alone; the viewport keeps the dicing of its first view while the camera moves (Karma's default).
 - **Per-ray-type limits** (diffuse, reflection, refraction, SSS, volume; fractional, per object; Karma's defaults 1/4/4/1/0), light-only rays past them, thin walls at the refraction limit, and **fake caustics** (`nova:object:fakeCaustics`: transparent shadows through glass).
 - **Solaris UI:** Nova tabs on the Render Settings and Render Geometry Settings LOPs, the viewport's display options, a **Nova Render Settings** LOP, and the **Nova Material Builder** (TAB menu of material networks, under Nova).
 
