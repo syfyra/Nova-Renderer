@@ -1122,13 +1122,13 @@ bool GpuRenderer::reserveWalks(uint32_t paths) {
     k.count = m_counts.as<uint32_t>() + 7;
     if (!m_mayWalk)
         return true;
-    constexpr int kFields = 16;
+    constexpr int kFields = 17;
     if (paths > m_walkCapacity) {
         m_walkWave.clear();
         m_walkWave.resize(kFields);
         const size_t n = paths;
         const size_t sizes[kFields] = {4, 4, 4, 4, 4, 4, sizeof(Vec3f), sizeof(Vec3f), sizeof(SubsurfaceLobe), 1,
-                                       sizeof(Spectrum), sizeof(Vec3f), sizeof(Vec3f), 4, 4, sizeof(Vec2f)};
+                                       sizeof(Spectrum), sizeof(Vec3f), sizeof(Vec3f), 4, 4, sizeof(Vec2f), 4};
         for (int i = 0; i < kFields; ++i)
             if (!m_walkWave[size_t(i)].reserve(m_device, n * sizes[i])) {
                 m_walkCapacity = 0;
@@ -1152,6 +1152,7 @@ bool GpuRenderer::reserveWalks(uint32_t paths) {
     k.t = m_walkWave[13].as<float>();
     k.prim = m_walkWave[14].as<uint32_t>();
     k.uv = m_walkWave[15].as<Vec2f>();
+    k.entry = m_walkWave[16].as<float>();
     k.capacity = m_walkCapacity;
     k.pixelSeed = m_wave.pixelSeed;
     k.sampleIndex = m_wave.sampleIndex;
@@ -1451,7 +1452,6 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             closest.tMax = r.tMax;
             closest.time = r.time;
             closest.count = r.count;
-            closest.tMin = m_view.tolerance;
             closest.mesh = m_wave.hitMesh;
             closest.prim = m_wave.hitPrim;
             closest.uv = m_wave.hitUv;
@@ -1503,7 +1503,6 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                     stencil.tMax = m_wave.aoRays.tMax;
                     stencil.time = m_wave.aoRays.time;
                     stencil.count = m_wave.aoRays.count;
-                    stencil.tMin = m_view.tolerance;
                     stencil.mesh = m_wave.lightMesh;
                     stencil.prim = m_wave.lightPrim;
                     stencil.uv = m_wave.lightUv;
@@ -1575,7 +1574,6 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
             occluded.tMax = m_wave.shadow.tMax;
             occluded.time = m_wave.shadow.time;
             occluded.count = m_wave.shadow.count;
-            occluded.tMin = m_view.tolerance;
             occluded.occluded = m_wave.occluded;
             occluded.category = m_wave.shadowCategory;
             occluded.filter = anyHit;
@@ -1621,7 +1619,6 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                     cross.tMax = q.tMax;
                     cross.time = q.time;
                     cross.count = q.count;
-                    cross.tMin = m_view.tolerance;
                     cross.mesh = m_wave.fakeMesh;
                     cross.prim = m_wave.fakePrim;
                     cross.uv = m_wave.fakeUv;
@@ -1667,7 +1664,6 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 aoQuery.tMax = m_wave.aoRays.tMax;
                 aoQuery.time = m_wave.aoRays.time;
                 aoQuery.count = m_wave.aoRays.count;
-                aoQuery.tMin = m_view.tolerance;
                 aoQuery.occluded = m_wave.aoOccluded;
                 aoQuery.filter = anyHit;
                 aoQuery.seed = m_wave.aoRays.filterSeed;

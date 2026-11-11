@@ -254,10 +254,19 @@ TEST_CASE("A subsurface sphere in a white furnace", "[sss][render]") {
     // radius 10 mean free paths in a dome of radiance 1 renders the lab's
     // 0.2334 / 0.5725 / 0.8993 (Karma f_s01: 0.2335 / 0.5730 / 0.9006). At
     // SSS limit 0 the walk still runs and its exit still gathers the dome
-    // (Karma, research 4.6).
-    for (const float limit : {1.0f, 0.0f, -1.0f}) {
+    // (Karma, research 4.6). The last case is the mesh 5000 units from its
+    // own origin under a transform that brings it back: the walk's first
+    // segment skips the entry surface by the intersector's error there
+    // (walkEntryDistance), not only by ulps of the world-space hit point,
+    // which let walks end where they began.
+    struct Case {
+        float limit;
+        Vec3f away;
+    };
+    for (const Case &c : {Case{1.0f, {}}, Case{0.0f, {}}, Case{-1.0f, {}}, Case{1.0f, {5000.0f, -3000.0f, 2000.0f}}}) {
         // -1: limit 1 on an analytic sphere (Embree's sphere points)
-        INFO("ssslimit " << limit);
+        const float limit = c.limit;
+        INFO("ssslimit " << limit << ", " << c.away.x << " from its own origin");
         Scene scene;
         const MeshId sphere = scene.createMesh();
         if (limit < 0.0f) {
@@ -267,7 +276,11 @@ TEST_CASE("A subsurface sphere in a white furnace", "[sss][render]") {
             analytic.sphereRadius = {1.0f};
             scene.updateMesh(sphere, analytic);
         } else {
-            scene.updateMesh(sphere, makeSphere(1.0f, 128, 64));
+            MeshDesc ball = makeSphere(1.0f, 128, 64);
+            for (Vec3f &p : ball.points)
+                p = p + c.away;
+            ball.transform = translation(-c.away);
+            scene.updateMesh(sphere, ball);
         }
         SurfaceInputs in = standardSurfaceDefaults();
         in.set(sf::baseWeight, 0.0f);

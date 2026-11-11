@@ -332,6 +332,7 @@ struct WaveQueues {
         Vec3f P;
         Vec3f ng; // the geometric normal on the side the path came from
         SubsurfaceLobe medium;
+        float entry; // the first segment's least distance (walkEntryDistance)
     };
     std::vector<Walk> walks;
     uint32_t walkCount = 0;

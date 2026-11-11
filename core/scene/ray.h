@@ -49,6 +49,47 @@ NOVA_INLINE Vec3f offsetRayOrigin(Vec3f p, Vec3f n) {
             std::fabs(p.z) < kOrigin ? p.z + kFloatScale * n.z : pi.z};
 }
 
+// The float error of a hit distance grows with the coordinates of the
+// triangle hit (the intersectors work relative to its corners), not with the
+// distance: a light lying on a large rotated plane can be a few ulps of the
+// plane's coordinates behind it. Tolerances for that error are this many
+// float ulps of the coordinates involved.
+constexpr float kIntersectionUlps = 32.0f;
+constexpr float kFloatUlp = 1.0f / 8388608.0f; // 2^-23
+
+// The origin of a ray leaving a surface hit at p on the side of the
+// geometric normal n. offsetRayOrigin() moves p by ulps of p itself, which
+// covers the error of p. The intersectors, though, test a shape in its own
+// space with its corners relative to the ray's origin, and err by ulps of
+// those: a polygon far larger than the hit point's coordinates (a slope, a
+// rotated wall or ground), or a mesh far from its own origin under a
+// transform that brings it back, has an error far above ulps of p. The ray
+// then starts inside that error and finds the polygon again: shadow acne
+// and lost light (on the CPU 0.4 % of a rotated polygon's light at 60 units
+// across, 3 % at 200, over 20 % at 2000). So p first moves kLeaveUlps float
+// ulps of `leave` along n: the shape's reach as the intersector's error
+// sees it (SurfaceHit::leave). Measured (docs/bug-audit-2026-11.md, section
+// 12): Embree needs 1 ulp of it, OptiX 2; the constants are four times that.
+#if defined(__CUDA_ARCH__)
+constexpr float kLeaveUlps = 8.0f;
+#else
+constexpr float kLeaveUlps = 4.0f;
+#endif
+NOVA_INLINE Vec3f leaveSurface(Vec3f p, Vec3f n, float leave) {
+    return offsetRayOrigin(p + n * (kLeaveUlps * kFloatUlp * leave), n);
+}
+
+// The least distance of a subsurface walk's first segment. The walk starts
+// on the surface itself (an offset origin would sit a sizeable part of a
+// small mean free path deep) and skips the entry surface by a minimum
+// distance instead: of the order of the hit point's rounding, and of the
+// intersector's error for the shape entered (leaveSurface()'s, which is the
+// larger one on a mesh far from its own origin).
+NOVA_INLINE float walkEntryDistance(Vec3f p, float leave) {
+    const float scale = nova::fmax(nova::fmax(std::fabs(p.x), std::fabs(p.y)), nova::fmax(std::fabs(p.z), 1.0f));
+    return nova::fmax(64.0f * kFloatUlp * scale, kLeaveUlps * kFloatUlp * leave);
+}
+
 // The origin of a ray leaving a round curve (a tube of radius r, outward
 // normal N at P, unit tangent T) in direction d (docs/design/M9.md D4):
 // Embree's round curves report hits from inside the tube, so a ray into the

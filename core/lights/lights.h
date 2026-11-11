@@ -42,6 +42,7 @@
 #include "core/math/sampling.h"
 #include "core/math/spectrum.h"
 #include "core/scene/light.h"
+#include "core/scene/ray.h"
 
 #include <cstdint>
 
@@ -413,13 +414,8 @@ NOVA_INLINE LightSample sampleDistantLight(const LightData &light, Vec2f u) {
 // origin, so the margin is measured from where the ray starts.
 constexpr float kShadowRayShortening = 1.0f - 1e-4f;
 
-// The float error of a hit distance grows with the coordinates of the
-// triangle hit (Embree intersects relative to its corners), not with the
-// distance: a light lying on a large rotated plane can be a few ulps of the
-// plane's coordinates behind it. Tolerances for that error are this many
-// float ulps of the coordinates involved.
-constexpr float kIntersectionUlps = 32.0f;
-constexpr float kFloatUlp = 1.0f / 8388608.0f; // 2^-23
+// kIntersectionUlps and kFloatUlp, the tolerance for the float error of hit
+// distances, are in core/scene/ray.h.
 
 // Length of a shadow ray towards a light that sampleLight() placed at
 // `distance` (already shortened): also at least `tolerance` short of the

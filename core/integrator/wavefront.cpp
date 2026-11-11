@@ -1537,7 +1537,7 @@ LightChoice chooseLight(const ShadeContext &c, WaveQueues &q, uint32_t p, float 
 Vec3f surfaceOrigin(const Scene &scene, const SurfaceHit &hit, Vec3f ng) {
     if (hit.curve && scene.meshRecord(hit.mesh).desc.curveStyle == CurveStyle::Round)
         return tubeRayOrigin(hit.P, hit.N, hit.tangent, hit.curveRadius, ng, hit.curveExitEps);
-    return offsetRayOrigin(hit.P, ng);
+    return leaveSurface(hit.P, ng, hit.leave);
 }
 
 // An external (VEX) hit: the bridge's result, the light direction it
@@ -2143,7 +2143,8 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                     if (lpe)
                         q.lpeState[p] = next;
                     q.walks[q.walkCount++] =
-                        WaveQueues::Walk{k, hit.mesh, q.hitInstance[k], hit.t, hit.P, ng, cl.lobe[s.lobe].subsurface};
+                        WaveQueues::Walk{k,     hit.mesh, q.hitInstance[k],          hit.t,
+                                         hit.P, ng,       cl.lobe[s.lobe].subsurface, walkEntryDistance(hit.P, hit.leave)};
                 }
                 return;
             }
@@ -2493,9 +2494,8 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
         // a sizeable part of a small mean free path deep (256 ULPs are 3 % of
         // 0.001 at unit coordinates, measured -2 % in Karma's f_a1). The
         // first segment skips the entry surface with a minimum distance
-        // instead, of the order of the hit point's rounding.
-        const float scale = nova::fmax(nova::fmax(std::fabs(w.P.x), std::fabs(w.P.y)), nova::fmax(std::fabs(w.P.z), 1.0f));
-        const float tMinEntry = 64.0f * 1.1920929e-7f * scale;
+        // instead (walkEntryDistance, core/scene/ray.h).
+        const float tMinEntry = w.entry;
         const auto trace = [&](Vec3f org, Vec3f dir, float tMax, float &t, uint32_t &prim, Vec2f &uv) {
             const bool entry = org.x == w.P.x && org.y == w.P.y && org.z == w.P.z;
             return c.scene.intersectLocal(w.mesh, w.instance, time, org, dir, tMax, t, prim, uv,
@@ -2514,7 +2514,7 @@ void walkSubsurface(const ShadeContext &c, WaveQueues &q) {
         const SurfaceHit hit = c.scene.resolveHit(w.mesh, r.prim, r.uv, r.t, w.instance, time, r.org, r.dir);
         const Vec3f ng = faceForward(hit.Ng, r.dir); // out of the medium
         const Vec3f n = faceForward(hit.N, ng);
-        const Vec3f origin = offsetRayOrigin(hit.P, ng);
+        const Vec3f origin = leaveSurface(hit.P, ng, hit.leave);
         const lpe::State state = lpe ? q.lpeState[p] : lpe::State(0);
         // Path guiding (guiding.h): the exit's cosine lobe mixed with the
         // field when the continuation is a full ray.
@@ -2694,7 +2694,7 @@ Spectrum fakeCausticTransmittance(const Scene &scene, const ClosureContext &ctx,
             if (isBlack(T))
                 return T;
         }
-        const Vec3f next = offsetRayOrigin(hit.P, faceForward(hit.Ng, dir));
+        const Vec3f next = leaveSurface(hit.P, faceForward(hit.Ng, dir), hit.leave);
         if (tMax < kInf)
             tMax -= dot(next - org, dir);
         org = next;

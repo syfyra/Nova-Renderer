@@ -241,9 +241,10 @@ TEST_CASE("XPU white furnace", "[gpu][render][furnace]") {
 }
 
 // A ground plane of 2000 x 2000 seen from close by under a uniform dome:
-// rays leaving it near the origin start a tiny offset above it, while
-// OptiX's triangle test errs by the scale of the corners; without a tMin
-// (the scene's intersection tolerance) 1/8 of the light was lost.
+// OptiX's triangle test errs by the scale of the polygon's corners, so rays
+// leaving it near the origin by ulps of the hit point alone found it again
+// and 1/8 of the light was lost. They leave by ulps of the polygon's reach
+// (leaveSurface, core/scene/ray.h).
 TEST_CASE("XPU on a large ground plane", "[gpu][render]") {
     std::string why;
     if (!gpuAvailable(why))
@@ -2509,5 +2510,211 @@ TEST_CASE("XPU per-sample records over several passes", "[gpu][render][aov]") {
             far += std::fabs(a.data[i] - b.data[i]) > 1e-3f * std::max(1.0f, std::fabs(a.data[i]));
         INFO("plane " << k);
         CHECK(far <= a.data.size() / 200);
+    }
+}
+
+// The GPU's rays leave a polygon by ulps of that polygon's reach
+// (leaveSurface), as the CPU's. Before, every GPU ray ignored hits closer
+// than the tolerance of the scene's largest coordinate (a tMin for all):
+// with something 10^6 units away a sheet 0.5 above the ground threw no
+// shadow (the first 3.8 units of every shadow ray were skipped), and at
+// 10^7 nothing within 38 units of a ray's origin was seen at all.
+TEST_CASE("XPU shadows near surfaces do not depend on the scene's extent", "[gpu][render][robust]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    auto build = [](Scene &scene, float farAway) {
+        MeshDesc ground = makeQuad(10.0f);
+        ground.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), ground);
+        MeshDesc sheet = makeQuad(1.0f);
+        sheet.transform = translation({0.0f, 0.0f, 0.5f});
+        sheet.setDisplayColor(Spectrum{0.8f, 0.2f, 0.2f});
+        scene.updateMesh(scene.createMesh(), sheet);
+        if (farAway > 0.0f) {
+            MeshDesc far = makeQuad(1.0f);
+            far.transform = translation({farAway, 0.0f, 0.0f});
+            scene.updateMesh(scene.createMesh(), far);
+        }
+        LightDesc rect;
+        rect.type = LightType::Rect;
+        rect.intensity = 40.0f;
+        rect.width = 0.5f;
+        rect.height = 0.5f;
+        rect.transform = translation({4.0f, 0.0f, 5.0f}); // emits along -Z, down on the ground
+        scene.updateLight(scene.createLight(), rect);
+        scene.commit();
+    };
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 10.0f}, 3.0f, 48, 48);
+    Scene nearScene;
+    build(nearScene, 0.0f);
+    const Render reference = render(nearScene, camera, 48, 48, 64, RenderDevice::Cpu, 1);
+    for (const float farAway : {0.0f, 1e5f, 1e6f, 1e7f}) {
+        INFO("an object " << farAway << " units away");
+        Scene scene;
+        build(scene, farAway);
+        const Render gpu = render(scene, camera, 48, 48, 64, RenderDevice::Xpu, 1);
+        REQUIRE(gpu.gpu);
+        // The strip of shadow beside the sheet (pixel 13 at x = -1.3), lit
+        // ground (6, 41) and the sheet itself (20, 28).
+        const float lit = pixelMean(reference.film, 41, 24).x;
+        CHECK(pixelMean(gpu.film, 13, 24).x < 0.05f * lit);
+        for (const int x : {6, 13, 20, 28, 41})
+            CHECK_THAT(pixelMean(gpu.film, x, 24).x, WithinAbs(pixelMean(reference.film, x, 24).x, 0.02f * lit));
+        CHECK_THAT(luminanceMean(gpu.film), WithinRel(luminanceMean(reference.film), 0.01));
+    }
+}
+
+// Small sphere points seen from a distance: the GPU's sphere intersector
+// takes its roots from the ray's closest approach to the centre
+// (programs.cu). From b^2 - a c the entry was off far enough that rays
+// leaving such a sphere started inside it and met its far side: these
+// points rendered 11 % too dark (0.364 against the CPU's 0.409) once the
+// rays' tmin was 0; the scene-wide tMin they had before hid it. Static and
+// moving, and oriented discs.
+TEST_CASE("XPU small sphere points do not shadow themselves", "[gpu][render][robust]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    struct Case {
+        PointStyle style;
+        bool moving;
+    };
+    for (const Case &c : {Case{PointStyle::Sphere, false}, Case{PointStyle::Sphere, true}, Case{PointStyle::OrientedDisc, true}}) {
+        INFO((c.style == PointStyle::Sphere ? "spheres" : "oriented discs") << (c.moving ? ", moving" : ""));
+        Scene scene;
+        MeshDesc d;
+        d.shape = MeshShape::Points;
+        d.pointStyle = c.style;
+        d.pointSteps = c.moving ? 2 : 1;
+        Rng rng = Rng::make(11u, 3u);
+        std::vector<Vec3f> start, end;
+        for (int i = 0; i < 400; ++i) {
+            const Vec3f p{-1.0f + 2.0f * rng.next(), -1.0f + 2.0f * rng.next(), 0.3f * rng.next()};
+            start.push_back(p);
+            end.push_back(p + Vec3f{0.3f * (rng.next() - 0.5f), 0.3f * (rng.next() - 0.5f), 0.1f * rng.next()});
+            d.pointRadius.push_back(0.04f + 0.05f * rng.next());
+        }
+        d.points = start;
+        if (c.moving)
+            d.points.insert(d.points.end(), end.begin(), end.end());
+        d.normals.assign(d.points.size(), Vec3f{0.0f, 0.0f, 1.0f});
+        d.setDisplayColor(spectrum(0.7f));
+        scene.updateMesh(scene.createMesh(), d);
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        scene.updateLight(scene.createLight(), dome);
+        scene.commit();
+        const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 1.0f, 48, 48);
+        const Render cpu = render(scene, camera, 48, 48, 128, RenderDevice::Cpu, 6);
+        const Render gpu = render(scene, camera, 48, 48, 128, RenderDevice::Xpu, 6);
+        REQUIRE(gpu.gpu);
+        INFO("mean CPU " << luminanceMean(cpu.film) << ", XPU " << luminanceMean(gpu.film));
+        CHECK_THAT(luminanceMean(gpu.film), WithinRel(luminanceMean(cpu.film), 0.002));
+    }
+}
+
+// Subsurface walks into a mesh 5000 units from its own origin under a
+// transform that brings it back: the same image as with the mesh at its
+// origin (the walk's entry distance covers the intersector's error there,
+// walkEntryDistance).
+TEST_CASE("XPU subsurface walks into a mesh far from its own origin", "[gpu][render][sss][robust]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    namespace sf = surface_field;
+    auto build = [](Scene &scene, Vec3f away) {
+        MeshDesc ground = makeQuad(3.0f);
+        ground.setDisplayColor(spectrum(0.6f));
+        scene.updateMesh(scene.createMesh(), ground);
+        MaterialDesc skin;
+        skin.inputs = standardSurfaceDefaults();
+        skin.inputs.set(sf::specularWeight, 0.0f);
+        skin.inputs.set(sf::subsurfaceWeight, 1.0f);
+        skin.inputs.set(sf::subsurfaceColor, Spectrum{0.9f, 0.6f, 0.4f});
+        skin.inputs.set(sf::subsurfaceRadius, Spectrum{1.0f, 0.4f, 0.2f});
+        skin.inputs.set(sf::subsurfaceScale, 0.2f);
+        const MaterialId skinId = scene.createMaterial();
+        scene.updateMaterial(skinId, skin);
+        MeshDesc ball = makeSphere(0.8f, 64, 32);
+        for (Vec3f &p : ball.points)
+            p = p + away;
+        ball.transform = translation(Vec3f{0.0f, 0.0f, 0.8f} - away);
+        const MeshId ballId = scene.createMesh();
+        scene.updateMesh(ballId, ball);
+        scene.setMeshMaterials(ballId, {skinId});
+        LightDesc rect;
+        rect.type = LightType::Rect;
+        rect.width = rect.height = 1.0f;
+        rect.intensity = 6.0f;
+        rect.transform = translation({0.0f, 0.0f, 3.0f});
+        scene.updateLight(scene.createLight(), rect);
+        scene.commit();
+    };
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 1.0f, 32, 32); // the ball fills the view
+    Scene nearScene, farScene;
+    build(nearScene, {});
+    build(farScene, {5000.0f, -3000.0f, 2000.0f});
+    const Render reference = render(nearScene, camera, 32, 32, 128, RenderDevice::Cpu);
+    const Render cpu = render(farScene, camera, 32, 32, 128, RenderDevice::Cpu);
+    const Render gpu = render(farScene, camera, 32, 32, 128, RenderDevice::Xpu);
+    REQUIRE(gpu.gpu);
+    const double expected = luminanceMean(reference.film);
+    INFO("at its origin " << expected << ", far: CPU " << luminanceMean(cpu.film) << ", XPU " << luminanceMean(gpu.film));
+    CHECK_THAT(luminanceMean(cpu.film), WithinRel(expected, 0.01));
+    CHECK_THAT(luminanceMean(gpu.film), WithinRel(expected, 0.01));
+}
+
+// A Lambertian plane under a uniform dome reflects albedo x radiance
+// wherever it is seen; rays leaving a large polygon must not find it again,
+// axis-aligned or rotated (the CPU's "Large rotated polygons do not shadow
+// themselves").
+TEST_CASE("XPU on large rotated polygons", "[gpu][render][robust]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    for (const float half : {10.0f, 1000.0f, 30000.0f})
+        for (const Orientation &o : kOrientations) {
+            INFO("half-size " << half << ", rotated " << o.degrees << " degrees about (" << o.axis.x << ", "
+                              << o.axis.y << ", " << o.axis.z << ")");
+            const Mat4 rotation = rotationAbout(o.axis, o.degrees);
+            Scene scene;
+            MeshDesc plane = rotatedQuad(half, 0.0f, rotation);
+            plane.setDisplayColor(spectrum(0.5f));
+            scene.updateMesh(scene.createMesh(), plane);
+            LightDesc dome;
+            dome.type = LightType::Dome;
+            scene.updateLight(scene.createLight(), dome);
+            scene.commit();
+            Camera camera = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 1.0, 1.0, 16, 16, 0.01, 100.0);
+            camera.viewToWorld = translation({0.0f, 0.0f, 3.0f}) * rotation;
+            camera.worldToView = inverse(camera.viewToWorld);
+            const Render gpu = render(scene, camera, 16, 16, 64, RenderDevice::Xpu);
+            REQUIRE(gpu.gpu);
+            CHECK_THAT(luminanceMean(gpu.film), WithinAbs(0.5, 0.005));
+        }
+    // A mesh far from its own origin that a transform brings back (the
+    // CPU's "Meshes far from their own origin do not shadow themselves").
+    const Vec3f away{5000.0f, -3000.0f, 2000.0f};
+    for (const Orientation &o : kOrientations) {
+        INFO("5000 units from its own origin, rotated " << o.degrees << " degrees");
+        const Mat4 rotation = rotationAbout(o.axis, o.degrees);
+        Scene scene;
+        MeshDesc plane = rotatedQuad(5.0f, 0.0f, rotation);
+        for (Vec3f &p : plane.points)
+            p = p + away;
+        plane.transform = translation({-away.x, -away.y, -away.z});
+        plane.setDisplayColor(spectrum(0.5f));
+        scene.updateMesh(scene.createMesh(), plane);
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        scene.updateLight(scene.createLight(), dome);
+        scene.commit();
+        Camera camera = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 1.0, 1.0, 16, 16, 0.01, 100.0);
+        camera.viewToWorld = translation({0.0f, 0.0f, 3.0f}) * rotation;
+        camera.worldToView = inverse(camera.viewToWorld);
+        const Render gpu = render(scene, camera, 16, 16, 64, RenderDevice::Xpu);
+        REQUIRE(gpu.gpu);
+        CHECK_THAT(luminanceMean(gpu.film), WithinAbs(0.5, 0.005));
     }
 }

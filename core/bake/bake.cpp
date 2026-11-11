@@ -753,7 +753,8 @@ uint64_t Baker::accumulate(const Scene &scene, const RenderSettings &settings, c
                 continue;
             const Frame f = Frame::fromNormal(b.shade.N);
             const Vec3f r = rnd(b, qOcclusion);
-            const Vec3f o = offsetRayOrigin(b.shade.P, faceForward(b.shade.Ng, b.shade.N)) + b.shade.N * bs.ocBias;
+            const Vec3f o =
+                leaveSurface(b.shade.P, faceForward(b.shade.Ng, b.shade.N), b.shade.leave) + b.shade.N * bs.ocBias;
             for (int k = 0; k < m; ++k) {
                 const Vec3f u = patternPoint(r, k);
                 push(i, o, f.toWorld(sampleCosineHemisphere({u.x, u.y})), maxT);

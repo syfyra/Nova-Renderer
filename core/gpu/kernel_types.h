@@ -280,6 +280,7 @@ struct GpuWalks {
     Vec3f *P = nullptr;
     Vec3f *ng = nullptr;
     SubsurfaceLobe *medium = nullptr;
+    float *entry = nullptr; // the first segment's least distance (walkEntryDistance)
     uint8_t *exited = nullptr;
     Spectrum *weight = nullptr;
     Vec3f *org = nullptr;

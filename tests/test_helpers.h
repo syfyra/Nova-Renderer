@@ -81,6 +81,38 @@ inline Camera makePerspectiveCamera(Vec3f eye, double focalLength, double horizo
     return c;
 }
 
+// Rotation by `degrees` about `axis` (row-vector convention, as Mat4).
+inline Mat4 rotationAbout(Vec3f axis, double degrees) {
+    const double l = std::sqrt(double(dot(axis, axis)));
+    const double x = axis.x / l, y = axis.y / l, z = axis.z / l;
+    const double a = degrees * double(kPi) / 180.0, c = std::cos(a), s = std::sin(a), t = 1.0 - c;
+    const double r[3][3] = {{t * x * x + c, t * x * y - s * z, t * x * z + s * y},
+                            {t * x * y + s * z, t * y * y + c, t * y * z - s * x},
+                            {t * x * z - s * y, t * y * z + s * x, t * z * z + c}}; // column-vector form
+    Mat4 m = Mat4::identity();
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            m.m[i][j] = r[j][i];
+    return m;
+}
+
+// A quad of half-size `half` in the local plane z = `z`, baked into world
+// space by `rotation` (like SOP output: the corners carry the rotation).
+inline MeshDesc rotatedQuad(float half, float z, const Mat4 &rotation) {
+    MeshDesc m = makeQuad(half);
+    for (Vec3f &p : m.points)
+        p = rotation.transformPoint({p.x, p.y, z});
+    return m;
+}
+
+struct Orientation {
+    Vec3f axis;
+    double degrees;
+};
+inline const Orientation kOrientations[] = {{{1.0f, 1.0f, 0.0f}, 37.0},  {{0.3f, -0.7f, 0.2f}, 61.0},
+                                     {{-0.5f, 0.2f, 0.9f}, 23.0}, {{0.8f, 0.1f, -0.4f}, 77.0},
+                                     {{0.1f, 0.9f, 0.3f}, 49.0},  {{-0.6f, -0.6f, 0.5f}, 12.0}};
+
 inline void renderToConvergence(Renderer &renderer) {
     while (!renderer.converged())
         renderer.renderPass({});
