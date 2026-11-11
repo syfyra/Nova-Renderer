@@ -6,8 +6,12 @@
 // (docs/bug-audit-2026-11.md, section 12).
 
 #include "hydra/renderDelegate.h"
+#include "hydra/pathUtil.h"
 #include "hydra/renderParam.h"
+#include "hydra/textureConvert.h"
 
+#include <pxr/base/tf/getenv.h>
+#include <pxr/base/tf/setenv.h>
 #include <pxr/imaging/hd/engine.h>
 #include <pxr/imaging/hd/renderIndex.h>
 #include <pxr/imaging/hd/renderPass.h>
@@ -22,6 +26,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -182,4 +187,32 @@ def SphereLight "clamped"
     }
     CHECK(dark == 1); // the NaN one
     CHECK(lit == 2);
+}
+
+// File names are UTF-8, but a host with another code page may hand over
+// bytes that are not (HOUDINI_TEMP_DIR=C:\Users\J<F6>rg\... in a process of
+// code page 1252). A std::filesystem::path made from UTF-8 throws on them,
+// and the exception left the texture conversion inside a prim's sync:
+// nova_cli ended there (docs/bug-audit-2026-11.md, section 14).
+TEST_CASE("A file name that is not UTF-8 gives a path instead of an exception", "[hydra][robust]") {
+    const std::string valid = "C:/Users/J\xc3\xb6rg/Temp";    // UTF-8
+    const std::string invalid = "C:/Users/J\xf6rg/Temp";      // Latin-1: no UTF-8 sequence
+    const std::string truncated = "C:/Users/J\xc3";           // a sequence cut off
+    CHECK(HdNovaPath(valid).filename() == std::filesystem::path(L"Temp"));
+    CHECK(HdNovaPath(valid).parent_path().filename() == std::filesystem::path(L"J\u00f6rg"));
+    // Read in the process's own code page (whatever it is: no exception).
+    CHECK_NOTHROW(HdNovaPath(invalid));
+    CHECK_NOTHROW(HdNovaPath(truncated));
+    CHECK(HdNovaPath(std::string()).empty());
+
+    // The texture cache's folder comes from the environment.
+    const std::string before = TfGetenv("HOUDINI_TEMP_DIR");
+    TfSetenv("HOUDINI_TEMP_DIR", invalid);
+    std::string dir;
+    CHECK_NOTHROW(dir = HdNovaTextureCacheDir(HdNovaTextureOptions{}));
+    CHECK(dir.find("nova_tx") != std::string::npos);
+    if (before.empty())
+        TfUnsetenv("HOUDINI_TEMP_DIR");
+    else
+        TfSetenv("HOUDINI_TEMP_DIR", before);
 }
