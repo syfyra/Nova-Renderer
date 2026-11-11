@@ -377,6 +377,14 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_determinism/$<CONFIG>")
     set_tests_properties(husk_determinism PROPERTIES LABELS husk TIMEOUT 900)
+    # A frame of a husk sequence is the frame rendered alone
+    # (docs/bug-audit-2026-11.md, section 14): displacement diced from each
+    # frame's camera, another noise pattern per frame, CPU and Nova XPU.
+    add_test(NAME husk_sequence
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_sequence.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_sequence/$<CONFIG>")
+    set_tests_properties(husk_sequence PROPERTIES LABELS husk TIMEOUT 900)
     # Karma's render settings in Nova (docs/design/M11-P1.md).
     add_test(NAME husk_karma_props
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_props.py"

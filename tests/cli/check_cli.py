@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -38,7 +39,8 @@ def cli(args, scene, settings, output=None, extra=(), expect=0, env=None):
     if output:
         cmd += ["-o", output]
     try:
-        proc = subprocess.run(cmd, cwd=args.out, capture_output=True, text=True, timeout=60, env=env)
+        proc = subprocess.run(cmd, cwd=args.out, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=60, env=env)
     except subprocess.TimeoutExpired:
         check(False, f"nova_cli {scene} {settings} finishes within 60 s")
         return None
@@ -377,6 +379,99 @@ def main():
                   f"{[(i.get('size'), i.get('par')) for i in info]}")
         else:
             check(not os.path.exists(image), f"{name}: no image is written")
+
+    # 12. Names outside ASCII: the scene's folder, a texture, the image and
+    #     the folder of the texture cache. nova_cli is a UTF-8 process, as
+    #     husk is; with the system's code page it could not open such a scene
+    #     and ended with an exception on such a HOUDINI_TEMP_DIR
+    #     (docs/bug-audit-2026-11.md, section 14, S-3).
+    textured = textwrap.dedent("""\
+        #usda 1.0
+        def Xform "World"
+        {
+            def Mesh "card" (prepend apiSchemas = ["MaterialBindingAPI"])
+            {
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)]
+                texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (interpolation = "vertex")
+                uniform token subdivisionScheme = "none"
+                rel material:binding = </World/mat>
+            }
+            def Material "mat"
+            {
+                token outputs:surface.connect = </World/mat/s.outputs:surface>
+                def Shader "s"
+                {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor.connect = </World/mat/t.outputs:rgb>
+                    token outputs:surface
+                }
+                def Shader "t"
+                {
+                    uniform token info:id = "UsdUVTexture"
+                    asset inputs:file = @./TEXTURE@
+                    float2 inputs:st.connect = </World/mat/st.outputs:result>
+                    float3 outputs:rgb
+                }
+                def Shader "st"
+                {
+                    uniform token info:id = "UsdPrimvarReader_float2"
+                    string inputs:varname = "st"
+                    float2 outputs:result
+                }
+            }
+            def DomeLight "sky"
+            {
+            }
+            def Camera "cam"
+            {
+                double3 xformOp:translate = (0, 0, 5)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+        }
+        def RenderSettings "rs"
+        {
+            rel camera = </World/cam>
+            int2 resolution = (32, 32)
+            int nova:samples = 4
+        }
+        """)
+    checker = os.path.join(args.out, "karo.png")
+    subprocess.run([tool(args, "hoiiotool.exe"), "--pattern", "checker:width=8:height=8:color1=0.9,0.2,0.1:color2=0.1,0.3,0.9",
+                    "32x32", "3", "-d", "uint8", "-o", checker], capture_output=True)
+    images = {}
+    for label, folder, texture, image_name, cache in (
+            ("ascii", "plain_names", "karo.png", "bild.exr", "cache"),
+            ("other", "Bühne äöü 日本語", "Karo grüß.png", "Bild üß.exr",
+             "Zwischenspeicher ü 日本")):
+        root = os.path.join(args.out, folder)
+        cache_dir = os.path.join(root, cache)
+        if os.path.isdir(root):
+            shutil.rmtree(root)
+        os.makedirs(cache_dir)
+        if os.path.exists(checker):
+            shutil.copy(checker, os.path.join(root, texture))
+        scene = os.path.join(root, "szene.usda")
+        with open(scene, "w", encoding="utf-8", newline="\n") as f:
+            f.write(textured.replace("TEXTURE", texture))
+        image = os.path.join(root, image_name)
+        proc = cli(args, scene, "/rs", image, env=dict(os.environ, HOUDINI_TEMP_DIR=cache_dir))
+        if proc is None:
+            continue
+        check(os.path.exists(image), f"names outside ASCII ({label}): the image is written")
+        check("Warning" not in proc.stderr and "rror" not in proc.stderr,
+              f"names outside ASCII ({label}): no message: {proc.stderr.strip()[:300]}")
+        converted = os.listdir(os.path.join(cache_dir, "nova_tx")) if os.path.isdir(os.path.join(cache_dir, "nova_tx")) else []
+        check(len(converted) == 1, f"names outside ASCII ({label}): the texture is converted into the cache folder: {converted}")
+        if os.path.exists(image):
+            images[label] = os.path.join(args.out, f"names_{label}.exr")  # for hoiiotool, under a plain name
+            shutil.copy(image, images[label])
+    if len(images) == 2:
+        check(pixel(args, images["ascii"], 0, 12, 12)[:1] != pixel(args, images["ascii"], 0, 20, 12)[:1],
+              "names outside ASCII: the card shows its texture")
+        check(max_diff(args, images["ascii"], images["other"]) == 0.0,
+              "names outside ASCII: the same image as with plain names")
 
     print(f"{len(FAILURES)} failure(s)")
     return 1 if FAILURES else 0

@@ -2,6 +2,7 @@
 
 #include "colorSpace.h"
 #include "diagnostics.h"
+#include "pathUtil.h"
 #include "textureConvert.h"
 
 #include <OpenImageIO/imageio.h>
@@ -24,7 +25,7 @@ int64_t lastWriteTime(std::string const &path) {
     // A file in a package changes with the package.
     const std::string file = ArIsPackageRelativePath(path) ? ArSplitPackageRelativePathOuter(path).first : path;
     std::error_code ec;
-    const auto t = std::filesystem::last_write_time(std::filesystem::u8path(file), ec);
+    const auto t = std::filesystem::last_write_time(HdNovaPath(file), ec);
     return ec ? 0 : int64_t(t.time_since_epoch().count());
 }
 

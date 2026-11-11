@@ -380,3 +380,54 @@ The first run of the core fuzz also reported 76 of 400 seeds, all of them the te
 F-1's fix moves the last bits of every image rendered with the light tree and three or more lights. Tests on this build: ctest 732/732 (`reference_cli_karma_atmosphere` skipped by design), with the four new test cases.
 
 The suite runs 6 seeds of 10 steps on the CPU, 4 of 8 on Nova XPU and 4 of 8 through Hydra. The longer hunt is `nova_tests "Edited scenes render as rebuilt ones over many seeds"` and `nova_hydra_tests "Edited stages render as loaded ones over many seeds"` with `NOVA_FUZZ_SEEDS`, `NOVA_FUZZ_STEPS`, `NOVA_FUZZ_FIRST` and, for the core, `NOVA_FUZZ_DEVICE` (1: Nova XPU).
+
+## 14. A frame of a sequence against the frame alone
+
+husk keeps one render index for a frame range, so the delegate sees a sequence as edits: whatever a frame leaves behind may not show in the next. Section 13 edited scenes in the core and through the delegate, but not through the render pass, and without textures, motion blur, subdivision and displacement. This pass ran the real thing: frame ranges rendered by one husk run, every frame compared bit by bit, in every AOV, with the same frame rendered by a run of its own, on the CPU and on Nova XPU. Around it: scenes below folders with names outside ASCII, the image against the thread count, memory over a long sequence, and large scenes against Karma.
+
+### Findings
+
+| ID | Severity | Defect | Fix | Regression test |
+|---|---|---|---|---|
+| S-1 | high | **In a sequence, displacement was diced for the camera of the first frame husk rendered.** The render pass set the dicing view once, at its first frame (M4.6: "camera moves do not re-dice", which is right for a viewport), and husk's later frames kept it. With a camera that comes from 45 units to 2.5 units, the ground of the near frame had 3 528 triangles in the sequence and 639 288 rendered alone, a subdivided cube 432 against 105 294: the bumps were gone (the depth plane differed by 0.12 rms at a displacement of 0.08). A camera that moves away diced far too finely instead. And the image of a frame depended on the frame its farm chunk started with (`hydra/renderPass.cpp`) | A final render (husk, nova_cli: `houdini:viewport` unset) dices every frame from that frame's own camera: a view other than the one in use re-syncs the displaced meshes, and the view is part of a view-diced mesh's signature (meshes of a fixed dicing depth keep their geometry). A mesh that is dirty in a new frame waits for the pass to confirm the view, keeping its dirty bits, so it is diced once per frame and not once more for the new view (`HdNovaRenderParam::DicingViewPending`, `HdNovaMesh::Sync`). The viewport keeps its first view, as before | `husk_sequence` (tests/husk/check_sequence.py): four frames of a camera move over three displaced meshes, each bit-identical to the frame alone, the triangle counts of the near frame, and one dicing per mesh and frame |
+| S-2 | medium | **The noise was the same in every frame.** The sampler's seed was the seed setting alone: a scene in which nothing moves rendered frames 1 and 2 bit-identical, on both devices. Karma's noise changes with the frame (98 % of the pixels differed between the two frames, Karma CPU and XPU). In an animation the pattern then stands still on the screen while the picture moves under it. husk hands every frame its own `randomseed` render setting, the frame times 705 600 000 (0 at frame 0, 2 116 800 000 at frame 3, 1 764 000 000 at frame 2.5, whatever frame the run starts with); Nova did not read it (`hydra/renderDelegate.cpp`) | The seed of a frame is the seed setting plus that number (folded to 32 bits). A host that sends the frame alone (nova_cli, a viewport) gets the number husk would send. Frame 0 keeps the seed's own pattern, so every image rendered at frame 0 is what it was | `husk_sequence`: a still scene's frames 1 and 2 differ in their noise and agree in their mean, and frame 2 is the same in the sequence and alone |
+| S-3 | low | **nova_cli could not use names outside ASCII.** Its command line and environment were in the system's code page while USD and the delegate take file names as UTF-8: a scene below `Bühne äöü` or a folder with Japanese characters did not open, and a `HOUDINI_TEMP_DIR` with such a character ended the process with an uncaught exception (`std::filesystem::u8path` on bytes that are no UTF-8, inside the texture conversion of a prim's sync; 4 of 7 scenes). husk rendered the same folders: Houdini's processes run with the UTF-8 code page (`tools/nova_cli`, `hydra/textureConvert.cpp`) | nova_cli is a UTF-8 process (`nova_cli.manifest`, `activeCodePage`), and prints to the console as UTF-8. The delegate makes its paths with `HdNovaPath()` (`hydra/pathUtil.h`), which reads bytes that are no UTF-8 in the process's own code page instead of throwing (34 places in four files) | `names outside ASCII` in tests/cli/check_cli.py (scene folder, texture, image and cache folder with umlauts and Japanese characters: the same image as with plain names); "A file name that is not UTF-8 gives a path instead of an exception" in tests/test_hydra_robust.cpp |
+
+A note on S-2 and the tests: the first version of the fix mixed the frame into the seed with a hash, which gave every test image another noise pattern. Six tests failed, none through a defect: a unit test of the seed setting, and five comparisons with Karma whose tolerances the new patterns exceeded by a little (`reference_aov_components`: 3 of 720 blocks of one plane; `reference_vex_principled`: the global mean at +0.38 %; a caustic region of `husk_karma_props` at -7.8 % against an allowed 5 %). These comparisons hold for the seeds they were measured with, not for any seed. With husk's own number the patterns of frame 0, where those scenes render, are unchanged.
+
+### What was clean
+
+- **Sequences without displacement** were bit-identical to their single frames on both devices, before and after the fixes: a transform under motion blur, a mesh whose topology changes, visibility, an animated material colour and light intensity, a point instancer of point instancers, textures; then VDB files per frame under a moving volume, texture files per frame on a surface and on a dome light, particles, curves and an instancer of changing counts with velocities, a displacement whose amount is animated and one that reads the time, animated primvars and texture coordinates, a subdivision surface with an animated crease, native instances, an emissive mesh that is a light source, a light filter, a colour temperature and a distant light's angle; and the Karma Physical Sky, the Karma Sky Atmosphere and a Karma Fog Box with animated parameters.
+- **The thread count** does not change the image: 8 reference scenes with 1, 7 and 16 threads, plain, with the variance oracle, with path guiding and with uniform light sampling, bit-identical.
+- **Memory over 400 animated frames** in one husk run (every frame changes geometry, topology, instances, materials, lights and the camera): 540 MB after 20 frames, 552 MB after 380 on the CPU; on Nova XPU 3 357 to 3 355 MB in the process and 5.12 GB on the GPU throughout. Karma CPU on the same sequence: 951 to 978 MB.
+- **Large scenes** (640 x 360, 4 samples, wall time and peak commit of the whole process, nova_cli against husk with Karma):
+
+| Scene | Nova CPU | Nova XPU | Karma CPU | Karma XPU |
+|---|---|---|---|---|
+| One mesh of 18 million triangles | 2.1 s, 2.9 GB | 2.3 s, 6.8 GB | 5.4 s, 2.8 GB | 8.8 s, 6.5 GB |
+| 2 million instances of a 960-triangle sphere | 0.6 s, 0.5 GB | 0.7 s, 4.5 GB | 16.0 s, 1.8 GB | 7.4 s, 5.1 GB |
+| 20 000 sphere lights | 3.4 s, 0.4 GB | 2.1 s, 3.6 GB | 143.9 s, 1.7 GB | 57.5 s, 3.8 GB |
+| A subdivision surface of 90 000 faces | 0.5 s, 0.6 GB | 0.7 s, 4.0 GB | 4.3 s, 0.8 GB | 2.1 s, 2.6 GB |
+
+  (The subdivision surface exceeds `nova:subdivMaxTriangles` at level 3 and renders at level 2, with its warning.)
+- **Other paths**: folders with blanks, brackets, `#`, `%`, `&`, `;`, `=`, quotes, `$` and `@`, and UNC paths (`\\host\share\...`) for the scene, its textures, its VDB, the image and the texture cache render the same image. A path of more than 260 characters does not open, in husk either (USD on Windows).
+- **Depth of field and the stage's units**: Nova reads the focal length in tenths of a scene unit whatever `metersPerUnit` says; so does Karma (the same image with 0.01 and with 1).
+
+### Found, and left for the next version
+
+One scene (a displaced ground, an analytic sphere, glass, metal and subsurface spheres, curves, points; a dome, a distant and a rect light, all of which keep their radiance when the scene is scaled) was rendered at seven sizes and at four distances from the origin, and each image compared with the one of size 1 at the origin (`nova_cli`, 64 samples, means of 20 x 20 pixel blocks).
+
+| Scene | Nova | Karma |
+|---|---|---|
+| Size 0.01 to 10^6 at the origin | the same image (mean within 0.04 %) | |
+| Size 0.001, 0.0001 at the origin | +0.23 %, +0.97 % (9 of 144 blocks off by more than 5 %) | |
+| Size 1 at (d, 0, d), d = 1 000 | +0.06 %, no block off by more than 5 % | -0.01 % |
+| d = 10 000 | +0.56 %, 3 blocks, the worst by 22 % | +0.03 % |
+| d = 100 000 | -31.7 %, 106 blocks | +0.21 % |
+| d = 10^6 | -27.7 %, 108 blocks | +1.04 %, 8 blocks |
+| Size 0.01 at d = 1 000 | -17.1 %, 105 blocks | +0.20 % |
+| Size 0.001 at d = 100 | -20.7 %, 105 blocks | +0.17 % |
+
+Object by object, the displaced ground carries most of it (-36 % alone at d = 100 000; the undisplaced, axis-aligned ground is exact), then the glass sphere (-3.7 %, blocks up to 44 %) and the metal sphere (blocks up to 37 %); the analytic sphere, the subsurface sphere, curves and points stay within a few blocks.
+
+The cause is one function, `offsetRayOrigin()` (`core/scene/ray.h`), with Wächter and Binder's constants: a ray leaves a surface by up to 256 float ulps of its world position per axis, which is 3 x 10^-5 of the distance from the origin (0.25 units at 10 000, 2 units at 100 000: next to a bump of a displaced surface the ray starts inside its neighbour), and by 1/65 536 unit where a coordinate is below 1/32 (15 % of the radius of a sphere of 0.0001 units: light leaks). Since section 12 the intersectors' own error is covered by `SurfaceHit::leave`, so the offset has to cover only the rounding of the hit point, a few ulps. The constants change every image in its last bits and the GPU kernels with them, so they are measured and changed on their own, in the next version; until then the limit is in `docs/limitations.md` ("Geometry").

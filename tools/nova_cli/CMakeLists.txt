@@ -7,6 +7,9 @@
 add_executable(nova_cli main.cpp sampler.cpp crash.cpp)
 if(WIN32)
     target_link_libraries(nova_cli PRIVATE dbghelp) # crash.cpp: call stacks
+    # A UTF-8 process, as husk is: paths outside ASCII on the command line
+    # and in the environment (the linker merges the manifest).
+    target_sources(nova_cli PRIVATE nova_cli.manifest)
 endif()
 target_link_libraries(nova_cli PRIVATE
     hdNova_objects # nova_core, Nova::OIIO, the delegate's pxr libraries and compile options

@@ -3,6 +3,7 @@
 #include "atmosphere.h"
 #include "camera.h"
 #include "diagnostics.h"
+#include "pathUtil.h"
 #include "field.h"
 #include "instancer.h"
 #include "light.h"
@@ -520,6 +521,18 @@ uint64_t fnv1a(void const *data, size_t size, uint64_t h = 1469598103934665603ul
     return h;
 }
 
+// The sampler's seed of a frame: the seed setting plus the frame's own
+// number. husk hands every frame a `randomseed` render setting, the frame
+// times 705 600 000 (measured: 0 at frame 0, 2 116 800 000 at frame 3,
+// 1 764 000 000 at frame 2.5, whatever frame the run starts with), which is
+// how Karma's noise changes from frame to frame; without it the same
+// pattern stands still on the screen while the picture moves under it. A
+// frame has one pattern, rendered alone or in a sequence, the seed setting
+// still varies it, and frame 0 has the seed's own.
+uint32_t frameSeed(uint32_t seed, uint64_t frameNumber) {
+    return seed + uint32_t(frameNumber ^ (frameNumber >> 32));
+}
+
 constexpr char kCheckpointMagic[8] = {'N', 'O', 'V', 'A', 'C', 'K', 'P', '1'};
 
 } // namespace
@@ -618,7 +631,7 @@ bool HdNovaRenderDelegate::_ResumeCheckpoint() {
     const std::string &path = _activeProducts.checkpointPath;
     if (path.empty() || !_activeProducts.resume || _renderer.passes() != 0 || !_resumeTried.insert(path).second)
         return false;
-    std::ifstream in(std::filesystem::u8path(path), std::ios::binary);
+    std::ifstream in(HdNovaPath(path), std::ios::binary);
     if (!in)
         return false;
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -651,7 +664,7 @@ void HdNovaRenderDelegate::_SaveCheckpoint() {
     signature = fnv1a(&camera.ndcToView, sizeof(camera.ndcToView), signature);
     signature = fnv1a(&_renderer.settings().seed, sizeof(uint32_t), signature);
     // Written next to the file and renamed: an interrupted save keeps the last one.
-    const std::filesystem::path target = std::filesystem::u8path(path);
+    const std::filesystem::path target = HdNovaPath(path);
     std::filesystem::path temp = target;
     temp += ".tmp";
     std::error_code ec;
@@ -934,7 +947,7 @@ void HdNovaRenderDelegate::_RenderLoop() {
             _WriteDeep();
             if (!_activeProducts.checkpointPath.empty()) {
                 std::error_code ec;
-                std::filesystem::remove(std::filesystem::u8path(_activeProducts.checkpointPath), ec);
+                std::filesystem::remove(HdNovaPath(_activeProducts.checkpointPath), ec);
             }
         } else if (!_activeProducts.checkpointPath.empty() &&
                    double(nowNs() - _lastCheckpointNs) * 1e-9 >= _activeProducts.checkpointSeconds) {
@@ -1277,6 +1290,7 @@ nova::RenderSettings HdNovaRenderDelegate::GetNovaSettings() const {
                                                                    : nova::LightStrategy::MIS;
 
     _FrameAndFps(s.frame, s.fps);
+    s.seed = frameSeed(s.seed, _FrameRandomSeed());
     s.textureFilterWidth = GetTextureOptions().filterWidth;
 
     // Adaptive sampling (docs/design/M7.md D4).
@@ -1583,6 +1597,19 @@ void HdNovaRenderDelegate::_FrameAndFps(float &frame, float &fps) const {
     fps = rate > 0.0f ? rate : 24.0f;
 }
 
+uint64_t HdNovaRenderDelegate::_FrameRandomSeed() const {
+    static const TfToken randomSeed("randomseed"), frameKey("houdini:frame");
+    // husk's own number; from a host that sends the frame alone (nova_cli,
+    // a viewport), the number husk would send for it.
+    std::optional<double> number = HdNovaNumber(GetRenderSetting(randomSeed));
+    if (!number)
+        if (const std::optional<double> frame = HdNovaNumber(GetRenderSetting(frameKey)))
+            number = *frame * 705600000.0;
+    if (!number)
+        return 0;
+    return uint64_t(std::llround(std::clamp(*number, -9.0e18, 9.0e18)));
+}
+
 void HdNovaRenderDelegate::SetRenderSetting(TfToken const &key, VtValue const &value) {
     HdRenderDelegate::SetRenderSetting(key, value);
     TF_DEBUG(HDNOVA_SETTINGS).Msg("[Nova] setting %s = %s\n", key.GetText(), TfStringify(value).c_str());
@@ -1601,7 +1628,11 @@ void HdNovaRenderDelegate::SetRenderSetting(TfToken const &key, VtValue const &v
     if (_renderParam && (key == frameKey || key == fpsKey)) {
         float frame = 1.0f, fps = 24.0f;
         _FrameAndFps(frame, fps);
-        _renderParam->SetFrame(frame, fps);
+        // A final render dices every frame from that frame's camera, which
+        // the render pass confirms after the sync: until then meshes diced
+        // from the view wait instead of dicing twice (HdNovaMesh::Sync).
+        if (_renderParam->SetFrame(frame, fps) && !GetRenderSetting<bool>(HdNovaSettingsTokens->houdiniViewport, false))
+            _renderParam->SetDicingViewPending();
     }
 }
 

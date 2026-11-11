@@ -799,6 +799,7 @@ bool registerPlugins() {
 
 int main(int argc, char **argv) {
     nova_cli::installCrashHandler();
+    nova_cli::useUtf8Console();
     Options opt;
     if (!parseArgs(argc, argv, opt)) {
         usage();
