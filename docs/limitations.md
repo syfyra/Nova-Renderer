@@ -46,6 +46,7 @@ messages) and from the design notes, each checked against the code.
 | Heavily instanced emissive meshes have no two-level light tree. | Flattened to one light per triangle and instance; a message above the budget. | `design/M9.md` 2.2 |
 | Light filters other than Karma's blocker; filter spaces other than world. | Ignored with a warning; world space. | `hydra/lightFilter.cpp` |
 | `misbias`, `activeradius`, `pointradius` and `contribs` light properties. | Ignored. | `design/M9.md` 2.2 |
+| Occluders very close to a light in a scene of large extent: shadow rays stop short of a light by 32 float ulps of the scene's largest coordinate (0.04 units in a scene that reaches 10 000, 0.4 at 100 000), so that a light lying on a surface is not shadowed by it. | An object closer to a light than that does not shadow it. | `shadowRayLength`, `core/lights/lights.h` |
 
 ## Materials
 
@@ -71,6 +72,8 @@ messages) and from the design notes, each checked against the code.
 | Authored normals on subdivided meshes; subdivision of bilinear meshes and UsdGeom implicit prims. | Normals come from the limit surface; those prims stay polygonal. | `reference.md` |
 | Long round linear curves (bug audit R1-11). | Reprojected onto the tube, leaving with an error-bounded offset. | `bug-audit-2026-11.md` |
 | Two exactly coplanar overlapping surfaces. | Which one a ray reports follows the accelerator's traversal and can change between runs. | `bug-audit-2026-11.md` section 7 |
+| A single polygon that reaches far beyond what is seen of it: rays leave a polygon by a few float ulps of its reach from the hit (Nova XPU: 10^-6 of it; the CPU half of that for polygons that are not axis-aligned, nothing for axis-aligned ones), the error of the ray-triangle tests. | Off a polygon that reaches 100 000 units the rays start up to 0.1 units above it: objects that close to it lose part of their shadow on it, and a light 5 units away lights it too brightly (a sphere on such a ground: the image 0.8 % brighter on XPU when it is axis-aligned, 1.6 % when rotated; 0.3 % on the CPU when rotated). At 10 000 units the difference is 0.1 % (XPU), below that none; from 10^6 units Nova XPU's image is 9 % and more off, the CPU's 3 % if the polygon is rotated. Split such polygons. | `leaveSurface`, `core/scene/ray.h`; `bug-audit-2026-11.md` section 12 |
+| A point instancer that lists itself or one of its ancestors among its prototypes; `protoIndices` beyond the prototypes. | The process ends inside UsdImaging (a stack overflow in its prototype scene index, memory written out of bounds in its instancer data source) before the delegate sees a prim, as with any Hydra renderer. | `bug-audit-2026-11.md` section 12 |
 | `motion:blurScale`, `motion:nonlinearSampleCount` and `motion:velocityScale` (UsdGeomMotionAPI). | Ignored. | `design/M8.md` |
 
 ## Volumes
