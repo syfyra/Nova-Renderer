@@ -440,6 +440,14 @@ void Renderer::syncFilm() {
 #endif
 }
 
+uint32_t Renderer::gpuWavePaths() const {
+#if NOVA_HAS_GPU
+    return m_gpu ? m_gpu->wavePathLimit() : 0u;
+#else
+    return 0u;
+#endif
+}
+
 bool Renderer::gpuPass(bool lists, uint32_t spp, const LpeTables *lpe, const PathGuide *guide) {
 #if NOVA_HAS_GPU
     if (m_gpuFailed || !m_scene)
@@ -454,7 +462,10 @@ bool Renderer::gpuPass(bool lists, uint32_t spp, const LpeTables *lpe, const Pat
             m_gpuFailed = true;
             return false;
         }
-        std::fprintf(stderr, "[Nova] XPU: rendering on %s\n", m_gpu->deviceName().c_str());
+        std::fprintf(stderr, "[Nova] XPU: rendering on %s%s\n", m_gpu->deviceDescription().c_str(),
+                     m_gpu->deviceExperimental()
+                         ? ", experimental: Nova XPU has not been tested on this GPU's architecture"
+                         : "");
     }
     // First-hit AOVs (depth, normal, albedo, ids, utility planes) come from
     // their own rays through the pixel centers, not from the samples: the

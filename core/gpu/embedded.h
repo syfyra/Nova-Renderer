@@ -12,5 +12,9 @@ extern const unsigned long long kNovaProgramsIr_words[];
 extern const std::size_t kNovaProgramsIr_size;
 extern const unsigned long long kNovaKernels_words[];
 extern const std::size_t kNovaKernels_size;
+// In the tests only (tests/CMakeLists.txt): the kernels as GPUs before the
+// RTX 50 series get them, assembled for the test machine's GPU.
+extern const unsigned long long kNovaKernelsOld_words[];
+extern const std::size_t kNovaKernelsOld_size;
 
 } // namespace nova::gpu

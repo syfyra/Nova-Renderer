@@ -19,8 +19,19 @@ namespace nova::gpu {
 namespace {
 
 constexpr uint32_t kBlock = 256;
-// Paths per wave (docs/design/M10.md D16): about 0.3 KB each in G1.
+// Paths per wave (docs/design/M10.md D16): at most 2M (1080p at one sample),
+// fewer when the device's free memory is short (planWave), never planned
+// below 64k.
 constexpr uint32_t kMaxWavePaths = 1u << 21;
+constexpr uint32_t kMinWavePaths = 1u << 16;
+// The kernels' stacks per streaming multiprocessor, for the plan before the
+// first launch: measured on an RTX 5080 (84 of them) 23.5 MB each with the
+// kernels of the RTX 50 series' compiler and 27.7 MB with those of the older
+// architectures' (docs/design/M10.md, section 8).
+constexpr size_t kStackBytesPerProcessor = size_t(32) << 20;
+
+// GpuRenderer::setKernelImage: the fatbin to load instead of the embedded one.
+const void *g_kernelImage = nullptr;
 
 // BsdfTables' members in the order of kBsdfTableFloats.
 constexpr const float *BsdfTables::*kTableMembers[kBsdfTableCount] = {
@@ -224,9 +235,7 @@ size_t GpuRenderer::textureBudget() {
         // nova:gpuTextureBudget's default: half the memory free when the
         // first texture loads (with the textures already held, after a
         // change of the setting).
-        size_t free = 0, total = 0;
-        m_device.cu().p_cuMemGetInfo(&free, &total);
-        m_textureBudget = std::max<size_t>((free + m_textureBytes) / 2, 1);
+        m_textureBudget = std::max<size_t>((m_device.freeMemory() + m_textureBytes) / 2, 1);
     }
     return m_textureBudget;
 }
@@ -428,6 +437,8 @@ DeviceTexSlot GpuRenderer::textureSlot(const ITextureSampler *sampler, const Tex
     return d;
 }
 
+void GpuRenderer::setKernelImage(const void *fatbin) { g_kernelImage = fatbin; }
+
 bool GpuRenderer::init(std::string &error) {
     if (!m_device.init(error) || !m_accel.init(error))
         return false;
@@ -436,7 +447,16 @@ bool GpuRenderer::init(std::string &error) {
     const auto function = [&](CUfunction &fn, const char *name) {
         return m_device.check(cu.p_cuModuleGetFunction(&fn, m_module, name), name);
     };
-    if (!m_device.check(cu.p_cuModuleLoadData(&m_module, kNovaKernels_words), "cuModuleLoadData") ||
+    // The driver takes from the fatbin the code that fits the device. Where it
+    // holds none for the device's architecture the driver compiles its PTX,
+    // which takes minutes; the driver keeps the result, so only once.
+    const void *kernels = g_kernelImage ? g_kernelImage : static_cast<const void *>(kNovaKernels_words);
+    if (!g_kernelImage && !m_device.hasKernelCode())
+        std::fprintf(stderr,
+                     "[Nova] XPU: no kernels built for the architecture of %s: the NVIDIA driver compiles "
+                     "them now, which takes several minutes the first time\n",
+                     m_device.description().c_str());
+    if (!m_device.check(cu.p_cuModuleLoadData(&m_module, kernels), "cuModuleLoadData") ||
         !function(m_generate, "novaGenerate") || !function(m_shade, "novaShade") ||
         !function(m_shadow, "novaShadow") || !function(m_ao, "novaAo") || !function(m_flush, "novaFlush") ||
         !function(m_media, "novaMedia") || !function(m_volumes, "novaVolumes") ||
@@ -893,12 +913,75 @@ bool GpuRenderer::setFilm(const Film &film) {
            m_device.upload(m_lpeSum, film.lpeSum) && m_device.upload(m_lpeLit, film.lpeLit) && m_device.sync();
 }
 
-bool GpuRenderer::reserveWave(uint32_t paths) {
+uint32_t GpuRenderer::shadowSlots() const {
     // Pre-lit background holdouts with illumbackground lights use the walk
     // exits' kind (kernels.cu shadePrelit); the sky atmosphere's ground with
     // groundreceiveshadow has a kind of its own (shadeGround).
-    const uint32_t slots = (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u) +
-                           (groundShadows() ? 1u : 0u);
+    return (m_mayWalk || m_view.illumBackground ? 3u : 2u) + (m_view.shadowDomeCount > 0 ? 1u : 0u) +
+           (groundShadows() ? 1u : 0u);
+}
+
+bool GpuRenderer::reserveAll(uint32_t paths, const WaveNeeds &needs) {
+    return reserveWave(paths) && reserveWalks(paths) && (!needs.lpe || reserveLpe(paths)) &&
+           (!needs.media || reserveMedia(paths)) && (!needs.fake || reserveFake(paths)) &&
+           (!needs.guide || reserveGuide(paths));
+}
+
+void GpuRenderer::releaseWave() {
+    m_waveBuffers.clear();
+    m_lpeWave.clear();
+    m_mediaWave.clear();
+    m_walkWave.clear();
+    m_fakeWave.clear();
+    m_guideWave.clear();
+    m_capacity = m_shadowSlots = m_lpeCapacity = m_mediaCapacity = m_walkCapacity = m_fakeCapacity = m_guideCapacity = 0;
+    m_lpeRayCapacity = 0;
+    m_nestedReserved = false;
+}
+
+size_t GpuRenderer::waveBytes() const {
+    size_t bytes = 0;
+    for (const std::vector<DeviceBuffer> *group :
+         {&m_waveBuffers, &m_lpeWave, &m_mediaWave, &m_walkWave, &m_fakeWave, &m_guideWave})
+        for (const DeviceBuffer &b : *group)
+            bytes += b.size();
+    return bytes;
+}
+
+bool GpuRenderer::planWave(const WaveNeeds &needs) {
+    // What a path costs depends on what the wave holds.
+    const uint32_t key = 1u | (needs.lpe ? 2u : 0u) | (needs.media ? 4u : 0u) | (needs.fake ? 8u : 0u) |
+                         (needs.guide ? 16u : 0u) | (m_mayWalk ? 32u : 0u) | (m_view.nestedDielectrics ? 64u : 0u) |
+                         (shadowSlots() << 8);
+    if (m_waveLimit != 0 && key == m_waveKey)
+        return true;
+    // The cost, measured on a small wave: the bytes of every buffer it holds.
+    constexpr uint32_t kProbe = 4096;
+    releaseWave();
+    if (!reserveAll(kProbe, needs))
+        return false;
+    m_pathBytes = (waveBytes() + kProbe - 1) / kProbe;
+    // Of the memory free now, with the scene, its textures and the film on
+    // the device already, the kernels' stacks come off first: the driver
+    // allocates them at the first launch, for every thread the device can
+    // run at once. The waves take at most half the rest; the other half
+    // stays for acceleration structures rebuilt in IPR, textures loaded
+    // later and the denoiser.
+    const size_t free = m_device.freeMemory() + waveBytes();
+    const size_t stacks = m_launched ? 0 : size_t(std::max(m_device.processors(), 1)) * kStackBytesPerProcessor;
+    const uint64_t fit = uint64_t((free > stacks ? free - stacks : 0) / 2) / std::max<size_t>(m_pathBytes, 1);
+    m_waveLimit = uint32_t(std::clamp<uint64_t>(fit, kMinWavePaths, kMaxWavePaths));
+    m_waveKey = key;
+    if (m_waveLimit <= kMaxWavePaths / 2 && !m_waveNoted) { // waves that show in the render time
+        m_waveNoted = true;
+        std::fprintf(stderr, "[Nova] XPU: %zu MB of device memory free: waves of %u paths instead of %u\n", free >> 20,
+                     m_waveLimit, kMaxWavePaths);
+    }
+    return true;
+}
+
+bool GpuRenderer::reserveWave(uint32_t paths) {
+    const uint32_t slots = shadowSlots();
     const bool nested = m_view.nestedDielectrics != 0;
     if (paths <= m_capacity && slots <= m_shadowSlots && (!nested || m_nestedReserved))
         return true;
@@ -1398,22 +1481,35 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
     if (list && !list->empty() && !m_device.upload(m_pixelList, *list))
         return false;
     const uint32_t regionPixels = list ? uint32_t(list->size()) : uint32_t(region.pixelCount());
-    const uint32_t wavePixels = std::max(1u, kMaxWavePaths / std::max(1u, spp));
+    const bool media = m_view.anyMedia();
+    const bool fake = m_scene->anyFakeCaustics();
+    // A wave holds whole pixels (all `spp` samples of each), as many as the
+    // device's memory allows (D16).
+    const WaveNeeds needs{lpeOn, media, fake, guideTraining};
+    if (!planWave(needs))
+        return false;
+    uint32_t wavePixels = std::max(1u, m_waveLimit / std::max(1u, spp));
     for (uint32_t first = 0; first < regionPixels; first += wavePixels) {
-        const uint32_t pixels = std::min(wavePixels, regionPixels - first), paths = pixels * spp;
-        const bool media = m_view.anyMedia();
-        const bool fake = m_scene->anyFakeCaustics();
-        if (!reserveWave(paths) || !reserveWalks(paths) || !setCount(m_rays[0], paths) || (lpeOn && !reserveLpe(paths)) ||
-            (media && !reserveMedia(paths)) || (fake && !reserveFake(paths)))
+        uint32_t pixels = std::min(wavePixels, regionPixels - first), paths = pixels * spp;
+        // Out of memory after all (the plan is from the first pass; an edit
+        // or another program took memory since): waves of half the paths.
+        while (!reserveAll(paths, needs)) {
+            if (!m_device.outOfMemory() || pixels == 1 || paths <= kMinWavePaths)
+                return false;
+            releaseWave();
+            m_device.forgetError();
+            m_waveLimit = std::max(kMinWavePaths, std::min(m_waveLimit, paths) / 2);
+            wavePixels = std::max(1u, m_waveLimit / std::max(1u, spp));
+            pixels = std::min(wavePixels, regionPixels - first);
+            paths = pixels * spp;
+            std::fprintf(stderr, "[Nova] XPU: out of device memory: waves of %u paths\n", m_waveLimit);
+        }
+        if (!setCount(m_rays[0], paths))
             return false;
         if (!lpeOn)
             m_wave.lpeState = nullptr, m_wave.partBegin = nullptr;
-        if (guideTraining) {
-            if (!reserveGuide(paths))
-                return false;
-        } else {
+        if (!guideTraining)
             m_wave.guide = GuidePaths{};
-        }
         if (!fake)
             m_wave.fakeT = nullptr;
         GenerateArgs g;
@@ -1745,7 +1841,10 @@ bool GpuRenderer::renderPass(const Camera &camera, const RenderSettings &setting
                 row[x] += spp;
         }
     }
-    return m_device.sync();
+    if (!m_device.sync())
+        return false;
+    m_launched = true;
+    return true;
 }
 
 bool GpuRenderer::downloadFilm(Film &film) {

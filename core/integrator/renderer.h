@@ -85,6 +85,9 @@ public:
     bool firstHitPass() const { return m_firstHitPass; }
     // Whether the GPU rendered the last pass (Nova XPU).
     bool lastPassOnGpu() const { return m_lastPassGpu; }
+    // The most paths the GPU renders in one wave, as its free memory allows
+    // (0 before the first GPU pass and on the CPU).
+    uint32_t gpuWavePaths() const;
     // The film; after GPU passes its sums come back from the device first
     // (Nova XPU, docs/design/M10.md G7: only when read).
     const Film &film() {

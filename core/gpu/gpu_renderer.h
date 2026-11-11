@@ -40,8 +40,24 @@ public:
     // Opens the device with the OptiX programs and the kernels; false with
     // the reason in `error`.
     bool init(std::string &error);
+    // For tests: the kernels of every GpuRenderer opened from now on come
+    // from this fatbin (which must outlive them) instead of the embedded
+    // one; nullptr: the embedded one again. The tests load the kernels as
+    // GPUs before the RTX 50 series get them, built for the test machine's
+    // GPU (tests/CMakeLists.txt, nova_gpu_kernels_old).
+    static void setKernelImage(const void *fatbin);
     const std::string &deviceName() const { return m_device.name(); }
+    // The name with the compute capability and the memory, for messages.
+    std::string deviceDescription() const { return m_device.description(); }
+    // The device's architecture is one Nova XPU has not been tested on.
+    bool deviceExperimental() const { return m_device.experimental(); }
     const std::string &lastError() const { return m_device.lastError(); }
+    // The most paths a wave holds and the device memory one path takes, as
+    // planned at the first pass for what the scene and the pass need (0
+    // before): 2M paths, fewer when the device's free memory is short
+    // (docs/design/M10.md D16, section 8).
+    uint32_t wavePathLimit() const { return m_waveLimit; }
+    size_t wavePathBytes() const { return m_pathBytes; }
 
     // Uploads the scene if its version changed: the geometry and GAS of the
     // meshes that changed, the rest anew.
@@ -84,6 +100,19 @@ private:
     template <class T> Span<T> upload(std::vector<DeviceBuffer> &into, const T *data, size_t count);
     template <class T> Span<T> put(const T *data, size_t count) { return upload(m_sceneBuffers, data, count); }
     template <class T> Span<T> put(const std::vector<T> &v) { return put(v.data(), v.size()); }
+    // What a pass's waves hold beyond the path state: light path
+    // expressions, media, fake caustics, path guiding records.
+    struct WaveNeeds {
+        bool lpe = false, media = false, fake = false, guide = false;
+    };
+    // Sets m_waveLimit for these needs (once, and again when they or the
+    // scene's change what a path costs).
+    bool planWave(const WaveNeeds &needs);
+    // Every buffer of a wave of `paths`; the wave's buffers freed; their bytes.
+    bool reserveAll(uint32_t paths, const WaveNeeds &needs);
+    void releaseWave();
+    size_t waveBytes() const;
+    uint32_t shadowSlots() const;
     bool reserveWave(uint32_t paths);
     bool reserveLpe(uint32_t paths);
     bool reserveMedia(uint32_t paths);
@@ -178,6 +207,12 @@ private:
     // shadow queue and the queue lengths (rays A, rays B, shadow rays, AO
     // rays).
     uint32_t m_capacity = 0;
+    // The plan (planWave): the most paths of a wave, a path's bytes, what
+    // the wave holds (a bit set), and whether a smaller wave was reported.
+    uint32_t m_waveLimit = 0, m_waveKey = 0;
+    size_t m_pathBytes = 0;
+    bool m_waveNoted = false;
+    bool m_launched = false; // a pass ran: the kernels' stacks are allocated
     bool m_nestedReserved = false; // the wave holds the nested dielectrics' media (GpuWave::nested)
     // Shadow rays per path the wave holds (2, 3 with walks, +1 with
     // shadow-linked domes, +1 with the sky atmosphere's ground shadowed).
