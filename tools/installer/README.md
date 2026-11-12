@@ -41,7 +41,7 @@ no motion. The interface is `ui/` (HTML, CSS, JavaScript); `src/main.rs` is the 
 ## Command line
 
 ```
-NovaSetup-0.1.3.exe --silent [--dir <folder>] [--packages-root <folder>] [--no-register]
+NovaSetup-0.1.4.exe --silent [--dir <folder>] [--packages-root <folder>] [--no-register]
                     [--experimental-gpus | --no-experimental-gpus]
 "Uninstall Nova.exe" --uninstall [--silent]
 ```
