@@ -1,0 +1,95 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Concave polygons seen from above by an orthographic camera at 20 pixels per
+# unit (400 pixels per unit of area): a U started at an arm (11 units), a
+# five-pointed star (5.173) and a displaced L started at its outer corner
+# (7). A fan from the first vertex covers 20, 7.8 and 7 units, patches around
+# the faces' centres more again; Karma renders 11, 5.17 and 7.
+# tests/husk/check_stage_features.py counts the covered pixels.
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "push"
+        {
+            token outputs:mtlx:displacement.connect = </World/Looks/push/disp.outputs:out>
+            token outputs:mtlx:surface.connect = </World/Looks/push/s.outputs:out>
+
+            def Shader "s"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.5, 0.5, 0.5)
+                float inputs:specular = 0
+                token outputs:out
+            }
+
+            def Shader "disp"
+            {
+                uniform token info:id = "ND_displacement_float"
+                float inputs:displacement = 0.2
+                float inputs:scale = 1
+                token outputs:out
+            }
+        }
+    }
+
+    def Mesh "u"
+    {
+        int[] faceVertexCounts = [8]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+        point3f[] points = [(4, 0, -4), (4, 0, -1), (1, 0, -1), (1, 0, -4), (0, 0, -4), (0, 0, 0), (5, 0, 0), (5, 0, -4)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+    }
+
+    def Mesh "star"
+    {
+        int[] faceVertexCounts = [10]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        point3f[] points = [(8, 0, -4.2), (7.5298, 0, -2.6472), (5.9077, 0, -2.6798), (7.2392, 0, -1.7528), (6.7069, 0, -0.2202), (8, 0, -1.2), (9.2931, 0, -0.2202), (8.7608, 0, -1.7528), (10.0923, 0, -2.6798), (8.4702, 0, -2.6472)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+    }
+
+    def Mesh "l" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [6]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4, 5]
+        point3f[] points = [(11, 0, 0), (15, 0, 0), (15, 0, -1), (12, 0, -1), (12, 0, -4), (11, 0, -4)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/push>
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 160
+        float verticalAperture = 60
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (7.5, 10, -2)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (320, 120)
+        int nova:samples = 16
+    }
+}
