@@ -35,6 +35,7 @@ add_library(hdNova_objects OBJECT
     meshSubdiv.cpp
     meshTriangulate.cpp
     implicitSurfaceSceneIndexPlugin.cpp
+    renderPassSceneIndex.cpp
     resyncSceneIndex.cpp
     velocitySceneIndex.cpp
     material/nodeDefDatabase.cpp

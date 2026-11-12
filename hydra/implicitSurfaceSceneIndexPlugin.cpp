@@ -1,5 +1,6 @@
 #include "implicitSurfaceSceneIndexPlugin.h"
 
+#include "renderPassSceneIndex.h"
 #include "resyncSceneIndex.h"
 #include "velocitySceneIndex.h"
 #include "volumeDependencies.h"
@@ -61,9 +62,12 @@ TF_REGISTRY_FUNCTION(HdSceneIndexPlugin) {
 HdSceneIndexBaseRefPtr HdNova_ImplicitSurfaceSceneIndexPlugin::_AppendSceneIndex(
     const std::string &renderInstanceId, const HdSceneIndexBaseRefPtr &inputScene,
     const HdContainerDataSourceHandle &inputArgs) {
+    // The active render pass (husk --pass) first: what it prunes is gone
+    // before anything below works on it.
+    HdSceneIndexBaseRefPtr scene = HdNovaRenderPassSceneIndex::New(inputScene);
     // Velocity and acceleration blur (docs/design/M8.md D19): velocities
     // resolved into sampled points and instance positions per the settings.
-    HdSceneIndexBaseRefPtr scene = HdNovaVelocityModeSceneIndex::Append(inputScene);
+    scene = HdNovaVelocityModeSceneIndex::Append(scene);
     scene = HdsiImplicitSurfaceSceneIndex::New(scene, inputArgs);
     // Volumes depend on their fields (docs/design/M8.md D3), forwarded as Storm does.
     scene = HdDependencyForwardingSceneIndex::New(HdNovaVolumeDependencySceneIndex::New(scene));
