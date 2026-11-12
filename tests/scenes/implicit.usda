@@ -1,0 +1,67 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# A cylinder, a cone and a capsule seen along their axes by an orthographic
+# camera at 40 pixels per unit: each silhouette is a disc (radius 1, 1.2 and
+# 0.75). The cage UsdImaging makes of such a prim has ten sides and covers
+# 93.5 % of the disc; subdivided (Karma) it covers 87.7 %.
+# tests/husk/check_stage_features.py counts the covered pixels.
+def Xform "World"
+{
+    def Cylinder "cylinder"
+    {
+        double radius = 1
+        double height = 2
+        uniform token axis = "Z"
+        double3 xformOp:translate = (-4, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+    }
+
+    def Cone "cone"
+    {
+        double radius = 1.2
+        double height = 2
+        uniform token axis = "Z"
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+    }
+
+    def Capsule "capsule"
+    {
+        double radius = 0.75
+        double height = 1.5
+        uniform token axis = "Z"
+        double3 xformOp:translate = (4, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 120
+        float verticalAperture = 40
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 0, 10)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (480, 160)
+        int nova:samples = 16
+    }
+}

@@ -10,7 +10,12 @@
 // DomeLight_1's pole axis: Karma turns the dome to the axis after the light's
 // own transform; Nova turned it before, so a rotated dome on a z-up stage
 // pointed elsewhere.
+//
+// Cylinders, cones and capsules: they were the ten-sided cage UsdImaging makes
+// of them. HdNovaImplicitSceneIndex makes them meshes of 96 sides at their
+// size, with the generators' normals.
 
+#include "hydra/implicitSceneIndex.h"
 #include "hydra/renderDelegate.h"
 #include "hydra/renderParam.h"
 #include "hydra/renderPassSceneIndex.h"
@@ -24,12 +29,14 @@
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/imaging/hdsi/sceneGlobalsSceneIndex.h>
 #include <pxr/usd/sdf/layer.h>
+#include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/relationship.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usdImaging/usdImaging/sceneIndices.h>
 #include <pxr/usdImaging/usdImaging/stageSceneIndex.h>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
@@ -80,7 +87,8 @@ struct Driver {
         globals = HdsiSceneGlobalsSceneIndex::New(sceneIndices.finalSceneIndex);
         if (first)
             globals->SetActiveRenderPassPrimPath(SdfPath(first));
-        index->InsertSceneIndex(HdNovaRenderPassSceneIndex::New(globals), SdfPath::AbsoluteRootPath(), false);
+        index->InsertSceneIndex(HdNovaImplicitSceneIndex::New(HdNovaRenderPassSceneIndex::New(globals)),
+                                SdfPath::AbsoluteRootPath(), false);
         pass = delegate->CreateRenderPass(index.get(),
                                           HdRprimCollection(HdTokens->geometry, HdReprSelector(HdReprTokens->refined)));
         tasks.push_back(std::make_shared<SyncTask>(pass));
@@ -328,4 +336,85 @@ TEST_CASE("A DomeLight_1's pole axis turns the dome after the light's transform"
         CHECK(along(scene.dome()->domeY, -1, 0, 0));
         CHECK(along(scene.dome()->domeX, 0, 0, 1));
     }
+}
+
+// What a mesh of the scene encloses and how far it reaches: its volume (the
+// triangles face outward), the largest distance of a point from the axis
+// `axis` and the largest coordinate along it.
+struct Solid {
+    double volume = 0.0;
+    float radius = 0.0f, reach = 0.0f;
+    size_t triangles = 0;
+    bool unitNormals = true;
+};
+
+static Solid solidOf(nova::MeshRecord const &record, int axis) {
+    nova::MeshDesc const &d = record.desc;
+    Solid s;
+    s.triangles = d.indices.size() / 3;
+    for (size_t t = 0; t + 2 < d.indices.size(); t += 3) {
+        const nova::Vec3f a = d.points[d.indices[t]], b = d.points[d.indices[t + 1]], c = d.points[d.indices[t + 2]];
+        s.volume += double(nova::dot(a, nova::cross(b, c))) / 6.0;
+    }
+    for (size_t i = 0; i < d.pointCount(); ++i) {
+        const nova::Vec3f p = d.points[i];
+        const float along = axis == 0 ? p.x : axis == 1 ? p.y : p.z;
+        s.reach = std::max(s.reach, std::fabs(along));
+        s.radius = std::max(s.radius, std::sqrt(std::max(nova::dot(p, p) - along * along, 0.0f)));
+    }
+    s.unitNormals = d.normals.size() == d.pointCount();
+    for (nova::Vec3f const &n : d.normals)
+        s.unitNormals = s.unitNormals && std::fabs(nova::length(n) - 1.0f) < 1e-4f;
+    return s;
+}
+
+TEST_CASE("Cylinders, cones and capsules are meshes of their size", "[hydra][implicit]") {
+    const double pi = 3.14159265358979323846;
+    Driver d(R"(
+def Cylinder "cylinder"
+{
+    double radius = 1.5
+    double height = 3
+    uniform token axis = "X"
+}
+def Cone "cone"
+{
+    double radius = 1
+    double height = 2
+    uniform token axis = "Y"
+}
+def Capsule "capsule"
+{
+    double radius = 0.5
+    double height = 1
+    uniform token axis = "Z"
+}
+)");
+    // The ten-sided cage encloses 93.5 % of a cylinder; 96 sides 99.93 %.
+    const Solid cylinder = solidOf(d.record("/cylinder"), 0);
+    CHECK(std::fabs(cylinder.volume) == Catch::Approx(pi * 1.5 * 1.5 * 3.0).epsilon(0.002));
+    CHECK(cylinder.radius == Catch::Approx(1.5f).epsilon(1e-5));
+    CHECK(cylinder.reach == Catch::Approx(1.5f).epsilon(1e-5));
+    CHECK(cylinder.triangles >= 2 * HdNovaImplicitSceneIndex::kSides);
+    CHECK(cylinder.unitNormals);
+
+    const Solid cone = solidOf(d.record("/cone"), 1);
+    CHECK(std::fabs(cone.volume) == Catch::Approx(pi * 2.0 / 3.0).epsilon(0.002));
+    CHECK(cone.radius == Catch::Approx(1.0f).epsilon(1e-5));
+    CHECK(cone.reach == Catch::Approx(1.0f).epsilon(1e-5));
+    CHECK(cone.unitNormals);
+
+    // A capsule's height is that of its cylinder: it reaches a radius beyond.
+    const Solid capsule = solidOf(d.record("/capsule"), 2);
+    CHECK(std::fabs(capsule.volume) == Catch::Approx(pi * 0.25 * 1.0 + 4.0 / 3.0 * pi * 0.125).epsilon(0.003));
+    CHECK(capsule.radius == Catch::Approx(0.5f).epsilon(1e-5));
+    CHECK(capsule.reach == Catch::Approx(1.0f).epsilon(1e-5));
+    CHECK(capsule.unitNormals);
+
+    // An edited parameter moves the mesh.
+    d.stage->GetAttributeAtPath(SdfPath("/cylinder.radius")).Set(2.0);
+    d.stage->GetAttributeAtPath(SdfPath("/capsule.height")).Set(3.0);
+    d.sync();
+    CHECK(solidOf(d.record("/cylinder"), 0).radius == Catch::Approx(2.0f).epsilon(1e-5));
+    CHECK(solidOf(d.record("/capsule"), 2).reach == Catch::Approx(2.0f).epsilon(1e-5));
 }

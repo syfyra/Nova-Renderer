@@ -1,4 +1,4 @@
-"""husk checks of two stage features that Nova ignored (docs/bug-audit-2026-11.md, section 16).
+"""husk checks of stage features that Nova ignored or approximated (docs/bug-audit-2026-11.md, section 16).
 
 tests/scenes/concave.usda: concave polygons. Hydra's triangulation is a fan
 from a face's first vertex, which covers what a concave face does not; a
@@ -8,6 +8,10 @@ covered pixels of a U, a star and a displaced L must be their areas.
 tests/scenes/passes.usda: render passes (husk --pass). The pass's
 collections prune prims, hide them from the renderer or from the camera and
 make them mattes; before, every pass rendered the whole scene.
+
+tests/scenes/implicit.usda: cylinders, cones and capsules. They were the
+ten-sided cage UsdImaging makes of them; seen along its axis each must cover
+its disc.
 
 Needs numpy and OpenImageIO, so run it with Houdini's Python:
 $HFS/python313/python.exe -I check_stage_features.py ...
@@ -62,7 +66,16 @@ def main():
                     covered = float(px[:, columns, 3].sum()) / 400.0
                     check(abs(covered - area) < 0.01 * area, f"{label}: the {name} covers its area {area:.3f}: {covered:.3f}")
 
-            # 2. Render passes: cards of 40 x 40 pixels at columns 20, 60 and 100, the wall's strip in rows 55 to 65.
+            # 2. Cylinder, cone and capsule along their axes: discs, 1600 pixels per unit of area.
+            px = husk(renderer, "implicit.usda", os.path.join(args.out, f"implicit_{tag}.exr"), ["--settings", "/Render/rs"])
+            if px is not None:
+                for name, columns, radius in (("cylinder", slice(0, 160), 1.0), ("cone", slice(160, 320), 1.2),
+                                              ("capsule", slice(320, 480), 0.75)):
+                    covered, disc = float(px[:, columns, 3].sum()) / 1600.0, float(np.pi) * radius * radius
+                    check(abs(covered - disc) < 0.003 * disc,
+                          f"{label}: the {name} covers the disc of its radius, {disc:.4f}: {covered:.4f} (ten sides: {0.9355 * disc:.4f})")
+
+            # 3. Render passes: cards of 40 x 40 pixels at columns 20, 60 and 100, the wall's strip in rows 55 to 65.
             images = {}
             for name in ("whole", "prune", "render_visibility", "camera_visibility", "matte"):
                 images[name] = husk(renderer, "passes.usda", os.path.join(args.out, f"pass_{name}_{tag}.exr"),
