@@ -3,6 +3,7 @@
 #include "diagnostics.h"
 #include "instancer.h"
 #include "meshSubdiv.h"
+#include "meshTriangulate.h"
 #include "primvarUtil.h"
 #include "renderParam.h"
 
@@ -113,12 +114,12 @@ bool findPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name, Hd
     return false;
 }
 
-// Meshes that HdsiImplicitSurfaceSceneIndex made from UsdGeom implicit prims
-// still list their sphere/cylinder/cone/capsule schema (blocked, so only the
-// name is left). Their generated catmullClark cage stands in for the
-// analytic shape, and its limit surface would shrink it further (a unit
-// sphere to radius 0.92..0.985), so they stay polygonal (with smooth
-// normals) until Nova has analytic primitives.
+// Meshes made from UsdGeom implicit prims still list their
+// sphere/cylinder/cone/capsule schema. Cylinders, cones and capsules are
+// Nova's own meshes of 96 sides (HdNovaImplicitSceneIndex). A cage that
+// pxr's HdsiImplicitSurfaceSceneIndex made stands in for the analytic shape,
+// and its limit surface would shrink it (a unit sphere to radius
+// 0.92..0.985). Neither is subdivided.
 bool isImplicitSurface(HdSceneDelegate *sd, SdfPath const &id) {
     const HdSceneIndexBaseRefPtr sceneIndex = sd->GetRenderIndex().GetTerminalSceneIndex();
     if (!sceneIndex)
@@ -229,8 +230,8 @@ namespace {
 // `deindexed`: the mesh has one point per triangle corner, so per-point data
 // goes per corner. Inconsistent data is skipped.
 void buildAttributes(HdSceneDelegate *sd, SdfPath const &id, HdMeshUtil const &meshUtil,
-                     VtVec3iArray const &triangles, VtIntArray const &primitiveParams, size_t pointCount,
-                     bool deindexed, nova::MeshDesc &desc) {
+                     HdNovaConcaveFaces const &concave, VtVec3iArray const &triangles,
+                     VtIntArray const &primitiveParams, size_t pointCount, bool deindexed, nova::MeshDesc &desc) {
     const size_t numTris = triangles.size();
     for (const PrimvarRef &pv : shadingPrimvars(sd, id)) {
         int width = 0;
@@ -284,9 +285,11 @@ void buildAttributes(HdSceneDelegate *sd, SdfPath const &id, HdMeshUtil const &m
             int cw = 0;
             if (result == HdMeshComputationResult::Error)
                 valid = false;
-            else if (result == HdMeshComputationResult::Success)
+            else if (result == HdMeshComputationResult::Success) {
                 valid = HdNovaPrimvarToFloats(triangulated, &cw, &corners) && size_t(cw) == w;
-            else // unchanged: already one per triangle corner
+                if (valid) // the corners of the concave faces' own triangles
+                    concave.fixFaceVarying(data.data(), count, w, corners.data(), corners.size() / w);
+            } else // unchanged: already one per triangle corner
                 corners = std::move(data);
             valid = valid && corners.size() >= numTris * 3 * w;
             if (valid) {
@@ -496,6 +499,10 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
     meshUtil.ComputeTriangleIndices(&triangles, &primitiveParams);
     if (triangles.empty())
         return false;
+    // HdMeshUtil's fan leaves a concave face: those faces get the triangles of
+    // their own shape (the shape at the first motion step).
+    const HdNovaConcaveFaces concave(_topology, pointSteps[0]);
+    concave.fixTriangles(&triangles);
     _triangleFaces.resize(triangles.size());
     for (size_t t = 0; t < triangles.size(); ++t)
         _triangleFaces[t] =
@@ -526,9 +533,12 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
             cornerNormals.push_back(result == HdMeshComputationResult::Success
                                         ? triangulated.UncheckedGet<VtVec3fArray>()
                                         : normals);
+            if (result == HdMeshComputationResult::Success && !concave.empty())
+                concave.fixFaceVarying(normals.cdata()->data(), normals.size(), 3, cornerNormals.back().data()->data(),
+                                       cornerNormals.back().size());
         }
 
-        buildAttributes(sd, id, meshUtil, triangles, primitiveParams, pointCount, /*deindexed=*/true, desc);
+        buildAttributes(sd, id, meshUtil, concave, triangles, primitiveParams, pointCount, /*deindexed=*/true, desc);
         const size_t numCorners = triangles.size() * 3;
         desc.points.resize(numCorners * steps);
         desc.normals.resize(numCorners * cornerNormals.size());
@@ -549,7 +559,7 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
         return true;
     }
 
-    buildAttributes(sd, id, meshUtil, triangles, primitiveParams, pointCount, /*deindexed=*/false, desc);
+    buildAttributes(sd, id, meshUtil, concave, triangles, primitiveParams, pointCount, /*deindexed=*/false, desc);
     desc.points.resize(pointCount * steps);
     for (uint32_t s = 0; s < steps; ++s)
         for (size_t i = 0; i < pointCount; ++i)
@@ -657,17 +667,46 @@ bool HdNovaMesh::_BuildDisplacedMesh(HdSceneDelegate *sd, HdNovaRenderParam &par
     nova::SubdivScheme scheme = nova::SubdivScheme::Bilinear;
     const bool smooth = HdNovaGetSubdivScheme(_topology.GetScheme(), &scheme) && scheme != nova::SubdivScheme::Bilinear;
     nova::SubdivMeshDesc sdesc;
+    HdNovaConcaveFaces::Split split; // of a polygon mesh with concave faces
     if (smooth) {
         if (!HdNovaToSubdivDesc(_topology, _subdivTags, pointSteps, id, &sdesc))
             return false;
     } else { // polygon meshes: bilinear patches on the authored faces
+        // A bilinear face is patched around its centre, which leaves a concave
+        // face as a fan does: those faces are diced as their triangles.
+        const HdNovaConcaveFaces concave(_topology, pointSteps[0], HdNovaConcaveFaces::Faces::Concave);
+        if (!concave.empty())
+            split = concave.split(_topology);
+        const bool whole = split.faces.empty();
         const HdMeshTopology bilinear(PxOsdOpenSubdivTokens->bilinear, _topology.GetOrientation(),
-                                      _topology.GetFaceVertexCounts(), _topology.GetFaceVertexIndices(),
-                                      _topology.GetHoleIndices());
+                                      whole ? _topology.GetFaceVertexCounts() : split.counts,
+                                      whole ? _topology.GetFaceVertexIndices() : split.indices,
+                                      whole ? _topology.GetHoleIndices() : split.holes);
         if (!HdNovaToSubdivDesc(bilinear, PxOsdSubdivTags(), pointSteps, id, &sdesc))
             return false;
     }
     gatherSubdivPrimvars(sd, id, sdesc.primvars);
+    if (!split.faces.empty()) {
+        // The primvars are those of the authored faces and face-vertices.
+        for (nova::SubdivPrimvar &p : sdesc.primvars) {
+            const size_t w = p.width;
+            if (p.interp == nova::PrimvarInterp::Uniform) {
+                std::vector<float> values(split.faces.size() * w, 0.0f);
+                for (size_t f = 0; f < split.faces.size(); ++f)
+                    if ((size_t(split.faces[f]) + 1) * w <= p.values.size())
+                        std::copy_n(&p.values[size_t(split.faces[f]) * w], w, &values[f * w]);
+                p.values = std::move(values);
+            } else if (p.interp == nova::PrimvarInterp::FaceVarying) {
+                std::vector<int32_t> indices(split.corners.size());
+                for (size_t c = 0; c < split.corners.size(); ++c) {
+                    const size_t authored = size_t(split.corners[c]);
+                    indices[c] = p.indices.empty() ? int32_t(authored)
+                                                   : authored < p.indices.size() ? p.indices[authored] : 0;
+                }
+                p.indices = std::move(indices);
+            }
+        }
+    }
     if (!smooth) {
         nova::SubdivPrimvar dir;
         dir.name = _meshTokens->displacementDirection.GetString();
@@ -736,6 +775,9 @@ bool HdNovaMesh::_BuildDisplacedMesh(HdSceneDelegate *sd, HdNovaRenderParam &par
         desc = nova::MeshDesc{};
         return false;
     }
+    if (!split.faces.empty()) // the authored faces again
+        for (int32_t &f : _triangleFaces)
+            f = f >= 0 && size_t(f) < split.faces.size() ? split.faces[size_t(f)] : -1;
 
     nova::DisplacementInput input;
     if (!smooth) {
@@ -1250,6 +1292,7 @@ bool HdNovaMesh::_SyncPortal(HdSceneDelegate *sd, HdNovaRenderParam &param, HdDi
     VtVec3iArray triangles;
     VtIntArray primitiveParams;
     meshUtil.ComputeTriangleIndices(&triangles, &primitiveParams);
+    HdNovaConcaveFaces(_topology, points).fixTriangles(&triangles);
     // World space: the prim's transform, or each instance's.
     std::vector<nova::Xform34> xforms;
     const GfMatrix4d xf = sd->GetTransform(id);
@@ -1299,6 +1342,7 @@ nova::MediumShellPtr HdNovaMesh::_BuildShell(HdSceneDelegate *sd, HdNovaRenderPa
     VtVec3iArray triangles;
     VtIntArray primitiveParams;
     meshUtil.ComputeTriangleIndices(&triangles, &primitiveParams);
+    HdNovaConcaveFaces(_topology, points).fixTriangles(&triangles);
     std::vector<nova::Vec3f> p(points.size());
     for (size_t i = 0; i < points.size(); ++i)
         p[i] = toNova(points[i]);

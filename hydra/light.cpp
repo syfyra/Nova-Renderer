@@ -324,10 +324,14 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
 
     GfMatrix4d xf = sd->GetTransform(id);
     if (_lightType == HdPrimTypeTokens->domeLight) {
-        // DomeLight_1 publishes its pole-axis alignment separately.
+        // DomeLight_1 publishes its pole-axis alignment separately. As in
+        // Karma (measured) it turns the dome after the light's own transform:
+        // a rotated dome on a z-up stage is the same dome on a y-up stage,
+        // turned with the stage. (pxr's hdPrman turns the dome before its
+        // transform; the two agree while the light is not rotated.)
         const VtValue offset = sd->GetLightParamValue(id, HdLightTokens->domeOffset);
         if (offset.IsHolding<GfMatrix4d>())
-            xf = offset.UncheckedGet<GfMatrix4d>() * xf;
+            xf = xf * offset.UncheckedGet<GfMatrix4d>();
     }
     for (int i = 0; i < 4; ++i)
         for (int j = 0; j < 4; ++j)

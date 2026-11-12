@@ -127,7 +127,8 @@ add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oi
     test_hydra_holdouts.cpp
     test_hydra_filters.cpp
     test_hydra_sky.cpp test_hydra_medium.cpp test_hydra_karma_settings.cpp test_hydra_resync.cpp
-    test_hydra_curves.cpp test_hydra_robust.cpp test_hydra_fuzz.cpp)
+    test_hydra_curves.cpp test_hydra_robust.cpp test_hydra_fuzz.cpp test_hydra_triangulate.cpp
+    test_hydra_stage.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nova_hydra_tests PRIVATE hdNova_objects Catch2::Catch2WithMain
     Houdini::Dep::pxr_usd Houdini::Dep::pxr_usdGeom Houdini::Dep::pxr_usdShade Houdini::Dep::pxr_usdImaging)
@@ -385,6 +386,14 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_sequence/$<CONFIG>")
     set_tests_properties(husk_sequence PROPERTIES LABELS husk TIMEOUT 900)
+    # Concave polygons cover their own area, and husk --pass applies the
+    # render pass's collections (docs/bug-audit-2026-11.md, section 16), CPU
+    # and Nova XPU.
+    add_test(NAME husk_stage_features
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_stage_features.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" --scenes "${CMAKE_CURRENT_SOURCE_DIR}/scenes"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_stage_features/$<CONFIG>")
+    set_tests_properties(husk_stage_features PROPERTIES LABELS husk TIMEOUT 600)
     # Karma's render settings in Nova (docs/design/M11-P1.md).
     add_test(NAME husk_karma_props
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_props.py"

@@ -72,7 +72,8 @@ messages) and from the design notes, each checked against the code.
 | Limitation | What happens instead | Source |
 |---|---|---|
 | `nurbsCurves` prims. | Not rendered (Houdini's SOP Import never authors them). | `design/M9.md` |
-| Authored normals on subdivided meshes; subdivision of bilinear meshes and UsdGeom implicit prims. | Normals come from the limit surface; those prims stay polygonal. | `reference.md` |
+| Authored normals on subdivided meshes; subdivision of bilinear meshes. | Normals come from the limit surface; bilinear meshes stay polygonal. | `reference.md` |
+| Cylinders, cones and capsules are meshes of 96 sides, not analytic shapes. | They are the prim to 0.05 % of its radius. Karma renders them 6 % narrower (it subdivides UsdImaging's ten-sided cage), and spheres 8 % smaller, where Nova's are exact. | `hydra/implicitSceneIndex.h` |
 | Long round linear curves (bug audit R1-11). | Reprojected onto the tube, leaving with an error-bounded offset. | `bug-audit-2026-11.md` |
 | Two exactly coplanar overlapping surfaces. | Which one a ray reports follows the accelerator's traversal and can change between runs. | `bug-audit-2026-11.md` section 7 |
 | A single polygon that reaches far beyond what is seen of it: rays leave a polygon by a few float ulps of its reach from the hit (Nova XPU: 10^-6 of it; the CPU half of that for polygons that are not axis-aligned, nothing for axis-aligned ones), the error of the ray-triangle tests. | Off a polygon that reaches 100 000 units the rays start up to 0.1 units above it: objects that close to it lose part of their shadow on it, and a light 5 units away lights it too brightly (a sphere on such a ground: the image 0.8 % brighter on XPU when it is axis-aligned, 1.6 % when rotated; 0.3 % on the CPU when rotated). At 10 000 units the difference is 0.1 % (XPU), below that none; from 10^6 units Nova XPU's image is 9 % and more off, the CPU's 3 % if the polygon is rotated. Split such polygons. | `leaveSurface`, `core/scene/ray.h`; `bug-audit-2026-11.md` section 12 |
@@ -99,6 +100,7 @@ messages) and from the design notes, each checked against the code.
 | Utility path expressions other than `CO` (`aov:karma:utilitypathexpression`). | The values of the camera hit, with a warning. | `hydra/aov.cpp` |
 | AOV sources Nova does not know; render product types other than raster, `karma:deep` and `karma:checkpoint`. | The plane keeps its clear value; the product is skipped; each with a warning. | `hydra/aov.cpp`, `hydra/renderDelegate.cpp` |
 | Temporal denoising. | Each frame is denoised by itself. | `design/M7.md` D9 |
+| Render passes (`husk --pass`): the pass's collections name paths of the stage, and geometry inside a native instance has its prototype's path in Hydra. | Such geometry is not pruned, hidden or made a matte by itself; a collection that holds the whole instance works. Geometry under a point instancer follows the instancer's path. | `hydra/renderPassSceneIndex.h` |
 | Texture Baker: textures for trace bias, trace max distance and trace skew; bake trace sets; some image filters. | The global values; every visible object; the filter is skipped; each with a warning. | `hydra/bake.cpp` |
 
 ## Removed since this list was started
@@ -133,3 +135,15 @@ These three are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), sec
   largest coordinate along the normal; what is left is in the list above ("Geometry").
 
 This one is described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 15.
+
+- **Concave polygons covered what they do not.** Hydra's triangulation is a fan from a face's first vertex: a U covered up to 20
+  units of area for 11, and more with displacement. Such faces are triangulated by their shape (`hydra/meshTriangulate.cpp`).
+- **`husk --pass` rendered the whole scene for every pass.** The active render pass's collections (prune, renderVisibility,
+  cameraVisibility, matte) are applied (`hydra/renderPassSceneIndex.cpp`).
+- **A rotated DomeLight_1 with its pole at z pointed elsewhere than in Karma** (32 % in the image's mean). The pole axis turns the
+  dome after the light's transform, as in Karma.
+
+- **Cylinders, cones and capsules showed ten sides at every silhouette.** They were the cage UsdImaging makes of them, with
+  smooth normals. They are meshes of 96 sides at the prim's size (`hydra/implicitSceneIndex.cpp`).
+
+These four are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 16.
