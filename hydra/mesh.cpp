@@ -114,12 +114,12 @@ bool findPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name, Hd
     return false;
 }
 
-// Meshes that HdsiImplicitSurfaceSceneIndex made from UsdGeom implicit prims
-// still list their sphere/cylinder/cone/capsule schema (blocked, so only the
-// name is left). Their generated catmullClark cage stands in for the
-// analytic shape, and its limit surface would shrink it further (a unit
-// sphere to radius 0.92..0.985), so they stay polygonal (with smooth
-// normals) until Nova has analytic primitives.
+// Meshes made from UsdGeom implicit prims still list their
+// sphere/cylinder/cone/capsule schema. Cylinders, cones and capsules are
+// Nova's own meshes of 96 sides (HdNovaImplicitSceneIndex). A cage that
+// pxr's HdsiImplicitSurfaceSceneIndex made stands in for the analytic shape,
+// and its limit surface would shrink it (a unit sphere to radius
+// 0.92..0.985). Neither is subdivided.
 bool isImplicitSurface(HdSceneDelegate *sd, SdfPath const &id) {
     const HdSceneIndexBaseRefPtr sceneIndex = sd->GetRenderIndex().GetTerminalSceneIndex();
     if (!sceneIndex)

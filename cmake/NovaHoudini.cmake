@@ -83,3 +83,18 @@ add_library(nova_materialx INTERFACE)
 add_library(Nova::MaterialX ALIAS nova_materialx)
 target_include_directories(nova_materialx SYSTEM INTERFACE "${HFS}/toolkit/include")
 target_link_libraries(nova_materialx INTERFACE nova_MaterialXCore nova_MaterialXFormat)
+
+# pxr's geomUtil (the mesh generators of cylinders, cones and capsules) ships
+# with Houdini (libpxr_geomUtil.dll in $HFS/bin) without a target in
+# HoudiniConfig. Only hydra/ links it.
+set(_implib "${HFS}/custom/houdini/dsolib/libpxr_geomUtil.lib")
+if(NOT EXISTS "${_implib}")
+    message(FATAL_ERROR "Nova: ${_implib} not found")
+endif()
+add_library(nova_pxr_geomUtil SHARED IMPORTED)
+set_target_properties(nova_pxr_geomUtil PROPERTIES
+    IMPORTED_IMPLIB "${_implib}"
+    IMPORTED_LOCATION "${HFS}/bin/libpxr_geomUtil.dll")
+add_library(nova_geomutil INTERFACE)
+add_library(Nova::GeomUtil ALIAS nova_geomutil)
+target_link_libraries(nova_geomutil INTERFACE nova_pxr_geomUtil)

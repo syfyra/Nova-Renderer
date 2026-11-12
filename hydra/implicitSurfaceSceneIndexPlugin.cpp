@@ -1,5 +1,6 @@
 #include "implicitSurfaceSceneIndexPlugin.h"
 
+#include "implicitSceneIndex.h"
 #include "renderPassSceneIndex.h"
 #include "resyncSceneIndex.h"
 #include "velocitySceneIndex.h"
@@ -27,6 +28,8 @@ TF_REGISTRY_FUNCTION(HdSceneIndexPlugin) {
     const HdDataSourceBaseHandle toMesh =
         HdRetainedTypedSampledDataSource<TfToken>::New(HdsiImplicitSurfaceSceneIndexTokens->toMesh);
     // Spheres stay spheres: Nova renders them analytically (HdNovaSphere).
+    // Cylinders, cones and capsules are meshes of Nova's own by then
+    // (HdNovaImplicitSceneIndex); pxr's index converts cubes and planes.
     const HdContainerDataSourceHandle inputArgs = HdRetainedContainerDataSource::New(
         HdPrimTypeTokens->cube, toMesh, HdPrimTypeTokens->cone, toMesh, HdPrimTypeTokens->cylinder, toMesh,
         HdPrimTypeTokens->capsule, toMesh, HdPrimTypeTokens->plane, toMesh);
@@ -68,6 +71,8 @@ HdSceneIndexBaseRefPtr HdNova_ImplicitSurfaceSceneIndexPlugin::_AppendSceneIndex
     // Velocity and acceleration blur (docs/design/M8.md D19): velocities
     // resolved into sampled points and instance positions per the settings.
     scene = HdNovaVelocityModeSceneIndex::Append(scene);
+    // Cylinders, cones and capsules at their size, with 96 sides (pxr's cage has ten).
+    scene = HdNovaImplicitSceneIndex::New(scene);
     scene = HdsiImplicitSurfaceSceneIndex::New(scene, inputArgs);
     // Volumes depend on their fields (docs/design/M8.md D3), forwarded as Storm does.
     scene = HdDependencyForwardingSceneIndex::New(HdNovaVolumeDependencySceneIndex::New(scene));

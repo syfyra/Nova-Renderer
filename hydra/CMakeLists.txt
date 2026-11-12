@@ -34,6 +34,7 @@ add_library(hdNova_objects OBJECT
     textureSystem.cpp
     meshSubdiv.cpp
     meshTriangulate.cpp
+    implicitSceneIndex.cpp
     implicitSurfaceSceneIndexPlugin.cpp
     renderPassSceneIndex.cpp
     resyncSceneIndex.cpp
@@ -52,6 +53,7 @@ target_link_libraries(hdNova_objects PUBLIC
     nova_core
     Nova::OIIO
     Nova::MaterialX
+    Nova::GeomUtil
     Houdini::Dep::OpenColorIO
     Houdini::Dep::pxr_arch
     Houdini::Dep::pxr_tf
