@@ -99,6 +99,7 @@ messages) and from the design notes, each checked against the code.
 | Utility path expressions other than `CO` (`aov:karma:utilitypathexpression`). | The values of the camera hit, with a warning. | `hydra/aov.cpp` |
 | AOV sources Nova does not know; render product types other than raster, `karma:deep` and `karma:checkpoint`. | The plane keeps its clear value; the product is skipped; each with a warning. | `hydra/aov.cpp`, `hydra/renderDelegate.cpp` |
 | Temporal denoising. | Each frame is denoised by itself. | `design/M7.md` D9 |
+| Render passes (`husk --pass`): the pass's collections name paths of the stage, and geometry inside a native instance has its prototype's path in Hydra. | Such geometry is not pruned, hidden or made a matte by itself; a collection that holds the whole instance works. Geometry under a point instancer follows the instancer's path. | `hydra/renderPassSceneIndex.h` |
 | Texture Baker: textures for trace bias, trace max distance and trace skew; bake trace sets; some image filters. | The global values; every visible object; the filter is skipped; each with a warning. | `hydra/bake.cpp` |
 
 ## Removed since this list was started
@@ -133,3 +134,12 @@ These three are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), sec
   largest coordinate along the normal; what is left is in the list above ("Geometry").
 
 This one is described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 15.
+
+- **Concave polygons covered what they do not.** Hydra's triangulation is a fan from a face's first vertex: a U covered up to 20
+  units of area for 11, and more with displacement. Such faces are triangulated by their shape (`hydra/meshTriangulate.cpp`).
+- **`husk --pass` rendered the whole scene for every pass.** The active render pass's collections (prune, renderVisibility,
+  cameraVisibility, matte) are applied (`hydra/renderPassSceneIndex.cpp`).
+- **A rotated DomeLight_1 with its pole at z pointed elsewhere than in Karma** (32 % in the image's mean). The pole axis turns the
+  dome after the light's transform, as in Karma.
+
+These three are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 16.

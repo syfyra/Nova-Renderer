@@ -490,3 +490,47 @@ The flat plane of O-1 renders its 0.5 x radiance within 0.05 % at every rotation
 What stays is the float itself. A hit point 100 000 units from the origin is rounded to 0.008 units, and its ray leaves by 0.1 units: a few blocks of the image differ there, and at a million units the image is wrong, where Karma is 1 % off. Karma evidently works relative to the camera; that is the change that would close the gap, and it is a larger one (every transform, light, volume and world-space shading input would be taken relative to a render origin). It is not done; the limit is in `docs/limitations.md` ("Geometry").
 
 The change moves the last bits of every image. Tests on this build: ctest 737/737 (`reference_cli_karma_atmosphere` skipped by design), with the three new test cases ("Rotated meshes far from the origin do not shadow themselves", its Nova XPU twin, "Hits on sphere points and discs lie on their shape") and the rewritten "Ray origin offset moves to the normal side".
+
+## 16. Stage features against Karma
+
+The passes before this one compared Nova with itself (a frame of a sequence with the frame alone, an edited scene with a rebuilt one, one size with another). This one renders small stages with husk in Nova, Nova XPU and Karma CPU and compares the images: features of a USD stage that a renderer has to do something about, and options of husk. Each stage binds a grey Lambert material to everything (see "Not changed" for why).
+
+### Findings
+
+| ID | Severity | Defect | Fix |
+|---|---|---|---|
+| G-1 | high | **Concave polygons covered what they do not.** Hydra's `HdMeshUtil` triangulates a face as a fan from its first vertex, and Nova rendered those triangles. Where the fan leaves the polygon (a concave face that is not star-shaped from its first vertex) the triangles lie outside it: seen from above, an L started at its tip covered 10.4 units of area for 7, a U 15.5 or 20 for 11 (by where it starts), a dart 10 for 6.25, a five-pointed star 7.76 for 5.17. Karma renders the areas exactly. The outline of a letter, a floor plan, any face drawn by hand is such a polygon. The same fan gave light portals and the surfaces that bound a medium their triangles | `HdNovaConcaveFaces` (`hydra/meshTriangulate.cpp`) finds the faces whose fan has a triangle turned over and triangulates them by clipping ears, in the plane of the face's normal. A polygon of n vertices has n - 2 triangles either way, so the fan's arrays are patched in place (the face of a triangle, uniform primvars, geometry subsets stay); face-varying primvars and normals follow the new corners. Faces whose fan is right keep it, so every other mesh renders the triangles it did |
+| G-2 | medium | **A displaced polygon mesh covered more again.** Displacement dices a polygon mesh as bilinear patches, which OpenSubdiv lays around each face's centre; the centre of a concave face can lie outside it. A displaced U covered 16.7 units for 11, an L 8.4 for 7 whichever vertex it starts at (its fan from the outer corner is right, its centre is outside) | Every face with a corner that turns the other way is diced as its triangles (`HdNovaConcaveFaces::split`); the faces of the triangles and the primvars are mapped back to the authored faces and face-vertices |
+| P-1 | high | **`husk --pass` rendered the whole scene for every pass**, without a message. A UsdRenderPass names its render settings and four collections: what is pruned, what the renderer sees, what the camera sees, what is a matte. husk reads the settings and puts the pass's path into Hydra's scene globals; applying the collections is the renderer's part, which Karma does in a scene index of its own (`BRAY_HdRenderPassSceneIndex`) and Nova did not do. A farm job of four passes wrote four identical images | `HdNovaRenderPassSceneIndex` (`hydra/renderPassSceneIndex.cpp`), the first index of Nova's chain: pruned prims are not in the scene; geometry and lights outside `renderVisibility` are invisible; geometry outside `cameraVisibility` gets `karma:object:rendervisibility` with `-primary` appended to what it has; geometry in `matte` gets `karma:object:holdoutmode` `matte`. Another pass, no pass and an edit of the pass's collections change the scene that is up (the viewport's pass menu) |
+| D-1 | medium | **A rotated DomeLight_1 whose pole is not y pointed elsewhere.** UsdLuxDomeLight_1 has a pole axis (`scene`, `Y`, `Z`), which Hydra hands over as a matrix next to the light's transform. Nova turned the dome to the axis first and applied the transform after it; Karma applies the light's transform first, so that a rotated dome on a z-up stage is the dome of the y-up stage, turned with the stage. With a smooth latlong texture and a rotation of 30, 50 and 70 degrees: +32 % in the image's mean with the pole at z on a y-up stage, +11 % with `scene` on a z-up stage, every block of the image off. Unrotated domes agreed (which is why it had not shown) | The transform, then the pole axis (`hydra/light.cpp`). pxr's hdPrman has the order Nova had; Karma is what a Houdini scene is lit for |
+
+pxr ships a scene index for the pruning (`HdsiRenderPassPruneSceneIndex`), which Nova does not use: it reads the pass when its input's first prims arrive, and never for an input that is populated before the index exists. A test that builds the chain over a stage that is up showed that; a render index made for a stage that is already open may be the same case.
+
+### Measured against Karma after the fixes
+
+Image means, and 20 x 20 pixel blocks off by more than 10 %, at 64 samples; the same numbers on Nova XPU.
+
+| Stage | Nova against Karma |
+|---|---|
+| The four concave shapes, each from two starts; as polygon meshes, as `bilinear` meshes, displaced | the covered area exact (11.000, 7.000, 6.250, 5.173); means within 0.07 %, no block |
+| The same shapes as Catmull-Clark surfaces | within 0.6 % (both subdivide the concave cage: 16.2 units for the U) |
+| 13 render passes over one scene: prune (also a light and a group), `cameraVisibility` with and without the root, `renderVisibility` without an object, without a light, with two prims only, mattes (an object, the ground, a light), all four collections at once | within 0.08 %, no block, alpha equal to four digits |
+| DomeLight and DomeLight_1 (`scene`, `Y`, `Z`) on y-up and z-up stages, unrotated and rotated | within 1 %, no block |
+| Two render products with a camera each | within 0.07 % |
+| Lights as prototypes of a point instancer, and inside native instances | the same image as three lights |
+
+### What was clean
+
+- **Mirrored objects.** A glass ball, a displaced ball and a subsurface ball with a scale of -1 along x, along y and along all three axes: the image within 0.03 % of the unmirrored one, in both renderers.
+- **Primvars inherited from a parent**: a `displayColor` and a primvar a material reads, authored on the parent Xform.
+- **husk's options.** `--autotile` and single tiles (`--tile-count`, `--tile-index`) are the full frame bit for bit (Karma's tiles differ from its full frame by up to 0.1 in a pixel); `--res-scale` is `--res`; frames with `--restart-delegate 1` are the frames without it; `--pixel-aspect`, `--res` with another aspect, 1 x 1 and 3000 x 2 pixels, `-c`, `--purpose`, `--snapshot`, `--bucket-size`, `--image-mode`, `--exrmode` and `--autocrop` render and answer as Karma's do.
+- **Clipping planes** cut the same band out of the scene.
+- **Holes** (`holeIndices`) on a polygon mesh: neither renderer leaves the face out.
+
+### Not changed
+
+- **Geometry without a material is another grey in Karma.** Nova renders it as a Lambert surface of its `displayColor` (0.18 without one; `docs/design/M3.md`, K19, an open question to the user since then). Karma CPU renders a surface that reflects 0.033 + 0.400 x `displayColor` under a white dome at every angle of view, and white where there is no `displayColor`: 0.354 where Nova shows 0.8, 0.434 where Nova shows 0.18. A stage without materials is 2.3 times as bright in one renderer as in the other. Which of the two Nova should be is the user's decision; every comparison of this pass binds a material for that reason.
+- **Spheres are their radius in Nova and smaller in Karma.** Karma subdivides the cage that UsdImaging makes of a UsdGeomSphere: a sphere of radius 1 has the silhouette of a disc of radius 0.92 (0.95 seen along its axis). Nova's spheres are exact. Cylinders, cones and capsules are their cage in Nova (ten sides, with smooth normals) and the subdivided cage in Karma (0.936 of the radius): the limitation of `docs/limitations.md`, which shows at silhouettes.
+- **husk renders several products only at one resolution** ("husk requires resolution to match on all products"), with either renderer.
+
+Tests: `test_hydra_triangulate.cpp` (six cases: the shapes from every start and in five planes, faces whose fan is right, holes and left-handed meshes, the split for dicing, polygons that cannot be triangulated, the scene's own area), `test_hydra_stage.cpp` (the passes from the start, changed and edited while the scene is up; the dome's pole axis) and `husk_stage_features` (`tests/husk/check_stage_features.py`: the covered pixels of `tests/scenes/concave.usda` and what each pass of `tests/scenes/passes.usda` leaves, on the CPU and on Nova XPU).

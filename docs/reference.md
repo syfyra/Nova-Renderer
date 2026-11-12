@@ -98,7 +98,9 @@ Motion blur and depth of field follow the render camera: its `shutter:open`/`shu
 
 husk crop windows and overscan (`dataWindowNDC`, also beyond [0, 1]), `pixelAspectRatio` and `aspectRatioConformPolicy` are supported. A crop reproduces the matching pixels of the full-frame render exactly. As in Karma, a film back offset (`horizontalApertureOffset`/`verticalApertureOffset`) scales with the conformed aperture in final renders; the Solaris viewport conforms like Houdini's own drawing.
 
-Render products: Nova renders the render vars Karma's LOPs author (see AOVs below) and Hydra's own AOV names. husk and `nova_cli` write them as multi-part EXRs; the Solaris viewport shows any of them through the viewer's output menu.
+Render products: Nova renders the render vars Karma's LOPs author (see AOVs below) and Hydra's own AOV names. husk and `nova_cli` write them as multi-part EXRs; the Solaris viewport shows any of them through the viewer's output menu. Products of one render may each have their own camera.
+
+Render passes (`husk --pass`, the pass menu of the Solaris viewport): the collections of the active UsdRenderPass are applied as Karma applies them. What is in `prune` is not in the scene; geometry and lights outside `renderVisibility` are invisible; geometry outside `cameraVisibility` is hidden from camera rays only (it still shadows and reflects); geometry in `matte` is a matte. The last two are Karma's `karma:object:rendervisibility` and `holdoutmode` set for the pass, so an object's own settings combine with them. `nova_cli` has no pass option.
 
 Light properties (on UsdLux lights, Karma's names; Nova's own `inputs:nova:light:*` win where both are authored): `inputs:karma:light:samplingquality` (`samplingQuality`) multiplies the light's share of light samples; `inputs:karma:light:equiangular` (`equiangular`) adds equiangular sampling along rays in volumes for point, spot, sphere and area lights. Light linking and shadow linking use UsdLux's `collection:lightLink` / `collection:shadowLink` (the Light Linker LOP authors them).
 
@@ -233,10 +235,11 @@ Materials (M3, `docs/design/M3.md`):
 
 Geometry, lights and sampling (M2):
 
-- Meshes; UsdGeom implicit prims other than spheres are converted to meshes.
+- Meshes; UsdGeom implicit prims other than spheres are converted to meshes. Concave polygons are triangulated by their shape (Hydra's own triangulation, a fan from the first vertex, covers what such a face does not), also where displacement dices them.
 - Unbound geometry renders Lambert from `primvars:displayColor` in any interpolation (constant, per face, per point, per face-vertex).
 - UsdLux lights, with the semantics measured on Karma CPU (`tests/karma/compare_lights.py`):
   - distant (soft angle), dome (constant or latlong texture), sphere (`treatAsPoint` = point light), rect (optional texture), disk and cylinder lights;
+  - UsdLuxDomeLight_1 and its `poleAxis` (`scene`, `Y`, `Z`); as in Karma the pole axis turns the dome after the light's own transform, so a rotated dome on a z-up stage is the dome of the y-up stage, turned with the stage;
   - `intensity` (negative values subtract light), `exposure`, `color`, color temperature, `normalize` (world-space area), `diffuse`;
   - as in Karma: distant-light angles above 180 degrees act as 180; sphere lights also light points inside them; rect-light textures wrap around at the border;
   - ShapingAPI cone, softness, focus and focus tint (a cone angle of exactly 90 degrees means no cone, as in Karma);
@@ -280,7 +283,7 @@ AddressSanitizer and UBSan), and those that need a GPU report as skipped.
 |---|---|
 | (none) | Catch2 unit tests of `nova_core`: math, sampling, lights, acceleration structure (incl. the hit filter for cut-out opacity), analytic render checks (white furnace, distant and dome light), determinism, and the statistical BSDF harness (`tests/bsdf_stats.h`: chi-square, albedo estimators) |
 | `hydra` | The render pass and delegate driven like an interactive viewport: convergence after camera/setting changes, host stop and buffer replacement; MaterialX library loading and the OIIO TextureSystem inside hdNova |
-| `husk` | husk renders of `tests/scenes` with the package staged in the build tree (`build/<preset>/stage/<config>/nova`): beauty values, crop windows, AOVs, instancing, motion blur, depth of field and subdivision against analytic coverage, texture color spaces; frame ranges whose every frame is the frame rendered alone, bit for bit, on the CPU and Nova XPU (`husk_sequence`, `docs/bug-audit-2026-11.md` section 14) |
+| `husk` | husk renders of `tests/scenes` with the package staged in the build tree (`build/<preset>/stage/<config>/nova`): beauty values, crop windows, AOVs, instancing, motion blur, depth of field and subdivision against analytic coverage, texture color spaces; frame ranges whose every frame is the frame rendered alone, bit for bit, on the CPU and Nova XPU (`husk_sequence`, `docs/bug-audit-2026-11.md` section 14); the covered area of concave polygons and what each pass of `husk --pass` leaves of a scene (`husk_stage_features`, section 16) |
 | `cli` | The same scenes rendered with `nova_cli` (no husk, no license): pixel values, crops, AOV layout |
 | `reference` | `tests/reference`: one test per scene of `manifest.json`. Nova renders the scene twice and `nova_imgcmp` compares it statistically with a Karma CPU reference (or an analytic value), see `tests/reference/README.md` |
 | `cvex` | The CVEX bridge (`nova_cvex_tests`): the VEX rewrite, compiling and running surface and displacement code, VEX's BSDF conventions, furnace and MIS checks through the renderer (also with the sampling-free fallback, `cvex_safe_sampling`), opacity and emission |
