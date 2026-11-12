@@ -33,6 +33,7 @@ add_library(hdNova_objects OBJECT
     textureConvert.cpp
     textureSystem.cpp
     meshSubdiv.cpp
+    meshTriangulate.cpp
     implicitSurfaceSceneIndexPlugin.cpp
     resyncSceneIndex.cpp
     velocitySceneIndex.cpp
