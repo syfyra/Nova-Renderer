@@ -151,10 +151,15 @@ def main():
 
         # M6.5: cryptomattes of tests/scenes/crypto.usda: Karma's names,
         # hashes, layers and metadata (docs/research/m6/cryptomatte.md).
-        writers = [("husk", [tool(args, "husk.exe"), "--renderer", "Nova", "-s", "/Render/s"])]
+        writers = [("husk", [tool(args, "husk.exe"), "--renderer", "Nova", "-s", "/Render/s"], env)]
         if args.cli:
-            writers.append(("nova_cli", [args.cli, "--settings", "/Render/s", "--quiet"]))
-        for writer, prefix in writers:
+            # nova_cli needs Houdini's libraries on the path (husk has them
+            # beside it). Without this it started only in a ctest run that had
+            # just rediscovered a rebuilt Catch2 executable, whose discovery
+            # puts $HFS/bin on ctest's own path.
+            cli_env = dict(env, PATH=os.path.join(args.hfs, "bin") + os.pathsep + env.get("PATH", ""))
+            writers.append(("nova_cli", [args.cli, "--settings", "/Render/s", "--quiet"], cli_env))
+        for writer, prefix, writer_env in writers:
             # One kind of separator: husk puts the sidecar next to the product,
             # taking the directory up to the last "/".
             folder = os.path.join(args.out, writer)
@@ -163,7 +168,7 @@ def main():
             sidecar = os.path.join(folder, "crypto_materials.json")
             if os.path.exists(sidecar):
                 os.remove(sidecar)
-            proc = run(prefix + ["-o", out, os.path.join(args.scenes, "crypto.usda")], env, folder)
+            proc = run(prefix + ["-o", out, os.path.join(args.scenes, "crypto.usda")], writer_env, folder)
             check(proc.returncode == 0, f"{writer}: crypto.usda renders")
             image = oiio.ImageInput.open(out)
             header = {a.name: a.value for a in image.spec().extra_attribs if a.name.startswith("cryptomatte/")}
