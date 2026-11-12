@@ -72,7 +72,8 @@ messages) and from the design notes, each checked against the code.
 | Limitation | What happens instead | Source |
 |---|---|---|
 | `nurbsCurves` prims. | Not rendered (Houdini's SOP Import never authors them). | `design/M9.md` |
-| Authored normals on subdivided meshes; subdivision of bilinear meshes and UsdGeom implicit prims. | Normals come from the limit surface; those prims stay polygonal. | `reference.md` |
+| Authored normals on subdivided meshes; subdivision of bilinear meshes. | Normals come from the limit surface; bilinear meshes stay polygonal. | `reference.md` |
+| Cylinders, cones and capsules are meshes of 96 sides, not analytic shapes. | They are the prim to 0.05 % of its radius. Karma renders them 6 % narrower (it subdivides UsdImaging's ten-sided cage), and spheres 8 % smaller, where Nova's are exact. | `hydra/implicitSceneIndex.h` |
 | Long round linear curves (bug audit R1-11). | Reprojected onto the tube, leaving with an error-bounded offset. | `bug-audit-2026-11.md` |
 | Two exactly coplanar overlapping surfaces. | Which one a ray reports follows the accelerator's traversal and can change between runs. | `bug-audit-2026-11.md` section 7 |
 | A single polygon that reaches far beyond what is seen of it: rays leave a polygon by a few float ulps of its reach from the hit (Nova XPU: 10^-6 of it; the CPU half of that for polygons that are not axis-aligned, nothing for axis-aligned ones), the error of the ray-triangle tests. | Off a polygon that reaches 100 000 units the rays start up to 0.1 units above it: objects that close to it lose part of their shadow on it, and a light 5 units away lights it too brightly (a sphere on such a ground: the image 0.8 % brighter on XPU when it is axis-aligned, 1.6 % when rotated; 0.3 % on the CPU when rotated). At 10 000 units the difference is 0.1 % (XPU), below that none; from 10^6 units Nova XPU's image is 9 % and more off, the CPU's 3 % if the polygon is rotated. Split such polygons. | `leaveSurface`, `core/scene/ray.h`; `bug-audit-2026-11.md` section 12 |
@@ -142,4 +143,7 @@ This one is described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section
 - **A rotated DomeLight_1 with its pole at z pointed elsewhere than in Karma** (32 % in the image's mean). The pole axis turns the
   dome after the light's transform, as in Karma.
 
-These three are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 16.
+- **Cylinders, cones and capsules showed ten sides at every silhouette.** They were the cage UsdImaging makes of them, with
+  smooth normals. They are meshes of 96 sides at the prim's size (`hydra/implicitSceneIndex.cpp`).
+
+These four are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 16.

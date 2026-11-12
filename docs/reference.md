@@ -235,7 +235,7 @@ Materials (M3, `docs/design/M3.md`):
 
 Geometry, lights and sampling (M2):
 
-- Meshes; UsdGeom implicit prims other than spheres are converted to meshes. Concave polygons are triangulated by their shape (Hydra's own triangulation, a fan from the first vertex, covers what such a face does not), also where displacement dices them.
+- Meshes; UsdGeom implicit prims other than spheres are converted to meshes: cubes and planes as their polygons, cylinders, cones and capsules as meshes of 96 sides at the prim's size, with smooth sides (Karma subdivides UsdImaging's ten-sided cage instead, which is 6 % narrower than the prim). Concave polygons are triangulated by their shape (Hydra's own triangulation, a fan from the first vertex, covers what such a face does not), also where displacement dices them.
 - Unbound geometry renders Lambert from `primvars:displayColor` in any interpolation (constant, per face, per point, per face-vertex).
 - UsdLux lights, with the semantics measured on Karma CPU (`tests/karma/compare_lights.py`):
   - distant (soft angle), dome (constant or latlong texture), sphere (`treatAsPoint` = point light), rect (optional texture), disk and cylinder lights;
@@ -260,7 +260,7 @@ Geometry, lights and sampling (M2):
 - Subdivision surfaces (Catmull-Clark and Loop) with OpenSubdiv 3.7 from Houdini: the limit surface is tessellated on the host into a watertight triangle mesh with exact limit positions and normals, for every motion step (`tests/scenes/subdiv.usda`):
   - all USD subdivision tags (creases, corners, holes, boundary and face-varying rules, triangle rule, orientation) with the conventions of `PxOsdRefinerFactory`; infinitely sharp creases keep flat shading on both sides;
   - as in Karma, meshes are subdivided from render complexity "high" on (refine level 3; husk's default "veryhigh" gives level 3, "high" level 2) and render as their control hull below; `primvars:nova:subdivLevel` (constant int) overrides the level per mesh; displaced meshes are diced instead (see above); faces with fewer than 3 vertices are ignored (with a warning);
-  - authored normals are ignored on subdivided meshes; bilinear meshes and UsdGeom implicit prims (cylinders, cones, ...) stay polygonal.
+  - authored normals are ignored on subdivided meshes; bilinear meshes stay polygonal.
 
 ## Tools
 
@@ -283,7 +283,7 @@ AddressSanitizer and UBSan), and those that need a GPU report as skipped.
 |---|---|
 | (none) | Catch2 unit tests of `nova_core`: math, sampling, lights, acceleration structure (incl. the hit filter for cut-out opacity), analytic render checks (white furnace, distant and dome light), determinism, and the statistical BSDF harness (`tests/bsdf_stats.h`: chi-square, albedo estimators) |
 | `hydra` | The render pass and delegate driven like an interactive viewport: convergence after camera/setting changes, host stop and buffer replacement; MaterialX library loading and the OIIO TextureSystem inside hdNova |
-| `husk` | husk renders of `tests/scenes` with the package staged in the build tree (`build/<preset>/stage/<config>/nova`): beauty values, crop windows, AOVs, instancing, motion blur, depth of field and subdivision against analytic coverage, texture color spaces; frame ranges whose every frame is the frame rendered alone, bit for bit, on the CPU and Nova XPU (`husk_sequence`, `docs/bug-audit-2026-11.md` section 14); the covered area of concave polygons and what each pass of `husk --pass` leaves of a scene (`husk_stage_features`, section 16) |
+| `husk` | husk renders of `tests/scenes` with the package staged in the build tree (`build/<preset>/stage/<config>/nova`): beauty values, crop windows, AOVs, instancing, motion blur, depth of field and subdivision against analytic coverage, texture color spaces; frame ranges whose every frame is the frame rendered alone, bit for bit, on the CPU and Nova XPU (`husk_sequence`, `docs/bug-audit-2026-11.md` section 14); the covered area of concave polygons, of cylinders, cones and capsules, and what each pass of `husk --pass` leaves of a scene (`husk_stage_features`, section 16) |
 | `cli` | The same scenes rendered with `nova_cli` (no husk, no license): pixel values, crops, AOV layout |
 | `reference` | `tests/reference`: one test per scene of `manifest.json`. Nova renders the scene twice and `nova_imgcmp` compares it statistically with a Karma CPU reference (or an analytic value), see `tests/reference/README.md` |
 | `cvex` | The CVEX bridge (`nova_cvex_tests`): the VEX rewrite, compiling and running surface and displacement code, VEX's BSDF conventions, furnace and MIS checks through the renderer (also with the sampling-free fallback, `cvex_safe_sampling`), opacity and emission |
