@@ -173,10 +173,13 @@ void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath c
         desc.visible = false;
     // Ray visibility and holdouts (docs/design/M11-P2.md D15), as a surface's.
     const nova::ObjectVisibility visibility = HdNovaObjectVisibility(sd, id);
+    // Light and shadow linking, as a surface's (the whole prim).
+    const std::vector<std::string> categories = HdNovaVolumeCategories(sd, id, instancerId);
     for (size_t k = 0; k < count; ++k) {
         const nova::VolumeId volume = k == 0 ? _volumeId : _instanceVolumeIds[k - 1];
         scene.updateVolume(volume, k + 1 < count ? desc : std::move(desc));
         scene.setVolumeVisibility(volume, visibility);
+        scene.setVolumeCategories(volume, categories);
         if (k < steps.size() && !steps[k].empty())
             scene.updateVolumeMotion(volume, steps[k]);
     }

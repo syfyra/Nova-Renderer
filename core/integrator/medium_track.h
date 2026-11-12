@@ -59,6 +59,7 @@ struct MediumVolume {
     ShellView shell;
     uint8_t visibility = kVisibleAll;
     uint8_t holdout = 0; // HoldoutMode
+    uint64_t shadowMask = 0; // the shadow-link categories the volume is in (VolumeRecord::shadowMask)
     // The light's size changes over the shutter: cellVolume is the cell's
     // object-space volume (VolumeRecord::lightResizes; lightCellVolume()).
     bool lightResizes = false;
@@ -90,6 +91,10 @@ struct MediumRay {
     // A shadow ray from a background point: background holdout volumes do
     // not shadow it (Karma, as background holdout surfaces).
     bool fromBackground = false;
+    // A shadow ray of a shadow-linked light: its category (64 and above:
+    // none). Only the volumes in it attenuate the ray (as the surfaces,
+    // Scene::castsShadow).
+    uint16_t shadowCategory = 0xFFFFu;
     // What the ray sees at its end, for the sky atmosphere's choice between
     // in-scattering and passing (docs/design/M11-P7.md): 0 nothing (it
     // escapes and no light at infinity lies in its direction), 1 a surface,
@@ -107,7 +112,8 @@ NOVA_INLINE uint8_t mediumRayClass(const MediumRay &r) {
 }
 NOVA_INLINE bool mediumSees(const MediumVolume &v, const MediumRay &r) {
     return visibleTo(v.visibility, mediumRayClass(r)) &&
-           !(r.fromBackground && v.holdout == uint8_t(HoldoutMode::Background));
+           !(r.fromBackground && v.holdout == uint8_t(HoldoutMode::Background)) &&
+           (r.shadowCategory >= 64 || ((v.shadowMask >> r.shadowCategory) & 1u) != 0);
 }
 NOVA_INLINE bool mediumAbsorbsOnly(const MediumVolume &v, const MediumRay &r) {
     return v.holdout == uint8_t(HoldoutMode::Background) && (r.rayType & kRayClassBits) != 0; // not RayClass::Camera

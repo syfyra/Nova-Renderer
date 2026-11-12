@@ -96,6 +96,7 @@ MediumVolume mediumVolume(const VolumeRecord &rec) {
         v.shell = rec.desc.shell->view();
     v.visibility = rec.visibility;
     v.holdout = uint8_t(rec.holdout);
+    v.shadowMask = rec.shadowMask;
     return v;
 }
 

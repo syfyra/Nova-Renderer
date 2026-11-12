@@ -499,6 +499,9 @@ void HdNovaRenderDelegate::SetAovBindings(HdRenderPassAovBindingVector const &bi
         if (s.intAsFloat)
             if (auto *rb = static_cast<HdNovaRenderBuffer *>(b.renderBuffer))
                 rb->ReportFloatIds();
+        if (s.fileHalf)
+            if (auto *rb = static_cast<HdNovaRenderBuffer *>(b.renderBuffer))
+                rb->ReportHalf();
         if (s.kind == HdNovaAovKind::Crypto && _crypto) {
             const auto it = std::find(_crypto->begin(), _crypto->end(), s.crypto);
             s.cryptoIndex = it != _crypto->end() ? int(it - _crypto->begin()) : -1;

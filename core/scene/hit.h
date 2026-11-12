@@ -423,6 +423,24 @@ NOVA_INLINE SurfaceHit resolveMeshHit(const Rec &rec, MeshId meshId, uint32_t pr
         const float s1 = dot(p2 - p0, p2 - p0), o1 = dot(o[2] - o[0], o[2] - o[0]);
         const float scale2 = nova::fmax(o0 > 0.0f ? s0 / o0 : 1.0f, o1 > 0.0f ? s1 / o1 : 1.0f);
         hit.leave = along * std::sqrt(scale2);
+#if !defined(__CUDA_ARCH__)
+        // The hit point is the sum of the corners in world space, each rounded
+        // at the ulps of its own world coordinates. Where the instance turns
+        // a polygon out of the coordinate planes of its own space, P is off
+        // the polygon's plane by that much along the world normal, however
+        // exact the polygon is in its own space: a ground of one quad tilted
+        // by its transform shadowed itself around the world origin, where the
+        // hit point's own coordinates (and with them the offset) go to zero
+        // (audit R-0 of 0.2.0; the GPU's bound has the corners' reach in it).
+        // An axis-aligned polygon adds nothing: the normal's axis has no reach.
+        const Vec3f worldReach = componentMax(absolute(p0), componentMax(absolute(p1), absolute(p2)));
+        // A moving instance's corners come from Nova's own interpolation of
+        // the motion keys (interpolateSrt: a slerp in floats), which differs
+        // from the accelerator's by more than ulps of the corners: a flat
+        // object turning fast under motion blur shadowed itself (audit R-1 of
+        // 0.2.0). Sixteen times the bound covers it.
+        hit.leave = nova::fmax(hit.leave, dot(absolute(hit.Ng), worldReach) * (isMoving ? 16.0f : 1.0f));
+#endif
     }
 
     if (!m.normals.empty()) {

@@ -784,6 +784,15 @@ void Scene::setVolumeVisibility(VolumeId id, const ObjectVisibility &visibility)
     ++m_version;
 }
 
+void Scene::setVolumeCategories(VolumeId id, std::vector<std::string> categories) {
+    std::lock_guard lock(m_mutex);
+    if (id >= m_volumes.size() || !m_volumes[id].alive || m_volumes[id].categories == categories)
+        return;
+    m_volumes[id].categories = std::move(categories);
+    m_linksDirty = true;
+    ++m_version;
+}
+
 void Scene::setShadeFrame(float frame, float fps) {
     std::lock_guard lock(m_mutex);
     if (m_shadeFrame == frame && m_shadeFps == fps)
@@ -995,6 +1004,28 @@ void Scene::computeLinks() {
                 m_receiverCategories.push_back(link);
             rec.receiverSets[k] = it->second;
         }
+    }
+    // Volumes: one receiver set and one shadow mask each. Up to 0.1.6 they
+    // were set 0, so a light with a link of any kind lit no volume, and no
+    // shadow link held for them.
+    for (VolumeRecord &rec : m_volumes) {
+        rec.receiverSet = 0;
+        rec.shadowMask = 0;
+        if (!rec.alive || rec.categories.empty())
+            continue;
+        uint64_t link = 0;
+        for (const std::string &c : rec.categories) {
+            if (const auto it = linkCats.find(c); it != linkCats.end() && it->second < 64)
+                link |= uint64_t(1) << it->second;
+            if (const auto it = shadowCats.find(c); it != shadowCats.end() && it->second < 64)
+                rec.shadowMask |= uint64_t(1) << it->second;
+        }
+        if (linkCats.empty())
+            continue;
+        const auto [it, added] = setOf.try_emplace(link, uint32_t(m_receiverCategories.size()));
+        if (added)
+            m_receiverCategories.push_back(link);
+        rec.receiverSet = it->second;
     }
     m_linking = !linkCats.empty();
     m_lightLinkMask.assign(m_lightData.size(), kLinksEveryone);

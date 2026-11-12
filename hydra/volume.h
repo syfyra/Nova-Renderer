@@ -31,6 +31,11 @@ PXR_NAMESPACE_OPEN_SCOPE
 void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc,
                                 HdNovaObjectDefaults const &defaults = HdNovaObjectDefaults{});
 
+// The light-link and shadow-link collections a volume prim is in (its own
+// categories and its instancer's; audit V-1 and V-2 of 0.2.0: volumes had
+// none, so a linked light lit no volume).
+std::vector<std::string> HdNovaVolumeCategories(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &instancerId);
+
 class HdNovaVolume final : public HdVolume {
 public:
     explicit HdNovaVolume(SdfPath const &id);

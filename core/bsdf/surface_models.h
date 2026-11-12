@@ -428,8 +428,13 @@ NOVA_INLINE void buildStandardSurface(const SurfaceInputs &in, const ShadingGeom
         const Vec2f a = alphaStandardSurface(rT, in.f(sf::specularAnisotropy));
         const GgxDistribution gg = GgxDistribution::make(a.x, a.y);
         const bool absorbing = in.f(sf::transmissionDepth) > 0.0f;
+        // Light that leaves crosses the coat as light that entered did: its
+        // colour tints the transmission both ways (Karma, measured; audit M-0
+        // of 0.2.0: Nova tinted coated glass once). What is reflected back
+        // inside never reaches the coat.
+        const Spectrum coatThrough = C > kCut ? lerp(spectrum(1.0f), nonNegative(in.c(sf::coatColor)), C) : spectrum(1.0f);
         pushTransmission(cl, ctx, 0, spectrum(X), gg, gg, 1.0f / ior, false, spectrum(1.0f),
-                         absorbing ? spectrum(1.0f) : nonNegative(in.c(sf::transmissionColor)), mu);
+                         (absorbing ? spectrum(1.0f) : nonNegative(in.c(sf::transmissionColor))) * coatThrough, mu);
         if (absorbing)
             setAbsorption(cl, in.c(sf::transmissionColor), in.f(sf::transmissionDepth));
         w *= 1.0f - X;
@@ -618,18 +623,36 @@ NOVA_INLINE void buildUsdPreview(const SurfaceInputs &in, const ShadingGeometry 
         labelLobes(cl, coatFrom, LobeLabel::Coat);
     }
 
-    // The base under the specular layer: Lambert, refracting where transparent.
+    // The transparent share X is a refracting interface of its own: its
+    // reflection at the surface's roughness, its transmission smooth, and
+    // what cannot leave reflected back in. The opaque share 1 - X is the
+    // specular layer over Lambert. Up to 0.1.6 the transmission sat under the
+    // specular layer, as MaterialX's graph has it, and took the interface's
+    // Fresnel a second time with the reflected part dropped: a fully
+    // transparent surface returned 0.90 to 0.94 of a white furnace, where
+    // Karma returns 1 (audit M-3 of 0.2.0).
+    auto pushClear = [&](Spectrum weight) {
+        if (X > kCut) {
+            // From inside one smooth interface: the tables hold no rough
+            // reflection from the denser side, and a reflection lobe without
+            // its share there would add energy on every bounce inside.
+            const GgxDistribution smooth = GgxDistribution::make(0.0f, 0.0f);
+            pushTransmission(cl, ctx, 0, weight * X, entering ? gs : smooth, smooth, entering ? ior : 1.0f / ior, false,
+                             spectrum(1.0f), spectrum(1.0f), mu);
+        }
+    };
     auto pushBase = [&](Spectrum weight, float diffuseWeight) {
-        if (X > kCut)
-            pushTransmission(cl, ctx, 0, weight * X, GgxDistribution::make(0.0f, 0.0f), GgxDistribution::make(0.0f, 0.0f),
-                             entering ? ior : 1.0f / ior, false, spectrum(0.0f), spectrum(1.0f), mu);
         if (X < 1.0f && diffuseWeight > kCut)
-            pushLambert(cl, 0, weight * ((1.0f - X) * diffuseWeight), diffuse, false);
+            pushLambert(cl, 0, weight * diffuseWeight, diffuse, false);
     };
     if (specularWorkflow) {
-        const Spectrum Es = pushSchlickLayer(cl, ctx, 0, w, gs, clamp01(nonNegative(in.c(sf::specularColor))),
-                                             spectrum(1.0f), mu);
-        pushBase(w * (spectrum(1.0f) - Es), 1.0f);
+        pushClear(w);
+        if (X < 1.0f) {
+            const Spectrum wo1 = w * (1.0f - X);
+            const Spectrum Es = pushSchlickLayer(cl, ctx, 0, wo1, gs, clamp01(nonNegative(in.c(sf::specularColor))),
+                                                 spectrum(1.0f), mu);
+            pushBase(wo1 * (spectrum(1.0f) - Es), 1.0f);
+        }
     } else {
         if (M > kCut) { // artistic-IOR conductor from the diffuse color
             Spectrum nk, kk;
@@ -649,9 +672,12 @@ NOVA_INLINE void buildUsdPreview(const SurfaceInputs &in, const ShadingGeometry 
         if (M < 1.0f) {
             const Spectrum tint = lerp(spectrum(1.0f), diffuse, M);
             const Spectrum F0 = lerp(tint * R2, tint, M);
-            const Spectrum ws = w * (1.0f - M);
-            const Spectrum Es = pushSchlickLayer(cl, ctx, 0, ws, gs, clamp01(F0), clamp01(tint), mu);
-            pushBase(ws * (spectrum(1.0f) - Es), 1.0f - M); // the graph weighs the diffuse by 1 - metallic again
+            pushClear(w * (1.0f - M));
+            if (X < 1.0f) {
+                const Spectrum ws = w * ((1.0f - M) * (1.0f - X));
+                const Spectrum Es = pushSchlickLayer(cl, ctx, 0, ws, gs, clamp01(F0), clamp01(tint), mu);
+                pushBase(ws * (spectrum(1.0f) - Es), 1.0f - M); // the graph weighs the diffuse by 1 - metallic again
+            }
         }
     }
     cl.emission = emissionOf(in);
@@ -709,17 +735,24 @@ NOVA_INLINE void buildOpenPbr(const SurfaceInputs &in, const ShadingGeometry &g,
         }
     }
     // Coat: reflection, absorption (MaterialX: constant), darkening (MaterialX's K).
+    // What crosses the coat is tinted and darkened by it, on the way in and,
+    // seen from inside a refracting object, on the way out (Karma, measured;
+    // audit M-0 of 0.2.0).
+    Spectrum coatThrough = spectrum(1.0f);
+    if (C > kCut) {
+        coatThrough = lerp(spectrum(1.0f), nonNegative(in.c(sf::coatColor)), C);
+        const float K = saturate(1.0f - (1.0f - iorToF0(nc)) / (nc * nc));
+        const Spectrum Eb = lerp(lerp(baseColor, nonNegative(in.c(sf::subsurfaceColor)), S), baseColor * xi, M);
+        const Spectrum delta = (spectrum(1.0f) - spectrum(K)) / spectrumMax(spectrum(1.0f) - Eb * K, 1e-4f);
+        coatThrough *= lerp(spectrum(1.0f), delta, C * saturate(in.f(sf::coatDarkening)));
+    }
     if (C > kCut && !inside) {
         const Vec2f ac = alphaOpenPbr(in.f(sf::coatRoughness), in.f(sf::coatAnisotropy));
         const int coatFrom = cl.count;
         const Spectrum Ec = pushDielectricLayer(cl, ctx, 1, w * C, GgxDistribution::make(ac.x, ac.y), nc, muC, ThinFilm{});
         labelLobes(cl, coatFrom, LobeLabel::Coat);
         w *= spectrum(1.0f) - Ec * C;
-        w *= lerp(spectrum(1.0f), nonNegative(in.c(sf::coatColor)), C);
-        const float K = saturate(1.0f - (1.0f - iorToF0(nc)) / (nc * nc));
-        const Spectrum Eb = lerp(lerp(baseColor, nonNegative(in.c(sf::subsurfaceColor)), S), baseColor * xi, M);
-        const Spectrum delta = (spectrum(1.0f) - spectrum(K)) / spectrumMax(spectrum(1.0f) - Eb * K, 1e-4f);
-        w *= lerp(spectrum(1.0f), delta, C * saturate(in.f(sf::coatDarkening)));
+        w *= coatThrough;
     }
     // Base roughness, roughened by the coat.
     const float rs = saturate(in.f(sf::specularRoughness)), rc = saturate(in.f(sf::coatRoughness));
@@ -755,7 +788,8 @@ NOVA_INLINE void buildOpenPbr(const SurfaceInputs &in, const ShadingGeometry &g,
     const Spectrum specColor = nonNegative(in.c(sf::specularColor));
     if (X > kCut) {
         const bool absorbing = !thin && in.f(sf::transmissionDepth) > 0.0f;
-        const Spectrum tintT = absorbing ? spectrum(1.0f) : nonNegative(in.c(sf::transmissionColor));
+        const Spectrum tintT = (absorbing ? spectrum(1.0f) : nonNegative(in.c(sf::transmissionColor))) *
+                               (inside ? coatThrough : spectrum(1.0f));
         pushTransmission(cl, ctx, 0, w * X, gs, gs, inside ? 1.0f / eta : eta, thin, inside ? spectrum(1.0f) : specColor,
                          tintT, mu);
         if (absorbing)

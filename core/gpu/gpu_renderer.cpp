@@ -795,6 +795,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
     for (VolumeId id = 0; id < scene.volumeCount(); ++id) {
         const VolumeRecord &rec = scene.volumeRecord(id);
         GpuVolume &g = volumes[id];
+        g.receiverSet = rec.receiverSet;
         MediumVolume m = mediumVolume(rec);
         m.layout = put(&rec.layout, 1).ptr;
         m.majorant = put(rec.majorant).ptr;

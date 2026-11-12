@@ -351,6 +351,23 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
                          "(ellipsoids are not supported yet)",
                          id.GetText());
     }
+    // Two more shapes a scale makes that Nova does not have (measured against
+    // Karma in the hunt of 0.2.0, docs/bug-audit-2026-11.md section 19): an
+    // elliptical tube and a dome whose directions are stretched.
+    if (desc.type == nova::LightType::Cylinder) {
+        const double sy = xf.GetRow3(1).GetLength(), sz = xf.GetRow3(2).GetLength(); // the length is along x
+        if (std::max(sy, sz) > 1.001 * std::min(sy, sz))
+            HD_NOVA_WARN("cylinder light %s is scaled non-uniformly across its axis; Nova renders a circular "
+                         "cylinder of the mean radius (Karma: an elliptical one)",
+                         id.GetText());
+    }
+    if (desc.type == nova::LightType::Dome) {
+        const double sx = xf.GetRow3(0).GetLength(), sy = xf.GetRow3(1).GetLength(), sz = xf.GetRow3(2).GetLength();
+        if (std::max({sx, sy, sz}) > 1.001 * std::min({sx, sy, sz}))
+            HD_NOVA_WARN("dome light %s is scaled non-uniformly; Nova turns and mirrors a dome but does not stretch "
+                         "it (Karma maps its directions through the scale)",
+                         id.GetText());
+    }
 
     // Lights under an instancer (M9 D16): one light per instance, at the
     // instance's transform (it includes the light's own); Karma lights every

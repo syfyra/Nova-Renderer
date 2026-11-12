@@ -9,6 +9,8 @@
 #include "hydra/volumeDependencies.h"
 
 #include <pxr/imaging/hd/dependencyForwardingSceneIndex.h>
+#include <pxr/imaging/hd/retainedDataSource.h>
+#include <pxr/imaging/hdsi/lightLinkingSceneIndex.h>
 
 #include <pxr/base/gf/vec3d.h>
 #include <pxr/base/gf/vec3f.h>
@@ -180,23 +182,40 @@ struct Driver {
     HdTaskSharedPtrVector tasks;
     HdEngine engine;
 
-    explicit Driver(std::string const &text = sceneText()) {
+    // `linking`: with pxr's light-linking scene index, as an application has
+    // it (volumes among its geometry types): it gives the prims of the lights'
+    // collections their categories. The stage then comes after the chain
+    // exists, as in husk, so that the index sees the prims arrive.
+    explicit Driver(std::string const &text = sceneText(), bool linking = false) {
         SdfLayerRefPtr layer = SdfLayer::CreateAnonymous(".usda");
         layer->ImportFromString(text);
         stage = UsdStage::Open(layer);
         index.reset(HdRenderIndex::New(delegate.get(), HdDriverVector()));
         UsdImagingCreateSceneIndicesInfo info;
-        info.stage = stage;
+        if (!linking)
+            info.stage = stage;
         info.addDrawModeSceneIndex = false;
         sceneIndices = UsdImagingCreateSceneIndices(info);
         // What Nova's scene index plugin adds for volumes (the test rig runs
         // no renderer plugins).
         HdSceneIndexBaseRefPtr si = HdDependencyForwardingSceneIndex::New(
             HdNovaVolumeDependencySceneIndex::New(sceneIndices.finalSceneIndex));
+        if (linking) {
+            using Tokens = HdRetainedTypedSampledDataSource<VtArray<TfToken>>;
+            si = HdsiLightLinkingSceneIndex::New(
+                si, HdRetainedContainerDataSource::New(
+                        HdsiLightLinkingSceneIndexTokens->lightPrimTypes,
+                        Tokens::New(VtArray<TfToken>{HdPrimTypeTokens->distantLight, HdPrimTypeTokens->sphereLight}),
+                        HdsiLightLinkingSceneIndexTokens->lightFilterPrimTypes, Tokens::New(VtArray<TfToken>{}),
+                        HdsiLightLinkingSceneIndexTokens->geometryPrimTypes,
+                        Tokens::New(VtArray<TfToken>{HdPrimTypeTokens->mesh, HdPrimTypeTokens->volume})));
+        }
         index->InsertSceneIndex(si, SdfPath::AbsoluteRootPath(), false);
         pass = delegate->CreateRenderPass(index.get(),
                                           HdRprimCollection(HdTokens->geometry, HdReprSelector(HdReprTokens->refined)));
         tasks.push_back(std::make_shared<SyncTask>(pass));
+        if (linking)
+            sceneIndices.stageSceneIndex->SetStage(stage);
         sync();
     }
     ~Driver() {
@@ -486,5 +505,67 @@ TEST_CASE("Instanced volumes are a scene volume per instance", "[hydra][volume][
         at = lowers(d);
         REQUIRE(at.size() == 2);
         CHECK_THAT(at[1].x - at[0].x, WithinAbs(30.0, 1e-3));
+    }
+}
+
+// Audit V-1 and V-2 (0.2.0): volumes had no categories, so a light with a
+// link of any kind lit no volume and no shadow link held for them.
+TEST_CASE("Volumes take part in light and shadow linking", "[hydra][volume][linking]") {
+    Driver d(sceneText() + R"(
+def Mesh "other"
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points = [(50, 0, 0), (51, 0, 0), (51, 1, 0), (50, 1, 0)]
+    uniform token subdivisionScheme = "none"
+}
+def DistantLight "sun"
+{
+    uniform bool collection:lightLink:includeRoot = 1
+    rel collection:lightLink:excludes = </other>
+    uniform bool collection:shadowLink:includeRoot = 0
+    rel collection:shadowLink:includes = </smoke>
+}
+def SphereLight "rim"
+{
+    uniform bool collection:lightLink:includeRoot = 0
+    rel collection:lightLink:includes = </other>
+}
+)",
+             true);
+    REQUIRE(d.scene().activeVolumes().size() == 1);
+    const nova::VolumeId id = d.scene().activeVolumes()[0];
+    const auto lightOf = [&](nova::LightType type) {
+        for (uint32_t i = 0; i < d.scene().lights().size(); ++i)
+            if (d.scene().lights()[i].type == type)
+                return i;
+        FAIL("no light of that type");
+        return 0u;
+    };
+    const uint32_t sun = lightOf(nova::LightType::Distant), rim = lightOf(nova::LightType::Sphere);
+    {
+        const nova::VolumeRecord &rec = d.scene().volumeRecord(id);
+        CHECK_FALSE(rec.categories.empty());
+        const nova::LightLinks links = d.scene().lightLinks();
+        // The sun's link holds the volume, the rim's does not.
+        CHECK(links.links(sun, rec.receiverSet));
+        CHECK_FALSE(links.links(rim, rec.receiverSet));
+        // The volume is in the sun's shadow link.
+        const uint16_t category = d.scene().lights()[sun].shadowCategory;
+        REQUIRE(category < 64);
+        CHECK(((rec.shadowMask >> category) & 1u) != 0);
+    }
+    // Taken out of both of the sun's collections.
+    UsdPrim light = d.stage->GetPrimAtPath(SdfPath("/sun"));
+    light.GetRelationship(TfToken("collection:lightLink:excludes")).SetTargets({SdfPath("/other"), SdfPath("/smoke")});
+    light.GetRelationship(TfToken("collection:shadowLink:includes")).SetTargets({SdfPath("/other")});
+    d.sync();
+    {
+        const nova::VolumeRecord &rec = d.scene().volumeRecord(id);
+        const nova::LightLinks links = d.scene().lightLinks();
+        CHECK_FALSE(links.links(sun, rec.receiverSet));
+        const uint16_t category = d.scene().lights()[sun].shadowCategory;
+        REQUIRE(category < 64);
+        CHECK(((rec.shadowMask >> category) & 1u) == 0);
     }
 }

@@ -1990,10 +1990,13 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     // while the continuation is a full ray.
     const GuideSite guided = sc.guide.active() ? guideVolumeAt(a, volume, p, x) : GuideSite{};
 
-    // Next-event estimation (no surface: the shadow ray starts at x).
+    // Next-event estimation (no surface: the shadow ray starts at x), from
+    // the lights whose link holds the volume.
+    const uint32_t volumeSet = sc.volumes[volume].receiverSet;
     {
         const GpuLightChoice choice = chooseLight(sc, st, w, p, time, sampler, x, Vec3f{0.0f, 0.0f, 0.0f},
-                                                  Receiver::None, 0u, a.depth, stream::bounce(a.depth, stream::kLight));
+                                                  Receiver::None, volumeSet, a.depth,
+                                                  stream::bounce(a.depth, stream::kLight));
         const uint32_t li = choice.light;
         if (li != kInvalidId && choice.ls.pdf > 0.0f) {
             const LightData &light = sc.lights[li];
@@ -2112,9 +2115,9 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
     w.prevP[p] = x;
     w.prevN[p] = Vec3f{0.0f, 0.0f, 0.0f};
     w.prevReceiver[p] = uint8_t(Receiver::None);
-    w.prevSet[p] = 0;
+    w.prevSet[p] = volumeSet;
     if (sc.shadowDomeCount > 0)
-        pushShadowDomeRay(a, p, PathPmf{sc, x, Vec3f{0.0f, 0.0f, 0.0f}, Receiver::None, 0u}, x, wi, pdf, 1.0f, beta,
+        pushShadowDomeRay(a, p, PathPmf{sc, x, Vec3f{0.0f, 0.0f, 0.0f}, Receiver::None, volumeSet}, x, wi, pdf, 1.0f, beta,
                           time, domeRaySeed(a.rays.filterSeed[k]), scattered, false);
     w.afterDiffuse[p] = 1; // fake caustics: a volume event counts as diffuse
     w.coneWidth[p] += w.coneSpread[p] * t;
@@ -2183,6 +2186,8 @@ extern "C" __global__ void novaShadow(const ShadowArgs a) {
         ray.depth = a.depth;
         // Background holdout volumes do not shadow background points (D15).
         ray.fromBackground = (w.shadow.rayType[i] & kRayFromBackground) != 0;
+        // A shadow-linked light: only the volumes in its category shadow.
+        ray.shadowCategory = w.shadowCategory[i];
         const uint32_t stream = stream::mediumShadow(a.depth);
         Rng rng = Rng::make(w.pixelSeed[p], w.sampleIndex[p], stream);
         DeviceMedia media{a.scene, a.settings.globals};

@@ -164,13 +164,23 @@ void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::Vo
     desc.lightSpecular = light.specular;
 }
 
+std::vector<std::string> HdNovaVolumeCategories(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &instancerId) {
+    std::vector<std::string> categories;
+    for (TfToken const &t : sd->GetCategories(id))
+        categories.push_back(t.GetString());
+    if (!instancerId.IsEmpty())
+        for (TfToken const &t : sd->GetCategories(instancerId))
+            categories.push_back(t.GetString());
+    return categories;
+}
+
 HdNovaVolume::HdNovaVolume(SdfPath const &id) : HdVolume(id) {}
 
 HdDirtyBits HdNovaVolume::GetInitialDirtyBitsMask() const {
     return HdChangeTracker::Clean | HdChangeTracker::InitRepr | HdChangeTracker::DirtyTransform |
            HdChangeTracker::DirtyVisibility | HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyMaterialId |
            HdChangeTracker::DirtyPrimID | HdChangeTracker::DirtyVolumeField | HdChangeTracker::DirtyInstancer |
-           HdChangeTracker::DirtyInstanceIndex;
+           HdChangeTracker::DirtyInstanceIndex | HdChangeTracker::DirtyCategories;
 }
 
 void HdNovaVolume::_InitRepr(TfToken const &reprToken, HdDirtyBits *) {
@@ -266,7 +276,8 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     const bool rebuild = fieldsDirty || transformDirty || materialDirty || needed != _neededFields ||
                          settingsDirty || (bits & HdChangeTracker::DirtyPrimID);
     const bool visibilityDirty = bits & HdChangeTracker::DirtyVisibility;
-    if (!(rebuild || resample || visibilityDirty || visibilitySettingsDirty)) {
+    const bool categoriesDirty = first || (bits & (HdChangeTracker::DirtyCategories | HdChangeTracker::DirtyInstancer));
+    if (!(rebuild || resample || visibilityDirty || visibilitySettingsDirty || categoriesDirty)) {
         *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
         return;
     }
@@ -371,11 +382,13 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         d.visible = visible;
         scene.updateVolume(volume, std::move(d));
     }
+    const std::vector<std::string> categories = HdNovaVolumeCategories(sd, id, GetInstancerId());
     for (size_t k = 0; k < count; ++k) {
         const nova::VolumeId volume = k == 0 ? _volumeId : _instanceVolumeIds[k - 1];
         if (!rebuild && (visibilityDirty || resample))
             scene.setVolumeVisible(volume, visible);
         scene.setVolumeVisibility(volume, _visibility); // a no-op while unchanged
+        scene.setVolumeCategories(volume, categories);  // light and shadow linking; the same
         if (k < steps.size() && !steps[k].empty())
             scene.updateVolumeMotion(volume, steps[k]);
     }

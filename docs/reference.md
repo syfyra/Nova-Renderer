@@ -277,6 +277,7 @@ Materials (M3, `docs/design/M3.md`):
 Geometry, lights and sampling (M2):
 
 - Meshes; UsdGeom implicit prims other than spheres are converted to meshes: cubes and planes as their polygons, cylinders, cones and capsules as meshes of 96 sides at the prim's size, with smooth sides (Karma subdivides UsdImaging's ten-sided cage instead, which is 6 % narrower than the prim). Concave polygons are triangulated by their shape (Hydra's own triangulation, a fan from the first vertex, covers what such a face does not), also where displacement dices them.
+- Instanced Volume prims (the prototype of a point instancer, native instances) render at every instance, and volumes take part in light linking and shadow linking as surfaces do (since 0.2.0).
 - Unbound geometry renders as it does in Karma (since 0.2.0): Houdini's plastic, which reflects 0.4 of `primvars:displayColor` diffusely plus a Phong highlight of exponent 5 that reflects 1/30, and is white where there is no display colour. The display colour is read in any interpolation (constant, per face, per point, per face-vertex). `nova:defaultMaterial` `lambert` is the matte surface of the display colour (0.18 without one) of the versions before.
 - UsdLux lights, with the semantics measured on Karma CPU (`tests/karma/compare_lights.py`):
   - distant (soft angle), dome (constant or latlong texture), sphere (`treatAsPoint` = point light), rect (optional texture), disk and cylinder lights;

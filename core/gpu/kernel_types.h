@@ -144,6 +144,7 @@ struct GpuVolume {
     int32_t velocity[3] = {-1, -1, -1};
     float velocityTime[2] = {0.0f, 0.0f};
     float volumeLimit = -1.0f;
+    uint32_t receiverSet = 0; // VolumeRecord::receiverSet (light linking)
     const shading::Instr *code = nullptr;
     uint32_t codeSize = 0;
     const float *uniforms = nullptr;

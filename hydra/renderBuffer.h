@@ -58,6 +58,21 @@ public:
         if (_format == HdFormatInt32)
             _format = HdFormatFloat32;
     }
+    // A float buffer of one or two channels whose image is half (a float or
+    // float2 var with husk:format half, half2 or half3: the two facing-ratio
+    // vars of the Karma Render Settings LOP). husk narrows buffers of three
+    // and four channels itself, but for these it wrote zeros or memory nobody
+    // had filled (measured, audit A-0 of 0.2.0); the buffer holds and reports
+    // half floats, as Karma's evidently does. The memory stays as allocated.
+    void ReportHalf() {
+        if (_format == HdFormatFloat32)
+            _format = HdFormatFloat16;
+        else if (_format == HdFormatFloat32Vec2)
+            _format = HdFormatFloat16Vec2;
+        else
+            return;
+        _pixelSize = HdDataSizeOfFormat(_format);
+    }
     // Fills every pixel with `clearValue`; a scalar (husk passes the
     // RenderVar's clear value as a float, also for vector buffers) fills
     // every channel.
