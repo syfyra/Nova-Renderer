@@ -60,6 +60,7 @@ def Scope "Render"
 {
     def RenderSettings "late"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/late>
         int2 resolution = (33, 33)
         rel products = </Render/Products/late>
@@ -69,6 +70,7 @@ def Scope "Render"
 
     def RenderSettings "centred"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/centred>
         int2 resolution = (33, 33)
         rel products = </Render/Products/centred>

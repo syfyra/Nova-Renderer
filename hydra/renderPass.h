@@ -73,6 +73,8 @@ private:
     int _height = 0;
     uint64_t _editVersion = ~0ull;
     uint64_t _sceneVersion = ~0ull;
+    int _threads = 0;          // the renderer's thread limit (nova:threads)
+    int _defaultMaterial = -1; // the scene's default material: 1 Karma's plastic, 0 the matte one, -1 not set yet
     nova::RenderSettings _settings;
     HdRenderPassAovBindingVector _bindings;
     HdNovaDenoiseConfig _denoise; // docs/design/M7.md D2, D3

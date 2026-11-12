@@ -40,6 +40,8 @@ public:
 
     // Not while rendering (prims stop the render thread before editing).
     void SetOptions(HdNovaTextureOptions const &options);
+    // The texture cache's memory limit in MB (OpenImageIO's max_memory_MB).
+    float CacheMemoryMB() const;
     HdNovaTextureOptions GetOptions() const;
 
     // Thread-safe (materials sync in parallel); not while rendering. An
@@ -85,6 +87,7 @@ private:
 
     OIIO::ImageCache *_cache = nullptr;
     OIIO::TextureSystem *_ts = nullptr;
+    float _cacheMemoryMB = 0.0f; // the cache's limit as found (restored when nova:textureCacheMemory returns to 0)
     mutable std::mutex _mutex;
     std::deque<Entry> _entries; // by TextureId; stable addresses
     std::unordered_map<std::string, nova::TextureId> _byKey;

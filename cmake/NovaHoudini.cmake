@@ -98,3 +98,21 @@ set_target_properties(nova_pxr_geomUtil PROPERTIES
 add_library(nova_geomutil INTERFACE)
 add_library(Nova::GeomUtil ALIAS nova_geomutil)
 target_link_libraries(nova_geomutil INTERFACE nova_pxr_geomUtil)
+
+# Intel Open Image Denoise ships with Houdini (OpenImageDenoise.dll and its
+# device libraries in $HFS/bin) without a target in HoudiniConfig. Only
+# hydra/ links it, delay-loaded: a render that does not denoise with it never
+# loads the library (its core is 50 MB).
+set(_implib "${HFS}/custom/houdini/dsolib/OpenImageDenoise.lib")
+if(NOT EXISTS "${_implib}")
+    message(FATAL_ERROR "Nova: ${_implib} not found")
+endif()
+add_library(nova_OpenImageDenoise SHARED IMPORTED)
+set_target_properties(nova_OpenImageDenoise PROPERTIES
+    IMPORTED_IMPLIB "${_implib}"
+    IMPORTED_LOCATION "${HFS}/bin/OpenImageDenoise.dll")
+add_library(nova_oidn INTERFACE)
+add_library(Nova::OIDN ALIAS nova_oidn)
+target_include_directories(nova_oidn SYSTEM INTERFACE "${HFS}/toolkit/include")
+target_link_libraries(nova_oidn INTERFACE nova_OpenImageDenoise delayimp)
+target_link_options(nova_oidn INTERFACE "/DELAYLOAD:OpenImageDenoise.dll")

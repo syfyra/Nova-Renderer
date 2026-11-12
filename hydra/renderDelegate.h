@@ -47,6 +47,7 @@ PXR_NAMESPACE_OPEN_SCOPE
     ((oracleThreshold, "nova:oracleThreshold"))   \
     ((denoise, "nova:denoise"))                   \
     ((denoiseAovs, "nova:denoiseAovs"))           \
+    ((denoiser, "nova:denoiser"))                 \
     ((viewportDenoise, "nova:viewportDenoise"))   \
     ((denoiseStartPasses, "nova:denoiseStartPasses")) \
     ((karmaImageFilter, "karma:global:imagefilter")) \
@@ -77,6 +78,9 @@ PXR_NAMESPACE_OPEN_SCOPE
     ((portalDomeLights, "nova:object:portalDomeLights")) \
     ((constrainRoughness, "nova:constrainRoughness")) \
     ((clampDirect, "nova:clampDirect"))           \
+    ((defaultMaterial, "nova:defaultMaterial"))   \
+    (karma)                                       \
+    (lambert)                                     \
     (mis)                                         \
     (light)                                       \
     (bsdf)                                        \
@@ -190,8 +194,19 @@ public:
     // The viewport's proxy passes (nova:iprProxyDepth, else Karma's
     // ipr_proxydepth).
     int GetIprProxyDepth() const;
+    // The render threads (nova:threads): of the `available` ones all for 0,
+    // at most n for a positive n, all but -n for a negative one; at least 1.
+    int GetThreadLimit(int available) const;
+    // Whether nova:timeLimit ended the render that is up.
+    bool TimeLimitReached() const { return _timeLimitReached; }
     // Surface texture settings (nova:texture*, nova:abortOnMissingTexture).
     HdNovaTextureOptions GetTextureOptions() const;
+    // The material of geometry without one (nova:defaultMaterial): Karma's
+    // plastic unless the setting says "lambert".
+    bool GetDefaultMaterialPlastic() const;
+    // Tests of what the matte default material renders (most of the Hydra
+    // tests) start every delegate with "lambert" as the setting's default.
+    static void SetLambertDefaultForTests(bool lambert);
     // The light path expression program of the bindings' LPE AOVs (null:
     // none); the same program while the expressions stay the same.
     std::shared_ptr<const nova::lpe::Compiled> GetLpeProgram(HdRenderPassAovBindingVector const &bindings);
@@ -316,6 +331,10 @@ private:
     std::atomic<bool> _aborted{false};       // the current render was aborted for them
     std::atomic<int64_t> _renderStartNs{0};
     std::atomic<int64_t> _renderEndNs{0};
+    // nova:timeLimit of the render that is up, in ns (0: none), and whether
+    // it ended that render.
+    std::atomic<int64_t> _timeLimitNs{0};
+    std::atomic<bool> _timeLimitReached{false};
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

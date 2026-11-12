@@ -109,6 +109,7 @@ def Scope "Render"
 {
     def RenderSettings "smooth"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/camSmooth>
         int2 resolution = (300, 300)
         int nova:samples = 16
@@ -117,6 +118,7 @@ def Scope "Render"
 
     def RenderSettings "creased"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/camCreased>
         int2 resolution = (300, 300)
         int nova:samples = 16
@@ -125,6 +127,7 @@ def Scope "Render"
 
     def RenderSettings "moving"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/camMoving>
         int2 resolution = (300, 300)
         int nova:samples = 64

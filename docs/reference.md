@@ -20,10 +20,11 @@ Render settings. In Solaris (TAB menu, Rendering > Nova), Nova's nodes follow Ka
 - **Nova (Setup)** builds what Karma (Setup) builds: a Nova Render Settings LOP, a Render Pass that uses it and a USD Render ROP set to Nova;
 - the **Nova** LOP is the all-in-one node, like the Karma LOP: Render to Disk, Render to MPlay, Render to Disk in Background, the frame range, and all the settings of Nova Render Settings;
 - the **Nova Render Settings** LOP authors a complete setup, laid out like the Karma Render Settings LOP:
-  - render settings prim, output picture, camera, resolution, the Rendering Engine (CPU or XPU: the renderer husk and the render buttons use, authored as `husk:default_delegate` as Karma's engine menu does) and samples on top;
-  - **Rendering**: Sampling, Limits, Camera Effects (motion blur, depth of field), Geometry and Shading;
-  - **Image Output**: AOVs in the groups of Karma's Standard Render Vars (the same render vars Karma authors), Utility, Cryptomatte;
-  - **Advanced**: Textures, Debug;
+  - render settings prim, output picture, camera, resolution, the Rendering Engine (CPU or XPU: the renderer husk and the render buttons use, authored as `husk:default_delegate` as Karma's engine menu does), samples with their scale and Simplified Shading (with its occlusion and fog) on top;
+  - **Rendering**: Sampling, Limits, Camera Effects (motion blur, depth of field), Lighting Effects (the light override, efficient emission sampling), Geometry and Shading (curve and point styles, caustics, the default material, dicing, visibility and holdouts, subdivision), Outlines;
+  - **Image Output**: AOVs in the groups of Karma's Standard Render Vars (the same render vars Karma authors), Utility, Cryptomatte; Filters (the denoiser); Aspect Ratio (conform policy, data window for crops and overscan, pixel aspect ratio); Metadata (EXR compression, artist, comment, hostname); Deep Output (a deep camera map next to the picture);
+  - **Advanced**: Sampling (the pixel oracle, path guiding), Performance (time limit, threads), Checkpointing (checkpoint files and resume), Textures, Debug;
+  - Aspect Ratio, Metadata, Deep Output and Checkpointing author what the Karma LOP authors there (UsdRender's framing attributes, husk's EXR options on the product, products of the types `karma:deep` and `karma:checkpoint`), so a scene moves between the two LOPs without a change in those;
 - the **Render Settings** LOP has a **Nova** tab (sparse: only values set to "Set or Create" are authored);
 - the **Render Geometry Settings** LOP has a **Nova** tab for per-object properties;
 - the viewport's display options (Render tab) carry the interactive subset.
@@ -37,7 +38,12 @@ A hip file saved before the package was installed needs *Initialize Parameters >
 | `float nova:pixelFilterScale` | 1 | Multiplies the filter's width (0: point sampling). |
 | `int nova:seed` | 0 | Varies the sample pattern between renders of the same frame. The pattern is the seed's and the frame's: husk's per-frame `randomseed` render setting (the frame times 705 600 000; computed from `houdini:frame` for hosts that do not send it) is added to the seed, so an animation's noise changes from frame to frame, as Karma's, and a frame has one pattern, rendered alone or in a sequence. |
 | `float nova:clampIndirect` | 10 | Clamps indirect light per sample against fireflies (0: off). |
+| `float nova:sampleScale` | 1 | Multiplies the samples per pixel, Nova's or Karma's (at least one remains): 0.25 previews a scene set up for its final quality. |
+| `bool nova:animateNoise` | 1 | Every frame has a noise pattern of its own. Off: every frame has the pattern of `nova:seed`. |
+| `float nova:timeLimit` | 0 | Minutes after which a frame ends with the samples it has, denoised and written as a finished one (0: no limit). Checked between passes; final renders only. |
+| `int nova:threads` | 0 | CPU threads: 0 all the host allows, n at most n, -n all but n. |
 | `int nova:maxDepth` | 64 | A safety cap on the scattering events of a path; the per-type limits decide the look. |
+| `int nova:rrStartDepth` | 3 | The scattering event from which paths of little weight are ended by chance (Russian roulette); above `nova:maxDepth`: never. |
 | `float nova:object:diffuseLimit` | 1 | Diffuse bounces (fractions dither between the neighbouring integers). Past the limit, rays only collect light. |
 | `float nova:object:reflectLimit` | 4 | Glossy and mirror reflection bounces. |
 | `float nova:object:refractLimit` | 4 | Refraction bounces. |
@@ -45,7 +51,28 @@ A hip file saved before the package was installed needs *Initialize Parameters >
 | `float nova:object:volumeLimit` | 0 | Volume scattering events. |
 | `bool nova:object:thinWallAtRefractLimit` | 1 | Past the refraction limit (up to twice it), refractions continue straight on instead of stopping. |
 | `bool nova:object:fakeCaustics` | 0 | Shadows and diffuse rays pass through this object's transmission (transparent shadows) instead of needing caustic paths. |
-| `int nova:maxMotionSteps` | 8 | The most shutter samples of moving geometry, transforms and cameras. |
+| `token nova:defaultMaterial` | `karma` | What geometry without a material renders as: `karma`, Karma's own default (Houdini's plastic: 0.4 of the display colour diffusely and a soft highlight, white without a display colour), or `lambert`, a matte surface of the display colour (0.18 without one), as up to 0.1.6. |
+| `token nova:lightOverride` | `off` | Replaces the stage's lights: `emissive` (emissive geometry only), `headlight` (along the camera's view), `dome` (a white dome). Unset: Karma's `override_lighting`. |
+| `bool nova:autoHeadlight` | 0 | A headlight for a stage without lights. Unset: Karma's `autoheadlight`. |
+| `bool nova:simplifiedShading` | 0 | Display colours by how they face the camera, with occlusion, fog and emission: no lights, no bounces. Unset: Karma's Simplified Shading (`disable_lighting`). |
+| `bool nova:ambientOcclusion` | 1 | Simplified shading darkens corners. Unset: Karma's `head_ao_samples` (0 is off). |
+| `float nova:aoDistance` | 0 | How far an occluder may be (0: any distance). Unset: Karma's `head_ao_distance`. |
+| `float nova:fogNear`, `nova:fogFar` | 0, 0 | Simplified shading's fog: none up to the first distance, all of it from the second (no fog while the second is not larger). Unset (both): Karma's `head_depthcue_z`. |
+| `color3f nova:fogColor` | (0, 0, 0) | The fog's colour. Unset: Karma's `head_depthcue_color`. |
+| `float nova:fogAlpha` | 1 | The most fog mixed in. Unset: Karma's `head_depthcue_alpha`. |
+| `bool nova:outline` | 0 | Toon lines at silhouettes, creases and steps in depth, drawn into the beauty of any render. Unset: Karma's `outline_enable`, which draws lines only in a render with an outline AOV. |
+| `color3f nova:outlineColor` | (1, 0, 1) | The lines' colour. Unset: Karma's `outline_color`. |
+| `float nova:outlineRadius` | 1 | Multiplies the objects' line widths. Unset: Karma's `outline_radius`. |
+| `float nova:outlineIntensity` | 1 | Scales the lines' weight. Unset: Karma's `outline_intensity`. |
+| `float nova:outlineFitMin`, `nova:outlineFitMax` | 0, 1 | The share of edge probes that find an edge is remapped from this range to 0..1. Unset: Karma's `outline_fitmin`, `outline_fitmax`. |
+| `float nova:outlineDepthThreshold` | 1 | Multiplies the objects' depth thresholds. Unset: Karma's `outline_depththreshold`. |
+| `float nova:outlineDepthBlend` | 0 | 0: lines as wide on screen at any distance; 1: thinner with distance. Unset: Karma's `outline_depthblend`. |
+| `int nova:outlineSamples` | 4 | Edge probes per camera sample on the first ring. Unset: Karma's `outline_primary_samples`. |
+| `int nova:outlineStencils` | 1 | Rings of edge probes. Unset: Karma's `outline_primary_stencils`. |
+| `token nova:outlinePattern` | `rings` | `rings` or `random`. Unset: Karma's `outline_mode`. |
+| `bool nova:outlineApply` | 1 | Draws the lines into the beauty (off: outline AOVs only). Unset: Karma's `outline_apply`. |
+| `bool nova:backgroundOccludesShadows` | 0 | A point of a background holdout that another background holdout hides from a light keeps that light. Unset: Karma's `bgoccludeshadow`. |
+| `int nova:maxMotionSteps` | 8 | The most shutter samples of moving geometry, transforms and cameras (at most 16). |
 | `int nova:subdivLevel` | -1 | Uniform subdivision level of subdivision surfaces (-1: from the display complexity). |
 | `int nova:subdivMaxTriangles` | 8000000 | Triangle budget of a subdivided or displaced mesh; above it, coarser tessellation and a warning. |
 | `float nova:dicingQualityScale` | 1 | Multiplies every object's displacement dicing quality. |
@@ -56,20 +83,26 @@ A hip file saved before the package was installed needs *Initialize Parameters >
 | `float nova:textureFilterWidth` | 0.25 | Texture footprint relative to the pixel's ray cone (0.25 as Karma; 0: the finest MIP level). |
 | `bool nova:abortOnMissingTexture` | 0 | Stops the render when a texture file cannot be read. |
 | `int nova:textureStats` | 0 | OpenImageIO texture statistics level printed at the end of a render. |
+| `bool nova:deepUseHitDistance` | 0 | A deep camera map's depths are distances from the eye instead of depths along the camera's axis. Unset: Karma's `dcm_usehitdist`. |
+| `bool nova:deepExcludeHoldouts` | 0 | Leaves holdout objects out of the deep camera map. Unset: Karma's `dcm_excludeholdouts`. |
+| `int nova:textureCacheMemory` | 0 | The CPU texture cache's memory in MB (0: OpenImageIO's own limit or husk's `--oiio-*` options). |
 | `token nova:lightSamplingMode` | `lighttree` | How a light sample picks its light: the light tree, or `uniform` (by power alone). While at the default, Karma's `karma:global:light_sampling_mode` applies. |
 | `token nova:lightStrategy` | `mis` | Debugging aid: which estimators sample direct light. (`mis`, `light`, `bsdf`) |
 | `token nova:pixelOracle` | `uniform` | `variance`: adaptive sampling; Samples is then the maximum. |
 | `int nova:oracleMinSamples` | -1 | Samples before a pixel may stop (-1: max(16, square root of Samples)). |
 | `float nova:oracleThreshold` | 0.01 | The variance oracle's noise level. |
-| `bool nova:denoise` | 0 | Denoises the final frame (OptiX). |
-| `string nova:denoiseAovs` | `C` | The AOVs it denoises, by name. |
+| `bool nova:denoise` | 0 | Denoises the final frame. |
+| `token nova:denoiser` | `auto` | `optix` (NVIDIA OptiX), `oidn` (Intel Open Image Denoise) or `auto`: OptiX where it can run, Open Image Denoise elsewhere. Unset or `auto`: the engine of Karma's Denoiser menu, if it names one. |
+| `token nova:denoiseQuality` | `auto` | Open Image Denoise's filter: `fast`, `balanced`, `high`; `auto` is high for final frames and balanced in the viewport. OptiX has one quality. |
+| `bool nova:denoiseAlbedo`, `nova:denoiseNormal` | 1, 1 | The denoiser's guides, for final frames and the viewport. Unset: the switches of Karma's Denoiser for final frames. |
+| `string nova:denoiseAovs` | `C` | The AOVs it denoises, by name. `C` is also husk's own beauty on a stage without render vars. |
 | `bool nova:viewportDenoise` | 0 | Denoises the viewport (a toggle on the viewport toolbar). |
 | `int nova:denoiseStartPasses` | 4 | Passes the viewport shows noisy before denoising. |
 | `int nova:iprProxyDepth` | 2 | Viewport proxy passes after an edit (0: none). |
 | `token nova:device` | (the renderer's) | `cpu` or `xpu`: where Nova renders. Unset, Nova renders on the CPU and Nova XPU on the GPU. Not authored by the Nova LOPs. |
 | `int nova:gpuTextureBudget` | 0 | Nova XPU's texture memory in MB (0: half the GPU memory free at the first texture upload); past it finer MIP levels are left out. |
 
-The `nova:object:*` settings are the defaults of per-object properties. Constant primvars override them on a prim and its descendants:
+The `nova:object:*` settings are the defaults of per-object properties. Constant primvars override them on a prim and its descendants. Since 0.2.0 every per-object property of this table except the dielectric priority, the light portal's two and the LPE tag is also a render setting of the same name (`nova:object:curveStyle`, `nova:dicingQuality`, ...): the default of the prims that author neither Nova's nor Karma's primvar.
 
 | Primvar | Default | |
 |---|---|---|
@@ -86,7 +119,15 @@ The `nova:object:*` settings are the defaults of per-object properties. Constant
 | `int primvars:nova:object:pointStyle` | 1 | Points: 0 discs facing the ray, 1 spheres, 2 discs facing their normals. Unset: Karma's `karma:object:point_style`. |
 | `int primvars:nova:object:velocityBlur` | 0 | Meshes, curves, points: 0 no velocity blur (time samples), 1 velocity blur, 2 acceleration blur. Unset: Karma's `karma:object:vblur` (also from the render settings). |
 | `int primvars:nova:object:instanceVelocityBlur` | 0 | The same for a point instancer's instances (velocities, accelerations, angular velocities). Unset: Karma's `karma:object:instance_vblur`. |
-| `int primvars:nova:object:accelerationSamples` | 2 | Shutter samples of acceleration blur (at most `nova:maxMotionSteps`). Unset: Karma's `karma:object:geosamples`, on point instancers `instance_samples`. |
+| `int primvars:nova:object:accelerationSamples` | 2 | Shutter samples of acceleration blur (at most `nova:maxMotionSteps`, which is at most 16). Unset: Karma's `karma:object:geosamples`, on point instancers `instance_samples`. |
+| `string primvars:nova:object:renderVisibility` | `*` | The rays that see the object, in Karma's syntax (`primary`, `shadow`, `diffuse`, `reflect`, `refract`, `volume`, `sss`, `*`; a leading `-` for all but; `&` and the bar to combine): `-primary` hides it from the camera only. Unset: Karma's `karma:object:rendervisibility`. |
+| `token primvars:nova:object:holdoutMode` | `none` | `matte` (cut out of the image) or `background` (a stand-in for the plate). Unset: Karma's `karma:object:holdoutmode`. |
+| `string primvars:nova:object:lpeTag` | "" | The object's tag in light path expressions. Unset: Karma's `karma:object:lpetag`. |
+| `bool primvars:nova:object:outline` | 1 | The object gets outlines (with `nova:outline`). Unset: Karma's `karma:object:outline_enable`. |
+| `float primvars:nova:object:outlineRadius` | 0.002 | The lines' width: the tangent of the angle around a camera ray in which edges are looked for. Unset: Karma's `outline_radius`. |
+| `bool primvars:nova:object:outlineContour`, `outlineCrease`, `outlineDepth` | 1 | The line types: silhouettes, folds, steps in depth. Unset: Karma's `outline_contour`, `outline_crease`, `outline_depth`. |
+| `float primvars:nova:object:outlineCreaseThreshold` | 0.1 | 1 minus the cosine of the fold's angle from which a crease line is drawn. Unset: Karma's `outline_creasethreshold`. |
+| `float primvars:nova:object:outlineDepthThreshold` | 0.5 | A step in depth draws a line from 1 + this, times the line's radius at the surface. Unset: Karma's `outline_depththreshold`. |
 | `int primvars:nova:subdivLevel` | -1 | Uniform subdivision level of subdivision surfaces (-1: from the display complexity). |
 | `float primvars:nova:dicingQuality` | 0.5 | Displacement micropolygons per pixel edge (0.5: 2-pixel micropolygons, Karma's default). |
 | `int primvars:nova:dicingDepth` | -1 | A fixed 2^depth segments per edge instead of the camera's rate (-1: off). |
@@ -162,11 +203,11 @@ Volumes (M8, `docs/design/M8.md`):
 
 Look-dev and IPR (M7, `docs/design/M7.md`):
 
-- **NVIDIA OptiX denoiser.**
+- **Denoisers: NVIDIA OptiX and, since 0.2.0, Intel Open Image Denoise** (the library Houdini ships; `nova:denoiser`, or the engine of Karma's Denoiser menu). Open Image Denoise runs on machines without an NVIDIA GPU too; where both can run the automatic choice is OptiX. A denoiser that cannot run gives way to the other with a message.
   - Final frames in husk and `nova_cli`: `nova:denoise` with `nova:denoiseAovs` (default `C`), or the Karma Render Settings LOP's Denoiser menu (Karma's `karma:global:imagefilter`, separate `_denoise` AOVs included).
   - The viewport: the Denoise toggle on the viewport toolbar (`nova:viewportDenoise`), from `nova:denoiseStartPasses` passes on.
   - The beauty and the listed LPE AOVs denoise together, with the first-hit albedo and normal as guides. Alpha stays exact.
-  - Without an NVIDIA driver Nova renders as before and warns once: the CUDA and OptiX DLLs are loaded at run time.
+  - Without an NVIDIA driver Nova renders as before and denoises with Open Image Denoise (up to 0.1.6 it warned once and left the image as it was): the CUDA and OptiX DLLs are loaded at run time, Open Image Denoise's on its first use.
 - **Adaptive sampling** (`nova:pixelOracle` = `variance`, `nova:oracleThreshold`, `nova:oracleMinSamples`; Samples is then the maximum).
   - Each pixel stops once its noise estimate is low enough, decided at power-of-two checkpoints, so renders stay deterministic.
   - At equal error it is about 3x faster on scenes with mixed noise (glass, docs/benchmarks.md) and about even on uniformly noisy ones.
@@ -236,7 +277,7 @@ Materials (M3, `docs/design/M3.md`):
 Geometry, lights and sampling (M2):
 
 - Meshes; UsdGeom implicit prims other than spheres are converted to meshes: cubes and planes as their polygons, cylinders, cones and capsules as meshes of 96 sides at the prim's size, with smooth sides (Karma subdivides UsdImaging's ten-sided cage instead, which is 6 % narrower than the prim). Concave polygons are triangulated by their shape (Hydra's own triangulation, a fan from the first vertex, covers what such a face does not), also where displacement dices them.
-- Unbound geometry renders Lambert from `primvars:displayColor` in any interpolation (constant, per face, per point, per face-vertex).
+- Unbound geometry renders as it does in Karma (since 0.2.0): Houdini's plastic, which reflects 0.4 of `primvars:displayColor` diffusely plus a Phong highlight of exponent 5 that reflects 1/30, and is white where there is no display colour. The display colour is read in any interpolation (constant, per face, per point, per face-vertex). `nova:defaultMaterial` `lambert` is the matte surface of the display colour (0.18 without one) of the versions before.
 - UsdLux lights, with the semantics measured on Karma CPU (`tests/karma/compare_lights.py`):
   - distant (soft angle), dome (constant or latlong texture), sphere (`treatAsPoint` = point light), rect (optional texture), disk and cylinder lights;
   - UsdLuxDomeLight_1 and its `poleAxis` (`scene`, `Y`, `Z`); as in Karma the pole axis turns the dome after the light's own transform, so a rotated dome on a z-up stage is the dome of the y-up stage, turned with the stage;

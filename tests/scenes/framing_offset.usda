@@ -40,6 +40,7 @@ def Scope "Render"
 {
     def RenderSettings "control"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (600, 400)
         uniform token aspectRatioConformPolicy = "expandAperture"
@@ -50,6 +51,7 @@ def Scope "Render"
 
     def RenderSettings "expand"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (400, 400)
         uniform token aspectRatioConformPolicy = "expandAperture"
@@ -60,6 +62,7 @@ def Scope "Render"
 
     def RenderSettings "crop"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (400, 400)
         uniform token aspectRatioConformPolicy = "cropAperture"
@@ -70,6 +73,7 @@ def Scope "Render"
 
     def RenderSettings "wide"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (600, 200)
         uniform token aspectRatioConformPolicy = "expandAperture"

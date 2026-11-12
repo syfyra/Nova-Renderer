@@ -153,6 +153,7 @@ HdNovaTextureSystem::HdNovaTextureSystem() {
     _ts->attribute("flip_t", 1); // v up, as MaterialX and USD; also for UDIM rows
     _ts->attribute("gray_to_rgb", 1);
     _ts->attribute("stochastic", 3); // MIP level and anisotropic probe picked by TextureOpt::rnd (M3.9)
+    _cache->getattribute("max_memory_MB", _cacheMemoryMB);
 }
 
 HdNovaTextureSystem::~HdNovaTextureSystem() {
@@ -161,7 +162,20 @@ HdNovaTextureSystem::~HdNovaTextureSystem() {
 
 void HdNovaTextureSystem::SetOptions(HdNovaTextureOptions const &options) {
     std::lock_guard<std::mutex> lock(_mutex);
+    // nova:textureCacheMemory: the shared cache's limit, or the one it had.
+    if (options.cacheMemoryMB != _options.cacheMemoryMB && _cache) {
+        const float limit = options.cacheMemoryMB > 0 ? float(options.cacheMemoryMB) : _cacheMemoryMB;
+        if (limit > 0.0f)
+            _cache->attribute("max_memory_MB", limit);
+    }
     _options = options;
+}
+
+float HdNovaTextureSystem::CacheMemoryMB() const {
+    float limit = 0.0f;
+    if (_cache)
+        _cache->getattribute("max_memory_MB", limit);
+    return limit;
 }
 
 HdNovaTextureOptions HdNovaTextureSystem::GetOptions() const {

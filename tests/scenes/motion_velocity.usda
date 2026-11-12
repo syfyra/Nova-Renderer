@@ -210,6 +210,7 @@ def Scope "Render"
 {
     def RenderSettings "settings"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (400, 240)
         int nova:samples = 64
@@ -221,6 +222,7 @@ def Scope "Render"
     # sets nothing ("still" blurs, "overridden" stays sharp).
     def RenderSettings "karmaDefault"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (400, 240)
         int nova:samples = 64
@@ -232,6 +234,7 @@ def Scope "Render"
 
     def RenderSettings "nomotion"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (400, 240)
         int nova:samples = 16

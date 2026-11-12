@@ -20,7 +20,7 @@ struct HdNovaDenoiseRequest {
     bool enabled = false;
     std::vector<std::string> aovs; // bound AOV names (husk names), denoised in place
     bool albedo = true, normal = true; // guides
-    std::string engine;                // Karma's engine name ("optix", "oidn")
+    std::string engine;                // Karma's engine name ("optix", "oidn"; empty: none named)
     bool operator==(const HdNovaDenoiseRequest &) const = default;
 };
 
@@ -31,6 +31,16 @@ struct HdNovaDenoiseConfig {
     bool viewport = false;
     bool viewportDenoise = false;
     int startPasses = 4;
+    // The denoiser to use, for final frames and the viewport: "optix",
+    // "oidn", or empty for the automatic choice (nova:denoiser when it names
+    // one, else the engine of Karma's image filter).
+    std::string engine;
+    // Open Image Denoise's quality: 0 fast, 1 balanced, 2 high; -1 by the
+    // kind of render (high for final frames, balanced in the viewport).
+    int quality = -1;
+    // The viewport's guides (nova:denoiseAlbedo, nova:denoiseNormal; the
+    // final frame's are in `final`).
+    bool viewportAlbedo = true, viewportNormal = true;
     bool operator==(const HdNovaDenoiseConfig &) const = default;
 };
 
@@ -85,9 +95,14 @@ std::vector<std::string> HdNovaSplitAovNames(std::string const &names);
 // Denoises `buffers` (float or half, 3 or 4 channels, the film's size) in
 // place: the film's beauty is the AOV model's beauty layer, every buffer an
 // extra layer with its kernels; the guides are the film's first-hit albedo
-// and normal. False (with one warning per process) when the denoiser is
-// unavailable or fails; the buffers are then unchanged.
+// and normal. `engine`: "optix" (NVIDIA OptiX), "oidn" (Intel Open Image
+// Denoise) or empty for the automatic choice, OptiX where it can run and
+// Open Image Denoise elsewhere; an engine that cannot run gives way to the
+// other with one warning. `quality`: Open Image Denoise's filter quality (0
+// fast, 1 balanced, 2 high; OptiX has one). False (with one warning per
+// process) when no denoiser can run or it fails; the buffers are then
+// unchanged.
 bool HdNovaDenoiseBuffers(nova::Film const &film, std::vector<HdNovaRenderBuffer *> const &buffers, bool albedo,
-                          bool normal);
+                          bool normal, std::string const &engine = std::string(), int quality = 2);
 
 PXR_NAMESPACE_CLOSE_SCOPE

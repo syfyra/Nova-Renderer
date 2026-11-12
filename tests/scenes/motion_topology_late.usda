@@ -84,6 +84,7 @@ def Scope "Render"
 {
     def RenderSettings "late"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (400, 120)
         int nova:samples = 16

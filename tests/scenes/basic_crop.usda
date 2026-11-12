@@ -13,6 +13,7 @@ def Scope "Render"
 {
     def RenderSettings "crop"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (640, 427)
         float4 dataWindowNDC = (0.25, 0.3, 0.7, 0.8)
@@ -21,6 +22,7 @@ def Scope "Render"
 
     def RenderSettings "full"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (640, 427)
         int nova:samples = 16

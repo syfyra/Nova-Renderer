@@ -100,19 +100,26 @@ bool HdNovaPrimvarToFloats(VtValue const &value, int *width, std::vector<float> 
 }
 
 std::string HdNovaObjectLpeTag(HdSceneDelegate *sd, SdfPath const &id) {
-    static const TfToken name("karma:object:lpetag");
+    // Nova's name (0.2.0) before Karma's.
+    static const TfToken nova("nova:object:lpeTag"), karma("karma:object:lpetag");
+    std::string tags[2];
+    bool found[2] = {false, false};
     for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant)) {
-        if (d.name != name)
+        if (d.name != nova && d.name != karma)
             continue;
-        const VtValue v = sd->Get(id, name);
+        const int k = d.name == nova ? 0 : 1;
+        const VtValue v = sd->Get(id, d.name);
         if (v.IsHolding<std::string>())
-            return v.UncheckedGet<std::string>();
-        if (v.IsHolding<TfToken>())
-            return v.UncheckedGet<TfToken>().GetString();
-        if (v.IsHolding<VtArray<std::string>>() && v.UncheckedGet<VtArray<std::string>>().size() == 1)
-            return v.UncheckedGet<VtArray<std::string>>()[0];
+            tags[k] = v.UncheckedGet<std::string>();
+        else if (v.IsHolding<TfToken>())
+            tags[k] = v.UncheckedGet<TfToken>().GetString();
+        else if (v.IsHolding<VtArray<std::string>>() && v.UncheckedGet<VtArray<std::string>>().size() == 1)
+            tags[k] = v.UncheckedGet<VtArray<std::string>>()[0];
+        else
+            continue;
+        found[k] = true;
     }
-    return {};
+    return found[0] ? tags[0] : tags[1];
 }
 
 nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &id, HdNovaObjectDefaults const &defaults) {
@@ -285,13 +292,13 @@ int HdNovaRenderVisibilityValue(VtValue const &value, std::string const &where) 
     std::string text;
     if (value.IsEmpty() || !textOf(value, text)) {
         if (!value.IsEmpty())
-            warnOnce(where + ": karma:object:rendervisibility is not a string; it is ignored");
+            warnOnce(where + ": the render visibility is not a string; it is ignored");
         return -1;
     }
     uint8_t mask = nova::kVisibleAll;
     std::string error;
     if (!nova::parseRenderVisibility(text, mask, &error)) {
-        warnOnce(where + ": karma:object:rendervisibility \"" + text + "\" (" + error + ") is ignored");
+        warnOnce(where + ": the render visibility \"" + text + "\" (" + error + ") is ignored");
         return -1;
     }
     return mask;
@@ -309,21 +316,31 @@ int HdNovaHoldoutModeValue(VtValue const &value, std::string const &where) {
     }
     nova::HoldoutMode mode;
     if (!nova::parseHoldoutMode(text, mode)) {
-        warnOnce(where + ": karma:object:holdoutmode \"" + text + "\" is not None, Matte or Background; it is ignored");
+        warnOnce(where + ": the holdout mode \"" + text + "\" is not None, Matte or Background; it is ignored");
         return -1;
     }
     return int(mode);
 }
 
 nova::ObjectVisibility HdNovaObjectVisibility(HdSceneDelegate *sd, SdfPath const &id) {
-    static const TfToken visibility("karma:object:rendervisibility"), holdout("karma:object:holdoutmode");
-    nova::ObjectVisibility o;
+    static const TfToken visibility("karma:object:rendervisibility"), holdout("karma:object:holdoutmode"),
+        novaVisibility("nova:object:renderVisibility"), novaHoldout("nova:object:holdoutMode");
+    // Nova's names (0.2.0) before Karma's.
+    nova::ObjectVisibility o, own;
     for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant)) {
         if (d.name == visibility)
             o.mask = int16_t(HdNovaRenderVisibilityValue(sd->Get(id, d.name), id.GetString()));
         else if (d.name == holdout)
             o.holdout = int8_t(HdNovaHoldoutModeValue(sd->Get(id, d.name), id.GetString()));
+        else if (d.name == novaVisibility)
+            own.mask = int16_t(HdNovaRenderVisibilityValue(sd->Get(id, d.name), id.GetString()));
+        else if (d.name == novaHoldout)
+            own.holdout = int8_t(HdNovaHoldoutModeValue(sd->Get(id, d.name), id.GetString()));
     }
+    if (own.mask >= 0)
+        o.mask = own.mask;
+    if (own.holdout >= 0)
+        o.holdout = own.holdout;
     return o;
 }
 
@@ -332,29 +349,39 @@ nova::OutlineOverrides HdNovaOutlineValues(std::function<VtValue(TfToken const &
         contour("karma:object:outline_contour"), crease("karma:object:outline_crease"),
         creaseThreshold("karma:object:outline_creasethreshold"), depth("karma:object:outline_depth"),
         depthThreshold("karma:object:outline_depththreshold");
+    // Nova's names (0.2.0) before Karma's.
+    static const TfToken novaEnable("nova:object:outline"), novaRadius("nova:object:outlineRadius"),
+        novaContour("nova:object:outlineContour"), novaCrease("nova:object:outlineCrease"),
+        novaCreaseThreshold("nova:object:outlineCreaseThreshold"), novaDepth("nova:object:outlineDepth"),
+        novaDepthThreshold("nova:object:outlineDepthThreshold");
     nova::OutlineOverrides o;
-    const auto flag = [&](TfToken const &name, int8_t &out) {
-        if (const auto v = HdNovaFlag(get(name)))
+    const auto flag = [&](TfToken const &nova, TfToken const &name, int8_t &out) {
+        if (const auto v = HdNovaFlag(get(nova)))
             out = *v ? 1 : 0;
+        else if (const auto k = HdNovaFlag(get(name)))
+            out = *k ? 1 : 0;
     };
-    const auto number = [&](TfToken const &name, float &out) {
-        if (const auto v = HdNovaNumber(get(name)); v && std::isfinite(*v))
+    const auto number = [&](TfToken const &nova, TfToken const &name, float &out) {
+        if (const auto v = HdNovaNumber(get(nova)); v && std::isfinite(*v))
             out = float(std::max(*v, 0.0));
+        else if (const auto k = HdNovaNumber(get(name)); k && std::isfinite(*k))
+            out = float(std::max(*k, 0.0));
     };
-    flag(enable, o.enable);
-    flag(contour, o.contour);
-    flag(crease, o.crease);
-    flag(depth, o.depth);
-    number(radius, o.radius);
-    number(creaseThreshold, o.creaseThreshold);
-    number(depthThreshold, o.depthThreshold);
+    flag(novaEnable, enable, o.enable);
+    flag(novaContour, contour, o.contour);
+    flag(novaCrease, crease, o.crease);
+    flag(novaDepth, depth, o.depth);
+    number(novaRadius, radius, o.radius);
+    number(novaCreaseThreshold, creaseThreshold, o.creaseThreshold);
+    number(novaDepthThreshold, depthThreshold, o.depthThreshold);
     return o;
 }
 
 nova::OutlineOverrides HdNovaObjectOutline(HdSceneDelegate *sd, SdfPath const &id) {
     std::unordered_map<TfToken, VtValue, TfToken::HashFunctor> values;
     for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant))
-        if (TfStringStartsWith(d.name.GetString(), "karma:object:outline_"))
+        if (TfStringStartsWith(d.name.GetString(), "karma:object:outline_") ||
+            TfStringStartsWith(d.name.GetString(), "nova:object:outline"))
             values[d.name] = sd->Get(id, d.name);
     if (values.empty())
         return {};

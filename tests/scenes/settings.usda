@@ -1,0 +1,212 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# The render settings of 0.2.0 by what they do to an image
+# (tests/husk/check_settings.py). A ground of display colour 0.5 fills the
+# frame, seen from 10 units above through an orthographic camera (20 pixels
+# per unit); a cube of display colour (0.2, 0.6, 0.4) stands in the middle,
+# its top 8 units from the camera; a small red cube to the left is hidden
+# from camera rays by its own primvar and still shadows the ground under the
+# sun at the zenith. No materials: every settings prim renders the matte
+# default material, so a surface of albedo a facing a headlight is 2 a / pi.
+def Xform "World"
+{
+    def Mesh "ground"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-4, 0, 3), (4, 0, 3), (4, 0, -3), (-4, 0, -3)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:displayColor = [(0.5, 0.5, 0.5)]
+    }
+
+    def Cube "box"
+    {
+        double size = 2
+        color3f[] primvars:displayColor = [(0.2, 0.6, 0.4)]
+        double3 xformOp:translate = (0, 1, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Cube "ghost"
+    {
+        double size = 1
+        color3f[] primvars:displayColor = [(1, 0, 0)]
+        string primvars:nova:object:renderVisibility = "-primary" (
+            interpolation = "constant"
+        )
+        double3 xformOp:translate = (-3, 0.5, 2)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    def DistantLight "sun"
+    {
+        float inputs:intensity = 3.14159265
+        float inputs:angle = 1
+        bool inputs:normalize = 1
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 80
+        float verticalAperture = 60
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 10, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "base"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        token nova:defaultMaterial = "lambert"
+    }
+
+    # A quarter of the samples.
+    def RenderSettings "scale"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        float nova:sampleScale = 0.25
+        token nova:defaultMaterial = "lambert"
+    }
+
+    # More samples than any machine renders in two seconds.
+    def RenderSettings "limit"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 1000000
+        float nova:timeLimit = 0.03
+        token nova:defaultMaterial = "lambert"
+    }
+
+    # The same noise on every frame.
+    def RenderSettings "still"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 4
+        bool nova:animateNoise = 0
+        token nova:defaultMaterial = "lambert"
+    }
+
+    def RenderSettings "moving"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 4
+        token nova:defaultMaterial = "lambert"
+    }
+
+    def RenderSettings "headlight"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 16
+        token nova:lightOverride = "headlight"
+        token nova:defaultMaterial = "lambert"
+    }
+
+    def RenderSettings "dome"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        token nova:lightOverride = "dome"
+        token nova:defaultMaterial = "lambert"
+    }
+
+    # The display colours by how they face the camera, in a fog that is half
+    # there at the ground and a quarter at the cube's top.
+    def RenderSettings "simplified"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 16
+        bool nova:simplifiedShading = 1
+        bool nova:ambientOcclusion = 0
+        float nova:fogNear = 6
+        float nova:fogFar = 14
+        color3f nova:fogColor = (0, 0, 1)
+        token nova:defaultMaterial = "lambert"
+    }
+
+    def RenderSettings "occlusion"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        bool nova:simplifiedShading = 1
+        float nova:aoDistance = 1.5
+        token nova:defaultMaterial = "lambert"
+    }
+
+    # Red lines, 0.2 units wide at the ground, without an outline AOV.
+    def RenderSettings "outline"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 16
+        bool nova:outline = 1
+        color3f nova:outlineColor = (1, 0, 0)
+        float nova:outlineRadius = 10
+        token nova:defaultMaterial = "lambert"
+    }
+
+    def RenderSettings "matte"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 4
+        token nova:object:holdoutMode = "matte"
+        token nova:defaultMaterial = "lambert"
+    }
+
+    def RenderSettings "phantom"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 4
+        string nova:object:renderVisibility = "-primary"
+        token nova:defaultMaterial = "lambert"
+    }
+
+    # One sample (each takes the sun or the sky), and the same denoised:
+    # husk's own beauty (no render vars).
+    def RenderSettings "noisy"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 1
+        token nova:defaultMaterial = "lambert"
+    }
+
+    def RenderSettings "denoised"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 1
+        bool nova:denoise = 1
+        token nova:denoiser = "oidn"
+        token nova:defaultMaterial = "lambert"
+    }
+}

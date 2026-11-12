@@ -14,10 +14,18 @@
   XPU, which the settings also author as husk's default delegate).
 
 Both share the Karma Render Settings LOP's layout: the render settings
-prim, output picture, camera, resolution and samples on top; the tabs
-Rendering (Sampling, Limits, Camera Effects, Geometry and Shading), Image
-Output (AOVs in the groups of Karma's Standard Render Vars LOP, the
-cryptomattes) and Advanced (Textures, Debug).
+prim, output picture, camera, resolution, samples and Simplified Shading on
+top; the tabs Rendering (Sampling, Limits, Camera Effects, Lighting Effects,
+Geometry and Shading, Outlines), Image Output (AOVs in the groups of Karma's
+Standard Render Vars LOP, the cryptomattes; Filters, Aspect Ratio, Metadata,
+Deep Output) and Advanced (Sampling, Performance, Checkpointing, Textures,
+Debug).
+
+Aspect Ratio, Metadata, Deep Output and Checkpointing are not Nova settings
+but what the Karma LOP authors there, which Nova renders the same: UsdRender's
+conform policy, data window and pixel aspect ratio, husk's EXR options on the
+product, and two more render products of the types karma:deep and
+karma:checkpoint (OUTPUT below).
 
 Inside Nova Render Settings is a plain chain of stock LOPs whose parameters
 reference the HDA's, so the stage it authors is exactly what those LOPs
@@ -50,9 +58,65 @@ ICON_FILE = os.path.join(HERE, '..', 'package', 'config', 'Icons', 'NOVA_logo.sv
 enc = hou.text.encodeParm
 
 # Where each render setting goes: (tab, sub-tab[, collapsible group]);
-# ('header',) puts it above the tabs, next to the camera and resolution.
+# ('header',) puts it above the tabs, next to the camera and resolution,
+# ('header', group) into a collapsible group there (as the Karma LOP's
+# Simplified Shading with its occlusion and fog).
 PLACE = {
     'nova:samples': ('header',),
+    'nova:sampleScale': ('header',),
+    'nova:simplifiedShading': ('header',),
+    'nova:ambientOcclusion': ('header', 'Simplified Shading'),
+    'nova:aoDistance': ('header', 'Simplified Shading'),
+    'nova:fogNear': ('header', 'Simplified Shading'),
+    'nova:fogFar': ('header', 'Simplified Shading'),
+    'nova:fogColor': ('header', 'Simplified Shading'),
+    'nova:fogAlpha': ('header', 'Simplified Shading'),
+    'nova:animateNoise': ('Rendering', 'Sampling'),
+    'nova:rrStartDepth': ('Rendering', 'Limits'),
+    'nova:object:velocityBlur': ('Rendering', 'Camera Effects', 'Motion Blur'),
+    'nova:object:instanceVelocityBlur': ('Rendering', 'Camera Effects', 'Motion Blur'),
+    'nova:object:accelerationSamples': ('Rendering', 'Camera Effects', 'Motion Blur'),
+    'nova:lightOverride': ('Rendering', 'Lighting Effects'),
+    'nova:autoHeadlight': ('Rendering', 'Lighting Effects'),
+    'nova:object:lightSource': ('Rendering', 'Lighting Effects'),
+    'nova:defaultMaterial': ('Rendering', 'Geometry and Shading', 'Shading'),
+    'nova:object:curveStyle': ('Rendering', 'Geometry and Shading'),
+    'nova:object:pointStyle': ('Rendering', 'Geometry and Shading'),
+    'nova:object:widthScale': ('Rendering', 'Geometry and Shading'),
+    'nova:dicingQuality': ('Rendering', 'Geometry and Shading', 'Dicing'),
+    'nova:dicingDepth': ('Rendering', 'Geometry and Shading', 'Dicing'),
+    'nova:displacement': ('Rendering', 'Geometry and Shading', 'Dicing'),
+    'nova:object:renderVisibility': ('Rendering', 'Geometry and Shading', 'Visibility'),
+    'nova:object:holdoutMode': ('Rendering', 'Geometry and Shading', 'Visibility'),
+    'nova:backgroundOccludesShadows': ('Rendering', 'Geometry and Shading', 'Visibility'),
+    'nova:outline': ('Rendering', 'Outlines'),
+    'nova:outlineColor': ('Rendering', 'Outlines'),
+    'nova:outlineRadius': ('Rendering', 'Outlines'),
+    'nova:outlineIntensity': ('Rendering', 'Outlines'),
+    'nova:outlineFitMin': ('Rendering', 'Outlines'),
+    'nova:outlineFitMax': ('Rendering', 'Outlines'),
+    'nova:outlineDepthThreshold': ('Rendering', 'Outlines'),
+    'nova:outlineApply': ('Rendering', 'Outlines'),
+    'nova:outlineDepthBlend': ('Rendering', 'Outlines', 'Advanced'),
+    'nova:outlineSamples': ('Rendering', 'Outlines', 'Advanced'),
+    'nova:outlineStencils': ('Rendering', 'Outlines', 'Advanced'),
+    'nova:outlinePattern': ('Rendering', 'Outlines', 'Advanced'),
+    'nova:object:outline': ('Rendering', 'Outlines', 'Objects'),
+    'nova:object:outlineRadius': ('Rendering', 'Outlines', 'Objects'),
+    'nova:object:outlineContour': ('Rendering', 'Outlines', 'Objects'),
+    'nova:object:outlineCrease': ('Rendering', 'Outlines', 'Objects'),
+    'nova:object:outlineCreaseThreshold': ('Rendering', 'Outlines', 'Objects'),
+    'nova:object:outlineDepth': ('Rendering', 'Outlines', 'Objects'),
+    'nova:object:outlineDepthThreshold': ('Rendering', 'Outlines', 'Objects'),
+    'nova:denoiser': ('Image Output', 'Filters', 'Denoiser'),
+    'nova:denoiseQuality': ('Image Output', 'Filters', 'Denoiser'),
+    'nova:denoiseAlbedo': ('Image Output', 'Filters', 'Denoiser'),
+    'nova:denoiseNormal': ('Image Output', 'Filters', 'Denoiser'),
+    'nova:timeLimit': ('Advanced', 'Performance'),
+    'nova:threads': ('Advanced', 'Performance'),
+    'nova:textureCacheMemory': ('Advanced', 'Textures'),
+    'nova:deepUseHitDistance': ('Image Output', 'Deep Output'),
+    'nova:deepExcludeHoldouts': ('Image Output', 'Deep Output'),
     'nova:pixelFilter': ('Rendering', 'Sampling'),
     'nova:pixelFilterScale': ('Rendering', 'Sampling'),
     'nova:seed': ('Rendering', 'Sampling'),
@@ -97,9 +161,86 @@ PLACE = {
     'nova:guidingClearBuffers': ('Advanced', 'Sampling', 'Indirect Guiding'),
     'nova:lightStrategy': ('Advanced', 'Debug'),
 }
-TABS = (('Rendering', ('Sampling', 'Limits', 'Camera Effects', 'Geometry and Shading')),
-        ('Image Output', ('AOVs (Render Vars)', 'Filters')),
-        ('Advanced', ('Sampling', 'Textures', 'Debug')))
+TABS = (('Rendering', ('Sampling', 'Limits', 'Camera Effects', 'Lighting Effects', 'Geometry and Shading', 'Outlines')),
+        ('Image Output', ('AOVs (Render Vars)', 'Filters', 'Aspect Ratio', 'Metadata', 'Deep Output')),
+        ('Advanced', ('Sampling', 'Performance', 'Checkpointing', 'Textures', 'Debug')))
+# What the Karma LOP authors beside its own settings, by sub-tab: (name, label,
+# kind, default[, menu]). The inner LOPs take these in build_settings().
+EXR_COMPRESSION = (('none', 'No Compression'), ('dwab', 'DWA-B, Lossy and Fast (256-scanline block)'),
+                   ('dwaa', 'DWA-A, Lossy and Fast (32-scanline block)'), ('piz', 'PIZ Wavelet'),
+                   ('rle', 'Runlength Encoding'), ('zips', 'ZIP (Single scanline)'), ('zip', 'ZIP (Multi-scanline blocks)'),
+                   ('pix', 'PXR24 (32 bit float compression, lossy)'), ('b44', 'B44 (4x4 block compression, lossy)'),
+                   ('b44a', 'B44A (4x4 block extra compression, lossy)'))
+OUTPUT = {
+    'Aspect Ratio': (
+        ('aspectRatioConformPolicy', 'Aspect Ratio Conform Policy', 'menu', 'expandAperture',
+         (('expandAperture', 'Expand Aperture'), ('cropAperture', 'Crop Aperture'),
+          ('adjustApertureWidth', 'Adjust Aperture Width'), ('adjustApertureHeight', 'Adjust Aperture Height'),
+          ('adjustPixelAspectRatio', 'Adjust Pixel Aspect Ratio')),
+         'What gives when the image and the camera\'s aperture have different aspect ratios.'),
+        ('dataWindowNDC', 'Data Window NDC', 'float4', (0.0, 0.0, 1.0, 1.0), None,
+         'The part of the image that is rendered, as left, bottom, right and top in 0..1: a smaller window is a crop, '
+         'values outside 0..1 are overscan.'),
+        ('pixelAspectRatio', 'Pixel Aspect Ratio', 'float', 1.0, None, 'The width of a pixel over its height.'),
+    ),
+    'Metadata': (
+        ('image_exr_compression', 'EXR Compression', 'menu', 'zips', EXR_COMPRESSION, 'The compression of the EXR husk writes.'),
+        ('image_dwa_compression', 'DWA Compression Level', 'int', 85, None, 'The level of the two DWA compressions.'),
+        ('image_artist', 'Artist', 'string', '', None, 'The EXR\'s artist metadata.'),
+        ('image_comment', 'Comment', 'string', '', None, 'The EXR\'s comment metadata.'),
+        ('image_hostname', 'Hostname', 'string', '', None, 'The EXR\'s hostname metadata.'),
+    ),
+    'Deep Output': (
+        ('dcm', 'Deep Camera Map', 'toggle', False, None,
+         'Writes a deep image next to the picture: every sample with its depth, for deep compositing.'),
+        ('dcmfilename', 'DCM Filename', 'file', '$HIP/render/$HIPNAME.dcm.$F4.exr', None, 'The deep image.'),
+        ('dcmcompression', 'DCM Compression', 'int', 5, None,
+         '0 keeps every sample; higher values merge samples that are close in depth (10 about halves their number).'),
+        ('dcmofsize', 'DCM Of Size', 'intmenu', 3, (('1', 'Monochrome'), ('3', 'Full Color')),
+         'One opacity per sample, or one per colour channel.'),
+        ('dcmzbias', 'DCM Z-Bias', 'float', 0.001, None, 'Samples closer in depth than this merge.'),
+    ),
+    'Checkpointing': (
+        ('outputcheckpoint', 'Output Checkpoint Files', 'toggle', False, None,
+         'Saves the render\'s state while it renders, so that an interrupted frame can go on where it stopped. '
+         'A finished frame removes its checkpoint.'),
+        ('checkpointfile', 'Checkpoint File', 'file', '$HIP/render/$HIPNAME.$F4.checkpoint', None, 'The checkpoint.'),
+        ('savefrequency', 'Save Frequency', 'float', 60.0, None, 'Seconds between two saves.'),
+        ('resume', 'Resume From Checkpoint', 'toggle', True, None,
+         'A render that finds its checkpoint goes on from it instead of starting over.'),
+    ),
+}
+
+
+def output_templates(subtab):
+    out = []
+    entries = OUTPUT.get(subtab, ())
+    switch = entries[0][0] if entries and entries[0][2] == 'toggle' else None
+    for name, label, kind, default, menu, help_text in entries:
+        if kind == 'menu':
+            t = hou.StringParmTemplate(name, label, 1, default_value=(default,), menu_items=[v for v, _ in menu],
+                                       menu_labels=[l for _, l in menu], menu_type=hou.menuType.Normal)
+        elif kind == 'intmenu':
+            t = hou.IntParmTemplate(name, label, 1, default_value=(default,), menu_items=[v for v, _ in menu],
+                                    menu_labels=[l for _, l in menu])
+        elif kind == 'float4':
+            t = hou.FloatParmTemplate(name, label, 4, default_value=default, naming_scheme=hou.parmNamingScheme.Base1)
+        elif kind == 'float':
+            t = hou.FloatParmTemplate(name, label, 1, default_value=(default,))
+        elif kind == 'int':
+            t = hou.IntParmTemplate(name, label, 1, default_value=(default,))
+        elif kind == 'toggle':
+            t = hou.ToggleParmTemplate(name, label, default_value=default)
+        elif kind == 'file':
+            t = hou.StringParmTemplate(name, label, 1, default_value=(default,),
+                                       string_type=hou.stringParmType.FileReference, file_type=hou.fileType.Image)
+        else:
+            t = hou.StringParmTemplate(name, label, 1, default_value=(default,))
+        t.setHelp(help_text)
+        if switch and name != switch:
+            t.setConditional(hou.parmCondType.DisableWhen, '{ %s == 0 }' % switch)
+        out.append(t)
+    return out
 # The renderer of the Rendering Engine menu (docs/design/M10.md D1, as the
 # Karma LOPs' engine): an expression on a parameter path holding cpu or xpu.
 def delegate(engine):
@@ -121,10 +262,16 @@ def ident(label):
 
 def template(setting):
     name, label, kind, default = friendly(setting['key']), setting['label'], setting['type'], setting['default']
+    menu = setting.get('menu', ())
     if kind == 'int':
-        t = hou.IntParmTemplate(name, label, 1, default_value=(int(default),))
+        # With a menu: its values, as the parameter files have them.
+        t = hou.IntParmTemplate(name, label, 1, default_value=(int(default),), menu_items=[v for v, _ in menu],
+                                menu_labels=[l for _, l in menu])
     elif kind == 'float':
         t = hou.FloatParmTemplate(name, label, 1, default_value=(float(default),))
+    elif kind == 'color':
+        t = hou.FloatParmTemplate(name, label, 3, default_value=tuple(float(c) for c in default), min=0.0, max=1.0,
+                                  look=hou.parmLook.ColorSquare, naming_scheme=hou.parmNamingScheme.RGBA)
     elif kind == 'bool':
         t = hou.ToggleParmTemplate(name, label, default_value=bool(default))
     elif kind == 'token':
@@ -137,7 +284,11 @@ def template(setting):
                                    string_type=hou.stringParmType.FileReference,
                                    file_type=hou.fileType.Directory)
     else:
-        t = hou.StringParmTemplate(name, label, 1, default_value=(default,))
+        # A menu on a string fills the field ("menutype": "replace") or is the choice.
+        t = hou.StringParmTemplate(name, label, 1, default_value=(default,), menu_items=[v for v, _ in menu],
+                                   menu_labels=[l for _, l in menu],
+                                   menu_type=(hou.menuType.StringReplace if setting.get('menutype') == 'replace'
+                                              else hou.menuType.Normal))
     if 'range' in setting and kind in ('int', 'float'):
         lo, hi = setting['range']
         t.setMinValue(lo)
@@ -214,6 +365,14 @@ def layout(table, groups):
                    'The viewport renders with the renderer chosen in its menu.')
     header = [prim, picture, camera, resolution, hou.SeparatorParmTemplate('sepheader1'), engine]
     header += [template(by_key[k]) for k in by_key if PLACE[k] == ('header',)]
+    header_groups = {}
+    for k in by_key:
+        if PLACE[k][0] == 'header' and len(PLACE[k]) == 2:
+            if PLACE[k][1] not in header_groups:
+                header_groups[PLACE[k][1]] = hou.FolderParmTemplate(
+                    'group_' + ident(PLACE[k][1]), PLACE[k][1], folder_type=hou.folderType.Collapsible)
+            header_groups[PLACE[k][1]].addParmTemplate(template(by_key[k]))
+    header += list(header_groups.values())
     header.append(hou.SeparatorParmTemplate('sepheader2'))
 
     # Tabs and sub-tabs as Karma Render Settings; settings in table order.
@@ -243,13 +402,18 @@ def layout(table, groups):
                     t.setHelp('A cryptomatte of the %s, as the Karma Cryptomatte LOP authors it (rank 6).' % what.lower())
                     crypto.addParmTemplate(t)
                 sub.addParmTemplate(crypto)
+            for t in output_templates(subtab):
+                sub.addParmTemplate(t)
             groups_here = {}
             for k in by_key:
                 place = PLACE[k]
                 if place[:2] != (tab, subtab) or (subtab == 'Camera Effects' and place[2:] == ('Motion Blur',)):
                     continue
                 if len(place) == 2:
-                    sub.addParmTemplate(template(by_key[k]))
+                    t = template(by_key[k])
+                    if subtab in OUTPUT and OUTPUT[subtab][0][2] == 'toggle':
+                        t.setConditional(hou.parmCondType.DisableWhen, '{ %s == 0 }' % OUTPUT[subtab][0][0])
+                    sub.addParmTemplate(t)
                 else:
                     if place[2] not in groups_here:
                         groups_here[place[2]] = hou.FolderParmTemplate(
@@ -360,13 +524,87 @@ def build_settings(table):
     # The beauty first, then every var in the scope.
     rp.parm('orderedVars').set('`chs("../varspath")`/beauty `chs("../varspath")`/*')
 
+    # husk's EXR options on the product (the Karma LOP's Metadata tab).
+    for parm, source, text in (('driver:parameters:husk:OpenEXR:compression', 'image_exr_compression', True),
+                               ('driver:parameters:husk:OpenEXR:dwa_compression', 'image_dwa_compression', False),
+                               ('driver:parameters:husk:artist', 'image_artist', True),
+                               ('driver:parameters:husk:comment', 'image_comment', True),
+                               ('driver:parameters:husk:hostname', 'image_hostname', True)):
+        control, value = rp.parm(enc(parm + '_control')), rp.parm(enc(parm))
+        if control is None or value is None:
+            raise RuntimeError('the Render Product LOP has no parameter %s' % parm)
+        control.set('set')
+        if text:
+            value.set('`chs("../%s")`' % source)
+        else:
+            value.setExpression('ch("../%s")' % source)
+
+    # The deep camera map: a product of the type karma:deep with the picture's
+    # vars, as the Karma LOP's Deep Output authors it (docs/design/M11-P6.md).
+    deep = subnet.createNode('renderproduct', 'deep')
+    deep.setInput(0, rp)
+    deep.parm('primpath').set('`chs("../productpath")`_deep')
+    deep.parm('productType_control').set('set')
+    deep.parm('productType').set('karma:deep')
+    deep.parm('productName_control').set('set')
+    deep.parm('productName').set('`chs("../dcmfilename")`')
+    deep.parm('orderedVars_control').set('set')
+    deep.parm('orderedVars').set('`chs("../varspath")`/beauty `chs("../varspath")`/*')
+    for parm, source in (('karma:product:dcmcompression', 'dcmcompression'), ('karma:product:dcmofsize', 'dcmofsize'),
+                         ('karma:product:dcmzbias', 'dcmzbias')):
+        control, value = deep.parm(enc(parm + '_control')), deep.parm(enc(parm))
+        if control is None or value is None:
+            raise RuntimeError('the Render Product LOP has no parameter %s (Karma\'s product parameters)' % parm)
+        control.set('set')
+        value.setExpression('ch("../%s")' % source)
+    deep_on = subnet.createNode('switch', 'deep_on')
+    deep_on.setInput(0, rp)
+    deep_on.setInput(1, deep)
+    deep_on.parm('input').setExpression('ch("../dcm")')
+
+    # Checkpoints: a product of the type karma:checkpoint; its two values are
+    # plain attributes of the prim, which a Python LOP authors.
+    checkpoint = subnet.createNode('renderproduct', 'checkpoint')
+    checkpoint.setInput(0, deep_on)
+    checkpoint.parm('primpath').set('`chs("../productpath")`_checkpoint')
+    checkpoint.parm('productType_control').set('set')
+    checkpoint.parm('productType').set('karma:checkpoint')
+    checkpoint.parm('productName_control').set('set')
+    checkpoint.parm('productName').set('`chs("../checkpointfile")`')
+    checkpoint.parm('orderedVars_control').set('set')
+    checkpoint.parm('orderedVars').set('`chs("../varspath")`/beauty')
+    values = subnet.createNode('pythonscript', 'checkpoint_values')
+    values.setInput(0, checkpoint)
+    values.parm('python').set('''from pxr import Sdf
+node = hou.pwd()
+hda = node.parent()
+prim = node.editableStage().GetPrimAtPath(hda.evalParm('productpath') + '_checkpoint')
+if prim:
+    prim.CreateAttribute('saveFrequency', Sdf.ValueTypeNames.Float).Set(float(hda.evalParm('savefrequency')))
+    prim.CreateAttribute('resume', Sdf.ValueTypeNames.Bool).Set(bool(hda.evalParm('resume')))
+''')
+    checkpoint_on = subnet.createNode('switch', 'checkpoint_on')
+    checkpoint_on.setInput(0, deep_on)
+    checkpoint_on.setInput(1, values)
+    checkpoint_on.parm('input').setExpression('ch("../outputcheckpoint")')
+
     rs = subnet.createNode('rendersettings', 'settings')
-    rs.setInput(0, rp)
+    rs.setInput(0, checkpoint_on)
     rs.parm('primpath').set('`chs("../settingspath")`')
     rs.parm('camera_control').set('set')
     rs.parm('camera').set('`chs("../camera")`')
     rs.parm('products_control').set('set')
-    rs.parm('products').set('`chs("../productpath")`')
+    # The picture's product, and the deep and checkpoint products while they are on.
+    rs.parm('products').set('`chs("../productpath")` `ifs(ch("../dcm"), chs("../productpath") + "_deep", "")` '
+                            '`ifs(ch("../outputcheckpoint"), chs("../productpath") + "_checkpoint", "")`')
+    # UsdRender's framing (the Karma LOP's Aspect Ratio tab).
+    rs.parm('aspectRatioConformPolicy_control').set('set')
+    rs.parm('aspectRatioConformPolicy').set('`chs("../aspectRatioConformPolicy")`')
+    rs.parm('dataWindowNDC_control').set('set')
+    for i in '1234':
+        rs.parm('dataWindowNDC' + i).setExpression('ch("../dataWindowNDC%s")' % i)
+    rs.parm('pixelAspectRatio_control').set('set')
+    rs.parm('pixelAspectRatio').setExpression('ch("../pixelAspectRatio")')
     rs.parm('res_mode').set('manual')
     for name in ('resolution1', 'resolution2'): # locked by the default auto-height mode
         rs.parm(name).lock(False)
@@ -381,14 +619,17 @@ def build_settings(table):
         rs.parm(usd + '_control').set('set')
         rs.parm(usd).setExpression('1 - ch("../%s")' % toggle)
     for s in table:
-        control, value = rs.parm(enc(s['key'] + '_control')), rs.parm(enc(s['key']))
+        control, value = rs.parm(enc(s['key'] + '_control')), rs.parmTuple(enc(s['key']))
         if control is None or value is None:
             raise RuntimeError('the Render Settings LOP has no Nova parameter for %s (is the Nova tab there?)' % s['key'])
         control.set('set')
         if s['type'] in ('token', 'string'):
-            value.set('`chs("../%s")`' % friendly(s['key']))
+            value[0].set('`chs("../%s")`' % friendly(s['key']))
+        elif s['type'] == 'color':
+            for component, suffix in zip(value, 'rgb'):
+                component.setExpression('ch("../%s%s")' % (friendly(s['key']), suffix))
         else:
-            value.setExpression('ch("../%s")' % friendly(s['key']))
+            value[0].setExpression('ch("../%s")' % friendly(s['key']))
     subnet.node('output0').setInput(0, rs)
     subnet.layoutChildren()
 

@@ -7,6 +7,7 @@
 #include "hydra/renderPass.h"
 
 #include "hydra/denoise.h"
+#include "hydra/oidnDenoiser.h"
 #include "hydra/motion.h"
 
 #include "core/denoise/denoiser.h"
@@ -434,6 +435,106 @@ TEST_CASE("Denoise requests and buffers", "[hydra][denoise]") {
     v = static_cast<float *>(color.Map());
     double after = 0.0;
     bool alpha = true;
+    for (size_t i = 0; i < 32 * 32; ++i) {
+        after += std::fabs(v[i * 4] - 0.5);
+        alpha = alpha && v[i * 4 + 3] == 0.25f;
+    }
+    color.Unmap();
+    CHECK(after < before / 3.0);
+    CHECK(alpha);
+}
+
+// Intel Open Image Denoise, Nova's second denoiser (the library Houdini
+// ships): it runs without an NVIDIA driver, denoises every layer with the
+// guides and keeps the alpha; nova:denoiser and Karma's Denoiser menu name it.
+TEST_CASE("Open Image Denoise denoises buffers and is chosen by name", "[hydra][denoise][oidn]") {
+    // The engine of a render: Nova's setting when it names one, else Karma's menu, else the automatic choice.
+    HdNovaRenderDelegate delegate;
+    CHECK(delegate.GetDenoiseConfig().engine.empty());
+    delegate.SetRenderSetting(TfToken("karma:global:imagefilter"),
+                              VtValue(std::string(R"([["denoise", {"engine": "oidn", "aovs": ["C"]}]])")));
+    CHECK(delegate.GetDenoiseConfig().engine == "oidn");
+    CHECK(delegate.GetDenoiseConfig().final.enabled);
+    delegate.SetRenderSetting(TfToken("nova:denoiser"), VtValue(TfToken("optix")));
+    CHECK(delegate.GetDenoiseConfig().engine == "optix");
+    delegate.SetRenderSetting(TfToken("nova:denoiser"), VtValue(TfToken("auto")));
+    CHECK(delegate.GetDenoiseConfig().engine == "oidn"); // "auto" names none: Karma's
+    delegate.SetRenderSetting(TfToken("nova:denoiser"), VtValue(std::string(" OIDN ")));
+    CHECK(delegate.GetDenoiseConfig().engine == "oidn");
+
+    HdNovaOidnDenoiser &oidn = HdNovaOidnDenoiser::Shared();
+    REQUIRE(oidn.Available()); // Houdini ships the library with a CPU device
+    INFO("Open Image Denoise on " << oidn.DeviceName());
+    CHECK((oidn.DeviceName() == "CPU" || oidn.DeviceName() == "CUDA" || oidn.DeviceName() == "GPU"));
+
+    // A flat grey image with strong noise and flat guides, in two layers of different brightness.
+    const int n = 64;
+    const size_t pixels = size_t(n) * size_t(n);
+    std::vector<float> a(pixels * 4), b(pixels * 4), albedo(pixels * 3, 0.5f), normal(pixels * 3, 0.0f);
+    uint32_t h = 7u;
+    for (size_t i = 0; i < pixels; ++i) {
+        normal[i * 3 + 2] = 1.0f;
+        for (int c = 0; c < 3; ++c) {
+            h = h * 1664525u + 1013904223u;
+            const float noise = float(h >> 8) / float(1u << 24) - 0.5f;
+            a[i * 4 + size_t(c)] = 0.5f + 0.6f * noise;
+            b[i * 4 + size_t(c)] = 4.0f + 3.0f * noise;
+        }
+        a[i * 4 + 3] = 0.25f;
+        b[i * 4 + 3] = float(i % 7) / 7.0f;
+    }
+    const std::vector<float> a0 = a, b0 = b;
+    const auto deviation = [&](std::vector<float> const &v, float mean) {
+        double sum = 0.0;
+        for (size_t i = 0; i < pixels; ++i)
+            sum += std::fabs(v[i * 4] - mean);
+        return sum / double(pixels);
+    };
+    const nova::Denoiser::Layer layers[2] = {{a.data(), a.data()}, {b.data(), b.data()}}; // in place
+    REQUIRE(oidn.Denoise(n, n, layers, 2, albedo.data(), normal.data(), 2));
+    CHECK(deviation(a, 0.5f) < deviation(a0, 0.5f) / 3.0);
+    CHECK(deviation(b, 4.0f) < deviation(b0, 4.0f) / 3.0);
+    bool alpha = true;
+    for (size_t i = 0; i < pixels; ++i)
+        alpha = alpha && a[i * 4 + 3] == 0.25f && b[i * 4 + 3] == b0[i * 4 + 3];
+    CHECK(alpha);
+    // Without guides, with the albedo alone, and at the viewport's quality.
+    std::vector<float> c = a0;
+    const nova::Denoiser::Layer one{c.data(), c.data()};
+    REQUIRE(oidn.Denoise(n, n, &one, 1, nullptr, nullptr, 1));
+    CHECK(deviation(c, 0.5f) < deviation(a0, 0.5f) / 2.0);
+    c = a0;
+    REQUIRE(oidn.Denoise(n, n, &one, 1, albedo.data(), nullptr, 0)); // the fast filter
+    CHECK(deviation(c, 0.5f) < deviation(a0, 0.5f) / 3.0);
+    c = a0;
+    REQUIRE(oidn.Denoise(n, n, &one, 1, nullptr, normal.data(), 2)); // a normal without an albedo is left out
+    CHECK(deviation(c, 0.5f) < deviation(a0, 0.5f) / 2.0);
+
+    // Through the delegate's buffers, by name.
+    nova::Film film;
+    film.resize(32, 32);
+    film.samples = 4;
+    std::fill(film.count.begin(), film.count.end(), 4u);
+    HdNovaRenderBuffer color(SdfPath("/color"), nullptr);
+    REQUIRE(color.Allocate(GfVec3i(32, 32, 1), HdFormatFloat32Vec4, false));
+    float *v = static_cast<float *>(color.Map());
+    double before = 0.0;
+    for (size_t i = 0; i < 32 * 32; ++i) {
+        h = h * 1664525u + 1013904223u;
+        const float noise = float(h >> 8) / float(1u << 24);
+        v[i * 4 + 0] = v[i * 4 + 1] = v[i * 4 + 2] = 0.5f + (noise - 0.5f) * 0.6f;
+        v[i * 4 + 3] = 0.25f;
+        film.colorSum[i] = nova::Spectrum{v[i * 4], v[i * 4 + 1], v[i * 4 + 2]} * 4.0f;
+        film.alphaSum[i] = 1.0f;
+        film.albedo[i] = nova::Spectrum{0.5f, 0.5f, 0.5f};
+        film.normal[i] = nova::Vec3f{0.0f, 0.0f, 1.0f};
+        before += std::fabs(v[i * 4] - 0.5);
+    }
+    color.Unmap();
+    REQUIRE(HdNovaDenoiseBuffers(film, {&color}, true, true, "oidn", 2));
+    v = static_cast<float *>(color.Map());
+    double after = 0.0;
+    alpha = true;
     for (size_t i = 0; i < 32 * 32; ++i) {
         after += std::fabs(v[i * 4] - 0.5);
         alpha = alpha && v[i * 4 + 3] == 0.25f;

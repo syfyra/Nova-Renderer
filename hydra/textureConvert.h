@@ -46,10 +46,11 @@ struct HdNovaTextureOptions {
     float filterWidth = 0.25f;   // nova:textureFilterWidth (footprint scale, M3.9)
     bool abortOnMissing = false; // nova:abortOnMissingTexture
     int stats = 0;               // nova:textureStats
+    int cacheMemoryMB = 0;       // nova:textureCacheMemory (0: the cache's own limit)
 
     bool operator==(HdNovaTextureOptions const &o) const {
         return autoTx == o.autoTx && cacheDir == o.cacheDir && blur == o.blur && filterWidth == o.filterWidth &&
-               abortOnMissing == o.abortOnMissing && stats == o.stats;
+               abortOnMissing == o.abortOnMissing && stats == o.stats && cacheMemoryMB == o.cacheMemoryMB;
     }
 };
 
