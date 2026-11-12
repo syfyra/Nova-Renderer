@@ -22,7 +22,20 @@ namespace nova {
 // External: VEX through the CVEX bridge (docs/design/M5.md D7); the block holds
 // the shader's parameters, the integrator fills the closure.
 // Hair: Karma Hair's controls over the Chiang fibre (docs/design/M9.md D6).
-enum class SurfaceModel : uint8_t { Lambert, StandardSurface, OpenPBR, Unlit, UsdPreview, Graph, External, Hair };
+// Plastic: Houdini's plastic, baseWeight baseColor diffuse() + specularWeight
+// specularColor phong(1 / specularRoughness): Karma's material for geometry
+// without one (docs/bug-audit-2026-11.md section 17).
+enum class SurfaceModel : uint8_t {
+    Lambert,
+    StandardSurface,
+    OpenPBR,
+    Unlit,
+    UsdPreview,
+    Graph,
+    External,
+    Hair,
+    Plastic
+};
 
 // Every input: name and float count. The order defines SurfaceField and the
 // layout of SurfaceInputs::v. Vectors are world space; a zero normal or
@@ -121,6 +134,7 @@ SurfaceInputs openPbrDefaults();
 SurfaceInputs unlitDefaults();
 SurfaceInputs usdPreviewDefaults();
 SurfaceInputs lambertDefaults(Spectrum color = spectrum(0.18f));
+SurfaceInputs plasticDefaults(); // as Karma renders geometry without a material
 SurfaceInputs hairDefaults(); // Karma Hair's (kma_hair)
 
 // The geometry a closure is built for (world space, unit vectors).

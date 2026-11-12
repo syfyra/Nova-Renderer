@@ -821,6 +821,23 @@ NOVA_INLINE void buildLambertClosure(Spectrum albedo, const ShadingGeometry &g, 
 
 namespace closure_detail {
 
+// Houdini's plastic (the VEX shader of that name): a Lambert lobe and a Phong
+// lobe, added. Neither needs a valid specular reflection of its own, so the
+// frame is the shading normal on the viewer's side, as for the Lambert model.
+NOVA_INLINE void buildPlastic(const SurfaceInputs &in, const ShadingGeometry &g, Vec3f wo, ClosureList &cl) {
+    namespace sf = surface_field;
+    const Vec3f ngf = dot(wo, g.ng) < 0.0f ? -g.ng : g.ng;
+    cl.frame[0] = cl.frame[1] = Frame::fromNormal(dot(g.n, ngf) < 0.0f ? -g.n : g.n);
+    pushLambert(cl, 0, spectrum(nova::fmax(in.f(sf::baseWeight), 0.0f)), nonNegative(in.c(sf::baseColor)), false);
+    const Spectrum specular = nonNegative(in.c(sf::specularColor)) * nova::fmax(in.f(sf::specularWeight), 0.0f);
+    if (Lobe *l = cl.push(LobeType::Phong, 0, specular, luminance(specular), false)) {
+        l->phong = PhongLobe{1.0f / nova::fmax(in.f(sf::specularRoughness), 1e-3f)};
+        cl.addAlbedo(*l, specular);
+    }
+    cl.emission = emissionOf(in);
+    cl.finalize();
+}
+
 // The native models into a cleared list (ng set).
 NOVA_INLINE void buildNativeClosure(const SurfaceInputs &in, const ShadingGeometry &g, Vec3f wo, const ClosureContext &ctx,
                                     ClosureList &cl) {
@@ -852,6 +869,9 @@ NOVA_INLINE void buildNativeClosure(const SurfaceInputs &in, const ShadingGeomet
         return;
     case SurfaceModel::Hair:
         buildHair(in, g, wo, cl);
+        return;
+    case SurfaceModel::Plastic:
+        buildPlastic(in, g, wo, cl);
         return;
     case SurfaceModel::External: // the integrator replays the bridge's results (closure.h)
         return;

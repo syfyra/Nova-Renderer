@@ -87,4 +87,10 @@ MaterialRecord makeMaterialRecord(const MaterialDesc &desc);
 // geometry renders with it, as in M2.
 MaterialDesc defaultMaterial();
 
+// Karma's material for geometry without one: Houdini's plastic with the
+// displayColor attribute as its colour, white where there is none
+// (plasticDefaults()). The Hydra delegate renders unbound geometry with it
+// unless nova:defaultMaterial says "lambert".
+MaterialDesc plasticDefaultMaterial();
+
 } // namespace nova

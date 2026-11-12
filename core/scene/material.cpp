@@ -200,4 +200,22 @@ MaterialDesc defaultMaterial() {
     return d;
 }
 
+MaterialDesc plasticDefaultMaterial() {
+    static const shading::ProgramPtr program = [] {
+        shading::IrGraph g;
+        g.model = SurfaceModel::Plastic;
+        shading::IrBuilder b(g);
+        const shading::Ref color = b.primvar("displayColor", 3, b.constant(1.0f));
+        b.output(surface_field::baseColor, 3, color);
+        shading::CompileResult result = shading::compile(g);
+        assert(result.program);
+        return result.program;
+    }();
+    MaterialDesc d;
+    d.inputs = plasticDefaults();
+    d.program = program;
+    d.cryptoId = cryptoHash("defaultshader");
+    return d;
+}
+
 } // namespace nova

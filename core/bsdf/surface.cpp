@@ -107,6 +107,22 @@ SurfaceInputs lambertDefaults(Spectrum color) {
     return in;
 }
 
+// Houdini's plastic with the values of Karma's material for geometry without
+// one (measured on Karma CPU, docs/bug-audit-2026-11.md section 17): it
+// reflects 0.4 of the display colour diffusely, and 1/30 in a Phong lobe of
+// exponent 5 (plastic's roughness 0.2). The colour is white where the
+// geometry has none.
+SurfaceInputs plasticDefaults() {
+    SurfaceInputs in = zeroed(SurfaceModel::Plastic);
+    in.set(sf::baseWeight, 0.4f);
+    in.set(sf::baseColor, spectrum(1.0f));
+    in.set(sf::specularWeight, 1.0f / 30.0f);
+    in.set(sf::specularColor, spectrum(1.0f));
+    in.set(sf::specularRoughness, 0.2f);
+    in.set(sf::opacity, spectrum(1.0f));
+    return in;
+}
+
 // Karma Hair (kma_hair, karmaShaderNodes.json; docs/research/m9/curves-hair.md
 // 3.1): base 1, baseColor 1, melanin 0.4, redness 0.1, thickness scale 1,
 // tint 1, shift 0.03, ior 1.55, roughness 0.3 (azimuthal 0.3), TT / TRT

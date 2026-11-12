@@ -148,7 +148,7 @@ void HdNovaMaterial::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDir
     const HdSceneIndexBaseRefPtr sceneIndex = sd->GetRenderIndex().GetTerminalSceneIndex();
     TfTokenVector chain = HdNovaMaterialRenderContexts();
     chain.push_back(TfToken()); // universal
-    nova::MaterialDesc desc = nova::defaultMaterial();
+    nova::MaterialDesc desc = registry.DefaultMaterial();
     bool translated = false;
     HdNovaDisplacementPtr vexDisplacement; // a VEX displace function through the bridge (D8)
     for (TfToken const &context : chain) {
@@ -301,7 +301,7 @@ void HdNovaMaterial::Finalize(HdRenderParam *renderParam) {
     param->GetMaterials().SetVolumeFields(GetId(), {});
     param->GetMaterials().SetMaterialKind(GetId(), {});
     nova::Scene &scene = param->AcquireSceneForEdit();
-    scene.updateMaterial(param->GetMaterials().Acquire(GetId(), scene), nova::defaultMaterial());
+    scene.updateMaterial(param->GetMaterials().Acquire(GetId(), scene), param->GetMaterials().DefaultMaterial());
     _hasApplied = false;
 }
 

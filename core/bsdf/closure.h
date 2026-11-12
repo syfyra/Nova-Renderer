@@ -23,6 +23,7 @@
 #include "core/bsdf/diffuse.h"
 #include "core/bsdf/energy.h"
 #include "core/bsdf/hair.h"
+#include "core/bsdf/phong.h"
 #include "core/bsdf/sheen.h"
 #include "core/bsdf/subsurface.h"
 #include "core/math/frame.h"
@@ -50,6 +51,7 @@ enum class LobeType : uint8_t {
     ThinDielectric,
     Subsurface, // a random walk (M9): no value at the entry, sampling it starts the walk
     Hair,       // one Chiang lobe of a fibre (M9): reflects and transmits in any frame
+    Phong,      // Houdini's VEX phong (the plastic of geometry without a material)
 };
 
 // A lobe's BSDF label for light path expressions (docs/design/M6.md D4):
@@ -81,6 +83,7 @@ struct Lobe {
         ThinDielectricLobe thin;
         SubsurfaceLobe subsurface;
         HairLobe hair;
+        PhongLobe phong;
     };
 
     NOVA_INLINE bool lambertian() const { return type == LobeType::Lambert || type == LobeType::Translucent; }
@@ -114,6 +117,8 @@ struct Lobe {
             return spectrum(0.0f);
         case LobeType::Hair:
             return hair.eval(wo, wi, pdf);
+        case LobeType::Phong:
+            return phong.eval(wo, wi, pdf);
         default:
             return thin.eval(wo, wi, pdf);
         }
@@ -143,6 +148,8 @@ struct Lobe {
             return false; // sampleClosure starts the walk
         case LobeType::Hair:
             return hair.sample(wo, u, uc, s);
+        case LobeType::Phong:
+            return phong.sample(wo, u, s);
         default:
             return thin.sample(wo, u, uc, s);
         }
@@ -159,6 +166,8 @@ struct Lobe {
             return thin.ggxR.smooth() ? 0.0f : nova::fmax(thin.ggxR.ax, thin.ggxR.ay);
         case LobeType::Hair:
             return nova::fmin(std::sqrt(hair.v), 1.0f);
+        case LobeType::Phong:
+            return phong.alpha();
         default:
             return 1.0f;
         }
@@ -189,6 +198,7 @@ struct Lobe {
         case LobeType::Translucent:
             return RayClass::Sss;
         case LobeType::Conductor:
+        case LobeType::Phong:
             return RayClass::Reflect;
         case LobeType::Dielectric:
         case LobeType::ThinDielectric:
@@ -202,7 +212,7 @@ struct Lobe {
     // lobes too, as in Karma), and the label.
     NOVA_INLINE bool lpeDiffuse() const {
         return type != LobeType::Conductor && type != LobeType::Dielectric && type != LobeType::ThinDielectric &&
-               type != LobeType::Hair;
+               type != LobeType::Hair && type != LobeType::Phong;
     }
     NOVA_INLINE LobeLabel lpeLabel(bool transmit) const {
         if (label != LobeLabel::None)
@@ -215,6 +225,7 @@ struct Lobe {
         case LobeType::DisneySheen:
             return LobeLabel::Sheen;
         case LobeType::Conductor:
+        case LobeType::Phong:
             return LobeLabel::Reflect;
         case LobeType::Dielectric:
         case LobeType::ThinDielectric:
@@ -585,6 +596,8 @@ NOVA_INLINE float glossyAlpha(const Lobe &l) {
         return nova::fmax(l.dielectric.ggx.ax, l.dielectric.ggx.ay);
     case LobeType::ThinDielectric:
         return nova::fmax(l.thin.ggxR.ax, l.thin.ggxR.ay);
+    case LobeType::Phong: // glossy, though the roughness clamps leave its exponent alone
+        return l.phong.alpha();
     default:
         return 0.0f;
     }

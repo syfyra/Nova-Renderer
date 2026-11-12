@@ -6,6 +6,7 @@
 
 #include "core/bsdf/diffuse.h"
 #include "core/bsdf/energy.h"
+#include "core/bsdf/phong.h"
 #include "core/bsdf/shading_frame.h"
 #include "core/bsdf/sheen.h"
 #include "core/bsdf/thin_film.h"
@@ -259,5 +260,49 @@ TEST_CASE("The sheen albedo table matches the Charlie lobe", "[bsdf][tables]") {
         const double e = albedo(adapt(CharlieLobe{spectrum(1.0f), r}), direction(mu, 0.0f), 1 << 16, 100 + k, &se);
         CHECK_THAT(double(t.charlieE[ir * kLutMu + iy]), WithinAbs(e, 4 * se + 2e-3));
         CHECK_THAT(double(sheenAlbedo(t, r, mu)), WithinAbs(e, 4 * se + 2e-3));
+    }
+}
+
+// Houdini's VEX phong(), the specular lobe of its plastic (Karma's material
+// for geometry without one, docs/bug-audit-2026-11.md section 17).
+TEST_CASE("The Phong lobe has Houdini's shape, loses what falls below the surface and samples itself", "[bsdf][phong]") {
+    const PhongLobe phong{5.0f};
+    const float peak = 6.0f / (2.0f * 3.14159265f);
+    float pdf = 0.0f;
+    // Along the mirror direction (n + 1) / (2 pi), whatever the angle of incidence; the density is the value.
+    for (const float mu : {1.0f, 0.5f, 0.1f}) {
+        const Vec3f wo = direction(mu), mirror{-wo.x, -wo.y, wo.z};
+        CHECK_THAT(phong.eval(wo, mirror, pdf).x, WithinRel(peak, 1e-4f));
+        CHECK_THAT(pdf, WithinRel(peak, 1e-4f));
+    }
+    // 30 and 60 degrees off it: cos^5 (Karma: 0.0488 and 0.0031 of radiance where the peak is 0.1).
+    const Vec3f up{0.0f, 0.0f, 1.0f};
+    CHECK_THAT(phong.eval(up, direction(std::cos(0.5235988f)), pdf).x, WithinRel(peak * 0.487139f, 1e-4f));
+    CHECK_THAT(phong.eval(up, direction(0.5f), pdf).x, WithinRel(peak * 0.03125f, 1e-4f));
+    // Nothing from below the surface, to a viewer below it or from behind the mirror direction.
+    CHECK(phong.eval(up, Vec3f{0.6f, 0.0f, -0.8f}, pdf).x == 0.0f);
+    CHECK(pdf == 0.0f);
+    CHECK(phong.eval(Vec3f{0.6f, 0.0f, -0.8f}, up, pdf).x == 0.0f);
+    CHECK(phong.eval(direction(0.1f, 0.0f), direction(0.1f, 0.0f), pdf).x == 0.0f);
+
+    // Its albedo is 1 while the lobe lies above the surface and falls as the mirror direction nears the horizon.
+    double se = 0.0;
+    CHECK_THAT(albedo(adapt(phong), up, 1 << 16, 11, &se), WithinAbs(1.0, 1e-9));
+    const double grazing = albedo(adapt(phong), direction(0.17365f), 1 << 18, 12, &se); // 80 degrees
+    CHECK(grazing > 0.55);
+    CHECK(grazing < 0.75);
+    // The samples follow the density (the whole lobe is above the surface at normal incidence).
+    runChi2("Phong 5", adapt(phong), {1.0f});
+    runChi2("Phong 40", adapt(PhongLobe{40.0f}), {1.0f});
+    // Every sample that stays above the surface carries exactly the lobe's weight.
+    Pcg32 rng(77);
+    for (int i = 0; i < 2000; ++i) {
+        LobeSample ls;
+        const Vec3f wo = direction(float(0.05 + 0.95 * rng.uniform()), float(6.28 * rng.uniform()));
+        if (!phong.sample(wo, {float(rng.uniform()), float(rng.uniform())}, ls))
+            continue;
+        CHECK(ls.wi.z > 0.0f);
+        CHECK_THAT(ls.fcos.x, WithinRel(ls.pdf, 1e-5f));
+        CHECK_THAT(nova::length(ls.wi), WithinAbs(1.0f, 1e-4f));
     }
 }
