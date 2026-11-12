@@ -1366,6 +1366,58 @@ TEST_CASE("Meshes far from their own origin do not shadow themselves", "[render]
     }
 }
 
+// A mesh whose points are rotated in its own space and whose transform
+// rotates them back (an asset modelled tilted, an instance a scatter placed),
+// far from the world's origin. In the world its surface is level, with the
+// normal along an axis whose coordinates are small, while the intersector's
+// own space mixes the far axis into every coordinate of the ray's origin:
+// the origin's rounding there is ulps of the far coordinate in every
+// direction. Wächter and Binder's offset, by ulps of each axis scaled with
+// the normal's component along it, moved such a ray by nothing along the far
+// axis, and it found its polygon again: a flat plane lost 27 % of its light
+// 1 000 units from the origin and 50 % at 10 000 (docs/bug-audit-2026-11.md,
+// section 15). offsetRayOrigin() moves the origin along the normal by ulps of
+// the hit point's largest coordinate.
+TEST_CASE("Rotated meshes far from the origin do not shadow themselves", "[render][robust]") {
+    for (const Vec3f away : {Vec3f{1000.0f, 0.0f, 0.0f}, Vec3f{10000.0f, 0.0f, 0.0f}, Vec3f{100000.0f, 0.0f, 0.0f},
+                             Vec3f{0.0f, 10000.0f, 0.0f}, Vec3f{10000.0f, -10000.0f, 0.0f}, Vec3f{0.0f, 0.0f, 10000.0f}})
+        for (const Orientation &o : kOrientations) {
+            INFO("at (" << away.x << ", " << away.y << ", " << away.z << "), its points rotated " << o.degrees
+                        << " degrees about (" << o.axis.x << ", " << o.axis.y << ", " << o.axis.z << ")");
+            const Mat4 rotation = rotationAbout(o.axis, o.degrees);
+            Scene scene;
+            MeshDesc plane = rotatedQuad(5.0f, 0.0f, rotation);
+            plane.transform = inverse(rotation) * translation(away); // level again, in the plane z = away.z
+            plane.setDisplayColor(spectrum(0.5f));
+            scene.updateMesh(scene.createMesh(), plane);
+            LightDesc dome;
+            dome.type = LightType::Dome;
+            scene.updateLight(scene.createLight(), dome);
+            scene.commit();
+
+            Renderer renderer;
+            RenderSettings settings;
+            settings.maxSamples = 64;
+            renderer.setScene(&scene);
+            renderer.setSettings(settings);
+            Camera camera = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 1.0, 1.0, 16, 16, 0.01, 100.0);
+            camera.viewToWorld = translation({away.x, away.y, away.z + 3.0f});
+            camera.worldToView = inverse(camera.viewToWorld);
+            renderer.setCamera(camera);
+            renderer.resize(16, 16);
+            renderToConvergence(renderer);
+            const Film &film = renderer.film();
+            double mean = 0.0, darkest = 1.0;
+            for (size_t i = 0; i < film.colorSum.size(); ++i) {
+                const double v = double(film.colorSum[i].x) / double(film.count[i]);
+                mean += v / double(film.colorSum.size());
+                darkest = std::min(darkest, v);
+            }
+            CHECK_THAT(mean, WithinAbs(0.5, 0.005));
+            CHECK(darkest > 0.45);
+        }
+}
+
 // The offset that takes a ray off the polygon it leaves is that polygon's
 // alone: a small sheet 0.5 above a ground throws the same shadow whether or
 // not something far away stretches the scene's bounds.

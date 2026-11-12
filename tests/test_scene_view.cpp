@@ -14,6 +14,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -132,4 +134,48 @@ TEST_CASE("Hits on scene views equal hits on the records", "[scene][view]") {
         REQUIRE(same(scene.curvature(a, time), meshCurvature(views[mesh], b, time)));
     }
     CHECK(hits > 10000);
+}
+
+// The hit on a sphere point or a disc lies on the shape, however far the ray
+// came. It used to be the ray's point at its hit distance, off the shape by
+// the error of that distance (ulps of the ray's length: 3 x 10^-5 units from
+// 500 units away, whatever the point's size), and a ray leaving it by a few
+// ulps of the point's own coordinates started inside the sphere
+// (docs/bug-audit-2026-11.md, section 15, O-4).
+TEST_CASE("Hits on sphere points and discs lie on their shape", "[scene][robust]") {
+    for (const PointStyle style : {PointStyle::Sphere, PointStyle::Disc, PointStyle::OrientedDisc}) {
+        Rng rng = Rng::make(11u + uint32_t(style), 0u, 3u);
+        Scene scene;
+        const MeshDesc points = pointMesh(style, rng);
+        scene.updateMesh(scene.createMesh(), points);
+        scene.commit();
+        int hits = 0;
+        double worst = 0.0;
+        for (int k = 0; k < 20000; ++k) {
+            // From 500 units away, towards the points.
+            const Vec3f target{4.0f * rng.next() - 2.0f, 4.0f * rng.next() - 2.0f, 1.5f * rng.next()};
+            const Vec3f o = target + normalize(Vec3f{rng.next() - 0.5f, rng.next() - 0.5f, 1.0f}) * 500.0f;
+            const Vec3f d = normalize(target - o);
+            float t = kInf, time = 0.0f;
+            const float seed = 0.0f;
+            const uint8_t type = 0;
+            uint32_t mesh = kInvalidId, prim = 0, instance = 0;
+            Vec2f uv{0.0f, 0.0f};
+            HitBatch hb{&t, &mesh, &prim, &uv, &instance};
+            scene.accel().intersect(RayBatch{&o, &d, &t, 1, &time, &seed, &type, 0}, hb);
+            if (mesh == kInvalidId)
+                continue;
+            ++hits;
+            const SurfaceHit hit = scene.resolveHit(mesh, prim, uv, t, instance, time, o, d);
+            const Vec3f centre = points.points[prim];
+            const float radius = points.pointRadius[prim];
+            const double off = style == PointStyle::Sphere ? std::fabs(double(length(hit.P - centre)) - double(radius))
+                                                           : std::fabs(double(dot(hit.P - centre, hit.Ng)));
+            worst = std::max(worst, off);
+        }
+        INFO("point style " << int(style) << ", " << hits << " hits, farthest off the shape " << worst);
+        CHECK(hits > 500);
+        // A few ulps of the points' coordinates (they lie within 2 units).
+        CHECK(worst < 16.0 * double(kFloatUlp) * 2.0);
+    }
 }
