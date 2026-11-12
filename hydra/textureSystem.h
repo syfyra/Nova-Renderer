@@ -77,6 +77,7 @@ private:
         std::string signature; // the source files' sizes and times when prepared
         OIIO::TextureSystem::TextureHandle *handle = nullptr;
         uint32_t generation = 0; // times prepared
+        int channels = 0;        // the file's channels (0: not known, a UDIM set)
         bool good = false;
         bool countedMissing = false; // counted in _missing
         mutable std::atomic<bool> reported{false};
@@ -86,8 +87,8 @@ private:
     std::vector<std::pair<uint32_t, std::string>> DeviceFiles(Entry const &e) const;
 
     OIIO::ImageCache *_cache = nullptr;
-    OIIO::TextureSystem *_ts = nullptr;
     float _cacheMemoryMB = 0.0f; // the cache's limit as found (restored when nova:textureCacheMemory returns to 0)
+    OIIO::TextureSystem *_ts = nullptr;
     mutable std::mutex _mutex;
     std::deque<Entry> _entries; // by TextureId; stable addresses
     std::unordered_map<std::string, nova::TextureId> _byKey;

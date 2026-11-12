@@ -60,14 +60,11 @@ std::vector<nova::VolumeConstant> constantsOf(HdSceneDelegate *sd, SdfPath const
     return out;
 }
 
-// The object-to-world transforms of every instance of an instanced medium
-// (flattened over the nesting levels, the gprim's own transform first): per
-// instance its uniform steps over the shutter, or one transform when it does
-// not move. The instances at the frame alone when their number changes
-// within the shutter (as instanced surfaces).
-std::vector<std::vector<nova::Mat4>> instanceSteps(HdSceneDelegate *sd, SdfPath const &id,
-                                                   HdNovaInstancer const &instancer, HdNovaShutter const &shutter,
-                                                   unsigned maxSteps) {
+} // namespace
+
+std::vector<std::vector<nova::Mat4>> HdNovaInstanceSteps(HdSceneDelegate *sd, SdfPath const &id,
+                                                         HdNovaInstancer const &instancer, HdNovaShutter const &shutter,
+                                                         unsigned maxSteps) {
     HdNovaTransformSamples prototype;
     HdNovaSampleTransformSamples(sd, id, shutter, &prototype);
     const unsigned n = std::max(instancer.GetMotionStepCount(shutter, maxSteps), prototype.StepCount(shutter, maxSteps));
@@ -99,8 +96,6 @@ std::vector<std::vector<nova::Mat4>> instanceSteps(HdSceneDelegate *sd, SdfPath 
             steps.resize(1);
     return out;
 }
-
-} // namespace
 
 bool HdNovaIsMedium(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &material,
                     HdNovaMaterialRegistry const &registry) {
@@ -150,7 +145,7 @@ void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath c
         _noInstances = false;
         if (instanced) {
             if (auto *instancer = static_cast<HdNovaInstancer *>(sd->GetRenderIndex().GetInstancer(instancerId)))
-                steps = instanceSteps(sd, id, *instancer, shutter, param.GetMaxMotionSteps());
+                steps = HdNovaInstanceSteps(sd, id, *instancer, shutter, param.GetMaxMotionSteps());
             _noInstances = steps.empty();
         } else {
             std::vector<GfMatrix4d> sampled;

@@ -235,6 +235,14 @@ nova::TextureId HdNovaTextureSystem::Acquire(HdNovaTextureRequest const &request
         e.good = e.handle && (e.prepared.udim || _ts->good(e.handle));
         if (!e.good)
             e.prepared.error = _ts->geterror();
+        e.channels = 0;
+        if (e.good && !e.prepared.udim) {
+            int channels = 0;
+            if (_ts->get_texture_info(e.handle, nullptr, 0, OIIO::ustring("channels"), OIIO::TypeInt, &channels))
+                e.channels = channels;
+            else
+                _ts->geterror(); // clears it
+        }
     }
     if (!e.good)
         HD_NOVA_WARN("cannot read texture '%s' (%s); using the fallback", request.path.c_str(),
@@ -269,6 +277,12 @@ void HdNovaTextureSystem::sample2D(nova::TexSampler const &sampler, nova::TexQue
     if (!e->request.layer.empty())
         opt.subimagename = OIIO::ustring(e->request.layer);
     const int nch = slot.channels;
+    // A file of two channels is grey and alpha: as a colour it is (L, L, L)
+    // with the alpha behind it, which is what the GPU's upload makes of it
+    // (readLevel). OpenImageIO's gray_to_rgb expands one-channel files only
+    // and would give (L, A, fill) (audit T-3 of 0.2.0).
+    const bool greyAlpha = e->channels == 2 && nch >= 3;
+    const int lookup = greyAlpha ? 2 : nch;
     for (uint32_t i = 0; i < q.count; ++i) {
         const float s = q.s[i], t = q.t[i];
         if ((udim && !(s >= 0.0f && s < 10.0f && t >= 0.0f && t < 10.0f)) ||
@@ -282,7 +296,7 @@ void HdNovaTextureSystem::sample2D(nova::TexSampler const &sampler, nova::TexQue
         if (q.rnd)
             opt.rnd = q.rnd[i];
         float r[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-        if (!_ts->texture(e->handle, pt, opt, s, t, dsdx, dtdx, dsdy, dtdy, nch, r)) {
+        if (!_ts->texture(e->handle, pt, opt, s, t, dsdx, dtdx, dsdy, dtdy, lookup, r)) {
             status[i] = 1;
             const std::string error = _ts->geterror(); // also clears it
             // A missing UDIM tile fails silently, as in Karma.
@@ -290,6 +304,10 @@ void HdNovaTextureSystem::sample2D(nova::TexSampler const &sampler, nova::TexQue
                 HD_NOVA_WARN("cannot read texture '%s' (%s); using the fallback", e->request.path.c_str(),
                              error.c_str());
             continue;
+        }
+        if (greyAlpha) {
+            r[3] = r[1];
+            r[1] = r[2] = r[0];
         }
         if (matrix) {
             const float x = r[0], y = r[1], z = r[2];

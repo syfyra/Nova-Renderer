@@ -4,7 +4,10 @@
 // bindings. The fields the volume renders with are loaded from their bprims
 // (hydra/field.h) and placed in the volume's object space; the scene builds
 // the majorants. The Volume LOP authors no extent, so bounds come from the
-// grids. Transforms are sampled over the shutter as for meshes.
+// grids. Transforms are sampled over the shutter as for meshes. An instanced
+// Volume (the prototype of a point instancer, a native instance) is one scene
+// volume per instance, which share the grids and differ in their transforms
+// (as the media bounded by surfaces, hydra/medium.h).
 
 #include "karmaSettings.h"
 #include "motion.h"
@@ -42,7 +45,11 @@ protected:
     void _InitRepr(TfToken const &reprToken, HdDirtyBits *dirtyBits) override;
 
 private:
-    nova::VolumeId _volumeId = nova::kInvalidId;
+    nova::VolumeId _volumeId = nova::kInvalidId;    // the prim's, or its first instance's
+    std::vector<nova::VolumeId> _instanceVolumeIds; // of the instances after the first
+    nova::VolumeDesc _desc;                         // what they were built from (instances that appear later take it)
+    bool _instanced = false;
+    bool _noInstances = false; // an instancer without (visible) instances: the volume is kept, hidden
     std::vector<HdVolumeFieldDescriptor> _fields;
     std::vector<uint64_t> _fieldVersions; // the field versions the scene's volume was built with
     std::vector<std::string> _neededFields; // the names its material reads (or density)
