@@ -88,6 +88,14 @@ nova::DicingView dicingViewOf(GfMatrix4d const &worldToView, GfMatrix4d const &p
     d.forward = nova::normalize(nova::Vec3f{-float(viewToWorld[2][0]), -float(viewToWorld[2][1]), -float(viewToWorld[2][2])});
     d.perspective = std::fabs(projection[2][3]) > 1e-9;
     d.pixelsPerUnit = float(std::fabs(projection[1][1])) * imageHeight * 0.5f;
+    // An edge nearer than the near clipping plane is measured at that plane
+    // (it is not seen): the camera's own distance, not a number of units, so
+    // that a scene modelled ten thousand times smaller is diced the same.
+    if (d.perspective) {
+        const double nearClip = projection[3][2] / (projection[2][2] - 1.0);
+        if (std::isfinite(nearClip) && nearClip > 0.0)
+            d.nearDistance = float(nearClip);
+    }
     const GfMatrix4d clip = worldToView * projection;
     for (int i = 0; i < 4; ++i)
         for (int j = 0; j < 4; ++j)
