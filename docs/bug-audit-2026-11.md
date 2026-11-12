@@ -430,4 +430,63 @@ One scene (a displaced ground, an analytic sphere, glass, metal and subsurface s
 
 Object by object, the displaced ground carries most of it (-36 % alone at d = 100 000; the undisplaced, axis-aligned ground is exact), then the glass sphere (-3.7 %, blocks up to 44 %) and the metal sphere (blocks up to 37 %); the analytic sphere, the subsurface sphere, curves and points stay within a few blocks.
 
-The cause is one function, `offsetRayOrigin()` (`core/scene/ray.h`), with Wächter and Binder's constants: a ray leaves a surface by up to 256 float ulps of its world position per axis, which is 3 x 10^-5 of the distance from the origin (0.25 units at 10 000, 2 units at 100 000: next to a bump of a displaced surface the ray starts inside its neighbour), and by 1/65 536 unit where a coordinate is below 1/32 (15 % of the radius of a sphere of 0.0001 units: light leaks). Since section 12 the intersectors' own error is covered by `SurfaceHit::leave`, so the offset has to cover only the rounding of the hit point, a few ulps. The constants change every image in its last bits and the GPU kernels with them, so they are measured and changed on their own, in the next version; until then the limit is in `docs/limitations.md` ("Geometry").
+The cause is one function, `offsetRayOrigin()` (`core/scene/ray.h`), with Wächter and Binder's constants: a ray leaves a surface by up to 256 float ulps of its world position per axis, which is 3 x 10^-5 of the distance from the origin (0.25 units at 10 000, 2 units at 100 000: next to a bump of a displaced surface the ray starts inside its neighbour), and by 1/65 536 unit where a coordinate is below 1/32 (15 % of the radius of a sphere of 0.0001 units: light leaks). Since section 12 the intersectors' own error is covered by `SurfaceHit::leave`, so the offset has to cover only the rounding of the hit point, a few ulps. The constants change every image in its last bits and the GPU kernels with them, so they are measured and changed on their own, in the next version (section 15).
+
+## 15. Rays that leave surfaces far from the origin
+
+Section 14 left one function: `offsetRayOrigin()`, which takes a ray's origin off the surface it leaves, with Wächter and Binder's constants. Measuring what the offset has to be found a third defect in it, the worst of the three.
+
+### Findings
+
+| ID | Severity | Defect | Fix |
+|---|---|---|---|
+| O-1 | high | **A mesh that is rotated in its own space and rotated back by its transform shadowed itself far from the origin.** The offset moved a point by ulps of each coordinate scaled with the normal's component along that axis: nothing along an axis the normal is perpendicular to. But an instance's transform mixes the axes: the intersector takes the ray's origin into the mesh's own space with sums of products whose terms are as large as the far coordinate, so the origin is off by ulps of that coordinate in every direction. A flat Lambert plane under a uniform dome, its points rotated by 45 degrees about z and its transform rotating them back, lost 27 % of its light 1 000 units along x from the origin (30 and 50 degrees about two axes: 20 % at 1 000, 50 % at 10 000); with a sphere resting on it, 15 to 37 %. An asset modelled tilted and set upright, or any instance a scatter rotates, is such a mesh; its facets whose normal is nearly perpendicular to the far axis are the ones that fail | `offsetRayOrigin()` moves the point along the normal by `kPointUlps` float ulps of its **largest** coordinate, whatever the normal |
+| O-2 | high | **Far from the origin the offset was far too large** (section 14): 256 ulps are 3 x 10^-5 of the distance from the origin, 0.25 units at 10 000 and 2 units at 100 000. A ray leaving a bump of a displaced or finely tessellated surface started inside the neighbouring bump | The same rule with `kPointUlps` = 8: 10^-6 of the distance |
+| O-3 | low | **Scenes modelled very small leaked light**: where a coordinate was below 1/32 the offset was 1/65 536 unit, 15 % of the radius of a sphere of 0.0001 units; a subsurface walk skipped at least 7.6 x 10^-6 units of its first segment, whatever the size; and displacement dicing measured every edge nearer to the camera than 0.001 units as if it were 0.001 units away (`hydra/renderPass.cpp`) | No step in units: both scale with the point's coordinates (`walkEntryDistance()` too); what is left at the origin itself is the intersector's error for the shape, `SurfaceHit::leave`'s. The dicing's least distance is the camera's near clipping plane |
+
+A rule that looked better on paper was measured and dropped: ulps of |n| . |p| (the hit point's error bound projected on the normal). It gives no offset where the normal is perpendicular to the far axis, which is O-1: the same plane lost 10 to 18 % with it.
+
+### The constant
+
+A bumpy sheet (48 x 48 quads, albedo 0.5, three diffuse bounces) under a uniform dome, its points rotated in its own space by six rotations (none; 45 degrees about z, about x; 30 about y; two compound ones) and rotated back by its transform, placed at the origin and 1 000, 10 000 and 100 000 units along x, 10 000 along y, along z and along x and z; the image's mean against the level sheet at the origin. Darker means that rays found the sheet again, brighter that they started too far off it. The worst of the 42 cases:
+
+| Ulps of the largest coordinate | CPU (Embree) | Nova XPU (OptiX) |
+|---|---|---|
+| 0 (`SurfaceHit::leave` alone) | -28 % already at 1 000 units | |
+| 1 | -1.35 % (10 000 along y) | -3.42 % |
+| 2 | no case darker; +0.37 % at 100 000 | no case darker; +0.26 % |
+| 4 | +0.55 % | +0.43 % |
+| 8 | +0.79 % at 100 000, +0.12 % at 10 000 | |
+| 16 | | +0.93 % at 100 000, +0.22 % at 10 000 |
+| Wächter and Binder's | -10.3 % (and -50 % for the flat plane of O-1) | |
+
+Both intersectors need 2 ulps; the constant is four times that, 8, on both devices (as `kLeaveUlps` is four times its measured need).
+
+### What else the smaller offset showed
+
+Wächter and Binder's 256 ulps had covered two more errors, which the test suite found at once with 8:
+
+| ID | Severity | Defect | Fix |
+|---|---|---|---|
+| O-4 | medium | **The hit point on a sphere point or a disc was the ray's point at its hit distance**, off the shape by the error of that distance: ulps of the ray's length and of its origin, not of the point. A point of radius 0.04 five units from the camera was hit to 10^-6 units, more than the new offset near the origin, and its rays started inside it: sphere points rendered 1.2 % dark on Nova XPU, the particles of `motion_velocity` 0.04 % on the CPU (`core/scene/hit.h`, `resolvePointHit`) | The hit point is snapped onto the shape: onto the sphere in its own space (as analytic spheres always were), onto a disc's plane |
+| O-5 | low | **At the origin itself the new offset is zero**, and an axis-aligned polygon through the origin has no intersector's error either (`SurfaceHit::leave` is 0 for it on the CPU): a ray from the point (0, 0, 0) started exactly on the polygon and met it at distance 0. A camera aimed along an axis at the origin with a point filter hits exactly that point (a test did: its centre pixel was black) | The offset is never less than `kLeastStep`, 10^-30: any step off the polygon will do there, and it is below every scene's scale |
+
+### After the change
+
+The scene of section 14 again, each image against the one of size 1 at the origin (the same numbers on the CPU and on Nova XPU within 0.01 %):
+
+| Scene | 0.1.4 | Now | Karma |
+|---|---|---|---|
+| Size 0.001, 0.0001 at the origin | +0.23 %, +0.97 % (9 of 144 blocks off by more than 5 %) | +0.00 %, +0.05 % (no block; the subsurface sphere's) | |
+| Size 1 at (d, 0, d), d = 1 000 | +0.06 % | +0.02 %, no block off by more than 1 % | -0.01 % |
+| d = 10 000 | +0.56 %, 3 blocks, the worst by 22 % | +0.12 %, no block by more than 1 % | +0.03 % |
+| d = 100 000 | -31.7 %, 106 blocks | +0.18 %, 4 blocks, the worst by 7 % | +0.21 %, no block |
+| d = 10^6 | -27.7 %, 108 blocks | -12.1 %, 96 blocks | +1.04 %, 8 blocks |
+| Size 0.01 at d = 1 000 | -17.1 %, 105 blocks | +0.15 %, 4 blocks, the worst by 7 % | +0.20 % |
+| Size 0.001 at d = 100 | -20.7 %, 105 blocks | -0.01 %, 7 blocks, the worst by 12 % | +0.17 % |
+
+The flat plane of O-1 renders its 0.5 x radiance within 0.05 % at every rotation and place tried, up to 100 000 units, on both devices, and with a sphere resting on it within 0.11 % (the contact shadow is where an offset that is too large would show).
+
+What stays is the float itself. A hit point 100 000 units from the origin is rounded to 0.008 units, and its ray leaves by 0.1 units: a few blocks of the image differ there, and at a million units the image is wrong, where Karma is 1 % off. Karma evidently works relative to the camera; that is the change that would close the gap, and it is a larger one (every transform, light, volume and world-space shading input would be taken relative to a render origin). It is not done; the limit is in `docs/limitations.md` ("Geometry").
+
+The change moves the last bits of every image. Tests on this build: ctest 737/737 (`reference_cli_karma_atmosphere` skipped by design), with the three new test cases ("Rotated meshes far from the origin do not shadow themselves", its Nova XPU twin, "Hits on sphere points and discs lie on their shape") and the rewritten "Ray origin offset moves to the normal side".

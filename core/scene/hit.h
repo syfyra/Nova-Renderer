@@ -299,11 +299,22 @@ NOVA_INLINE SurfaceHit resolvePointHit(const Rec &rec, MeshId meshId, uint32_t p
     const Vec3f center = xf.point(c);
     const float radius = r * std::cbrt(std::fabs(xf.determinant()));
 
+    // The ray's point at t is off the shape by the error of t, which is ulps
+    // of the ray's length and of its origin, not of the point: a point 5
+    // units from the camera is hit to 10^-6 units, whatever its size. The
+    // point is therefore snapped onto the shape, the sphere in its own space
+    // (as resolveSphereHit() does) and a disc onto its plane; what is left is
+    // the point's own rounding, which offsetRayOrigin() covers.
+    const Affine3f toObject = inverseAffine(xf);
     SurfaceHit hit;
     hit.t = t;
     hit.P = org + dir * t;
     Vec3f N = -dir;
     if (m.pointStyle == PointStyle::Sphere) {
+        const Vec3f fromCentre = toObject.point(hit.P) - c;
+        const float distance = length(fromCentre);
+        if (distance > 0.0f && r > 0.0f)
+            hit.P = xf.point(c + fromCentre * (r / distance));
         const Vec3f d = hit.P - center;
         if (dot(d, d) > 0.0f)
             N = d;
@@ -314,13 +325,14 @@ NOVA_INLINE SurfaceHit resolvePointHit(const Rec &rec, MeshId meshId, uint32_t p
             N = dot(nw, dir) > 0.0f ? -nw : nw;
     }
     hit.N = hit.Ng = normalize(N);
+    if (m.pointStyle != PointStyle::Sphere)
+        hit.P = hit.P - hit.N * dot(hit.P - center, hit.N);
     hit.uv = {0.0f, 0.0f};
     hit.extent = maxComponent(absolute(center)) + radius;
     hit.leave = radius;
     hit.mesh = meshId;
     hit.instance = instance;
     hit.prim = prim;
-    const Affine3f toObject = inverseAffine(xf);
     hit.Pobject = toObject.point(hit.P);
     hit.Nobject = normalize(toObject.vector(hit.N));
     return hit;

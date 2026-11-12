@@ -118,6 +118,8 @@ Karma's Solaris nodes (M11, `docs/design/M11.md`, one design note per package `d
 - **Karma Render Products, Standard Render Vars, Cryptomatte:** per-var sample filters (`minmax`, `stats`, `ubox`, ...), raw ray sources, checkpoints with resume, deep EXR output, per-instance primvar cryptomattes.
 - **Karma Texture Baker:** UV-space bakes (low/high/cage, UDIMs) of the tangent normal (MikkTSpace), displacement, occlusion, cavity, curvature, thickness, rounded normals and edges, position and shader exports, with the image filters; Nova XPU bakes on the CPU.
 - Renders are reproducible run to run (stable object keys from prim paths, `docs/bug-audit-2026-11.md` section 7).
+- A frame of a husk sequence is the frame rendered alone, bit for bit (section 14), and the image does not depend on the thread count.
+- Rays leave a surface by the float error of where they start: ulps of the shape's reach as its intersector sees it (section 12) and of the hit point's largest coordinate (section 15). A scene renders the same at every size, and up to about 10 000 times the size of its detail away from the origin; `docs/limitations.md` has what happens beyond.
 
 Nova XPU (M10, `docs/design/M10.md`):
 

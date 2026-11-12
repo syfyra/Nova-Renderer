@@ -70,14 +70,36 @@ TEST_CASE("Frame is orthonormal for arbitrary normals", "[math]") {
     }
 }
 
+// The offset is ulps of the point's largest coordinate along the normal:
+// it scales with the scene (no step in units, which would be 15 % of a
+// sphere of 0.0001 units), stays a few parts in a million of the distance
+// from the origin (Wächter and Binder's constants gave 3 in 100 000: 2 units
+// at 100 000), and does not depend on which axis the normal points along (a
+// normal perpendicular to the far axis got none of that axis's ulps).
 TEST_CASE("Ray origin offset moves to the normal side", "[math]") {
-    const Vec3f n = normalize(Vec3f{0.3f, -0.5f, 0.8f});
-    for (const Vec3f p : {Vec3f{0.0f, 0.0f, 0.0f}, Vec3f{1e-3f, -2e-3f, 0.0f}, Vec3f{123.0f, -4567.0f, 89.0f},
-                          Vec3f{-1e5f, 3e4f, -2e3f}}) {
-        const Vec3f q = offsetRayOrigin(p, n);
-        CHECK(dot(q - p, n) > 0.0f);
-        CHECK(length(q - p) < 1e-2f * std::fmax(1.0f, maxComponent(absolute(p))));
-    }
+    for (const Vec3f n : {normalize(Vec3f{0.3f, -0.5f, 0.8f}), Vec3f{0.0f, 1.0f, 0.0f}, Vec3f{-1.0f, 0.0f, 0.0f}})
+        for (const Vec3f p : {Vec3f{1e-4f, -2e-4f, 0.0f}, Vec3f{1e-3f, -2e-3f, 0.0f}, Vec3f{123.0f, -4567.0f, 89.0f},
+                              Vec3f{-1e5f, 3e4f, -2e3f}, Vec3f{1e5f, 0.0f, 0.0f}, Vec3f{0.0f, 0.0f, 3e6f}}) {
+            INFO("p = (" << p.x << ", " << p.y << ", " << p.z << "), n = (" << n.x << ", " << n.y << ", " << n.z << ")");
+            const Vec3f q = offsetRayOrigin(p, n);
+            const float reach = maxComponent(absolute(p));
+            CHECK(dot(q - p, n) > 0.0f);
+            // About kPointUlps ulps of the largest coordinate (the sum rounds
+            // by up to half an ulp of each coordinate).
+            CHECK(length(q - p) > 0.5f * kPointUlps * kFloatUlp * reach);
+            CHECK(length(q - p) < 1.5f * kPointUlps * kFloatUlp * reach);
+        }
+    // At the origin itself the point has no rounding of its own: the least
+    // step, so that a ray never starts exactly on an axis-aligned polygon
+    // through the origin; what else is left is the intersector's error for
+    // the shape, leaveSurface()'s.
+    const Vec3f n = normalize(Vec3f{0.3f, -0.5f, 0.8f}), origin{0.0f, 0.0f, 0.0f};
+    CHECK(dot(offsetRayOrigin(origin, n) - origin, n) > 0.0f);
+    CHECK(length(offsetRayOrigin(origin, n) - origin) < 1e-29f);
+    CHECK(length(leaveSurface(origin, n, 1.0f) - origin) > 1e-8f);
+    // The first segment of a subsurface walk skips by the same scales.
+    CHECK(walkEntryDistance(Vec3f{1e-4f, 0.0f, 0.0f}, 0.0f) < 1e-9f);
+    CHECK(walkEntryDistance(Vec3f{1e-4f, 0.0f, 0.0f}, 1e-4f) > 0.0f);
 }
 
 TEST_CASE("toInt and clampToInt are defined for every float", "[math]") {

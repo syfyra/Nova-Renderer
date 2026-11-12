@@ -2724,6 +2724,40 @@ TEST_CASE("XPU on large rotated polygons", "[gpu][render][robust]") {
     }
 }
 
+// The CPU's "Rotated meshes far from the origin do not shadow themselves": a
+// mesh whose points are rotated in its own space and whose transform rotates
+// them back, far from the world's origin, so that its level surface has the
+// normal along an axis of small coordinates while the acceleration structure
+// takes the ray's origin into a space that mixes the far axis into every
+// coordinate (offsetRayOrigin(), core/scene/ray.h).
+TEST_CASE("XPU on rotated meshes far from the origin", "[gpu][render][robust]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    for (const Vec3f away : {Vec3f{1000.0f, 0.0f, 0.0f}, Vec3f{10000.0f, 0.0f, 0.0f}, Vec3f{100000.0f, 0.0f, 0.0f},
+                             Vec3f{0.0f, 10000.0f, 0.0f}, Vec3f{10000.0f, -10000.0f, 0.0f}, Vec3f{0.0f, 0.0f, 10000.0f}})
+        for (const Orientation &o : kOrientations) {
+            INFO("at (" << away.x << ", " << away.y << ", " << away.z << "), its points rotated " << o.degrees
+                        << " degrees about (" << o.axis.x << ", " << o.axis.y << ", " << o.axis.z << ")");
+            const Mat4 rotation = rotationAbout(o.axis, o.degrees);
+            Scene scene;
+            MeshDesc plane = rotatedQuad(5.0f, 0.0f, rotation);
+            plane.transform = inverse(rotation) * translation(away);
+            plane.setDisplayColor(spectrum(0.5f));
+            scene.updateMesh(scene.createMesh(), plane);
+            LightDesc dome;
+            dome.type = LightType::Dome;
+            scene.updateLight(scene.createLight(), dome);
+            scene.commit();
+            Camera camera = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 1.0, 1.0, 16, 16, 0.01, 100.0);
+            camera.viewToWorld = translation({away.x, away.y, away.z + 3.0f});
+            camera.worldToView = inverse(camera.viewToWorld);
+            const Render gpu = render(scene, camera, 16, 16, 64, RenderDevice::Xpu);
+            REQUIRE(gpu.gpu);
+            CHECK_THAT(luminanceMean(gpu.film), WithinAbs(0.5, 0.005));
+        }
+}
+
 namespace {
 
 // The Cornell box (diffuse walls, a rough metal, glass) with a block of fog
