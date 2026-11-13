@@ -773,6 +773,14 @@ ValueMap Translator::LowerUser(SdfPath const &path) {
         for (auto const &[name, value] : node.parameters)
             if (!in.count(name.GetString()) && name.GetString().find(':') == std::string::npos)
                 in[name.GetString()].text = toText(value);
+        // USD's default wrap of a UsdUVTexture is useMetadata: black outside
+        // 0..1 for a file that says nothing itself, which is what Karma
+        // renders. MaterialX's definition of the node says periodic (audit
+        // T-0 of 0.2.0: an unauthored wrap tiled the texture).
+        if (nd->getNodeString() == "UsdUVTexture")
+            for (char const *wrap : {"wrapS", "wrapT"})
+                if (!node.parameters.count(TfToken(wrap)) && !node.inputConnections.count(TfToken(wrap)))
+                    in[wrap].text = "useMetadata";
         LowerNode(nd, in, out, 0);
     }
     _visiting.erase(path);

@@ -12,6 +12,7 @@ add_library(hdNova_objects OBJECT
     deepWriter.cpp
     products.cpp
     denoise.cpp
+    oidnDenoiser.cpp
     renderBuffer.cpp
     atmosphere.cpp
     medium.cpp
@@ -54,6 +55,7 @@ target_link_libraries(hdNova_objects PUBLIC
     Nova::OIIO
     Nova::MaterialX
     Nova::GeomUtil
+    Nova::OIDN
     Houdini::Dep::OpenColorIO
     Houdini::Dep::pxr_arch
     Houdini::Dep::pxr_tf

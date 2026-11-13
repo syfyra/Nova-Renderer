@@ -41,6 +41,31 @@
                 disablewhen "{ xn__novasamples_control_y6a == block } { xn__novasamples_control_y6a == none }"
             }
             parm {
+                name    "xn__novasampleScale_control_heb"
+                label   "Sample Scale"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novasampleScale_g0a"
+                label   "Sample Scale"
+                type    float
+                size    1
+                default { 1.0 }
+                range   { 0.05 4 }
+                help    "Multiplies the samples per pixel, Nova's or Karma's; at least one sample remains. 0.25 previews a scene that is set up for its final quality at a quarter of the render time."
+                parmtag { "spare_category" "Sampling" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novasampleScale_control_heb == block } { xn__novasampleScale_control_heb == none }"
+            }
+            parm {
                 name    "xn__novapixelFilter_control_heb"
                 label   "Pixel Filter"
                 type    string
@@ -121,6 +146,55 @@
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "int" }
                 disablewhen "{ xn__novaseed_control_21a == block } { xn__novaseed_control_21a == none }"
+            }
+            parm {
+                name    "xn__novaanimateNoise_control_3fb"
+                label   "Animate Noise"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaanimateNoise_21a"
+                label   "Animate Noise"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Every frame has a noise pattern of its own (husk hands each frame its number, as it does for Karma). Off: every frame has the pattern of the Seed, so the noise stands still on the screen while the picture moves under it; two renders of different frames then differ only by what moved."
+                parmtag { "spare_category" "Sampling" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaanimateNoise_control_3fb == block } { xn__novaanimateNoise_control_3fb == none }"
+            }
+            parm {
+                name    "xn__novatimeLimit_control_79a"
+                label   "Time Limit"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novatimeLimit_6wa"
+                label   "Time Limit"
+                type    float
+                size    1
+                default { 0.0 }
+                range   { 0 240 }
+                help    "Ends a frame after this many minutes of rendering with the samples it has by then: the image is denoised and written as when all samples are done, and the render statistics say how many samples it got (0: no limit). The limit is checked between passes, so a frame overruns it by at most one pass. Final renders only; the viewport renders on."
+                parmtag { "spare_category" "Sampling" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novatimeLimit_control_79a == block } { xn__novatimeLimit_control_79a == none }"
             }
             parm {
                 name    "xn__novaclampIndirect_control_qhb"
@@ -336,6 +410,31 @@
                 parmtag { "usdvaluetype" "token" }
                 disablewhen "{ xn__novadevice_control_c5a == block } { xn__novadevice_control_c5a == none }"
             }
+            parm {
+                name    "xn__novathreads_control_y6a"
+                label   "Threads"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novathreads_xta"
+                label   "Threads"
+                type    int
+                size    1
+                default { 0 }
+                range   { -64 256 }
+                help    "The CPU threads Nova renders with. 0: all the host allows (husk's -j, Houdini's own limit). A positive number: at most that many. A negative number: that many fewer than all, which keeps the machine usable while it renders. With Nova XPU these are the threads that prepare the scene and that render when the GPU cannot."
+                parmtag { "spare_category" "Device" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novathreads_control_y6a == block } { xn__novathreads_control_y6a == none }"
+            }
         }
         groupcollapsible {
             name    "nova_limits"
@@ -366,11 +465,64 @@
                 parmtag { "usdvaluetype" "int" }
                 disablewhen "{ xn__novamaxDepth_control_l8a == block } { xn__novamaxDepth_control_l8a == none }"
             }
+            parm {
+                name    "xn__novarrStartDepth_control_3fb"
+                label   "Russian Roulette Depth"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novarrStartDepth_21a"
+                label   "Russian Roulette Depth"
+                type    int
+                size    1
+                default { 3 }
+                range   { 1 65 }
+                help    "From this scattering event on, paths that carry little light are ended by chance and the survivors weighted up: the image stays the same, deep bounces cost less and get a little noisier. Higher values keep more paths alive (less noise in deep indirect light and in many layers of glass, longer renders); a value above Max Ray Depth turns the roulette off."
+                parmtag { "spare_category" "Limits" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novarrStartDepth_control_3fb == block } { xn__novarrStartDepth_control_3fb == none }"
+            }
         }
         groupcollapsible {
             name    "nova_shading"
             label   "Shading"
             grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novadefaultMaterial_control_zkb"
+                label   "Default Material"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'token')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadefaultMaterial_y6a"
+                label   "Default Material"
+                type    string
+                size    1
+                default { "karma" }
+                menu {
+                    "karma" "As Karma"
+                    "lambert" "Matte Display Color"
+                }
+                help    "What geometry without a material renders as. As Karma: Karma's own default, Houdini's plastic (it reflects 0.4 of the display colour diffusely, with a soft highlight; white where there is no display colour). Matte Display Color: a matte surface that reflects the display colour itself (18 % grey where there is none), as Nova rendered up to 0.1.6."
+                parmtag { "spare_category" "Shading" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "token" }
+                disablewhen "{ xn__novadefaultMaterial_control_zkb == block } { xn__novadefaultMaterial_control_zkb == none }"
+            }
             parm {
                 name    "xn__novaconstrainRoughness_control_vpb"
                 label   "Constrain by Maximum Roughness"
@@ -397,6 +549,571 @@
             }
         }
         groupcollapsible {
+            name    "nova_look_development"
+            label   "Look Development"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novalightOverride_control_qhb"
+                label   "Light Override"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'token')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novalightOverride_p3a"
+                label   "Light Override"
+                type    string
+                size    1
+                default { "off" }
+                menu {
+                    "off" "Off"
+                    "emissive" "Emissive Objects"
+                    "headlight" "Headlight"
+                    "dome" "Dome Light"
+                }
+                help    "Replaces the stage's lights: Emissive Objects leaves only emissive geometry, Headlight lights along the camera's view, Dome Light is a white dome. Neither the headlight nor the dome is seen by the camera. Unset: Karma's override_lighting."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "token" }
+                disablewhen "{ xn__novalightOverride_control_qhb == block } { xn__novalightOverride_control_qhb == none }"
+            }
+            parm {
+                name    "xn__novaautoHeadlight_control_qhb"
+                label   "Headlight Without Lights"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaautoHeadlight_p3a"
+                label   "Headlight Without Lights"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "Lights a stage that has no light with a headlight (emissive geometry does not count as a light). Unset: Karma's autoheadlight."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaautoHeadlight_control_qhb == block } { xn__novaautoHeadlight_control_qhb == none }"
+            }
+            parm {
+                name    "xn__novasimplifiedShading_control_8nb"
+                label   "Simplified Shading"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novasimplifiedShading_79a"
+                label   "Simplified Shading"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "Shades what the camera sees with its display colour (white without one) by how much it faces the camera, darkened by ambient occlusion, with the fog below and the material's emission: no lights, no bounces. A fast look at a heavy scene's shapes. Unset: Karma's Simplified Shading (disable_lighting)."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novasimplifiedShading_control_8nb == block } { xn__novasimplifiedShading_control_8nb == none }"
+            }
+            parm {
+                name    "xn__novaambientOcclusion_control_mmb"
+                label   "Ambient Occlusion"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaambientOcclusion_l8a"
+                label   "Ambient Occlusion"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Simplified Shading darkens corners and contact areas. Unset: Karma's head_ao_samples (0 is off)."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaambientOcclusion_control_mmb == block } { xn__novaambientOcclusion_control_mmb == none }"
+            }
+            parm {
+                name    "xn__novaaoDistance_control_ucb"
+                label   "Ambient Occlusion Distance"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaaoDistance_tya"
+                label   "Ambient Occlusion Distance"
+                type    float
+                size    1
+                default { 0.0 }
+                range   { 0 100 }
+                help    "How far away a surface may be to occlude, in scene units (0: at any distance). Unset: Karma's head_ao_distance."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaaoDistance_control_ucb == block } { xn__novaaoDistance_control_ucb == none }"
+            }
+            parm {
+                name    "xn__novafogNear_control_y6a"
+                label   "Fog Near"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novafogNear_xta"
+                label   "Fog Near"
+                type    float
+                size    1
+                default { 0.0 }
+                range   { 0 1000 }
+                help    "Simplified Shading mixes the Fog Color in by distance: none up to here, all of it from Fog Far on. Unset (both): Karma's head_depthcue_z."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novafogNear_control_y6a == block } { xn__novafogNear_control_y6a == none }"
+            }
+            parm {
+                name    "xn__novafogFar_control_c5a"
+                label   "Fog Far"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novafogFar_bsa"
+                label   "Fog Far"
+                type    float
+                size    1
+                default { 0.0 }
+                range   { 0 1000 }
+                help    "The distance from which the fog is full (no fog while it is not beyond Fog Near)."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novafogFar_control_c5a == block } { xn__novafogFar_control_c5a == none }"
+            }
+            parm {
+                name    "xn__novafogColor_control_l8a"
+                label   "Fog Color"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'color3f')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novafogColor_kva"
+                label   "Fog Color"
+                type    color
+                size    3
+                default { 0.0 0.0 0.0 }
+                help    "The colour distant surfaces fade to. Unset: Karma's head_depthcue_color."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "color3f" }
+                disablewhen "{ xn__novafogColor_control_l8a == block } { xn__novafogColor_control_l8a == none }"
+            }
+            parm {
+                name    "xn__novafogAlpha_control_l8a"
+                label   "Fog Alpha"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novafogAlpha_kva"
+                label   "Fog Alpha"
+                type    float
+                size    1
+                default { 1.0 }
+                range   { 0 1 }
+                help    "The most fog that is mixed in. Unset: Karma's head_depthcue_alpha."
+                parmtag { "spare_category" "Look Development" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novafogAlpha_control_l8a == block } { xn__novafogAlpha_control_l8a == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_outlines"
+            label   "Outlines"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novaoutline_control_y6a"
+                label   "Outlines"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutline_xta"
+                label   "Outlines"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "Toon lines where the camera sees an object's silhouette, a crease or a step in depth (the line types are per-object properties). With this switch the lines are drawn into the beauty whether or not the render has an outline AOV. Unset: Karma's outline_enable, which draws lines only in renders with an outline AOV."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaoutline_control_y6a == block } { xn__novaoutline_control_y6a == none }"
+            }
+            parm {
+                name    "xn__novaoutlineColor_control_3fb"
+                label   "Outline Color"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'color3f')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineColor_21a"
+                label   "Outline Color"
+                type    color
+                size    3
+                default { 1.0 0.0 1.0 }
+                help    "The lines' colour (Karma's default). Unset: Karma's outline_color."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "color3f" }
+                disablewhen "{ xn__novaoutlineColor_control_3fb == block } { xn__novaoutlineColor_control_3fb == none }"
+            }
+            parm {
+                name    "xn__novaoutlineRadius_control_qhb"
+                label   "Outline Radius"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineRadius_p3a"
+                label   "Outline Radius"
+                type    float
+                size    1
+                default { 1.0 }
+                range   { 0 10 }
+                help    "Multiplies the objects' line widths. Unset: Karma's outline_radius."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaoutlineRadius_control_qhb == block } { xn__novaoutlineRadius_control_qhb == none }"
+            }
+            parm {
+                name    "xn__novaoutlineIntensity_control_mmb"
+                label   "Outline Intensity"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineIntensity_l8a"
+                label   "Outline Intensity"
+                type    float
+                size    1
+                default { 1.0 }
+                range   { 0 4 }
+                help    "Scales the lines' weight. Unset: Karma's outline_intensity."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaoutlineIntensity_control_mmb == block } { xn__novaoutlineIntensity_control_mmb == none }"
+            }
+            parm {
+                name    "xn__novaoutlineFitMin_control_qhb"
+                label   "Outline Fit Min"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineFitMin_p3a"
+                label   "Outline Fit Min"
+                type    float
+                size    1
+                default { 0.0 }
+                range   { 0 1 }
+                help    "The share of a pixel's edge probes that find an edge is remapped from Fit Min..Fit Max to 0..1: raising the minimum removes faint lines, lowering the maximum hardens the lines' edges. Unset: Karma's outline_fitmin."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaoutlineFitMin_control_qhb == block } { xn__novaoutlineFitMin_control_qhb == none }"
+            }
+            parm {
+                name    "xn__novaoutlineFitMax_control_qhb"
+                label   "Outline Fit Max"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineFitMax_p3a"
+                label   "Outline Fit Max"
+                type    float
+                size    1
+                default { 1.0 }
+                range   { 0 1 }
+                help    "See Outline Fit Min. Unset: Karma's outline_fitmax."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaoutlineFitMax_control_qhb == block } { xn__novaoutlineFitMax_control_qhb == none }"
+            }
+            parm {
+                name    "xn__novaoutlineDepthThreshold_control_rub"
+                label   "Outline Depth Threshold Scale"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineDepthThreshold_qhb"
+                label   "Outline Depth Threshold Scale"
+                type    float
+                size    1
+                default { 1.0 }
+                range   { 0 10 }
+                help    "Multiplies the objects' depth thresholds (how large a step in depth draws a line). Unset: Karma's outline_depththreshold."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaoutlineDepthThreshold_control_rub == block } { xn__novaoutlineDepthThreshold_control_rub == none }"
+            }
+            parm {
+                name    "xn__novaoutlineDepthBlend_control_8nb"
+                label   "Outline Depth Blend"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineDepthBlend_79a"
+                label   "Outline Depth Blend"
+                type    float
+                size    1
+                default { 0.0 }
+                range   { 0 1 }
+                help    "0: lines keep their width on screen at any distance. 1: they thin out with distance, as lines of a fixed width in the scene do. Unset: Karma's outline_depthblend."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaoutlineDepthBlend_control_8nb == block } { xn__novaoutlineDepthBlend_control_8nb == none }"
+            }
+            parm {
+                name    "xn__novaoutlineSamples_control_djb"
+                label   "Outline Samples"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineSamples_c5a"
+                label   "Outline Samples"
+                type    int
+                size    1
+                default { 4 }
+                range   { 1 64 }
+                help    "The edge probes per camera sample (on the first ring; each further ring has twice as many). Unset: Karma's outline_primary_samples."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaoutlineSamples_control_djb == block } { xn__novaoutlineSamples_control_djb == none }"
+            }
+            parm {
+                name    "xn__novaoutlineStencils_control_zkb"
+                label   "Outline Rings"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineStencils_y6a"
+                label   "Outline Rings"
+                type    int
+                size    1
+                default { 1 }
+                range   { 1 6 }
+                help    "The rings of edge probes around a camera ray: more rings give lines a softer profile. Unset: Karma's outline_primary_stencils."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaoutlineStencils_control_zkb == block } { xn__novaoutlineStencils_control_zkb == none }"
+            }
+            parm {
+                name    "xn__novaoutlinePattern_control_djb"
+                label   "Outline Pattern"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'token')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlinePattern_c5a"
+                label   "Outline Pattern"
+                type    string
+                size    1
+                default { "rings" }
+                menu {
+                    "rings" "Rings"
+                    "random" "Random"
+                }
+                help    "Where the edge probes lie: on rings, or scattered at random inside the radius (Outline Samples of them). Unset: Karma's outline_mode."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "token" }
+                disablewhen "{ xn__novaoutlinePattern_control_djb == block } { xn__novaoutlinePattern_control_djb == none }"
+            }
+            parm {
+                name    "xn__novaoutlineApply_control_3fb"
+                label   "Outlines in the Beauty"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaoutlineApply_21a"
+                label   "Outlines in the Beauty"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Draws the lines into the beauty. Off: they are in the outline AOVs only. Unset: Karma's outline_apply."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaoutlineApply_control_3fb == block } { xn__novaoutlineApply_control_3fb == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_visibility"
+            label   "Visibility"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novabackgroundOccludesShadows_control_90b"
+                label   "Background Holdouts Occlude Shadows"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novabackgroundOccludesShadows_8nb"
+                label   "Background Holdouts Occlude Shadows"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "Background holdouts never shadow one another (the plate has those shadows already). With this on, a point of a background holdout that another background holdout hides from a light keeps that light even where an ordinary object shadows it too. Unset: Karma's bgoccludeshadow."
+                parmtag { "spare_category" "Visibility" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novabackgroundOccludesShadows_control_90b == block } { xn__novabackgroundOccludesShadows_control_90b == none }"
+            }
+        }
+        groupcollapsible {
             name    "nova_motion_blur"
             label   "Motion Blur"
             grouptag { "group_default" "1" }
@@ -418,7 +1135,7 @@
                 type    int
                 size    1
                 default { 8 }
-                range   { 2 32 }
+                range   { 2 16 }
                 help    "The most shutter samples of moving geometry, transforms and cameras."
                 parmtag { "spare_category" "Motion Blur" }
                 parmtag { "uiscope" "None" }
@@ -550,11 +1267,40 @@
                 type    toggle
                 size    1
                 default { 0 }
-                help    "Denoises the final frame with the NVIDIA OptiX denoiser (husk, nova_cli): the AOVs of Denoised AOVs, in place. The Karma Render Settings LOP's Denoiser works too. Unset: the denoiser of Karma's image filters."
+                help    "Denoises the final frame (husk, nova_cli) with the Denoiser below: the AOVs of Denoised AOVs, in place. The Karma Render Settings LOP's Denoiser works too. Unset: the denoiser of Karma's image filters."
                 parmtag { "spare_category" "Denoising" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }
                 disablewhen "{ xn__novadenoise_control_y6a == block } { xn__novadenoise_control_y6a == none }"
+            }
+            parm {
+                name    "xn__novadenoiser_control_l8a"
+                label   "Denoiser"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'token')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadenoiser_kva"
+                label   "Denoiser"
+                type    string
+                size    1
+                default { "auto" }
+                menu {
+                    "auto" "Automatic"
+                    "optix" "NVIDIA OptiX"
+                    "oidn" "Intel Open Image Denoise"
+                }
+                help    "The denoiser of final frames and of the viewport. Automatic: NVIDIA OptiX where it can run, Intel Open Image Denoise elsewhere (machines without an NVIDIA GPU; it then runs on the CPU). A denoiser that cannot run gives way to the other, with a message. Unset or Automatic: the engine of Karma's Denoiser menu, if it names one."
+                parmtag { "spare_category" "Denoising" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "token" }
+                disablewhen "{ xn__novadenoiser_control_l8a == block } { xn__novadenoiser_control_l8a == none }"
             }
             parm {
                 name    "xn__novadenoiseAovs_control_heb"
@@ -581,6 +1327,84 @@
                 disablewhen "{ xn__novadenoiseAovs_control_heb == block } { xn__novadenoiseAovs_control_heb == none }"
             }
             parm {
+                name    "xn__novadenoiseQuality_control_djb"
+                label   "Denoise Quality"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'token')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadenoiseQuality_c5a"
+                label   "Denoise Quality"
+                type    string
+                size    1
+                default { "auto" }
+                menu {
+                    "auto" "Automatic"
+                    "fast" "Fast"
+                    "balanced" "Balanced"
+                    "high" "High"
+                }
+                help    "The quality of Intel Open Image Denoise's filter, slower with each step. Automatic: High for final frames, Balanced in the viewport. NVIDIA OptiX has one quality."
+                parmtag { "spare_category" "Denoising" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "token" }
+                disablewhen "{ xn__novadenoiseQuality_control_djb == block } { xn__novadenoiseQuality_control_djb == none }"
+            }
+            parm {
+                name    "xn__novadenoiseAlbedo_control_qhb"
+                label   "Denoise with Albedo"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadenoiseAlbedo_p3a"
+                label   "Denoise with Albedo"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Hands the denoiser the albedo at the first hit as a guide, which keeps the detail of textures apart from noise. Unset: the Use Albedo switch of Karma's Denoiser for final frames, on in the viewport."
+                parmtag { "spare_category" "Denoising" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novadenoiseAlbedo_control_qhb == block } { xn__novadenoiseAlbedo_control_qhb == none }"
+            }
+            parm {
+                name    "xn__novadenoiseNormal_control_qhb"
+                label   "Denoise with Normals"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadenoiseNormal_p3a"
+                label   "Denoise with Normals"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Hands the denoiser the normal at the first hit as a guide, which keeps edges and bumps; Open Image Denoise uses it only together with the albedo. Unset: the Use N switch of Karma's Denoiser for final frames, on in the viewport."
+                parmtag { "spare_category" "Denoising" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novadenoiseNormal_control_qhb == block } { xn__novadenoiseNormal_control_qhb == none }"
+            }
+            parm {
                 name    "xn__novaviewportDenoise_control_zkb"
                 label   "Denoise the Viewport"
                 type    string
@@ -598,7 +1422,7 @@
                 type    toggle
                 size    1
                 default { 0 }
-                help    "Shows the viewport's image denoised by the NVIDIA OptiX denoiser. Unset: Karma's viewport denoise toggle."
+                help    "Shows the viewport's image denoised (by the Denoiser of the render settings). Unset: Karma's viewport denoise toggle."
                 parmtag { "spare_category" "Denoising" }
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }
@@ -628,6 +1452,59 @@
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "int" }
                 disablewhen "{ xn__novadenoiseStartPasses_control_vpb == block } { xn__novadenoiseStartPasses_control_vpb == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_deep_output"
+            label   "Deep Output"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novadeepUseHitDistance_control_vpb"
+                label   "Deep Samples at the Hit Distance"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadeepUseHitDistance_ucb"
+                label   "Deep Samples at the Hit Distance"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "The depth of a deep camera map's samples is their distance from the eye instead of their depth along the camera's axis. Unset: Karma's dcm_usehitdist."
+                parmtag { "spare_category" "Deep Output" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novadeepUseHitDistance_control_vpb == block } { xn__novadeepUseHitDistance_control_vpb == none }"
+            }
+            parm {
+                name    "xn__novadeepExcludeHoldouts_control_irb"
+                label   "Deep Without Holdouts"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadeepExcludeHoldouts_heb"
+                label   "Deep Without Holdouts"
+                type    toggle
+                size    1
+                default { 0 }
+                help    "Leaves the samples of holdout objects out of the deep camera map. Unset: Karma's dcm_excludeholdouts."
+                parmtag { "spare_category" "Deep Output" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novadeepExcludeHoldouts_control_irb == block } { xn__novadeepExcludeHoldouts_control_irb == none }"
             }
         }
         groupcollapsible {
@@ -733,6 +1610,85 @@
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "float" }
                 disablewhen "{ xn__novaoffscreenQuality_control_mmb == block } { xn__novaoffscreenQuality_control_mmb == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_dicing"
+            label   "Dicing"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novadicingQuality_control_qhb"
+                label   "Dicing Quality"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadicingQuality_p3a"
+                label   "Dicing Quality"
+                type    float
+                size    1
+                default { 0.5 }
+                range   { 0.05 4 }
+                help    "Displacement micropolygons per pixel edge (0.5: 2-pixel micropolygons, Karma's default). Unset: Karma's dicingquality."
+                parmtag { "spare_category" "Dicing" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novadicingQuality_control_qhb == block } { xn__novadicingQuality_control_qhb == none }"
+            }
+            parm {
+                name    "xn__novadicingDepth_control_heb"
+                label   "Dicing Depth"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadicingDepth_g0a"
+                label   "Dicing Depth"
+                type    int
+                size    1
+                default { -1 }
+                range   { -1 10 }
+                help    "A fixed 2^depth segments per edge instead of the camera's rate (-1: off). Unset: Karma's dicingdepthmin and dicingdepthmax when they agree."
+                parmtag { "spare_category" "Dicing" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novadicingDepth_control_heb == block } { xn__novadicingDepth_control_heb == none }"
+            }
+            parm {
+                name    "xn__novadisplacement_control_3fb"
+                label   "Displacement"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novadisplacement_21a"
+                label   "Displacement"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Applies the material's displacement. Unset: Karma's truedisplace (off for Disable Displacement Shader)."
+                parmtag { "spare_category" "Dicing" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novadisplacement_control_3fb == block } { xn__novadisplacement_control_3fb == none }"
             }
         }
         groupcollapsible {
@@ -885,6 +1841,31 @@
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "int" }
                 disablewhen "{ xn__novatextureStats_control_3fb == block } { xn__novatextureStats_control_3fb == none }"
+            }
+            parm {
+                name    "xn__novatextureCacheMemory_control_vpb"
+                label   "Texture Cache Size"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novatextureCacheMemory_ucb"
+                label   "Texture Cache Size"
+                type    int
+                size    1
+                default { 0 }
+                range   { 0 131072 }
+                help    "The memory of the texture cache on the CPU in MB (0: OpenImageIO's own limit, or what husk's --oiio-* options set). Texture tiles beyond it are dropped and read again when needed: a scene whose textures do not fit renders slower, not wrong. The cache is the process's own, so inside Houdini it is shared with what else reads textures there."
+                parmtag { "spare_category" "Textures" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novatextureCacheMemory_control_vpb == block } { xn__novatextureCacheMemory_control_vpb == none }"
             }
             parm {
                 name    "xn__novagpuTextureBudget_control_mmb"
@@ -1180,6 +2161,461 @@
                 parmtag { "uiscope" "None" }
                 parmtag { "usdvaluetype" "bool" }
                 disablewhen "{ xn__novaobjectinternalReflection_control_nzbg == block } { xn__novaobjectinternalReflection_control_nzbg == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_object_outlines"
+            label   "Outlines"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novaobjectoutline_control_qhbg"
+                label   "Draw Outlines"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectoutline_p3ag"
+                label   "Draw Outlines"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "The object gets lines where the camera sees it (with Outlines on in the render settings). Unset: Karma's outline_enable of the object."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaobjectoutline_control_qhbg == block } { xn__novaobjectoutline_control_qhbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectoutlineRadius_control_irbg"
+                label   "Line Radius"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectoutlineRadius_hebg"
+                label   "Line Radius"
+                type    float
+                size    1
+                default { 0.002 }
+                range   { 0 0.02 }
+                help    "The lines' width on this object: the tangent of the angle around a camera ray in which edges are looked for, so a line is as wide on screen near and far (see Outline Depth Blend). Unset: Karma's outline_radius of the object."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaobjectoutlineRadius_control_irbg == block } { xn__novaobjectoutlineRadius_control_irbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectoutlineContour_control_4sbg"
+                label   "Contour Lines"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectoutlineContour_3fbg"
+                label   "Contour Lines"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Lines along the object's silhouette: where the next thing seen is another object, or nothing. Unset: Karma's outline_contour."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaobjectoutlineContour_control_4sbg == block } { xn__novaobjectoutlineContour_control_4sbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectoutlineCrease_control_irbg"
+                label   "Crease Lines"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectoutlineCrease_hebg"
+                label   "Crease Lines"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Lines where the surface folds. Unset: Karma's outline_crease."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaobjectoutlineCrease_control_irbg == block } { xn__novaobjectoutlineCrease_control_irbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectoutlineCreaseThreshold_control_55bg"
+                label   "Crease Threshold"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectoutlineCreaseThreshold_4sbg"
+                label   "Crease Threshold"
+                type    float
+                size    1
+                default { 0.1 }
+                range   { 0 2 }
+                help    "How far the normal must turn for a crease line: 1 minus the cosine of the angle (0.1 is 26 degrees, 1 a right angle). Unset: Karma's outline_creasethreshold."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaobjectoutlineCreaseThreshold_control_55bg == block } { xn__novaobjectoutlineCreaseThreshold_control_55bg == none }"
+            }
+            parm {
+                name    "xn__novaobjectoutlineDepth_control_vpbg"
+                label   "Depth Lines"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectoutlineDepth_ucbg"
+                label   "Depth Lines"
+                type    toggle
+                size    1
+                default { 1 }
+                help    "Lines where the object steps back behind itself. Unset: Karma's outline_depth."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "bool" }
+                disablewhen "{ xn__novaobjectoutlineDepth_control_vpbg == block } { xn__novaobjectoutlineDepth_control_vpbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectoutlineDepthThreshold_control_j4bg"
+                label   "Depth Threshold"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectoutlineDepthThreshold_irbg"
+                label   "Depth Threshold"
+                type    float
+                size    1
+                default { 0.5 }
+                range   { 0 10 }
+                help    "How large a step in depth draws a line: 1 plus the threshold, times the line's radius at the surface (0: a step of one radius, 1: of two). Unset: Karma's outline_depththreshold of the object."
+                parmtag { "spare_category" "Outlines" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaobjectoutlineDepthThreshold_control_j4bg == block } { xn__novaobjectoutlineDepthThreshold_control_j4bg == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_object_visibility"
+            label   "Visibility"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novaobjectrenderVisibility_control_ewbg"
+                label   "Render Visibility"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'string')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectrenderVisibility_djbg"
+                label   "Render Visibility"
+                type    string
+                size    1
+                default { "*" }
+                menureplace {
+                    "*" "Visible to All"
+                    "primary" "Visible Only to Primary Rays"
+                    "primary|shadow" "Visible Only to Primary and Shadow Rays"
+                    "-primary" "Invisible to Primary Rays (Phantom)"
+                    "-diffuse" "Invisible to Diffuse Rays"
+                    "-diffuse&-reflect&-refract" "Invisible to Secondary Rays"
+                    "-shadow" "Casts No Shadow"
+                    "" "Invisible (Unrenderable)"
+                }
+                help    "The rays that see the object, in Karma's syntax: the ray types primary, shadow, diffuse, reflect, refract, volume and sss, * for all, a leading - for all but, & and | to combine. \"-primary\" hides an object from the camera while it still shadows and reflects; an empty value hides it from every ray. Unset: Karma's rendervisibility."
+                parmtag { "spare_category" "Visibility" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "string" }
+                disablewhen "{ xn__novaobjectrenderVisibility_control_ewbg == block } { xn__novaobjectrenderVisibility_control_ewbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectholdoutMode_control_8nbg"
+                label   "Holdout Mode"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'token')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectholdoutMode_79ag"
+                label   "Holdout Mode"
+                type    string
+                size    1
+                default { "none" }
+                menu {
+                    "none" "None"
+                    "matte" "Matte"
+                    "background" "Background"
+                }
+                help    "Matte: the object is cut out of the image (colour and alpha 0 where the camera sees it) and still shadows and reflects. Background: a stand-in for the plate, whose alpha is the shadow the other objects cast on it. Unset: Karma's holdoutmode."
+                parmtag { "spare_category" "Visibility" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "token" }
+                disablewhen "{ xn__novaobjectholdoutMode_control_8nbg == block } { xn__novaobjectholdoutMode_control_8nbg == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_object_light"
+            label   "Light"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novaobjectlightSource_control_8nbg"
+                label   "Efficient Emission Sampling"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectlightSource_79ag"
+                label   "Efficient Emission Sampling"
+                type    int
+                size    1
+                default { 0 }
+                menu {
+                    "0" "No"
+                    "1" "Yes"
+                    "2" "Auto"
+                }
+                help    "Treats an emissive mesh or volume as a light source: its emission is light-sampled (much less noise on what it lights) and is a light (L) in light path expressions, also for the camera. Yes and Auto both treat the parts whose material emits. Moving meshes and VEX materials stay plain emitters. Unset: Karma's treat_as_lightsource, whose light multipliers (lightsource_diffusescale and specularscale) Nova reads as well."
+                parmtag { "spare_category" "Light" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaobjectlightSource_control_8nbg == block } { xn__novaobjectlightSource_control_8nbg == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_object_curves_and_points"
+            label   "Curves and Points"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novaobjectcurveStyle_control_mmbg"
+                label   "Curve Style"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectcurveStyle_l8ag"
+                label   "Curve Style"
+                type    int
+                size    1
+                default { 1 }
+                menu {
+                    "0" "Ribbon Facing the Ray"
+                    "1" "Round Tube"
+                    "2" "Ribbon Oriented to Normals"
+                    "3" "Oriented Where Normals Exist"
+                }
+                help    "How curves render: flat ribbons turned towards each ray, round tubes (normals ignored), ribbons facing their normals, or ribbons where the curves have normals and tubes elsewhere. Linear curves cannot be oriented and face the ray. Unset: Karma's curve_style."
+                parmtag { "spare_category" "Curves and Points" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaobjectcurveStyle_control_mmbg == block } { xn__novaobjectcurveStyle_control_mmbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectwidthScale_control_mmbg"
+                label   "Width Scale"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectwidthScale_l8ag"
+                label   "Width Scale"
+                type    float
+                size    1
+                default { 1.0 }
+                range   { 0 10 }
+                help    "Multiplies the widths of curves and points. Unset: Karma's width_scale."
+                parmtag { "spare_category" "Curves and Points" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "float" }
+                disablewhen "{ xn__novaobjectwidthScale_control_mmbg == block } { xn__novaobjectwidthScale_control_mmbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectpointStyle_control_mmbg"
+                label   "Point Style"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectpointStyle_l8ag"
+                label   "Point Style"
+                type    int
+                size    1
+                default { 1 }
+                menu {
+                    "0" "Disc Facing the Ray"
+                    "1" "Sphere"
+                    "2" "Disc Facing the Normal"
+                }
+                help    "How points render: discs turned towards each ray, spheres, or discs facing the points' normals (facing the ray where there are none). Unset: Karma's point_style."
+                parmtag { "spare_category" "Curves and Points" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaobjectpointStyle_control_mmbg == block } { xn__novaobjectpointStyle_control_mmbg == none }"
+            }
+        }
+        groupcollapsible {
+            name    "nova_object_motion_blur"
+            label   "Motion Blur"
+            grouptag { "group_default" "1" }
+            parm {
+                name    "xn__novaobjectvelocityBlur_control_vpbg"
+                label   "Velocity Blur"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectvelocityBlur_ucbg"
+                label   "Velocity Blur"
+                type    int
+                size    1
+                default { 0 }
+                menu {
+                    "0" "No Velocity Blur"
+                    "1" "Velocity Blur"
+                    "2" "Acceleration Blur"
+                }
+                help    "Motion blur of meshes, curves and points from their velocities (v in SOPs, units per second) instead of their time samples, for geometry whose point count changes from frame to frame. Velocity Blur moves the points in straight lines over the shutter; Acceleration Blur bends the paths with the accelerations (accel), sampled Acceleration Samples times. Volumes blur by their velocity field when this is on (both modes move them linearly; Karma's volumevblurscale scales it). Unset: Karma's vblur (on the object, else on the render settings)."
+                parmtag { "spare_category" "Motion Blur" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaobjectvelocityBlur_control_vpbg == block } { xn__novaobjectvelocityBlur_control_vpbg == none }"
+            }
+            parm {
+                name    "xn__novaobjectinstanceVelocityBlur_control_w2bg"
+                label   "Instance Velocity Blur"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectinstanceVelocityBlur_vpbg"
+                label   "Instance Velocity Blur"
+                type    int
+                size    1
+                default { 0 }
+                menu {
+                    "0" "No Velocity Blur"
+                    "1" "Velocity Blur"
+                    "2" "Acceleration Blur"
+                }
+                help    "Set on a point instancer: its instances move with the instancer's velocities and turn with its angular velocities instead of following the time samples of their positions and orientations; Acceleration Blur adds the accelerations. Unset: Karma's instance_vblur (on the instancer, else on the render settings)."
+                parmtag { "spare_category" "Motion Blur" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaobjectinstanceVelocityBlur_control_w2bg == block } { xn__novaobjectinstanceVelocityBlur_control_w2bg == none }"
+            }
+            parm {
+                name    "xn__novaobjectaccelerationSamples_control_90bg"
+                label   "Acceleration Samples"
+                type    string
+                default { "none" }
+                menujoin {
+                    [ "import loputils" ]
+                    [ "return loputils.createEditPropertiesControlMenu(kwargs, 'int')" ]
+                    language python
+                }
+                parmtag { "sidefx::look" "icon" }
+            }
+            parm {
+                name    "xn__novaobjectaccelerationSamples_8nbg"
+                label   "Acceleration Samples"
+                type    int
+                size    1
+                default { 2 }
+                range   { 2 16 }
+                help    "How many times Acceleration Blur samples the shutter (Max Motion Steps caps it); 2 is a straight line from shutter open to close. Unset: Karma's geosamples, on point instancers its instance_samples."
+                parmtag { "spare_category" "Motion Blur" }
+                parmtag { "uiscope" "None" }
+                parmtag { "usdvaluetype" "int" }
+                disablewhen "{ xn__novaobjectaccelerationSamples_control_90bg == block } { xn__novaobjectaccelerationSamples_control_90bg == none }"
             }
         }
     }

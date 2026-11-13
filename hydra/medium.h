@@ -26,6 +26,16 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 class HdNovaRenderParam;
+class HdNovaInstancer;
+
+// The object-to-world transforms of every instance of an instanced gprim or
+// volume (flattened over the nesting levels, the prim's own transform
+// first): per instance its uniform steps over the shutter, or one transform
+// when it does not move. The instances at the frame alone when their number
+// changes within the shutter (as instanced surfaces).
+std::vector<std::vector<nova::Mat4>> HdNovaInstanceSteps(HdSceneDelegate *sd, SdfPath const &id,
+                                                         HdNovaInstancer const &instancer, HdNovaShutter const &shutter,
+                                                         unsigned maxSteps);
 
 // Whether gprim `id`, bound to `material` (empty: none), is a medium.
 bool HdNovaIsMedium(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &material,

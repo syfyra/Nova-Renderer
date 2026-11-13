@@ -269,10 +269,28 @@ private:
 // Only motion pxr made from velocity data is trimmed, per primvar: points
 // and instance positions need velocities, orientations angular velocities,
 // each with one value per element (pxr's validity rule), and pxr's times
-// must differ from the input's (with invalid data pxr passes USD's time
-// samples through, e.g. the subframe samples of Houdini's Motion Blur LOP
-// at the shutter ends, which stay).
+// must differ from the input's.
+//
+// Where velocity blur is on and that data is not usable (no velocities, an
+// empty array, another count than the elements), pxr passes USD's time
+// samples through. Karma does not blur by them (measured, audit M-1 of
+// 0.2.0): velocity blur on means the time samples of points, instance
+// positions and orientations are not motion, and the value at the frame is
+// held over the shutter. So here: the subframe samples of Houdini's Motion
+// Blur LOP under a Velocity Blur setting render sharp, as in Karma, and so
+// does deforming geometry without v under a global Velocity Blur.
 bool nearTime(float a, float b, float length) { return std::fabs(a - b) <= 1e-4f * std::max(1.0f, length); }
+
+// Whether the prim blurs by velocities (mode 1 or 2).
+bool velocityBlurOn(HdContainerDataSourceHandle const &prim) {
+    auto modeDs = HdTypedSampledDataSource<TfToken>::Cast(
+        prim->Get(HdsiVelocityMotionResolvingSceneIndexTokens->velocityMotionMode));
+    if (!modeDs)
+        return false;
+    const TfToken mode = modeDs->GetTypedValue(0.0f);
+    return mode == HdsiVelocityMotionResolvingSceneIndexTokens->noAcceleration ||
+           mode == HdsiVelocityMotionResolvingSceneIndexTokens->enable;
+}
 
 bool sampledTwice(HdContainerDataSourceHandle const &prim) {
     auto modeDs = HdTypedSampledDataSource<TfToken>::Cast(
@@ -289,8 +307,10 @@ class EndpointsDataSource final : public HdSampledDataSource {
 public:
     HD_DECLARE_DATASOURCE(EndpointsDataSource);
 
-    VtValue GetValue(Time t) override { return _input->GetValue(t); }
+    VtValue GetValue(Time t) override { return _input->GetValue(_Held() ? 0.0f : t); }
     bool GetContributingSampleTimesForInterval(Time start, Time end, std::vector<Time> *times) override {
+        if (_Held()) // the frame's value over the whole shutter
+            return false;
         if (!_input->GetContributingSampleTimesForInterval(start, end, times))
             return false;
         const float length = end - start;
@@ -305,13 +325,29 @@ private:
                         HdSceneIndexBaseRefPtr upstream, SdfPath path)
         : _input(std::move(input)), _prim(std::move(prim)), _name(std::move(name)), _upstream(std::move(upstream)),
           _path(std::move(path)) {}
-    // pxr resolved this primvar from valid velocity data: one velocity per
-    // element, and times other than those of the resolving index's input.
-    bool _Resolved(Time start, Time end, std::vector<Time> const &times) const {
+    // The primvar's velocity data is usable: one velocity (angular velocity
+    // for orientations) per element.
+    bool _Valid() const {
         const TfToken &source =
             _name == HdInstancerTokens->instanceRotations ? _tokens->angularVelocities : HdTokens->velocities;
         const size_t n = primvarValue(HdPrimvarsSchema::GetFromParent(_prim), source).GetArraySize();
-        if (n == 0 || n != _input->GetValue(0.0f).GetArraySize())
+        return n != 0 && n == _input->GetValue(0.0f).GetArraySize();
+    }
+    // Karma's rule: velocity blur on and no usable velocity data, so the
+    // primvar's time samples are not motion. Decided once per data source
+    // (a change of the prim's data makes new ones).
+    bool _Held() const {
+        int held = _held.load(std::memory_order_relaxed);
+        if (held < 0) {
+            held = velocityBlurOn(_prim) && !_Valid() ? 1 : 0;
+            _held.store(held, std::memory_order_relaxed);
+        }
+        return held == 1;
+    }
+    // pxr resolved this primvar from valid velocity data: one velocity per
+    // element, and times other than those of the resolving index's input.
+    bool _Resolved(Time start, Time end, std::vector<Time> const &times) const {
+        if (!_Valid())
             return false;
         HdSampledDataSourceHandle before =
             HdPrimvarsSchema::GetFromParent(_upstream->GetPrim(_path).dataSource).GetPrimvar(_name).GetPrimvarValue();
@@ -325,6 +361,7 @@ private:
     TfToken _name;
     HdSceneIndexBaseRefPtr _upstream; // the resolving index's input
     SdfPath _path;
+    mutable std::atomic<int> _held{-1}; // -1: not decided yet
 };
 
 class EndpointPrimvarsDataSource final : public HdContainerDataSource {

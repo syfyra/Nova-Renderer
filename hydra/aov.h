@@ -41,6 +41,10 @@ struct HdNovaAovSource {
     // An int buffer saved as a float image (husk:format float, Karma's ids):
     // husk copies the buffer's bytes, so the values are written as floats.
     bool intAsFloat = false;
+    // The image's channels are half floats (husk:format half, half2, half3):
+    // a float or float2 buffer then holds and reports half floats
+    // (HdNovaRenderBuffer::ReportHalf).
+    bool fileHalf = false;
     int output = -1;        // the LPE program's output (Lpe; -1: the expression failed)
     bool invert = false;    // !expression: 1 - value (Lpe)
     int shadowSlot = -1;    // shadow;expression: its lit sum, the value 1 - lit / unoccluded (Lpe)

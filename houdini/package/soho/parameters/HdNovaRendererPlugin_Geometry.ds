@@ -266,9 +266,209 @@
         }
     }
     groupcollapsible {
+        name    "nova_geo_outlines"
+        label   "Outlines"
+        grouptag { "group_default" "1" }
+        parm {
+            name    "xn__primvarsnovaobjectoutline_control_vubeg"
+            label   "Draw Outlines"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutline_uhbeg"
+            label   "Draw Outlines"
+            type    toggle
+            size    1
+            default { 1 }
+            help    "The object gets lines where the camera sees it (with Outlines on in the render settings). Unset: Karma's outline_enable of the object."
+            parmtag { "spare_category" "Outlines" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "bool" }
+            disablewhen "{ xn__primvarsnovaobjectoutline_control_vubeg == block } { xn__primvarsnovaobjectoutline_control_vubeg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineRadius_control_n4beg"
+            label   "Line Radius"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineRadius_mrbeg"
+            label   "Line Radius"
+            type    float
+            size    1
+            default { 0.002 }
+            range   { 0 0.02 }
+            help    "The lines' width on this object: the tangent of the angle around a camera ray in which edges are looked for, so a line is as wide on screen near and far (see Outline Depth Blend). Unset: Karma's outline_radius of the object."
+            parmtag { "spare_category" "Outlines" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "float" }
+            disablewhen "{ xn__primvarsnovaobjectoutlineRadius_control_n4beg == block } { xn__primvarsnovaobjectoutlineRadius_control_n4beg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineContour_control_95beg"
+            label   "Contour Lines"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineContour_8sbeg"
+            label   "Contour Lines"
+            type    toggle
+            size    1
+            default { 1 }
+            help    "Lines along the object's silhouette: where the next thing seen is another object, or nothing. Unset: Karma's outline_contour."
+            parmtag { "spare_category" "Outlines" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "bool" }
+            disablewhen "{ xn__primvarsnovaobjectoutlineContour_control_95beg == block } { xn__primvarsnovaobjectoutlineContour_control_95beg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineCrease_control_n4beg"
+            label   "Crease Lines"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineCrease_mrbeg"
+            label   "Crease Lines"
+            type    toggle
+            size    1
+            default { 1 }
+            help    "Lines where the surface folds. Unset: Karma's outline_crease."
+            parmtag { "spare_category" "Outlines" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "bool" }
+            disablewhen "{ xn__primvarsnovaobjectoutlineCrease_control_n4beg == block } { xn__primvarsnovaobjectoutlineCrease_control_n4beg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineCreaseThreshold_control_bkceg"
+            label   "Crease Threshold"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineCreaseThreshold_95beg"
+            label   "Crease Threshold"
+            type    float
+            size    1
+            default { 0.1 }
+            range   { 0 2 }
+            help    "How far the normal must turn for a crease line: 1 minus the cosine of the angle (0.1 is 26 degrees, 1 a right angle). Unset: Karma's outline_creasethreshold."
+            parmtag { "spare_category" "Outlines" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "float" }
+            disablewhen "{ xn__primvarsnovaobjectoutlineCreaseThreshold_control_bkceg == block } { xn__primvarsnovaobjectoutlineCreaseThreshold_control_bkceg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineDepth_control_02beg"
+            label   "Depth Lines"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'bool')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineDepth_zpbeg"
+            label   "Depth Lines"
+            type    toggle
+            size    1
+            default { 1 }
+            help    "Lines where the object steps back behind itself. Unset: Karma's outline_depth."
+            parmtag { "spare_category" "Outlines" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "bool" }
+            disablewhen "{ xn__primvarsnovaobjectoutlineDepth_control_02beg == block } { xn__primvarsnovaobjectoutlineDepth_control_02beg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineDepthThreshold_control_oiceg"
+            label   "Depth Threshold"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'float')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectoutlineDepthThreshold_n4beg"
+            label   "Depth Threshold"
+            type    float
+            size    1
+            default { 0.5 }
+            range   { 0 10 }
+            help    "How large a step in depth draws a line: 1 plus the threshold, times the line's radius at the surface (0: a step of one radius, 1: of two). Unset: Karma's outline_depththreshold of the object."
+            parmtag { "spare_category" "Outlines" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "float" }
+            disablewhen "{ xn__primvarsnovaobjectoutlineDepthThreshold_control_oiceg == block } { xn__primvarsnovaobjectoutlineDepthThreshold_control_oiceg == none }"
+        }
+    }
+    groupcollapsible {
         name    "nova_geo_light"
         label   "Light"
         grouptag { "group_default" "1" }
+        parm {
+            name    "xn__primvarsnovaobjectlpeTag_control_8sbeg"
+            label   "LPE Tag"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'string')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectlpeTag_7fbeg"
+            label   "LPE Tag"
+            type    string
+            size    1
+            default { "" }
+            help    "The object's tag in light path expressions, as the LPE tag of a light or of a material: <L.'key'> is the light of the emissive objects tagged key. Unset: Karma's lpetag."
+            parmtag { "spare_category" "Light" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "string" }
+            disablewhen "{ xn__primvarsnovaobjectlpeTag_control_8sbeg == block } { xn__primvarsnovaobjectlpeTag_control_8sbeg == none }"
+        }
         parm {
             name    "xn__primvarsnovaobjectlightSource_control_e1beg"
             label   "Efficient Emission Sampling"
@@ -345,6 +545,74 @@
             parmtag { "uiscope" "None" }
             parmtag { "usdvaluetype" "string" }
             disablewhen "{ xn__primvarsnovaobjectportalDomeLights_control_j9beg == block } { xn__primvarsnovaobjectportalDomeLights_control_j9beg == none }"
+        }
+    }
+    groupcollapsible {
+        name    "nova_geo_visibility"
+        label   "Visibility"
+        grouptag { "group_default" "1" }
+        parm {
+            name    "xn__primvarsnovaobjectrenderVisibility_control_j9beg"
+            label   "Render Visibility"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'string')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectrenderVisibility_iwbeg"
+            label   "Render Visibility"
+            type    string
+            size    1
+            default { "*" }
+            menureplace {
+                "*" "Visible to All"
+                "primary" "Visible Only to Primary Rays"
+                "primary|shadow" "Visible Only to Primary and Shadow Rays"
+                "-primary" "Invisible to Primary Rays (Phantom)"
+                "-diffuse" "Invisible to Diffuse Rays"
+                "-diffuse&-reflect&-refract" "Invisible to Secondary Rays"
+                "-shadow" "Casts No Shadow"
+                "" "Invisible (Unrenderable)"
+            }
+            help    "The rays that see the object, in Karma's syntax: the ray types primary, shadow, diffuse, reflect, refract, volume and sss, * for all, a leading - for all but, & and | to combine. \"-primary\" hides an object from the camera while it still shadows and reflects; an empty value hides it from every ray. Unset: Karma's rendervisibility."
+            parmtag { "spare_category" "Visibility" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "string" }
+            disablewhen "{ xn__primvarsnovaobjectrenderVisibility_control_j9beg == block } { xn__primvarsnovaobjectrenderVisibility_control_j9beg == none }"
+        }
+        parm {
+            name    "xn__primvarsnovaobjectholdoutMode_control_e1beg"
+            label   "Holdout Mode"
+            type    string
+            default { "none" }
+            menujoin {
+                [ "import loputils" ]
+                [ "return loputils.createEditPropertiesControlMenu(kwargs, 'token')" ]
+                language python
+            }
+            parmtag { "sidefx::look" "icon" }
+        }
+        parm {
+            name    "xn__primvarsnovaobjectholdoutMode_dobeg"
+            label   "Holdout Mode"
+            type    string
+            size    1
+            default { "none" }
+            menu {
+                "none" "None"
+                "matte" "Matte"
+                "background" "Background"
+            }
+            help    "Matte: the object is cut out of the image (colour and alpha 0 where the camera sees it) and still shadows and reflects. Background: a stand-in for the plate, whose alpha is the shadow the other objects cast on it. Unset: Karma's holdoutmode."
+            parmtag { "spare_category" "Visibility" }
+            parmtag { "uiscope" "None" }
+            parmtag { "usdvaluetype" "token" }
+            disablewhen "{ xn__primvarsnovaobjectholdoutMode_control_e1beg == block } { xn__primvarsnovaobjectholdoutMode_control_e1beg == none }"
         }
     }
     groupcollapsible {
@@ -516,7 +784,7 @@
             type    int
             size    1
             default { 2 }
-            range   { 2 32 }
+            range   { 2 16 }
             help    "How many times Acceleration Blur samples the shutter (Max Motion Steps caps it); 2 is a straight line from shutter open to close. Unset: Karma's geosamples, on point instancers its instance_samples."
             parmtag { "spare_category" "Motion Blur" }
             parmtag { "uiscope" "None" }

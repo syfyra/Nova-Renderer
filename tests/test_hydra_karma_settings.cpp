@@ -8,11 +8,13 @@
 #include "hydra/motion.h"
 #include "hydra/renderDelegate.h"
 #include "hydra/renderParam.h"
+#include "hydra/textureSystem.h"
 #include "hydra/velocitySceneIndex.h"
 
 #include <pxr/base/gf/vec2f.h>
 #include <pxr/base/gf/vec3f.h>
 
+#include "core/film/film.h"
 #include "core/integrator/guiding.h"
 
 #include <pxr/base/tf/diagnosticMgr.h>
@@ -32,6 +34,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -717,4 +720,383 @@ def Points "dots"
     std::sort(portals.begin(), portals.end());
     CHECK(portals == std::vector<uint32_t>{0, 2}); // domeR through the window, domeB everywhere
     CHECK(catcher.count("light portals must be meshes: /dots") == 1);
+}
+
+// ---------------------------------------------------------------------------
+// 0.2.0: settings of Nova's own, and Nova's names for what only Karma's
+// attributes drove (docs/reference.md, "Render settings")
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Sample scale, noise per frame, roulette depth and threads", "[hydra][settings][nova]") {
+    HdNovaRenderDelegate d;
+    CHECK(d.GetNovaSettings().maxSamples == 64u);
+    CHECK(d.GetNovaSettings().rrStartDepth == 3u);
+    // The scale multiplies the samples; one sample at least remains.
+    set(d, "nova:sampleScale", VtValue(0.25f));
+    CHECK(d.GetNovaSettings().maxSamples == 16u);
+    set(d, "nova:sampleScale", VtValue(0.001f));
+    CHECK(d.GetNovaSettings().maxSamples == 1u);
+    set(d, "nova:sampleScale", VtValue(2.0));
+    CHECK(d.GetNovaSettings().maxSamples == 128u);
+    set(d, "nova:samples", VtValue(10));
+    set(d, "nova:sampleScale", VtValue(0.5f));
+    CHECK(d.GetNovaSettings().maxSamples == 5u);
+    // Values that say nothing leave the samples alone.
+    for (VtValue const &v : {VtValue(0.0f), VtValue(-1.0f), VtValue(std::numeric_limits<float>::quiet_NaN()),
+                             VtValue(std::string("half"))}) {
+        set(d, "nova:sampleScale", v);
+        CHECK(d.GetNovaSettings().maxSamples == 10u);
+    }
+    {
+        // Karma's samples too.
+        HdNovaRenderDelegate k;
+        set(k, "karma:global:convergence_mode", VtValue(TfToken("Path Traced")));
+        set(k, "karma:global:pathtracedsamples", VtValue(128));
+        set(k, "nova:sampleScale", VtValue(0.5f));
+        CHECK(k.GetNovaSettings().maxSamples == 64u);
+    }
+    {
+        // husk's number of the frame varies the seed, unless the noise stands still.
+        HdNovaRenderDelegate n;
+        set(n, "nova:seed", VtValue(5));
+        CHECK(n.GetNovaSettings().seed == 5u);
+        set(n, "randomseed", VtValue(2116800000.0)); // frame 3
+        const uint32_t frame3 = n.GetNovaSettings().seed;
+        CHECK(frame3 != 5u);
+        set(n, "nova:animateNoise", VtValue(false));
+        CHECK(n.GetNovaSettings().seed == 5u);
+        set(n, "nova:animateNoise", VtValue(true));
+        CHECK(n.GetNovaSettings().seed == frame3);
+    }
+    set(d, "nova:rrStartDepth", VtValue(8));
+    CHECK(d.GetNovaSettings().rrStartDepth == 8u);
+    set(d, "nova:rrStartDepth", VtValue(0));
+    CHECK(d.GetNovaSettings().rrStartDepth == 1u);
+    set(d, "nova:rrStartDepth", VtValue(std::string("deep")));
+    CHECK(d.GetNovaSettings().rrStartDepth == 3u);
+    // Threads: all, at most n, all but n; one at least.
+    CHECK(d.GetThreadLimit(8) == 8);
+    set(d, "nova:threads", VtValue(4));
+    CHECK(d.GetThreadLimit(8) == 4);
+    set(d, "nova:threads", VtValue(64));
+    CHECK(d.GetThreadLimit(8) == 8);
+    set(d, "nova:threads", VtValue(-2));
+    CHECK(d.GetThreadLimit(8) == 6);
+    set(d, "nova:threads", VtValue(-100));
+    CHECK(d.GetThreadLimit(8) == 1);
+    set(d, "nova:threads", VtValue(0));
+    CHECK(d.GetThreadLimit(0) == 1);
+}
+
+TEST_CASE("Nova's look-dev and outline settings come before Karma's", "[hydra][settings][nova][outline]") {
+    HdNovaRenderDelegate d;
+    // Karma's stand in while Nova's are not authored.
+    set(d, "karma:global:override_lighting", VtValue(TfToken("Dome Light")));
+    set(d, "karma:global:disable_lighting", VtValue(false));
+    set(d, "karma:global:head_ao_samples", VtValue(4));
+    set(d, "karma:global:head_ao_distance", VtValue(5.0f));
+    set(d, "karma:global:head_depthcue_z", VtValue(GfVec2f(2.0f, 10.0f)));
+    set(d, "karma:global:head_depthcue_color", VtValue(GfVec3f(1.0f, 0.0f, 0.0f)));
+    set(d, "karma:global:head_depthcue_alpha", VtValue(0.5f));
+    set(d, "karma:global:outline_enable", VtValue(true));
+    set(d, "karma:global:outline_radius", VtValue(0.5f));
+    set(d, "karma:global:outline_color", VtValue(GfVec3f(0.0f, 1.0f, 0.0f)));
+    set(d, "karma:global:outline_mode", VtValue(true));
+    set(d, "karma:global:outline_apply", VtValue(true));
+    set(d, "karma:object:outline_radius", VtValue(0.01f));
+    set(d, "karma:object:outline_depth", VtValue(false));
+    nova::RenderSettings s = d.GetNovaSettings();
+    CHECK(s.look.lights == nova::LightOverride::Dome);
+    CHECK(s.look.aoSamples == 4u);
+    CHECK(s.outline.enable);
+    CHECK_FALSE(s.outline.requested); // Karma's switch: lines only in a render with an outline AOV
+    CHECK(s.outline.randomPattern);
+
+    set(d, "nova:lightOverride", VtValue(TfToken("headlight")));
+    set(d, "nova:autoHeadlight", VtValue(true));
+    set(d, "nova:simplifiedShading", VtValue(true));
+    set(d, "nova:ambientOcclusion", VtValue(false));
+    set(d, "nova:aoDistance", VtValue(0.0f));
+    set(d, "nova:fogNear", VtValue(1.0f));
+    set(d, "nova:fogFar", VtValue(4.0f));
+    set(d, "nova:fogColor", VtValue(GfVec3f(0.0f, 0.0f, 1.0f)));
+    set(d, "nova:fogAlpha", VtValue(0.25f));
+    set(d, "nova:outline", VtValue(true));
+    set(d, "nova:outlineRadius", VtValue(2.0f));
+    set(d, "nova:outlineColor", VtValue(GfVec3f(0.0f, 0.0f, 0.0f)));
+    set(d, "nova:outlinePattern", VtValue(TfToken("rings")));
+    set(d, "nova:outlineSamples", VtValue(16));
+    set(d, "nova:outlineStencils", VtValue(3));
+    set(d, "nova:outlineIntensity", VtValue(0.5f));
+    set(d, "nova:outlineFitMin", VtValue(0.2f));
+    set(d, "nova:outlineFitMax", VtValue(0.8f));
+    set(d, "nova:outlineDepthThreshold", VtValue(3.0f));
+    set(d, "nova:outlineDepthBlend", VtValue(1.0f));
+    set(d, "nova:outlineApply", VtValue(false));
+    set(d, "nova:object:outlineRadius", VtValue(0.004f));
+    set(d, "nova:object:outlineCrease", VtValue(false));
+    s = d.GetNovaSettings();
+    CHECK(s.look.lights == nova::LightOverride::Headlight);
+    CHECK(s.look.autoHeadlight);
+    CHECK(s.look.simplified);
+    CHECK(s.look.aoSamples == 0u);
+    CHECK(s.look.aoDistance == 1e30f); // Nova's 0: at any distance
+    CHECK(s.look.fogNear == 1.0f);
+    CHECK(s.look.fogFar == 4.0f);
+    CHECK(s.look.fogColor[0] == 0.0f);
+    CHECK(s.look.fogColor[2] == 1.0f);
+    CHECK(s.look.fogAlpha == 0.25f);
+    CHECK(s.outline.enable);
+    CHECK(s.outline.requested); // Nova's switch: lines in the beauty of any render
+    CHECK_FALSE(s.outline.randomPattern);
+    CHECK(s.outline.radius == 2.0f);
+    CHECK(s.outline.color[1] == 0.0f);
+    CHECK(s.outline.samples == 16u);
+    CHECK(s.outline.stencils == 3u);
+    CHECK(s.outline.intensity == 0.5f);
+    CHECK(s.outline.fitMin == 0.2f);
+    CHECK(s.outline.fitMax == 0.8f);
+    CHECK(s.outline.depthScale == 3.0f);
+    CHECK(s.outline.depthBlend == 1.0f);
+    CHECK_FALSE(s.outline.apply);
+    CHECK(s.objectOutline.radius == 0.004f);
+    CHECK_FALSE(s.objectOutline.crease);
+    CHECK_FALSE(s.objectOutline.depth); // Karma's, where Nova's says nothing
+    CHECK(s.objectOutline.contour);
+
+    set(d, "nova:aoDistance", VtValue(2.5f));
+    set(d, "nova:ambientOcclusion", VtValue(true));
+    set(d, "nova:outlinePattern", VtValue(TfToken("random")));
+    s = d.GetNovaSettings();
+    CHECK(s.look.aoDistance == 2.5f);
+    CHECK(s.look.aoSamples == 1u);
+    CHECK(s.outline.randomPattern);
+    // Off is a value too: Karma's cannot turn the lines or its dome on.
+    set(d, "nova:outline", VtValue(false));
+    set(d, "nova:lightOverride", VtValue(TfToken("off")));
+    s = d.GetNovaSettings();
+    CHECK_FALSE(s.outline.enable);
+    CHECK_FALSE(s.outline.requested);
+    CHECK(s.look.lights == nova::LightOverride::Off);
+    set(d, "nova:lightOverride", VtValue(TfToken("emissive")));
+    CHECK(d.GetNovaSettings().look.lights == nova::LightOverride::EmissiveOnly);
+    set(d, "nova:lightOverride", VtValue(TfToken("dome")));
+    CHECK(d.GetNovaSettings().look.lights == nova::LightOverride::Dome);
+}
+
+TEST_CASE("Nova's ray visibility, holdouts, outlines and LPE tags", "[hydra][settings][nova][visibility]") {
+    HdNovaRenderDelegate d;
+    set(d, "karma:object:rendervisibility", VtValue(std::string("-shadow")));
+    set(d, "karma:object:holdoutmode", VtValue(TfToken("Background")));
+    set(d, "karma:global:bgoccludeshadow", VtValue(true));
+    nova::RenderSettings s = d.GetNovaSettings();
+    CHECK(s.objectVisibility.mask == int16_t(nova::kVisibleAll & ~nova::kVisibleShadow));
+    CHECK(s.objectVisibility.holdout == int8_t(nova::HoldoutMode::Background));
+    CHECK(s.backgroundOccludesShadows);
+    set(d, "nova:object:renderVisibility", VtValue(std::string("-primary")));
+    set(d, "nova:object:holdoutMode", VtValue(TfToken("matte")));
+    set(d, "nova:backgroundOccludesShadows", VtValue(false));
+    s = d.GetNovaSettings();
+    CHECK(s.objectVisibility.mask == int16_t(nova::kVisibleAll & ~nova::kVisibleCamera));
+    CHECK(s.objectVisibility.holdout == int8_t(nova::HoldoutMode::Matte));
+    CHECK_FALSE(s.backgroundOccludesShadows);
+    // An empty expression is seen by no ray; the defaults are everything and no holdout.
+    set(d, "nova:object:renderVisibility", VtValue(std::string("")));
+    set(d, "nova:object:holdoutMode", VtValue(TfToken("none")));
+    s = d.GetNovaSettings();
+    CHECK(s.objectVisibility.mask == 0);
+    CHECK(s.objectVisibility.holdout == int8_t(nova::HoldoutMode::None));
+    set(d, "nova:object:renderVisibility", VtValue(std::string("*")));
+    CHECK(d.GetNovaSettings().objectVisibility.mask == int16_t(nova::kVisibleAll));
+
+    // On a prim: Nova's primvars before Karma's, each property by itself.
+    Rig rig(R"(
+def Mesh "mesh"
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    uniform token subdivisionScheme = "none"
+    string primvars:karma:object:rendervisibility = "-shadow" (interpolation = "constant")
+    string primvars:nova:object:renderVisibility = "-primary" (interpolation = "constant")
+    token primvars:nova:object:holdoutMode = "matte" (interpolation = "constant")
+    string primvars:karma:object:lpetag = "karma" (interpolation = "constant")
+    string primvars:nova:object:lpeTag = "nova" (interpolation = "constant")
+    bool primvars:karma:object:outline_contour = 0 (interpolation = "constant")
+    bool primvars:nova:object:outlineContour = 1 (interpolation = "constant")
+    float primvars:nova:object:outlineRadius = 0.004 (interpolation = "constant")
+    bool primvars:karma:object:outline_depth = 0 (interpolation = "constant")
+}
+def Points "points"
+{
+    point3f[] points = [(5, 0, 0)]
+    float[] widths = [1] (interpolation = "vertex")
+    string primvars:karma:object:rendervisibility = "-shadow" (interpolation = "constant")
+    string primvars:karma:object:lpetag = "karma" (interpolation = "constant")
+}
+)");
+    nova::MeshRecord const &r = rig.record(nova::MeshShape::Triangles);
+    CHECK(r.visibilitySettings.mask == int16_t(nova::kVisibleAll & ~nova::kVisibleCamera));
+    CHECK(r.visibilitySettings.holdout == int8_t(nova::HoldoutMode::Matte));
+    CHECK(r.lpeTag == "nova");
+    CHECK(r.outlineSettings.contour == 1);
+    CHECK(r.outlineSettings.radius == 0.004f);
+    CHECK(r.outlineSettings.depth == 0);
+    nova::MeshRecord const &p = rig.record(nova::MeshShape::Points);
+    CHECK(p.visibilitySettings.mask == int16_t(nova::kVisibleAll & ~nova::kVisibleShadow));
+    CHECK(p.lpeTag == "karma");
+}
+
+TEST_CASE("Per-object properties as defaults on the render settings", "[hydra][settings][nova]") {
+    HdNovaRenderDelegate d;
+    set(d, "karma:object:curve_style", VtValue(TfToken("Flat Ribbons")));
+    set(d, "karma:object:width_scale", VtValue(2.0f));
+    set(d, "karma:object:dicingquality", VtValue(2.0f));
+    set(d, "karma:object:vblur", VtValue(TfToken("Velocity Blur")));
+    set(d, "karma:object:geosamples", VtValue(5));
+    set(d, "karma:object:instance_samples", VtValue(3));
+    CHECK(d.GetObjectDefaults().curveStyle == 0);
+    CHECK(d.GetVelocityDefaults().velocityBlur == 1);
+    CHECK(d.GetVelocityDefaults().geoSamples == 5);
+    set(d, "nova:object:curveStyle", VtValue(2));
+    set(d, "nova:object:pointStyle", VtValue(0));
+    set(d, "nova:object:widthScale", VtValue(0.5f));
+    set(d, "nova:object:lightSource", VtValue(2));
+    set(d, "nova:dicingQuality", VtValue(1.5f));
+    set(d, "nova:dicingDepth", VtValue(4));
+    set(d, "nova:displacement", VtValue(false));
+    set(d, "nova:object:velocityBlur", VtValue(2));
+    set(d, "nova:object:instanceVelocityBlur", VtValue(1));
+    set(d, "nova:object:accelerationSamples", VtValue(7));
+    const HdNovaObjectDefaults o = d.GetObjectDefaults();
+    CHECK(o.curveStyle == 2);
+    CHECK(o.pointStyle == 0);
+    CHECK(o.widthScale == 0.5f);
+    CHECK(o.lightSource == 2);
+    CHECK(o.dicingQuality == 1.5f);
+    CHECK(o.dicingDepth == 4);
+    CHECK(o.displacement == 0);
+    const HdNovaVelocityDefaults v = d.GetVelocityDefaults();
+    CHECK(v.velocityBlur == 2);
+    CHECK(v.instanceVelocityBlur == 1);
+    CHECK(v.geoSamples == 7);
+    CHECK(v.instanceSamples == 7);
+    // A dicing depth of -1 is "off", which is a value.
+    set(d, "nova:dicingDepth", VtValue(-1));
+    CHECK(d.GetObjectDefaults().dicingDepth == -1);
+
+    // They reach the prims that author nothing; a prim's own primvar, Karma's too, still wins.
+    Rig rig(R"(
+def Points "points"
+{
+    point3f[] points = [(5, 0, 0)]
+    float[] widths = [1] (interpolation = "vertex")
+    int primvars:karma:object:point_style = 1 (interpolation = "constant")
+}
+def BasisCurves "curves"
+{
+    uniform token type = "linear"
+    int[] curveVertexCounts = [2]
+    point3f[] points = [(8, 0, 0), (8, 1, 0)]
+    float[] widths = [0.1] (interpolation = "constant")
+}
+)",
+            {{"nova:object:pointStyle", VtValue(0)},
+             {"nova:object:curveStyle", VtValue(0)},
+             {"nova:object:widthScale", VtValue(3.0f)},
+             {"karma:object:curve_style", VtValue(TfToken("Rounded Curves"))}});
+    nova::MeshRecord const &points = rig.record(nova::MeshShape::Points);
+    CHECK(points.desc.pointStyle == nova::PointStyle::Sphere); // its own
+    CHECK_THAT(points.desc.pointRadius[0], WithinAbs(1.5, 1e-6));
+    CHECK(rig.record(nova::MeshShape::Curves).desc.curveStyle == nova::CurveStyle::Flat); // Nova's before Karma's
+}
+
+TEST_CASE("The denoiser's quality and guides", "[hydra][settings][nova][denoise]") {
+    HdNovaRenderDelegate d;
+    HdNovaDenoiseConfig c = d.GetDenoiseConfig();
+    CHECK(c.quality == -1);
+    CHECK(c.viewportAlbedo);
+    CHECK(c.viewportNormal);
+    // The switches of Karma's Denoiser are the final frame's.
+    set(d, "karma:global:imagefilter",
+        VtValue(std::string(R"([["denoise", {"engine": "oidn", "aovs": ["C"], "use_albedo_input": false, "use_n_input": true}]])")));
+    c = d.GetDenoiseConfig();
+    CHECK_FALSE(c.final.albedo);
+    CHECK(c.final.normal);
+    CHECK(c.viewportAlbedo);
+    // Nova's hold for both.
+    set(d, "nova:denoiseAlbedo", VtValue(true));
+    set(d, "nova:denoiseNormal", VtValue(false));
+    set(d, "nova:denoiseQuality", VtValue(TfToken("fast")));
+    c = d.GetDenoiseConfig();
+    CHECK(c.final.albedo);
+    CHECK_FALSE(c.final.normal);
+    CHECK(c.viewportAlbedo);
+    CHECK_FALSE(c.viewportNormal);
+    CHECK(c.quality == 0);
+    set(d, "nova:denoiseQuality", VtValue(TfToken("balanced")));
+    CHECK(d.GetDenoiseConfig().quality == 1);
+    set(d, "nova:denoiseQuality", VtValue(std::string(" High ")));
+    CHECK(d.GetDenoiseConfig().quality == 2);
+    set(d, "nova:denoiseQuality", VtValue(TfToken("auto")));
+    CHECK(d.GetDenoiseConfig().quality == -1);
+    // A changed quality is another configuration (the render pass restarts on it).
+    CHECK_FALSE(c == d.GetDenoiseConfig());
+}
+
+TEST_CASE("Nova's switches of the deep camera map", "[hydra][settings][nova][deep]") {
+    // husk hands the products the delegate writes itself to it as a setting.
+    HdNovaRenderDelegate d;
+    CHECK(d.GetDeepRequest() == nullptr); // no deep product
+    HdAovSettingsMap product;
+    product[TfToken("productType")] = VtValue(TfToken("karma:deep"));
+    product[TfToken("productName")] = VtValue(TfToken("deep.exr"));
+    product[TfToken("karma:product:dcmcompression")] = VtValue(7);
+    set(d, "delegateRenderProducts", VtValue(std::vector<VtValue>{VtValue(product)}));
+    std::shared_ptr<const nova::DeepRequest> deep = d.GetDeepRequest();
+    REQUIRE(deep != nullptr);
+    CHECK(deep->compression == 7);
+    CHECK_FALSE(deep->hitDistance);
+    CHECK_FALSE(deep->excludeHoldouts);
+    // Karma's switches stand in; Nova's come first, also when they say no.
+    set(d, "karma:global:dcm_usehitdist", VtValue(true));
+    set(d, "karma:global:dcm_excludeholdouts", VtValue(true));
+    deep = d.GetDeepRequest();
+    REQUIRE(deep != nullptr);
+    CHECK(deep->hitDistance);
+    CHECK(deep->excludeHoldouts);
+    set(d, "nova:deepUseHitDistance", VtValue(false));
+    deep = d.GetDeepRequest();
+    REQUIRE(deep != nullptr);
+    CHECK_FALSE(deep->hitDistance);
+    CHECK(deep->excludeHoldouts);
+    set(d, "karma:global:dcm_usehitdist", VtValue());
+    set(d, "karma:global:dcm_excludeholdouts", VtValue());
+    set(d, "nova:deepUseHitDistance", VtValue(true));
+    set(d, "nova:deepExcludeHoldouts", VtValue(true));
+    deep = d.GetDeepRequest();
+    REQUIRE(deep != nullptr);
+    CHECK(deep->hitDistance);
+    CHECK(deep->excludeHoldouts);
+}
+
+TEST_CASE("The texture cache's memory", "[hydra][settings][nova][textures]") {
+    HdNovaRenderDelegate d;
+    CHECK(d.GetTextureOptions().cacheMemoryMB == 0);
+    set(d, "nova:textureCacheMemory", VtValue(3000));
+    CHECK(d.GetTextureOptions().cacheMemoryMB == 3000);
+    CHECK_FALSE(d.GetTextureOptions() == HdNovaTextureOptions{});
+    set(d, "nova:textureCacheMemory", VtValue(-5));
+    CHECK(d.GetTextureOptions().cacheMemoryMB == 0);
+    // The cache takes the limit and gets its own back.
+    HdNovaTextureSystem textures;
+    const float before = textures.CacheMemoryMB();
+    CHECK(before > 0.0f);
+    HdNovaTextureOptions o;
+    o.cacheMemoryMB = before == 3000.0f ? 2000 : 3000;
+    textures.SetOptions(o);
+    CHECK(textures.CacheMemoryMB() == float(o.cacheMemoryMB));
+    o.cacheMemoryMB = 0;
+    textures.SetOptions(o);
+    CHECK(textures.CacheMemoryMB() == before);
 }

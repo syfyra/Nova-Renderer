@@ -2,6 +2,8 @@
 
 #include "diagnostics.h"
 #include "field.h"
+#include "instancer.h"
+#include "medium.h"
 #include "primvarUtil.h"
 #include "renderParam.h"
 #include "velocitySceneIndex.h"
@@ -64,14 +66,12 @@ bool needsField(std::string const &binding, std::string const &fieldName, std::v
     return false;
 }
 
-// A constant float primvar (negative if not authored or not a number).
+// A constant float primvar (negative if not authored or not a number). Also
+// as an array of one element, the form Houdini's LOPs author constant
+// primvars in (float[] karma:object:volumelimit = [2]).
 float constantFloat(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name) {
-    for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolationConstant))
-        if (d.name == name) {
-            const VtValue v = VtValue::Cast<float>(sd->Get(id, name));
-            if (v.IsHolding<float>() && std::isfinite(v.UncheckedGet<float>()))
-                return std::max(v.UncheckedGet<float>(), 0.0f);
-        }
+    if (const std::optional<double> v = HdNovaNumber(HdNovaConstantPrimvar(sd, id, name)); v && std::isfinite(*v))
+        return float(std::max(*v, 0.0));
     return -1.0f;
 }
 
@@ -164,12 +164,23 @@ void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::Vo
     desc.lightSpecular = light.specular;
 }
 
+std::vector<std::string> HdNovaVolumeCategories(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &instancerId) {
+    std::vector<std::string> categories;
+    for (TfToken const &t : sd->GetCategories(id))
+        categories.push_back(t.GetString());
+    if (!instancerId.IsEmpty())
+        for (TfToken const &t : sd->GetCategories(instancerId))
+            categories.push_back(t.GetString());
+    return categories;
+}
+
 HdNovaVolume::HdNovaVolume(SdfPath const &id) : HdVolume(id) {}
 
 HdDirtyBits HdNovaVolume::GetInitialDirtyBitsMask() const {
     return HdChangeTracker::Clean | HdChangeTracker::InitRepr | HdChangeTracker::DirtyTransform |
            HdChangeTracker::DirtyVisibility | HdChangeTracker::DirtyPrimvar | HdChangeTracker::DirtyMaterialId |
-           HdChangeTracker::DirtyPrimID | HdChangeTracker::DirtyVolumeField;
+           HdChangeTracker::DirtyPrimID | HdChangeTracker::DirtyVolumeField | HdChangeTracker::DirtyInstancer |
+           HdChangeTracker::DirtyInstanceIndex | HdChangeTracker::DirtyCategories;
 }
 
 void HdNovaVolume::_InitRepr(TfToken const &reprToken, HdDirtyBits *) {
@@ -187,6 +198,9 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     if (bits & HdChangeTracker::DirtyMaterialId)
         SetMaterialId(sd->GetMaterialId(id));
     _UpdateVisibility(sd, dirtyBits);
+    // The instancer chain first: the instances' transforms come from it.
+    _UpdateInstancer(sd, dirtyBits);
+    HdInstancer::_SyncInstancerAndParents(sd->GetRenderIndex(), GetInstancerId());
     if (first || (bits & HdChangeTracker::DirtyVolumeField))
         _fields = sd->GetVolumeFieldDescriptors(id);
     // The fields the material's volume shader reads (D5); the default
@@ -228,6 +242,11 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     const unsigned maxSteps = param->GetMaxMotionSteps();
     const bool newShutter = !(shutter == _sampledShutter) || maxSteps != _sampledMaxSteps;
     const bool transformDirty = first || newShutter || (bits & HdChangeTracker::DirtyTransform);
+    // Instancing (audit V-0): the instances' transforms are sampled again when
+    // the instancer or the prim's instances change; the grids stay as they are.
+    const bool instanced = !GetInstancerId().IsEmpty();
+    const bool resample = transformDirty || instanced != _instanced ||
+                          (bits & (HdChangeTracker::DirtyInstancer | HdChangeTracker::DirtyInstanceIndex));
     const bool fieldsDirty = first || (bits & HdChangeTracker::DirtyVolumeField) || versions != _fieldVersions;
     // Per-object settings (constant primvars).
     bool settingsDirty = blurDirty;
@@ -257,7 +276,8 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     const bool rebuild = fieldsDirty || transformDirty || materialDirty || needed != _neededFields ||
                          settingsDirty || (bits & HdChangeTracker::DirtyPrimID);
     const bool visibilityDirty = bits & HdChangeTracker::DirtyVisibility;
-    if (!(rebuild || visibilityDirty || visibilitySettingsDirty)) {
+    const bool categoriesDirty = first || (bits & (HdChangeTracker::DirtyCategories | HdChangeTracker::DirtyInstancer));
+    if (!(rebuild || resample || visibilityDirty || visibilitySettingsDirty || categoriesDirty)) {
         *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
         return;
     }
@@ -311,28 +331,66 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
         TF_DEBUG(HDNOVA_VOLUME).Msg("[Nova] volume %s: %zu bindings, %zu fields loaded\n", id.GetText(),
                                     _fields.size(), desc.fields.size());
     }
-    if (transformDirty)
-        HdNovaSampleTransform(sd, id, shutter, maxSteps, &sampled);
+    // The transforms over the shutter, per scene volume: the prim's own, or
+    // one set per instance.
+    std::vector<std::vector<nova::Mat4>> steps;
+    if (resample) {
+        _instanced = instanced;
+        _noInstances = false;
+        if (instanced) {
+            if (auto *instancer = static_cast<HdNovaInstancer *>(sd->GetRenderIndex().GetInstancer(GetInstancerId())))
+                steps = HdNovaInstanceSteps(sd, id, *instancer, shutter, maxSteps);
+            _noInstances = steps.empty();
+        } else {
+            HdNovaSampleTransform(sd, id, shutter, maxSteps, &sampled);
+            steps.emplace_back();
+            for (GfMatrix4d const &m : sampled)
+                steps.back().push_back(toNova(m));
+        }
+    }
+    const size_t count = resample ? std::max<size_t>(steps.size(), 1) : _instanceVolumeIds.size() + 1;
     _sampledShutter = shutter;
     _sampledMaxSteps = maxSteps;
     _fieldVersions = versions;
     _neededFields = needed;
 
     nova::Scene &scene = param->AcquireSceneForEdit();
+    // Stable keys, not the sync order: the path, and the instance's index
+    // behind the first.
     if (first)
-        _volumeId = scene.createVolume(nova::objectKey(id.GetString())); // stable, not the sync order
+        _volumeId = scene.createVolume(nova::objectKey(id.GetString()));
+    std::vector<nova::VolumeId> added;
+    while (_instanceVolumeIds.size() + 1 < count) {
+        _instanceVolumeIds.push_back(scene.createVolume(nova::objectKey(id.GetString(), _instanceVolumeIds.size() + 1)));
+        added.push_back(_instanceVolumeIds.back());
+    }
+    while (_instanceVolumeIds.size() + 1 > count) {
+        scene.removeVolume(_instanceVolumeIds.back());
+        _instanceVolumeIds.pop_back();
+    }
+    const bool visible = IsVisible() && !_noInstances;
     if (rebuild) {
         desc.material = registry.Acquire(GetMaterialId(), scene);
-        scene.updateVolume(_volumeId, std::move(desc));
-    } else if (visibilityDirty) {
-        scene.setVolumeVisible(_volumeId, IsVisible());
+        _desc = std::move(desc);
+        added.assign(_instanceVolumeIds.begin(), _instanceVolumeIds.end());
+        added.push_back(_volumeId);
     }
-    scene.setVolumeVisibility(_volumeId, _visibility); // a no-op while unchanged
-    if (transformDirty) {
-        std::vector<nova::Mat4> steps;
-        for (GfMatrix4d const &m : sampled)
-            steps.push_back(toNova(m));
-        scene.updateVolumeMotion(_volumeId, steps);
+    // New volumes and, after a rebuild, all of them: the shared description
+    // (the grids are shared, each volume builds its own bounds).
+    for (nova::VolumeId volume : added) {
+        nova::VolumeDesc d = _desc;
+        d.visible = visible;
+        scene.updateVolume(volume, std::move(d));
+    }
+    const std::vector<std::string> categories = HdNovaVolumeCategories(sd, id, GetInstancerId());
+    for (size_t k = 0; k < count; ++k) {
+        const nova::VolumeId volume = k == 0 ? _volumeId : _instanceVolumeIds[k - 1];
+        if (!rebuild && (visibilityDirty || resample))
+            scene.setVolumeVisible(volume, visible);
+        scene.setVolumeVisibility(volume, _visibility); // a no-op while unchanged
+        scene.setVolumeCategories(volume, categories);  // light and shadow linking; the same
+        if (k < steps.size() && !steps[k].empty())
+            scene.updateVolumeMotion(volume, steps[k]);
     }
     *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
 }
@@ -341,9 +399,14 @@ void HdNovaVolume::Finalize(HdRenderParam *renderParam) {
     auto *param = static_cast<HdNovaRenderParam *>(renderParam);
     param->GetMaterials().BindMesh(GetId(), {});
     if (_volumeId != nova::kInvalidId) {
-        param->AcquireSceneForEdit().removeVolume(_volumeId);
+        nova::Scene &scene = param->AcquireSceneForEdit();
+        scene.removeVolume(_volumeId);
+        for (nova::VolumeId volume : _instanceVolumeIds)
+            scene.removeVolume(volume);
         _volumeId = nova::kInvalidId;
+        _instanceVolumeIds.clear();
     }
+    _desc = nova::VolumeDesc{};
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

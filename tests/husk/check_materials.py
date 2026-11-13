@@ -11,7 +11,8 @@ calibration in docs/research/m3/hydra-materials.md 2.5:
   * a Material interface input promoted into a shader input;
   * GeomSubsets: two materials on one mesh;
   * nodegraph expansion (smoothstep_color3 and remap from the library);
-  * unbound geometry keeps Nova's default, Lambert(displayColor);
+  * unbound geometry is Karma's plastic, 0.4 displayColor + 1/30 under the
+    dome (docs/bug-audit-2026-11.md, section 17);
   * UsdPreviewSurface (M3.12, native): Karma's (0.5139, 0.2733, 0.1530) for
     diffuseColor C, 3 % (Karma's Schlick specular lacks the compensation);
   * a Principled Shader material with its auto-generated preview, as Houdini
@@ -370,7 +371,8 @@ def main():
         x = [v / 2 for v in (0.25, 0.5, 0.75)]  # remap 0..2 -> 0..1, then smoothstep 0..1
         expect("library nodegraphs (smoothstep_color3) expand", mean(render("graph")[0]),
                [t * t * (3 - 2 * t) for t in x], 1e-6)
-        expect("unbound geometry: Lambert(displayColor)", mean(render("unbound")[0]), C, 2e-3)
+        expect("unbound geometry: Karma's plastic, 0.4 displayColor + 1/30", mean(render("unbound")[0]),
+               [round(0.4 * c + 1.0 / 30.0, 5) for c in C], 2e-3)
         karma_preview = (0.5139, 0.2733, 0.1530)
         got = mean(render("preview")[0])
         worst = max(abs(g - w) / w for g, w in zip(got, karma_preview))

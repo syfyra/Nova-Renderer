@@ -13,6 +13,10 @@ tests/scenes/implicit.usda: cylinders, cones and capsules. They were the
 ten-sided cage UsdImaging makes of them; seen along its axis each must cover
 its disc.
 
+tests/scenes/default_material.usda: geometry without a material is Karma's
+plastic (section 17): 0.4 of the display colour and a Phong highlight, under
+a dome and under a distant light, against the values Karma CPU renders.
+
 Needs numpy and OpenImageIO, so run it with Houdini's Python:
 $HFS/python313/python.exe -I check_stage_features.py ...
 """
@@ -75,7 +79,25 @@ def main():
                     check(abs(covered - disc) < 0.003 * disc,
                           f"{label}: the {name} covers the disc of its radius, {disc:.4f}: {covered:.4f} (ten sides: {0.9355 * disc:.4f})")
 
-            # 3. Render passes: cards of 40 x 40 pixels at columns 20, 60 and 100, the wall's strip in rows 55 to 65.
+            # 3. Geometry without a material: the left plane has a display colour of 0.8, the right none.
+            # What Karma CPU renders, and what the model says (diffuse 0.4 c, Phong 1/30 of exponent 5).
+            for name, karma, model in (("dome", (0.3536, 0.4337), (0.4 * 0.8 + 1 / 30, 0.4 + 1 / 30)),
+                                       ("zenith", (0.4199, 0.5000), (0.4 * 0.8 + 0.1, 0.4 + 0.1)),
+                                       ("off", (0.3259, None), (0.32 * np.sin(np.pi / 3) + 0.1 * np.cos(np.pi / 6) ** 5, None)),
+                                       ("dome_matte", (None, None), (0.8, 0.18))):
+                px = husk(renderer, "default_material.usda", os.path.join(args.out, f"default_{name}_{tag}.exr"),
+                          ["--pass", "/Render/" + name])
+                if px is None:
+                    continue
+                for side, columns, k, m in (("display colour 0.8", slice(10, 70), karma[0], model[0]),
+                                            ("no display colour", slice(90, 150), karma[1], model[1])):
+                    if m is None:
+                        continue
+                    got = float(px[10:110, columns, :3].mean())
+                    check(abs(got - m) < 0.004 and (k is None or abs(got - k) < 0.006),
+                          f"{label} unbound, {name}, {side}: {got:.4f} (the model {m:.4f}" + (f", Karma {k:.4f})" if k else ")"))
+
+            # 4. Render passes: cards of 40 x 40 pixels at columns 20, 60 and 100, the wall's strip in rows 55 to 65.
             images = {}
             for name in ("whole", "prune", "render_visibility", "camera_visibility", "matte"):
                 images[name] = husk(renderer, "passes.usda", os.path.join(args.out, f"pass_{name}_{tag}.exr"),

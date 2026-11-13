@@ -46,6 +46,7 @@ def Scope "Render"
 {
     def RenderSettings "settings"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (256, 128)
         int nova:samples = 256
@@ -55,6 +56,7 @@ def Scope "Render"
 
     def RenderSettings "nodof"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (256, 128)
         int nova:samples = 16

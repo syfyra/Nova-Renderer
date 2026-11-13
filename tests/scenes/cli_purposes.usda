@@ -61,6 +61,7 @@ def Scope "Render"
 {
     def RenderSettings "dflt"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (160, 40)
         uniform token[] includedPurposes = ["default"]
@@ -69,6 +70,7 @@ def Scope "Render"
     }
     def RenderSettings "proxyguide"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (160, 40)
         uniform token[] includedPurposes = ["default", "proxy", "guide"]
@@ -77,6 +79,7 @@ def Scope "Render"
     }
     def RenderSettings "renderonly"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (160, 40)
         uniform token[] includedPurposes = ["render"]
@@ -85,6 +88,7 @@ def Scope "Render"
     }
     def RenderSettings "proxyonly"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (160, 40)
         uniform token[] includedPurposes = ["proxy"]

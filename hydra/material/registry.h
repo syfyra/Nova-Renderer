@@ -11,6 +11,7 @@
 #include <pxr/pxr.h>
 #include <pxr/usd/sdf/path.h>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -49,6 +50,14 @@ public:
     // `program` itself.
     nova::shading::ProgramPtr Intern(nova::shading::ProgramPtr program);
 
+    // The material of geometry without one, and of materials that are not
+    // translated (yet) or gone: Karma's plastic, or with nova:defaultMaterial
+    // "lambert" a matte surface of the display colour. The render pass gives
+    // the scene's default material the same.
+    void SetPlasticDefault(bool plastic) { _plasticDefault.store(plastic, std::memory_order_relaxed); }
+    bool PlasticDefault() const { return _plasticDefault.load(std::memory_order_relaxed); }
+    nova::MaterialDesc DefaultMaterial() const;
+
     // Logs `message` once per material.
     void Warn(SdfPath const &material, std::string const &message);
     // Whether a warning containing `needle` was logged for `material` (tests).
@@ -84,6 +93,8 @@ private:
     std::unordered_map<SdfPath, std::set<SdfPath>, SdfPath::Hash> _meshesOfMaterial;
     std::unordered_map<SdfPath, std::vector<SdfPath>, SdfPath::Hash> _materialsOfMesh;
     std::set<SdfPath> _pendingMeshes;
+
+    std::atomic<bool> _plasticDefault{true};
 
     mutable std::mutex _mutex;
     std::unordered_map<SdfPath, nova::MaterialId, SdfPath::Hash> _ids;

@@ -534,4 +534,149 @@ Image means, and 20 x 20 pixel blocks off by more than 10 %, at 64 samples; the 
 - **Implicit prims are their size in Nova and smaller in Karma.** Karma subdivides the cage that UsdImaging makes of them: a sphere of radius 1 has the silhouette of a disc of radius 0.92 (0.95 seen along its axis), a cylinder, cone or capsule 0.936 of its radius. Nova's spheres are exact and its cylinders, cones and capsules within 0.05 % (I-1), so a scene of such prims differs between the two renderers by their size (1.5 % in the mean of an image with one sphere on a ground).
 - **husk renders several products only at one resolution** ("husk requires resolution to match on all products"), with either renderer.
 
+The first of these was changed in the next version (section 17).
+
 Tests: `test_hydra_triangulate.cpp` (six cases: the shapes from every start and in five planes, faces whose fan is right, holes and left-handed meshes, the split for dicing, polygons that cannot be triangulated, the scene's own area), `test_hydra_stage.cpp` (the passes from the start, changed and edited while the scene is up; the dome's pole axis; the volume, radius and normals of a cylinder, a cone and a capsule, and an edited radius) and `husk_stage_features` (`tests/husk/check_stage_features.py`: the covered pixels of `tests/scenes/concave.usda` and `tests/scenes/implicit.usda` and what each pass of `tests/scenes/passes.usda` leaves, on the CPU and on Nova XPU).
+
+## 17. Geometry without a material
+
+Section 16 left one difference for the user to decide: geometry without a material was a Lambert surface of its display colour in Nova and something else in Karma, and a stage without materials came out 2.3 times as bright in one renderer as in the other. The decision (2026-11-12): Nova renders what Karma renders. This is beyond the milestones of `docs/PLAN.md` and replaces K19 of `docs/design/M3.md`.
+
+### What Karma renders
+
+Karma's default is Houdini's plastic. Measured on Karma CPU with single planes under single lights (a dome; a distant light from 0 to 80 degrees off the normal, seen from 0 to 80 degrees):
+
+    F = 0.4 x Cd x diffuse() + 1/30 x phong(5)
+
+- The diffuse part is Lambert with 0.4 of `displayColor`, and with 0.4 where the geometry has no display colour: the colour is white then, not the 0.18 Nova had.
+- The specular part is a Phong lobe of exponent 5 around the mirror direction of the view that reflects 1/30: a radiance of 0.1 / pi x cos^5 of the angle between the mirror direction and the light, per unit of irradiance on a surface facing the light. There is no cosine of incidence on it and no Fresnel term; what of the lobe points below the surface is lost.
+- Under a white dome that is 0.033 + 0.4 x Cd from above, under a light at the zenith 0.1 + 0.4 x Cd.
+
+### The change
+
+| Part | What |
+|---|---|
+| The lobe | `PhongLobe` (`core/bsdf/phong.h`, `LobeType::Phong`): evaluated and sampled by the lobe's own distribution around the mirror direction. A glossy reflection for light path expressions, for the split of the beauty and for path guiding |
+| The model | `SurfaceModel::Plastic` (`buildPlastic` in `core/bsdf/surface_models.h`): Lambert and the Phong lobe, the exponent the reciprocal of the model's roughness. `plasticDefaultMaterial()` (`core/scene/material.cpp`) reads `displayColor` with white behind it. On the GPU the same closure code runs |
+| The setting | `nova:defaultMaterial`, `karma` (the default) or `lambert`: what Nova rendered before, the display colour and 0.18 without one. It is in the Shading section of the Nova settings and can change while a scene is up: the default material is replaced and the render restarts |
+
+### Measured
+
+A plane with a display colour of 0.8 and one without, seen from above, at 64 samples (`tests/scenes/default_material.usda`); the same numbers on Nova XPU.
+
+| Light | Display colour 0.8: Nova, Karma | None: Nova, Karma |
+|---|---|---|
+| A white dome | 0.3533, 0.3536 | 0.4333, 0.4337 |
+| A distant light at the zenith | 0.4199, 0.4199 | 0.5000, 0.5000 |
+| A distant light 30 degrees off it | 0.3259, 0.3259 | |
+| The dome with `nova:defaultMaterial` `lambert` | 0.7998 | 0.1801 |
+
+Tests: `test_bsdf_lobes2.cpp` (`[phong]`: the lobe's value along the mirror direction and 30 and 60 degrees off it, nothing from below the surface, an albedo of 1 at normal incidence that falls towards the horizon, the samples against the density), the third part of `husk_stage_features` (the table above against Karma's values and against the model, on the CPU and on Nova XPU). The Hydra tests and the scenes of `tests/scenes` whose expected values assume a Lambert surface set `nova:defaultMaterial` to `lambert` (`tests/hydra_test_defaults.cpp` for the tests that build a delegate).
+
+## 18. A second denoiser and more render settings (0.2.0)
+
+Not a hunt: two requests of the user for 0.2.0, Intel Open Image Denoise as a denoiser and more to set in the Nova render settings than Karma's own LOP offers. Both are beyond the milestones of `docs/PLAN.md`. The denoiser is described in `docs/design/M7.md` ("Open Image Denoise (0.2.0)"), the settings in `docs/reference.md`. Two defects showed on the way.
+
+### Findings
+
+| ID | Severity | Defect | Fix |
+|---|---|---|---|
+| S-1 | medium | **Denoise did nothing on a stage without render vars**, without a message. `nova:denoise` denoises the AOVs named in `nova:denoiseAovs`, `C` by default, as Karma's Denoiser lists them. A stage without render vars renders husk's own beauty, which Hydra binds as `color` (husk writes it as `C`): no bound AOV was named `C`, and the frame was written noisy. With the Nova and Karma LOPs, which author a var named `C`, it worked, which is why no test showed it | The list's `C` also names a beauty bound as `color`. A render whose denoiser finds none of its AOVs among the outputs says so once (`hydra/renderDelegate.cpp`) |
+| S-2 | low | **Max Motion Steps and Acceleration Samples offered 32 and rendered 16.** The parameters' range went to 32, the renderer caps motion steps at `nova::kMaxMotionSteps`, 16: values from 17 on were 16, silently | The ranges end at 16 (`houdini/tools/nova_settings.json`) |
+
+### The settings
+
+The table of Nova's settings (`houdini/tools/nova_settings.json`) went from 59 to 102 entries; the Nova LOPs author 97 of them. Three kinds, and a fourth that is the LOPs' alone:
+
+| Kind | Settings |
+|---|---|
+| Controls of Nova's own | `nova:sampleScale`, `nova:animateNoise`, `nova:timeLimit`, `nova:threads`, `nova:rrStartDepth`, `nova:denoiser`, `nova:denoiseQuality`, `nova:textureCacheMemory`, `nova:defaultMaterial`. The Karma Render Settings LOP has no parameter for the still noise, the time limit, the thread count (husk's options have the last two), the denoiser's quality or the default material |
+| Nova's names for what only Karma's attributes drove, so the Nova LOPs can set it | the look-dev overrides (`nova:lightOverride`, `nova:autoHeadlight`, `nova:simplifiedShading` with its occlusion and fog), outlines (`nova:outline*`, per object `nova:object:outline*`), ray visibility and holdouts (`nova:object:renderVisibility`, `nova:object:holdoutMode`, `nova:backgroundOccludesShadows`), the denoiser's guides, `nova:object:lpeTag` |
+| Per-object properties as defaults on the render settings | velocity blur and its samples, curve and point style, width scale, efficient emission sampling, dicing quality and depth, displacement |
+| What the Karma LOP authors beside its settings, now also on the Nova LOPs | Aspect Ratio (conform policy, data window, pixel aspect ratio), Metadata (husk's EXR compression, artist, comment, hostname), Deep Output (a `karma:deep` product; its two switches on the settings have Nova's names, `nova:deepUseHitDistance` and `nova:deepExcludeHoldouts`), Checkpointing (a `karma:checkpoint` product). The renderer had all of it since M11; a Nova scene needed Karma's LOP to reach it |
+
+Rules they follow:
+
+- Nova's value when it is authored, else Karma's attribute, else the default: a scene of Karma's LOPs renders as before, and the Nova LOPs, which author every setting, decide for themselves. On a prim, Nova's primvar comes before Karma's, each property by itself.
+- A default on the render settings never beats a prim's own primvar, Karma's included.
+- `nova:outline` differs from Karma's switch on purpose: Karma draws lines only in a render that has an outline AOV, Nova's own switch draws them into the beauty of any render (`OutlineSettings::requested` from the host, `core/integrator/renderer.cpp`). Karma's switch behaves as in Karma.
+- `nova:timeLimit` ends a frame between two passes as its last sample would: denoised, the deep image written, the buffers converged; the statistics carry the samples it got. The viewport has no limit.
+
+The parameter files and the LOPs are generated from the table as before; the generators learned colours (`color3f`), menus on integers and text fields with a menu of presets. The Nova LOPs follow the Karma Render Settings LOP further: Simplified Shading with its group above the tabs, the sub-tabs Lighting Effects and Outlines under Rendering, Aspect Ratio, Metadata and Deep Output under Image Output, Performance and Checkpointing under Advanced.
+
+### Measured
+
+`tests/scenes/settings.usda` through husk, the same numbers on the CPU and on Nova XPU:
+
+| Setting | Result |
+|---|---|
+| `nova:sampleScale` 0.25 of 64 samples | 16 samples in the image's metadata |
+| `nova:timeLimit` 0.03 (1.8 s) of a million samples | the frame ends with a few thousand samples (2680 on the GPU in one run), says so, and is the scene's image (0.986 on the open ground) |
+| `nova:animateNoise` off, frames 1 and 2 of a still scene | the same image bit for bit; by default they differ by 0.037 in the mean at 4 samples |
+| `nova:lightOverride` `headlight` | a surface of albedo 0.5 facing the camera 0.3184 (2 a / pi = 0.3183) |
+| `nova:lightOverride` `dome` | 0.4866 on ground of albedo 0.5 near a cube (0.5 less what the cube hides) |
+| `nova:simplifiedShading` with fog from 6 to 14, the ground 10 and a cube's top 8 away | (0.2563, 0.2563, 0.7437) and (0.1525, 0.4575, 0.5425): half and a quarter fog to within the camera's near plane |
+| the same with occlusion, reach 1.5 | open ground 0.5000, next to the cube 0.3093 |
+| `nova:outline`, no outline AOV | 1946 pixels of line colour around the cube and the frame; surfaces away from edges unchanged |
+| `nova:object:holdoutMode` `matte`, `nova:object:renderVisibility` `-primary` on the render settings | an empty image; alpha 0 |
+| `primvars:nova:object:renderVisibility` `-primary` on a prim | not seen by the camera, the ground under it in its shadow |
+| `nova:denoise` on husk's own beauty, one sample (S-1) | the mean step between neighbouring pixels from 0.0745 to 0.0029, the image's mean 0.9116 and 0.9113, alpha untouched |
+
+Tests: `test_hydra_karma_settings.cpp` (seven cases, `[nova]`: every new setting into the renderer's settings, Nova's names before Karma's on the render settings and on prims, the defaults reaching prims, the denoiser's configuration, the texture cache's limit set and given back), `husk_settings` (`tests/husk/check_settings.py`, the table above), `test_solaris_ui.py` (every table key has its parameter, also per object; the USD types the new parameter kinds author; the layout; the output groups' attributes and products, and a deep camera map and a PIZ-compressed picture written by the Nova LOP's Render to Disk).
+
+## 19. The hunt of 0.2.0: area by area against Karma
+
+The user asked for a large run and for a workflow of agents. Seven areas were hunted, each by an agent of its own with small stages rendered through husk in Karma CPU, Nova and Nova XPU (materials, lights, textures, motion, volumes, AOVs, and a review of the code of sections 16 to 18), about 60 renders each; every finding of lights, motion, volumes and textures was then measured again by a second agent with scenes of its own, which refuted one and corrected the reading of three. The second check of the AOV, material and review findings and the eighth area (robustness) were cut short; what was fixed of those was measured again by hand. Every fix below was rendered again in all three renderers.
+
+### Fixed
+
+| ID | Severity | Defect | Fix | Against Karma after the fix |
+|---|---|---|---|---|
+| V-0 | high | **An instanced Volume prim rendered once**, at the prototype's own transform: the prototype of a point instancer, a native instance. Mesh-bounded media were instanced since M11, VDB volumes never | One scene volume per instance, which share the grids (`hydra/volume.cpp`, `HdNovaInstanceSteps`); moved instances move their volumes without loading anything again | -0.01 % in the image's mean, no block off |
+| V-1 | high | **A light with a light link lit no volume.** Volumes were receiver set 0, "the unlinked lights only": as soon as a light's `collection:lightLink` excluded any prim at all, every volume and every uniform medium lost that light | Volumes have categories and a receiver set of their own (`Scene::setVolumeCategories`, `computeLinks`; `hydra/volume.cpp`, `hydra/medium.cpp`), which the volume events of both integrators light by | -0.00 %, no block; a volume taken out of the link is dark as Karma's (0.0865, Karma 0.0877) |
+| V-2 | medium | **Shadow links did not hold for volumes**: a volume outside a light's `collection:shadowLink` shadowed, and shadowed itself | The trackers pass the volumes outside the ray's shadow category (`MediumVolume::shadowMask`, `MediumRay::shadowCategory`, `mediumSees`), on both devices | +0.01 %, no block |
+| V-3 | medium | **A volume material that reads no field rendered nothing on a VDB volume** (a constant medium, a constant emission): no field read, no domain | For a volume material the domain falls back to the density (else the first field); cells no voxel reaches hold nothing (`core/volume/build.cpp`). The default volume is its density and stays nothing without one | a constant medium +1.5 % in the mean; see V-4 below for what is left |
+| V-5 | low | Constant primvars of a volume as arrays of one element, the form Houdini's LOPs author (`float[] karma:object:volumelimit = [4]`), were not read | `HdNovaNumber` in `hydra/volume.cpp` | 0.398, the scalar form 0.402 |
+| MO-1 | medium | **Velocity blur on without usable velocities.** Karma then holds the frame's points, instance positions and orientations: velocity blur on means their time samples are not motion. Nova blurred by the time samples (pxr's resolving index passes them through). A Motion Blur LOP under a Velocity Blur setting, or a global Velocity Blur over deforming geometry without `v` | The primvar reports no samples and the frame's value (`EndpointsDataSource`, `hydra/velocitySceneIndex.cpp`) | footprints 0.82 units wide where Nova had 1.30, as Karma |
+| T-0 | medium | **An unauthored wrap of a UsdUVTexture tiled the texture.** USD's default is `useMetadata`, black outside 0..1, which is what Karma renders; MaterialX's definition of the node says periodic | The translator gives unauthored `wrapS` / `wrapT` USD's default | within 1.8 % mean absolute (noise) |
+| T-2 | medium | **Houdini's UDIM token `%(UDIM)d` was a file name**: the texture was "missing" and the fallback rendered. Houdini's file choosers and the Principled Shader write this form | `%(UDIM)d`, `%(UVTILE)s` and `u%(U)d_v%(V)d` are read as `<UDIM>` and `<UVTILE>` (`HdNovaUdimPath`) | as `<UDIM>` |
+| T-3 | low | A two-channel image (grey and alpha) read as a colour was (L, A, 1) on the CPU and (L, L, L) on Nova XPU | (L, L, L) with the alpha behind it on both | Karma reads (L, A, A), which Nova does not copy |
+| A-0 | high | **Float render vars written as half through husk were zeros or uninitialised memory** (NaN, values to 65000): a var of `dataType` float or float2 with `husk:format` half. The Karma Render Settings LOP authors exactly that for its two facing-ratio vars | The buffer holds and reports half floats (`HdNovaRenderBuffer::ReportHalf`); husk narrows three and four channels itself, but not one or two | the facing ratio 0.1832 in both, no NaN |
+| R-0 | medium | **Nova CPU: a single polygon tilted by its transform shadowed itself around the world origin** (a ground of one quad, 20 units wide: a dark spot, 32 % of the light lost at its centre; 2 000 units wide: 29 % lost in the whole view around the origin, measured with the installed 0.1.5). The offset of a leaving ray took the polygon's reach in its own space, where a polygon in a coordinate plane has none along its normal, and the hit point's own coordinates, which go to zero at the origin; the corners are rounded in world space | The corners' world reach along the world normal is part of the bound (`core/scene/hit.h`); the GPU's bound had it | exact, no pixel below 0.49 (153 before) |
+| R-1 | medium | **Nova CPU: a flat object turning fast under motion blur shadowed itself** (up to 6 % of its light): the same bound, against the larger difference between Nova's interpolation of the motion keys and the accelerator's | Sixteen times the bound for moving instances | exact, no pixel below 0.49 (1246 before, the darkest 0.250) |
+| MA-0 | medium | **A coat tinted light on its way into a refracting object but not on its way out** (Standard Surface coat colour, OpenPBR coat colour and darkening): coated coloured glass was up to twice as bright | The transmission from inside is tinted by the coat as well (`core/bsdf/surface_models.h`) | Standard Surface in a white furnace (0.826, 0.307, 0.154), Karma (0.813, 0.293, 0.142), before (0.899, 0.518, 0.327); OpenPBR 0.334, Karma 0.329, before 0.563 |
+| MA-3 | medium | **A transparent UsdPreviewSurface lost energy**: the transmission sat under the specular layer and took the interface's Fresnel a second time, with the reflected part (and all total internal reflection) dropped. A fully transparent ball returned 0.94 of a white furnace, a cube 0.90; Karma returns 1 | The transparent share is a refracting interface of its own, the specular layer covers the opaque share | a fully transparent cube 0.9965 of a white furnace (Karma 0.9960), a ball 0.9984 (0.9950), the MaterialX node 0.995 (1.003). At opacity 0.5 the USD shader is 8 to 10 % above Karma's own conversion and the MaterialX node 5 % below (8 % before) |
+
+Two warnings came with it: a cylinder light scaled non-uniformly across its axis and a dome light scaled non-uniformly now say that Nova renders them otherwise (L-2, L-3 below).
+
+### Measured, not changed
+
+| ID | What differs | Why it stands |
+|---|---|---|
+| L-0 | Geometry inside a sphere light: Nova lights every surface inside with the light's full radiance, Karma by how it faces the centre | Karma's law inside the sphere was measured but not found; `docs/limitations.md` |
+| L-1 | UsdLux ShadowAPI (`inputs:shadow:enable`, `inputs:shadow:color`) is ignored: every light casts full shadows | Needs a shadow switch and colour for every light type on both devices; `docs/limitations.md` |
+| L-2, L-3 | A cylinder light with a non-uniform radial scale is a circular tube; a dome light with a non-uniform scale is not stretched | A warning each now; `docs/limitations.md` |
+| L-4 | The highlight of a glossy dielectric at grazing views (refuted as a defect) | Karma's dielectric has no per-microfacet Fresnel (decision K2 of `docs/design/M3.md`) |
+| MO-2 | Karma samples the motion of instances `instance_samples` times (2 by default: a straight segment); Nova follows every authored sample | Nova's is the exact reading of the data; with `instance_samples` 3 Karma agrees |
+| MO-3 | Velocity blur at a frame between the authored samples with a changing point count: Karma blurs around the held sample, Nova moves it to the frame | Nova follows USD (`ComputePointsAtTime`); the whole-frame case agrees |
+| MO-4 | A point instancer with instance velocity blur and an animated transform of its own: Karma drops the transform's blur and places the instancer at shutter open | Karma's fault |
+| V-4 | A coefficient that is not zero where the fields are (a constant emission, a density with an offset): Karma fills the active voxels, Nova the cells of 8 voxels they are in (a constant emission on a 20-voxel box: 55 % more in the image's mean) | Needs a mask of the active voxels in the evaluation on both devices |
+| V-6 | A volume limit on a Volume prim: Nova applies the volume's limit to every path, Karma the limit of the object the ray left | 3.5 % on the ground next to a dense volume; a decision |
+| V-7 | Field prims with a transform of their own, or outside their Volume: Karma places every field by the Volume's transform, Nova by the field prim's | Nova follows the UsdVol schema; Houdini's LOPs author untransformed children, where both agree |
+| T-4 | `filtertype` cubic of a MaterialX image is bilinear on Nova XPU | `docs/limitations.md` |
+| T-5 | A mesh without `st` under a textured material: Karma maps every face 0..1, Nova reads (0, 0) | `docs/limitations.md` |
+| T-8, T-9 | Karma renders a `constant` address mode mixed with another as black and UsdUVTexture `mirror` as repeat, and interpolates 8-bit sRGB textures before decoding them (a 1-texel checker averages 0.25, Nova 0.50) | Karma's side; Nova follows the specifications |
+| R-2, T-1 | **Quads are split along the other diagonal**: Nova 0-2 (Hydra's fan), Karma 1-3. Vertex primvars and `st` that are not affine over a quad, and the fold of a non-planar quad, differ (found by two areas independently) | Changes every quad mesh's triangles; to be done with its own measurements of Karma's rule for larger polygons |
+| R-3 | The default material ignores `displayOpacity`: unbound geometry with an opacity is opaque, in Karma see-through | Needs a second default material, so that geometry without the primvar keeps the fast opaque path; `docs/limitations.md` |
+| R-4, R-5 | A prim outside a pass's `cameraVisibility` keeps its own `rendervisibility` (Karma replaces it); an object invisible to shadow rays under a dome | Measured once each, not checked a second time |
+| A-1 | Nova XPU renders a cut-out opaque when Standard Surface's opacity is connected straight to a `geompropvalue` (the CPU cuts it out) | Reported with a cause that does not hold (both devices use the same test); open |
+| A-2 | In the AO plane glass occludes in Nova and not in Karma | Whether Karma passes it fully or by its colour was not measured |
+| A-3, A-4 | Id planes on a semi-transparent surface hold a blend of ids; unfiltered int id vars hold -1 on the background (Karma 0) | Low; the LOP's own vars (with `idcover`) write 0 |
+| A-5 | `nova_cli` ignores `husk:channel_prefix`: its channel names differ from husk's | Low |
+| MA-1, MA-2 | UsdPreviewSurface: partial metallic and a coloured specular workflow have other colours than Karma's own conversion (Nova follows MaterialX's graph, which agrees with Karma for the MaterialX node); with an opacity below 1 Karma's shadows are opaque, Nova's are a refracting object's | Decisions |
+| MA-4, MA-5 | Rough coloured metal is darker and more saturated than Karma's from roughness 0.6 on (the multiple-scattering compensation's colour); rough glass keeps its energy where Karma's loses it (+23 % at roughness 0.6) | By design; Nova's glass is the one that passes a furnace |
+| MA-6, MA-7 | Transmission 0.5 is 5 % darker than Karma; glass with a fractional opacity gains energy | Not located |
+
+Tests: `test_hydra_volumes.cpp` (instancing through a point instancer and native instances, the constant material, array primvars, light and shadow links through pxr's light-linking index), `test_hydra_velocity.cpp` (two cases changed to Karma's rule, one of them widened), `test_render.cpp` ("Polygons tilted by their transform do not shadow themselves at the origin": R-0, single quads of 20 to 60 000 units in six orientations), `test_hydra_robust.cpp` (Houdini's UDIM tokens and the tiles they find: T-2), `husk_aovs` (A-0: the two facing-ratio vars of `karma_aovs.usda`, which Karma's LOP had authored there all along and no check had read; the last output before the fix held infinities in one and zeros in the other). The other fixes (the coats, the transparent UsdPreviewSurface, the texture's wrap, the fast plate, the two-channel image) are covered by the stages named above, which are not part of the repository.
+
+The full run of the tests on the fixed build showed one slip and two stale expectations. V-3's fallback had also given the default volume, which has no shader, the domain of another field when it has no density (`test_volume.cpp`, "a volume without density renders nothing"): it holds for volume materials alone. `husk_textures` and `husk_materials` still expected the Lambert default of section 17: the first's ground asks for it now, the second's unbound quad is checked against the plastic (0.4 of the display colour + 1/30 under the dome).

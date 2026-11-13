@@ -4,7 +4,10 @@
 // bindings. The fields the volume renders with are loaded from their bprims
 // (hydra/field.h) and placed in the volume's object space; the scene builds
 // the majorants. The Volume LOP authors no extent, so bounds come from the
-// grids. Transforms are sampled over the shutter as for meshes.
+// grids. Transforms are sampled over the shutter as for meshes. An instanced
+// Volume (the prototype of a point instancer, a native instance) is one scene
+// volume per instance, which share the grids and differ in their transforms
+// (as the media bounded by surfaces, hydra/medium.h).
 
 #include "karmaSettings.h"
 #include "motion.h"
@@ -28,6 +31,11 @@ PXR_NAMESPACE_OPEN_SCOPE
 void HdNovaVolumeObjectSettings(HdSceneDelegate *sd, SdfPath const &id, nova::VolumeDesc &desc,
                                 HdNovaObjectDefaults const &defaults = HdNovaObjectDefaults{});
 
+// The light-link and shadow-link collections a volume prim is in (its own
+// categories and its instancer's; audit V-1 and V-2 of 0.2.0: volumes had
+// none, so a linked light lit no volume).
+std::vector<std::string> HdNovaVolumeCategories(HdSceneDelegate *sd, SdfPath const &id, SdfPath const &instancerId);
+
 class HdNovaVolume final : public HdVolume {
 public:
     explicit HdNovaVolume(SdfPath const &id);
@@ -42,7 +50,11 @@ protected:
     void _InitRepr(TfToken const &reprToken, HdDirtyBits *dirtyBits) override;
 
 private:
-    nova::VolumeId _volumeId = nova::kInvalidId;
+    nova::VolumeId _volumeId = nova::kInvalidId;    // the prim's, or its first instance's
+    std::vector<nova::VolumeId> _instanceVolumeIds; // of the instances after the first
+    nova::VolumeDesc _desc;                         // what they were built from (instances that appear later take it)
+    bool _instanced = false;
+    bool _noInstances = false; // an instancer without (visible) instances: the volume is kept, hidden
     std::vector<HdVolumeFieldDescriptor> _fields;
     std::vector<uint64_t> _fieldVersions; // the field versions the scene's volume was built with
     std::vector<std::string> _neededFields; // the names its material reads (or density)

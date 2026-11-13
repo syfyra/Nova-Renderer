@@ -271,6 +271,7 @@ NOVA_INLINE void guideLobeComponents(const Lobe &l, uint8_t &reflect, uint8_t &t
     }
     switch (l.type) {
     case LobeType::Conductor:
+    case LobeType::Phong:
         reflect = guide::kReflect;
         return;
     case LobeType::Dielectric:

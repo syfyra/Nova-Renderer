@@ -46,12 +46,19 @@ struct HdNovaTextureOptions {
     float filterWidth = 0.25f;   // nova:textureFilterWidth (footprint scale, M3.9)
     bool abortOnMissing = false; // nova:abortOnMissingTexture
     int stats = 0;               // nova:textureStats
+    int cacheMemoryMB = 0;       // nova:textureCacheMemory (0: the cache's own limit)
 
     bool operator==(HdNovaTextureOptions const &o) const {
         return autoTx == o.autoTx && cacheDir == o.cacheDir && blur == o.blur && filterWidth == o.filterWidth &&
-               abortOnMissing == o.abortOnMissing && stats == o.stats;
+               abortOnMissing == o.abortOnMissing && stats == o.stats && cacheMemoryMB == o.cacheMemoryMB;
     }
 };
+
+// A texture path with Houdini's own UDIM tokens written as the ones the
+// texture code knows: %(UDIM)d is <UDIM>, %(UVTILE)s and u%(U)d_v%(V)d are
+// <UVTILE> (audit T-2 of 0.2.0: Houdini's file choosers and the Principled
+// Shader write the first form, and Nova took the name for a file).
+std::string HdNovaUdimPath(std::string path);
 
 // The sizes and modification times of the file or the UDIM tiles (empty if
 // none exists): a changed signature means the texture must be prepared again.

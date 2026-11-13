@@ -1,0 +1,111 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Geometry without a material: Karma renders it with Houdini's plastic, 0.4
+# of the display colour diffusely plus a Phong lobe of exponent 5 that
+# reflects 1/30 (white where there is no display colour), and so does Nova
+# unless nova:defaultMaterial says "lambert". Two planes seen from above, the
+# left with a display colour of 0.8, the right with none; the passes leave
+# one light each. Karma CPU renders 0.3536 and 0.4337 under the dome, 0.4199
+# and 0.5000 under the sun at the zenith, 0.3259 under the sun 30 degrees off
+# it. tests/husk/check_stage_features.py compares.
+def Xform "World"
+{
+    def Mesh "grey"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-4, 0, 3), (0, 0, 3), (0, 0, -3), (-4, 0, -3)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:displayColor = [(0.8, 0.8, 0.8)]
+    }
+
+    def Mesh "plain"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 3), (4, 0, 3), (4, 0, -3), (0, 0, -3)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def DomeLight "sky"
+    {
+        float inputs:intensity = 1
+    }
+
+    # Normalized, of intensity pi: a matte surface of albedo a facing it has the radiance a.
+    def DistantLight "zenith"
+    {
+        float inputs:intensity = 3.14159265
+        float inputs:angle = 1
+        bool inputs:normalize = 1
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def DistantLight "off"
+    {
+        float inputs:intensity = 3.14159265
+        float inputs:angle = 1
+        bool inputs:normalize = 1
+        float3 xformOp:rotateXYZ = (-60, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 80
+        float verticalAperture = 60
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 10, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+    }
+
+    def RenderSettings "matte"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        token nova:defaultMaterial = "lambert"
+    }
+
+    def RenderPass "dome"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/zenith>, </World/off>]
+    }
+
+    def RenderPass "zenith"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/sky>, </World/off>]
+    }
+
+    def RenderPass "off"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/sky>, </World/zenith>]
+    }
+
+    def RenderPass "dome_matte"
+    {
+        rel renderSource = </Render/matte>
+        rel collection:prune:includes = [</World/zenith>, </World/off>]
+    }
+}

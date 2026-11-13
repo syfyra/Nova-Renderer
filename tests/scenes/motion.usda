@@ -66,6 +66,7 @@ def Scope "Render"
 {
     def RenderSettings "settings"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (400, 80)
         int nova:samples = 64
@@ -75,6 +76,7 @@ def Scope "Render"
 
     def RenderSettings "nomotion"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (400, 80)
         int nova:samples = 16

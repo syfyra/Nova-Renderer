@@ -195,6 +195,7 @@ static HdNovaAovSource resolveAov(HdRenderPassAovBinding const &binding, bool pr
     if (fileFormat.empty())
         fileFormat = setting(binding.aovSettings, "driver:parameters:aov:format");
     out.intAsFloat = !fileFormat.empty() && (fileFormat.rfind("float", 0) == 0 || fileFormat.rfind("half", 0) == 0);
+    out.fileHalf = fileFormat.rfind("half", 0) == 0;
     out.describe = binding.aovName.GetString();
     if (!source.empty())
         out.describe += " (" + (type.empty() ? std::string("raw") : type) + " " + source + ")";

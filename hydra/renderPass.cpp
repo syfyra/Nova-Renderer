@@ -537,6 +537,15 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
         param.GetSurfaceTextures().SetOptions(textureOptions);
         restart = true;
     }
+    // The material of geometry without one (nova:defaultMaterial); the
+    // scene's own is the matte one.
+    if (const bool plastic = param.GetMaterials().PlasticDefault(); int(plastic) != _defaultMaterial) {
+        thread.StopRender();
+        scene.updateMaterial(nova::kDefaultMaterialId, param.GetMaterials().DefaultMaterial());
+        _defaultMaterial = int(plastic);
+    }
+    const int threads = _delegate->GetThreadLimit(int(WorkGetConcurrencyLimit()));
+    restart |= threads != _threads;
     restart |= !(view == _view);
     restart |= width != _width || height != _height;
     restart |= param.GetEditVersion() != _editVersion || scene.version() != _sceneVersion;
@@ -614,7 +623,8 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     camera.imageOriginX = view.imageOriginX;
     camera.imageOriginY = view.imageOriginY;
 
-    renderer.setThreadLimit(int(WorkGetConcurrencyLimit()));
+    renderer.setThreadLimit(threads);
+    _threads = threads;
     renderer.setCamera(camera);
     renderer.setSettings(settings);
     renderer.resize(width, height);

@@ -374,7 +374,17 @@ std::string directUdimName(std::string const &pattern, std::string const &token,
 
 } // namespace
 
-std::string HdNovaTextureSignature(std::string const &path) {
+std::string HdNovaUdimPath(std::string path) {
+    static const std::pair<const char *, const char *> forms[] = {
+        {"%(UDIM)d", "<UDIM>"}, {"%(UVTILE)s", "<UVTILE>"}, {"u%(U)d_v%(V)d", "<UVTILE>"}};
+    for (auto const &[houdini, token] : forms)
+        for (size_t at = path.find(houdini); at != std::string::npos; at = path.find(houdini, at))
+            path.replace(at, std::strlen(houdini), token);
+    return path;
+}
+
+std::string HdNovaTextureSignature(std::string const &given) {
+    const std::string path = HdNovaUdimPath(given);
     const std::string token = udimToken(path);
     std::vector<SourceFile> files;
     if (!token.empty()) {
@@ -482,8 +492,9 @@ std::string HdNovaReadableTexture(std::string const &path, HdNovaTextureOptions 
     return ok ? utf8(out) : std::string();
 }
 
-HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &path, std::string const &colorSpaceHint,
+HdNovaPreparedTexture HdNovaPrepareTexture(std::string const &given, std::string const &colorSpaceHint,
                                            std::string const &layer, HdNovaTextureOptions const &options) {
+    const std::string path = HdNovaUdimPath(given);
     HdNovaPreparedTexture r;
     const std::string token = udimToken(path);
     r.udim = !token.empty();

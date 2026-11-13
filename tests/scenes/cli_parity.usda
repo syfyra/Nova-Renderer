@@ -25,6 +25,7 @@ def Scope "Render"
 {
     def RenderSettings "full"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (120, 80)
         int nova:samples = 4
@@ -32,6 +33,7 @@ def Scope "Render"
 
     def RenderSettings "overscan"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (120, 80)
         float4 dataWindowNDC = (-0.2, -0.05, 1.1, 1.0)
@@ -40,6 +42,7 @@ def Scope "Render"
 
     def RenderSettings "novars"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (32, 32)
         rel products = </Render/Products/novars>
@@ -47,6 +50,7 @@ def Scope "Render"
 
     def RenderSettings "layout"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (32, 32)
         rel products = </Render/Products/layout>
@@ -55,6 +59,7 @@ def Scope "Render"
 
     def RenderSettings "beauty3"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (32, 32)
         rel products = </Render/Products/beauty3>
@@ -63,6 +68,7 @@ def Scope "Render"
 
     def RenderSettings "formats"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (32, 32)
         rel products = </Render/Products/formats>
@@ -70,6 +76,7 @@ def Scope "Render"
     }
     def RenderSettings "par"
     {
+        token nova:defaultMaterial = "lambert"
         rel camera = </World/cam>
         int2 resolution = (160, 160)
         uniform token aspectRatioConformPolicy = "adjustPixelAspectRatio"

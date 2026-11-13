@@ -144,14 +144,25 @@ def render_prims(lop):
     return out
 
 
+def folder_set(node, label):
+    """The parameter that switches the set of tabs holding the folder `label`, and that folder's index (the
+    parameter's name is the first folder's with a number, tab_rendering1)."""
+    for p in node.parms():
+        t = p.parmTemplate()
+        if t.type() == hou.parmTemplateType.FolderSet and label in t.folderNames():
+            return p, t.folderNames().index(label)
+    return None, -1
+
+
 def show_parms(node, tab=None):
     """Shows node in the parameter editors (unpinned), on top tab `tab`."""
     for pt in hou.ui.paneTabs():
         if pt.type() == hou.paneTabType.Parm:
             pt.setPin(False)
             pt.setCurrentNode(node)
-    if tab is not None and node.parm("tab_rendering") is not None:
-        node.parm("tab_rendering").set(tab)
+    switcher, _ = folder_set(node, "Rendering")
+    if tab is not None and switcher is not None:
+        switcher.set(tab)
 
 
 def grab(name):
@@ -230,6 +241,53 @@ def step_nova_denoised():
 def step_nova_filters():
     grab("ui_nova_lop_filters")
     log("nova lop means", with_lop=image_mean("14_nova_lop"))
+    # 0.2.0: the look-dev settings, switched live on the Nova LOP (each
+    # restarts the viewport's render): the headlight instead of the stage's
+    # lights, Simplified Shading, outlines without an outline AOV.
+    nova = STATE["nova"]
+    nova.parm("viewportDenoise").set(0)
+    nova.parm("samples").set(32)
+    show_parms(nova, 0)
+    subtab(nova, "Lighting Effects")
+    nova.parm("lightOverride").set("headlight")
+    later(15, step_nova_headlight)
+
+
+def subtab(node, label):
+    """Shows the Rendering tab's sub-tab `label` (its switcher is named after the first sub-tab)."""
+    switcher, index = folder_set(node, label)
+    if switcher is not None:
+        switcher.set(index)
+    log("subtab", label=label, found=switcher is not None)
+
+
+def step_nova_headlight():
+    capture("17_nova_headlight")
+    grab("ui_nova_lop_lighting")
+    nova = STATE["nova"]
+    nova.parm("lightOverride").set("off")
+    nova.parm("simplifiedShading").set(1)
+    later(15, step_nova_simplified)
+
+
+def step_nova_simplified():
+    capture("18_nova_simplified")
+    grab("ui_nova_lop_simplified")
+    nova = STATE["nova"]
+    nova.parm("simplifiedShading").set(0)
+    nova.parm("outline").set(1)
+    nova.parm("outlineRadius").set(3)
+    nova.parmTuple("outlineColor").set((1.0, 0.2, 0.0))
+    subtab(nova, "Outlines")
+    later(15, step_nova_outline)
+
+
+def step_nova_outline():
+    capture("19_nova_outline")
+    grab("ui_nova_lop_outlines")
+    log("look-dev means", lit=image_mean("14_nova_lop"), headlight=image_mean("17_nova_headlight"),
+        simplified=image_mean("18_nova_simplified"), outline=image_mean("19_nova_outline"))
+    STATE["nova"].parm("outline").set(0)
     set_renderer("Karma CPU")
     later(40, step_rendersettings_karma)
 

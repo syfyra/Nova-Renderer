@@ -1,6 +1,7 @@
 #include "denoise.h"
 
 #include "diagnostics.h"
+#include "oidnDenoiser.h"
 #include "renderBuffer.h"
 #include "textureConvert.h"
 
@@ -189,14 +190,31 @@ std::vector<std::string> HdNovaSplitAovNames(std::string const &names) {
 }
 
 bool HdNovaDenoiseBuffers(nova::Film const &film, std::vector<HdNovaRenderBuffer *> const &buffers, bool albedo,
-                          bool normal) {
+                          bool normal, std::string const &engine, int quality) {
     if (buffers.empty() || film.width <= 0 || film.height <= 0)
         return true;
     nova::Denoiser &denoiser = nova::sharedDenoiser();
-    static std::atomic<bool> warned{false};
-    if (!denoiser.available()) {
+    HdNovaOidnDenoiser &oidn = HdNovaOidnDenoiser::Shared();
+    static std::atomic<bool> warned{false}, warnedFallback{false};
+    // The engine asked for when it can run, else the other. The automatic
+    // choice is OptiX (it runs on the renderer's GPU), and Open Image Denoise
+    // where there is no NVIDIA driver. Asking for one never starts the other
+    // without need (each creates its device on its first use).
+    bool useOidn = false;
+    if (engine == "oidn") {
+        useOidn = oidn.Available();
+        if (!useOidn && denoiser.available() && !warnedFallback.exchange(true))
+            HD_NOVA_WARN("Open Image Denoise is unavailable (%s); denoising with OptiX", oidn.Message().c_str());
+    } else {
+        useOidn = !denoiser.available() && oidn.Available();
+        if (useOidn && engine == "optix" && !warnedFallback.exchange(true))
+            HD_NOVA_WARN("the OptiX denoiser is unavailable (%s); denoising with Open Image Denoise",
+                         denoiser.message().c_str());
+    }
+    if (!useOidn && !denoiser.available()) {
         if (!warned.exchange(true))
-            HD_NOVA_WARN("the OptiX denoiser is unavailable (%s); images stay undenoised", denoiser.message().c_str());
+            HD_NOVA_WARN("no denoiser is available (OptiX: %s; Open Image Denoise: %s); images stay undenoised",
+                         denoiser.message().c_str(), oidn.Message().c_str());
         return false;
     }
     const int w = film.width, h = film.height;
@@ -244,8 +262,15 @@ bool HdNovaDenoiseBuffers(nova::Film const &film, std::vector<HdNovaRenderBuffer
     layers.push_back({beauty.data(), beautyOut.data()});
     for (size_t i = 0; i < targets.size(); ++i)
         layers.push_back({inputs[i].data(), outputs[i].data()});
-    if (!denoiser.denoise(w, h, layers.data(), int(layers.size()), albedo ? albedoImage.data() : nullptr,
-                          normal ? normalImage.data() : nullptr)) {
+    const float *albedoGuide = albedo ? albedoImage.data() : nullptr, *normalGuide = normal ? normalImage.data() : nullptr;
+    if (useOidn) {
+        // Each image by itself: the film's beauty, which leads OptiX's layers, is not needed.
+        if (!oidn.Denoise(w, h, layers.data() + 1, int(layers.size()) - 1, albedoGuide, normalGuide, quality)) {
+            if (!warned.exchange(true))
+                HD_NOVA_WARN("Open Image Denoise failed (%s); images stay undenoised", oidn.Message().c_str());
+            return false;
+        }
+    } else if (!denoiser.denoise(w, h, layers.data(), int(layers.size()), albedoGuide, normalGuide)) {
         if (!warned.exchange(true))
             HD_NOVA_WARN("the OptiX denoiser failed (%s); images stay undenoised", denoiser.message().c_str());
         return false;

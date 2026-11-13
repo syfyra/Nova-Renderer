@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -215,4 +216,28 @@ TEST_CASE("A file name that is not UTF-8 gives a path instead of an exception", 
         TfUnsetenv("HOUDINI_TEMP_DIR");
     else
         TfSetenv("HOUDINI_TEMP_DIR", before);
+}
+
+// Houdini's own spelling of the UDIM token, which its file choosers and the
+// Principled Shader write, names the tiles that `<UDIM>` names. It was read
+// as a file name: the texture was missing and the fallback colour rendered
+// (docs/bug-audit-2026-11.md, section 19, T-2).
+TEST_CASE("Houdini's UDIM tokens name the tiles that USD's name", "[hydra][texture]") {
+    CHECK(HdNovaUdimPath("tex/wall.%(UDIM)d.exr") == "tex/wall.<UDIM>.exr");
+    CHECK(HdNovaUdimPath("tex/wall.%(UVTILE)s.exr") == "tex/wall.<UVTILE>.exr");
+    CHECK(HdNovaUdimPath("tex/wall.u%(U)d_v%(V)d.exr") == "tex/wall.<UVTILE>.exr");
+    CHECK(HdNovaUdimPath("tex/wall.<UDIM>.exr") == "tex/wall.<UDIM>.exr");
+    CHECK(HdNovaUdimPath("tex/wall.1001.exr") == "tex/wall.1001.exr");
+
+    // Two tiles on disk: both spellings find them (the signature lists a
+    // texture's files).
+    const std::string dir = "nova_test_udim_token";
+    std::filesystem::create_directories(dir);
+    for (const char *tile : {"1001", "1012"})
+        std::ofstream(dir + "/wall." + tile + ".exr") << "tile";
+    const std::string usd = HdNovaTextureSignature(dir + "/wall.<UDIM>.exr");
+    CHECK(std::count(usd.begin(), usd.end(), ';') == 2);
+    CHECK(HdNovaTextureSignature(dir + "/wall.%(UDIM)d.exr") == usd);
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
 }

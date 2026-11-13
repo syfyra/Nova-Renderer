@@ -128,7 +128,7 @@ add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oi
     test_hydra_filters.cpp
     test_hydra_sky.cpp test_hydra_medium.cpp test_hydra_karma_settings.cpp test_hydra_resync.cpp
     test_hydra_curves.cpp test_hydra_robust.cpp test_hydra_fuzz.cpp test_hydra_triangulate.cpp
-    test_hydra_stage.cpp)
+    test_hydra_stage.cpp hydra_test_defaults.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nova_hydra_tests PRIVATE hdNova_objects Catch2::Catch2WithMain
     Houdini::Dep::pxr_usd Houdini::Dep::pxr_usdGeom Houdini::Dep::pxr_usdShade Houdini::Dep::pxr_usdImaging)
@@ -394,6 +394,13 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" --scenes "${CMAKE_CURRENT_SOURCE_DIR}/scenes"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_stage_features/$<CONFIG>")
     set_tests_properties(husk_stage_features PROPERTIES LABELS husk TIMEOUT 600)
+    # The render settings added in 0.2.0, each by what it does to an image
+    # (docs/bug-audit-2026-11.md, section 18), CPU and Nova XPU.
+    add_test(NAME husk_settings
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_settings.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" --scenes "${CMAKE_CURRENT_SOURCE_DIR}/scenes"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_settings/$<CONFIG>")
+    set_tests_properties(husk_settings PROPERTIES LABELS husk TIMEOUT 600)
     # Karma's render settings in Nova (docs/design/M11-P1.md).
     add_test(NAME husk_karma_props
         COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_karma_props.py"

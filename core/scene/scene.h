@@ -109,6 +109,14 @@ static_assert(std::is_nothrow_move_constructible_v<MeshRecord>,
 // A volume prim and what commit() derives from it (docs/design/M8.md D7).
 struct VolumeRecord {
     VolumeDesc desc;
+    // Light and shadow linking (docs/design/M9.md D15; volumes since 0.2.0,
+    // audit V-1 and V-2): the prim's categories and, from commit(), the
+    // receiver set its points are lit as (0: the unlinked lights only) and
+    // the shadow-link categories it is in (it attenuates the shadow rays of
+    // a shadow-linked light only if it is in that light's category).
+    std::vector<std::string> categories;
+    uint32_t receiverSet = 0;
+    uint64_t shadowMask = 0;
     // Object-to-world: one transform, or motionSteps uniform keys over the
     // shutter (as meshes).
     Affine3f objectToWorld;
@@ -314,6 +322,8 @@ public:
     // A volume's ray visibility and holdout mode (as setMeshVisibility; the
     // same render-settings defaults, docs/design/M11-P2.md D15).
     void setVolumeVisibility(VolumeId id, const ObjectVisibility &visibility);
+    // The collections a volume is in (as setMeshCategories, for the whole volume).
+    void setVolumeCategories(VolumeId id, std::vector<std::string> categories);
     void removeVolume(VolumeId id);
     // The frame being rendered and the frames per second (RenderSettings'):
     // volume shaders that read Time or Frame bound their extinction at it, so

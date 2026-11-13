@@ -520,11 +520,14 @@ TEST_CASE("The render pass applies the render settings' velocity blur", "[hydra]
     d.delegate->DestroyBprim(buffer);
 }
 
-// Houdini's Motion Blur LOP writes subframe samples at the shutter ends:
-// with invalid velocities (another count) pxr passes them through, and they
-// stay (a bent path), not cut to the two ends.
-TEST_CASE("Time samples at the shutter ends stay where velocities are invalid", "[hydra][motion][velocity]") {
-    Driver d(R"(
+// Karma's rule (measured, audit M-1 of 0.2.0): with velocity blur on, the
+// time samples of the points are not motion. Without usable velocities (none,
+// an empty array, another count than the points) the frame's points are held:
+// Houdini's Motion Blur LOP writes subframe samples at the shutter ends, which
+// render sharp under a Velocity Blur setting, as they do in Karma. Up to
+// 0.1.6 Nova blurred by the time samples there.
+TEST_CASE("Velocity blur without usable velocities holds the frame's points", "[hydra][motion][velocity]") {
+    const char *mesh = R"(
 def Mesh "bent"
 {
     int[] faceVertexCounts = [4]
@@ -534,18 +537,39 @@ def Mesh "bent"
         1: [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)],
         1.25: [(4, 0, 0), (6, 0, 0), (6, 2, 0), (4, 2, 0)],
     }
-    vector3f[] velocities = [(240, 0, 0), (240, 0, 0)]
     uniform token subdivisionScheme = "none"
-    int primvars:karma:object:vblur = 1 (interpolation = "constant")
+    %s
 }
-)");
-    checkSteps(d.xSteps(0), {-2.0f, 0.0f, 4.0f});
+)";
+    const char *on = "int primvars:karma:object:vblur = 1 (interpolation = \"constant\")";
+    {
+        // Another count than the points.
+        Driver d(TfStringPrintf(mesh, (std::string("vector3f[] velocities = [(240, 0, 0), (240, 0, 0)]\n    ") + on).c_str()));
+        checkSteps(d.xSteps(0), {0.0f});
+    }
+    {
+        // No velocities at all, and an empty array; acceleration blur too.
+        Driver d(TfStringPrintf(mesh, on));
+        checkSteps(d.xSteps(0), {0.0f});
+        Driver e(TfStringPrintf(mesh, (std::string("vector3f[] velocities = []\n    ") + on).c_str()));
+        checkSteps(e.xSteps(0), {0.0f});
+        Driver f(TfStringPrintf(mesh, "int primvars:nova:object:velocityBlur = 2 (interpolation = \"constant\")"));
+        checkSteps(f.xSteps(0), {0.0f});
+    }
+    {
+        // Without velocity blur the time samples are the motion, as before (a bent path).
+        Driver d(TfStringPrintf(mesh, "vector3f[] velocities = [(240, 0, 0), (240, 0, 0)]"));
+        checkSteps(d.xSteps(0), {-2.0f, 0.0f, 4.0f});
+        Driver e(TfStringPrintf(mesh, ""));
+        checkSteps(e.xSteps(0), {-2.0f, 0.0f, 4.0f});
+    }
 }
 
-// Velocities move the instances, but turning comes from the orientations'
-// own time samples (no angular velocities): those stay, not cut to the
-// shutter ends (which would turn 180 degrees the short way).
-TEST_CASE("Orientation samples stay without angular velocities", "[hydra][motion][velocity][instancing]") {
+// Velocities move the instances; orientations with time samples and no
+// angular velocities are held at the frame under instance velocity blur
+// (Karma's rule, audit M-1 of 0.2.0: up to 0.1.6 Nova turned the instances by
+// the orientations' samples).
+TEST_CASE("Orientation samples are held without angular velocities", "[hydra][motion][velocity][instancing]") {
     Driver d(R"(
 def PointInstancer "inst"
 {
@@ -572,13 +596,12 @@ def PointInstancer "inst"
 }
 )");
     nova::MeshRecord const &r = instancedRecord(d);
-    REQUIRE(r.motionSteps == 3);
-    REQUIRE(r.motionKeys.size() == 3);
-    CHECK_THAT(turn(r.motionKeys[0]), WithinAbs(0.0, 1e-3));
+    REQUIRE(r.motionSteps == 2);
+    REQUIRE(r.motionKeys.size() == 2);
+    CHECK_THAT(turn(r.motionKeys[0]), WithinAbs(M_PI / 2, 1e-3)); // the frame's orientation at both ends
     CHECK_THAT(turn(r.motionKeys[1]), WithinAbs(M_PI / 2, 1e-3));
-    CHECK_THAT(std::fabs(turn(r.motionKeys[2])), WithinAbs(M_PI, 1e-3));
     CHECK_THAT(nova::srtToAffine(r.motionKeys[0]).t.x, WithinAbs(-2.5, 1e-4));
-    CHECK_THAT(nova::srtToAffine(r.motionKeys[2]).t.x, WithinAbs(2.5, 1e-4));
+    CHECK_THAT(nova::srtToAffine(r.motionKeys[1]).t.x, WithinAbs(2.5, 1e-4));
 }
 
 TEST_CASE("Each render index keeps its own render settings' defaults", "[hydra][motion][velocity]") {

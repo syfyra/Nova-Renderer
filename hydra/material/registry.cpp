@@ -4,6 +4,10 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+nova::MaterialDesc HdNovaMaterialRegistry::DefaultMaterial() const {
+    return PlasticDefault() ? nova::plasticDefaultMaterial() : nova::defaultMaterial();
+}
+
 nova::MaterialId HdNovaMaterialRegistry::Acquire(SdfPath const &path, nova::Scene &scene) {
     if (path.IsEmpty())
         return nova::kDefaultMaterialId;
@@ -12,7 +16,7 @@ nova::MaterialId HdNovaMaterialRegistry::Acquire(SdfPath const &path, nova::Scen
     if (it != _ids.end())
         return it->second;
     const nova::MaterialId id = scene.createMaterial();
-    scene.updateMaterial(id, nova::defaultMaterial());
+    scene.updateMaterial(id, DefaultMaterial());
     _ids.emplace(path, id);
     return id;
 }

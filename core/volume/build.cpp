@@ -553,6 +553,15 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
     } else {
         note(fieldIndex(d, "density"));
     }
+    // A shader that reads no field (a constant medium, a constant emission)
+    // is where the volume's density is, else its first field: Karma renders
+    // such a material in the VDB's voxels (audit V-3: Nova rendered nothing).
+    // Not the default volume: it is its density, and without one nothing.
+    if (!d.shell && rec.program && read.empty()) {
+        note(fieldIndex(d, "density"));
+        if (read.empty() && !d.fields.empty())
+            note(0);
+    }
     std::vector<CellRanges> ranges;
     if (d.shell ? !shellDomain(rec) : (read.empty() || !fieldDomain(rec, read, ranges)))
         return; // nothing in space to render
@@ -636,6 +645,21 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
             });
             rec.estimatedCells = tabulated ? 0 : unbounded.load();
         }
+        // Karma shades a volume only where its fields have voxels. A cell that
+        // no stored value of a read field reaches holds nothing, whatever the
+        // shader gives for the fields' background values: a constant medium, a
+        // constant emission or a density with an offset would fill the whole
+        // box of cells otherwise (audit V-3, V-4).
+        if (!d.shell)
+            for (size_t i = 0; i < cells; ++i) {
+                bool touched = false;
+                for (size_t r = 0; r < read.size() && !touched; ++r) {
+                    const float background = d.fields[size_t(read[r])].grid->grid()->tree().background();
+                    touched = ranges[r].lo[i] != background || ranges[r].hi[i] != background;
+                }
+                if (!touched)
+                    bounds[i].extinction = bounds[i].emission = 0.0f;
+            }
         bool raised = false;
         for (size_t i = 0; i < cells; ++i) {
             rec.majorant[i] = bounds[i].emission > 0.0f ? std::max(bounds[i].extinction, floorRate) : bounds[i].extinction;
