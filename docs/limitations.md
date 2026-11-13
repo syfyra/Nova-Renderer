@@ -1,6 +1,6 @@
 # Known limitations
 
-The current limitations of Nova 0.2.0 in one place. Each entry names what happens instead and where the behaviour
+The current limitations of Nova 0.2.1 in one place. Each entry names what happens instead and where the behaviour
 comes from (the warning in the code, or the design note that deferred it). The per-milestone "Not yet" lines in
 [`reference.md`](reference.md) and the "Deferred" tables in [`design/`](design/) describe the state at the end of
 their milestone; where a later milestone delivered an item (holdout LPEs, light filters, mesh-bounded media,

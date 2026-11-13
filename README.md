@@ -13,7 +13,7 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
   <img alt="Houdini 22.0" src="https://img.shields.io/badge/Houdini-22.0-orange.svg">
   <img alt="Platform: Windows x64" src="https://img.shields.io/badge/platform-Windows%20x64-lightgrey.svg">
-  <img alt="Version 0.2.0" src="https://img.shields.io/badge/version-0.2.0-informational.svg">
+  <img alt="Version 0.2.1" src="https://img.shields.io/badge/version-0.2.1-informational.svg">
 </p>
 
 ---
@@ -69,7 +69,7 @@ with the same look, and every feature is measured against Karma CPU or an analyt
 
 ## Status
 
-Version 0.2.0, for **Windows x64** and **Houdini 22.0**. `hdNova` is built against the USD of Houdini 22.0.466.
+Version 0.2.1, for **Windows x64** and **Houdini 22.0**. `hdNova` is built against the USD of Houdini 22.0.466.
 Nova was built milestone by milestone. The plan's milestones M0 to M10 ([`docs/PLAN.md`](docs/PLAN.md)) and the
 Karma-compatibility milestone M11 ([`docs/design/M11.md`](docs/design/M11.md)) are complete, with a design note per
 milestone in [`docs/design/`](docs/design/). About 760 automated tests cover it: unit
@@ -136,7 +136,7 @@ cmake --install build/vs2022 --config Release
   and `tools\installer\build.ps1` refuses to package it.
 - **Install step:** it writes the Houdini package to `dist/` (`dist/nova.json` and `dist/nova/`).
 
-**Installer.** `tools\installer\build.ps1` packs `dist/nova` into `dist/NovaSetup-0.2.0.exe`; it needs Rust with the
+**Installer.** `tools\installer\build.ps1` packs `dist/nova` into `dist/NovaSetup-0.2.1.exe`; it needs Rust with the
 MSVC toolchain.
 - The installer installs Nova per user, without administrator rights, and registers it with Houdini 22.0.
 - It adds an uninstaller to Apps & features.
