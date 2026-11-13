@@ -4,6 +4,7 @@
 #include "core/math/spectrum.h"
 #include "core/scene/image.h"
 
+#include "core/lights/ies.h"
 #include "core/lights/light_filter.h"
 
 #include <cstdint>
@@ -50,6 +51,13 @@ struct LightDesc {
     float coneSoftness = 0.0f;
     float focus = 0.0f;
     Spectrum focusTint{0.0f, 0.0f, 0.0f};
+    // The ShapingAPI's IES profile (shaping:ies:file; core/lights/ies.h): the
+    // candela of a direction multiplies the emission, divided by the
+    // profile's mean with iesNormalize, read at a scaled vertical angle with
+    // iesAngleScale. Null: none. Applied with or without `shaped`.
+    std::shared_ptr<const IesProfile> ies;
+    float iesAngleScale = 0.0f;
+    bool iesNormalize = false;
 
     // Karma light properties (Nova follows the Karma conventions):
     bool cameraVisible = false; // karma:light:renderlightgeo: camera rays see the light

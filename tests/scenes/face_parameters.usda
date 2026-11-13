@@ -1,0 +1,252 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# The texture coordinates of geometry without st (docs/bug-audit-2026-11.md,
+# section 21). Karma gives every face its own parameters, from its vertices
+# in their order:
+#   a quad 0 1 2 3   (0,0) (1,0) (1,1) (0,1) at its corners, linear over each
+#                    of its triangles 3 0 1 and 3 1 2;
+#   a triangle a b c u = w_b / (w_b + w_c), v = w_b + w_c of its barycentrics;
+#   more vertices    a strip of quads 0 1 2 n-1, then k+1 k+2 n-1-k n-k, and a
+#                    last triangle where the count is odd; a concave face's
+#                    triangles each as a triangle;
+#   a Catmull-Clark surface: a quad's own (u, v), and for a face of another
+#                    count each of the quads it is made of, from the face's
+#                    vertex (0,0) to its centre (1,1).
+# MaterialX's nodes read them (an image's default coordinates, texcoord, a
+# geompropvalue of st); a UsdPrimvarReader gives its fallback. Nova read
+# (0, 0) everywhere.
+#
+# Faces seen from above, 100 pixels per unit, that emit (u, v, 0). The upper
+# row (z > 0): a trapezoid, a triangle, a pentagon, a heptagon and a concave
+# pentagon. The lower row: a left-handed quad, two subdivided quads, a
+# subdivided triangle, a quad read through a UsdPrimvarReader (black) and a
+# quad that has st (its own values, 0.2 to 0.4).
+# tests/husk/check_stage_features.py compares with Karma's values.
+def Xform "World"
+{
+    def Mesh "trapezoid" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-3.9, 0, 1.8), (-2.5, 0, 1.8), (-2.9, 0, 0.2), (-3.7, 0, 0.2)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/uv>
+    }
+
+    def Mesh "triangle" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(-2.3, 0, 1.8), (-0.9, 0, 1.8), (-2.3, 0, 0.2)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/uv>
+    }
+
+    def Mesh "pentagon" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [5]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4]
+        point3f[] points = [(-0.7, 0, 1.8), (0.7, 0, 1.8), (0.7, 0, 0.8), (0, 0, 0.2), (-0.7, 0, 0.8)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/uv>
+    }
+
+    def Mesh "heptagon" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [7]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6]
+        point3f[] points = [(1.1, 0, 1.8), (2.1, 0, 1.8), (2.3, 0, 1.2), (2.3, 0, 0.7), (1.9, 0, 0.2), (1.2, 0, 0.2), (0.9, 0, 1.0)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/uv>
+    }
+
+    def Mesh "concave" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [5]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4]
+        point3f[] points = [(2.5, 0, 1.8), (3.9, 0, 1.8), (3.9, 0, 0.2), (3.2, 0, 1.1), (2.5, 0, 0.2)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/uv>
+    }
+
+    def Mesh "left_handed" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-3.9, 0, -0.2), (-2.5, 0, -0.2), (-2.5, 0, -1.8), (-3.9, 0, -1.8)]
+        uniform token orientation = "leftHanded"
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/uv>
+    }
+
+    def Mesh "subdivided_quads" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 4, 5, 1, 2, 3, 4]
+        point3f[] points = [(-2.3, 0, -0.2), (-1.6, 0, -0.2), (-0.9, 0, -0.2), (-0.9, 0, -1.8), (-1.6, 0, -1.8), (-2.3, 0, -1.8)]
+        uniform token subdivisionScheme = "catmullClark"
+        rel material:binding = </World/uv>
+    }
+
+    def Mesh "subdivided_triangle" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(-0.7, 0, -0.2), (0.7, 0, -0.2), (-0.7, 0, -1.8)]
+        uniform token subdivisionScheme = "catmullClark"
+        rel material:binding = </World/uv>
+    }
+
+    def Mesh "reader" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0.9, 0, -0.2), (2.3, 0, -0.2), (2.3, 0, -1.8), (0.9, 0, -1.8)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/read>
+    }
+
+    def Mesh "with_st" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(2.5, 0, -0.2), (3.9, 0, -0.2), (3.9, 0, -1.8), (2.5, 0, -1.8)]
+        uniform token subdivisionScheme = "none"
+        texCoord2f[] primvars:st = [(0.2, 0.2), (0.4, 0.2), (0.4, 0.4), (0.2, 0.4)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </World/uv>
+    }
+
+    def Material "uv"
+    {
+        token outputs:mtlx:surface.connect = </World/uv/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:emission = 1
+            color3f inputs:emission_color.connect = </World/uv/colour.outputs:out>
+            token outputs:out
+        }
+
+        def Shader "colour"
+        {
+            uniform token info:id = "ND_convert_vector2_color3"
+            float2 inputs:in.connect = </World/uv/st.outputs:out>
+            color3f outputs:out
+        }
+
+        def Shader "st"
+        {
+            uniform token info:id = "ND_geompropvalue_vector2"
+            string inputs:geomprop = "st"
+            float2 outputs:out
+        }
+    }
+
+    def Material "read"
+    {
+        token outputs:mtlx:surface.connect = </World/read/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:emission = 1
+            color3f inputs:emission_color.connect = </World/read/colour.outputs:out>
+            token outputs:out
+        }
+
+        def Shader "colour"
+        {
+            uniform token info:id = "ND_convert_vector2_color3"
+            float2 inputs:in.connect = </World/read/st.outputs:out>
+            color3f outputs:out
+        }
+
+        def Shader "st"
+        {
+            uniform token info:id = "ND_UsdPrimvarReader_vector2"
+            string inputs:varname = "st"
+            float2 outputs:out
+        }
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 80
+        float verticalAperture = 40
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 10, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (800, 400)
+        int nova:samples = 4
+    }
+
+    # Karma's ray:hituv alone: a quad's parameters as above, also for the quads
+    # of a face of more vertices; a triangle a b c has its barycentrics of b
+    # and c there.
+    def RenderSettings "hit"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (800, 400)
+        int nova:samples = 4
+        rel products = </Render/hituv_product>
+    }
+
+    def RenderProduct "hituv_product"
+    {
+        rel orderedVars = </Render/hituv>
+        token productName = "hituv.exr"
+        token productType = "raster"
+    }
+
+    def RenderVar "hituv"
+    {
+        uniform token dataType = "vector3f"
+        string driver:parameters:aov:name = "hituv"
+        token driver:parameters:aov:format = "float3"
+        bool driver:parameters:aov:multiSampled = 0
+        uniform string sourceName = "ray:hituv"
+        uniform token sourceType = "raw"
+    }
+}

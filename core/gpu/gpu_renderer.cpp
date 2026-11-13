@@ -611,7 +611,12 @@ bool GpuRenderer::setScene(const Scene &scene) {
                                      : r.source == AttributeSource::Corner   ? corners
                                      : r.source == AttributeSource::Instance ? rec.instanceCount()
                                                                              : 0;
-                device = own ? upload(geo.buffers, r.data, count * r.width).ptr : put(r.data, count * r.width).ptr;
+                // The parameters of faces: one byte per triangle (attributes.h).
+                if (r.source == AttributeSource::FaceParameters)
+                    device = reinterpret_cast<const float *>(
+                        upload(geo.buffers, reinterpret_cast<const uint8_t *>(r.data), rec.desc.triangleCount()).ptr);
+                else
+                    device = own ? upload(geo.buffers, r.data, count * r.width).ptr : put(r.data, count * r.width).ptr;
             }
             r.data = device;
             if (!r.data)
@@ -726,6 +731,8 @@ bool GpuRenderer::setScene(const Scene &scene) {
     for (LightData &l : lights) {
         if (l.texels)
             l.texels = put(l.texels, size_t(l.texWidth) * l.texHeight).ptr;
+        if (l.ies) // an IES profile's table (core/lights/ies.h)
+            l.ies = put(l.ies, size_t(l.iesWidth) * l.iesHeight).ptr;
         if (l.filters)
             l.filters = put(l.filters, l.filterCount).ptr;
         if (l.portals) // a dome's light portals (M11-P9b)

@@ -1,0 +1,140 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# IES profiles on lights: UsdLuxShapingAPI's shaping:ies:file, angleScale and
+# normalize (docs/bug-audit-2026-11.md, section 22), which Nova ignored.
+# Karma multiplies a light's emission by the candela of the direction the
+# light leaves in: the vertical angle from the light's -Z, the horizontal one
+# from its -X towards -Y. normalize divides by the profile's mean, angleScale
+# s reads the table at theta / s.
+#
+# Three lights one unit over a white ground, each in a bay of its own
+# between black walls, seen from above at 50 pixels per unit:
+#   left (x = -4)   a point light with tests/data/ies/lobe.ies, a lobe 60
+#                   degrees from the nadir at the horizontal angle 30, turned
+#                   by 40 degrees about its axis;
+#   middle (x = 0)  the same file normalized, its angles halved (angleScale
+#                   0.5): the lobe at 30 degrees;
+#   right (x = 4)   a small rect light with tests/data/ies/downlight.ies, a
+#                   beam about the nadir, normalized.
+# tests/husk/check_stage_features.py compares with Karma's values.
+def Xform "World"
+{
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-8, 0, 4), (8, 0, 4), (8, 0, -4), (-8, 0, -4)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/white>
+    }
+
+    def Mesh "walls" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+        point3f[] points = [(-2, 0, 4), (-2, 0, -4), (-2, 5, -4), (-2, 5, 4), (2, 0, 4), (2, 0, -4), (2, 5, -4), (2, 5, 4)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/black>
+    }
+
+    def Material "white"
+    {
+        token outputs:mtlx:surface.connect = </World/white/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (1, 1, 1)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def Material "black"
+    {
+        token outputs:mtlx:surface.connect = </World/black/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def SphereLight "lobe" (
+        prepend apiSchemas = ["ShapingAPI"]
+    )
+    {
+        float inputs:intensity = 0.002
+        float inputs:radius = 0.01
+        bool treatAsPoint = 1
+        asset inputs:shaping:ies:file = @../data/ies/lobe.ies@
+        double3 xformOp:translate = (-4, 1, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        float xformOp:rotateZ:spin = 40
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:rotateZ:spin"]
+    }
+
+    def SphereLight "lobe_normalized" (
+        prepend apiSchemas = ["ShapingAPI"]
+    )
+    {
+        float inputs:intensity = 0.5
+        float inputs:radius = 0.01
+        bool treatAsPoint = 1
+        asset inputs:shaping:ies:file = @../data/ies/lobe.ies@
+        float inputs:shaping:ies:angleScale = 0.5
+        bool inputs:shaping:ies:normalize = 1
+        double3 xformOp:translate = (0, 1, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def RectLight "downlight" (
+        prepend apiSchemas = ["ShapingAPI"]
+    )
+    {
+        float inputs:intensity = 1
+        float inputs:width = 0.2
+        float inputs:height = 0.2
+        bool inputs:normalize = 1
+        asset inputs:shaping:ies:file = @../data/ies/downlight.ies@
+        bool inputs:shaping:ies:normalize = 1
+        double3 xformOp:translate = (4, 1, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 120
+        float verticalAperture = 40
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 10, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (600, 200)
+        int nova:samples = 16
+    }
+}

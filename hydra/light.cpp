@@ -3,6 +3,7 @@
 #include "colorSpace.h"
 #include "diagnostics.h"
 #include "instancer.h"
+#include "pathUtil.h"
 #include "renderParam.h"
 
 #include <pxr/imaging/hd/renderIndex.h>
@@ -11,11 +12,19 @@
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/imaging/hd/sceneDelegate.h>
 #include <pxr/usd/sdf/assetPath.h>
+#include <pxr/usd/ar/asset.h>
+#include <pxr/usd/ar/resolvedPath.h>
+#include <pxr/usd/ar/resolver.h>
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/usd/usdLux/blackbody.h>
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <system_error>
+#include <unordered_map>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -76,6 +85,51 @@ std::string assetPath(VtValue const &value) {
         return asset.GetResolvedPath().empty() ? asset.GetAssetPath() : asset.GetResolvedPath();
     }
     return value.IsHolding<std::string>() ? value.UncheckedGet<std::string>() : std::string();
+}
+
+// The IES profile of a file (shaping:ies:file; core/lights/ies.h), parsed
+// once per version of the file and shared by its lights. Read through the
+// resolver, so a file in a package is one too. Null, with a warning per
+// version, for a file that cannot be read or is no profile.
+std::shared_ptr<const nova::IesProfile> loadIesProfile(std::string const &file) {
+    struct Entry {
+        std::weak_ptr<const nova::IesProfile> profile;
+        int64_t writeTime = -1;
+        bool failed = false;
+    };
+    static std::mutex mutex; // lights sync in parallel
+    static std::unordered_map<std::string, Entry> entries;
+    std::error_code ec;
+    const auto time = std::filesystem::last_write_time(HdNovaPath(file), ec);
+    const int64_t writeTime = ec ? 0 : int64_t(time.time_since_epoch().count());
+    std::lock_guard lock(mutex);
+    Entry &entry = entries[file];
+    if (entry.writeTime == writeTime) {
+        if (entry.failed)
+            return nullptr;
+        if (std::shared_ptr<const nova::IesProfile> profile = entry.profile.lock())
+            return profile;
+    }
+    entry = Entry{{}, writeTime, true};
+    const std::shared_ptr<ArAsset> asset = ArGetResolver().OpenAsset(ArResolvedPath(file));
+    const std::shared_ptr<const char> buffer = asset ? asset->GetBuffer() : nullptr;
+    if (!buffer) {
+        HD_NOVA_WARN("cannot open the IES profile '%s'; the light keeps its plain distribution", file.c_str());
+        return nullptr;
+    }
+    std::string error;
+    std::shared_ptr<const nova::IesProfile> profile = nova::parseIesProfile(std::string(buffer.get(), asset->GetSize()), &error);
+    if (!profile) {
+        HD_NOVA_WARN("cannot read the IES profile '%s' (%s); the light keeps its plain distribution", file.c_str(),
+                     error.c_str());
+        return nullptr;
+    }
+    if (profile->photometricType != 1)
+        HD_NOVA_WARN("the IES profile '%s' is of photometric type %s; its angles are read as type C's", file.c_str(),
+                     profile->photometricType == 2 ? "B" : profile->photometricType == 3 ? "A" : "unknown");
+    entry.profile = profile;
+    entry.failed = false;
+    return profile;
 }
 
 // A string- or token-valued parameter; empty if unset.
@@ -252,6 +306,16 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
         desc.focus = lightParam<float>(sd, id, HdLightTokens->shapingFocus, 0.0f);
         const GfVec3f tint = lightParam<GfVec3f>(sd, id, HdLightTokens->shapingFocusTint, GfVec3f(0.0f));
         desc.focusTint = {tint[0], tint[1], tint[2]};
+    }
+    // The ShapingAPI's IES profile, on the lights that have a place (a distant
+    // light and a dome have none to measure a direction from).
+    if (_lightType != HdPrimTypeTokens->domeLight && _lightType != HdPrimTypeTokens->distantLight) {
+        const std::string ies = assetPath(sd->GetLightParamValue(id, HdLightTokens->shapingIesFile));
+        if (!ies.empty()) {
+            desc.ies = loadIesProfile(ies);
+            desc.iesAngleScale = lightParam<float>(sd, id, HdLightTokens->shapingIesAngleScale, 0.0f);
+            desc.iesNormalize = lightParam<bool>(sd, id, HdLightTokens->shapingIesNormalize, false);
+        }
     }
     desc.visible = sd->GetVisible(id);
 

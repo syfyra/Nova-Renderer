@@ -664,7 +664,7 @@ Two warnings came with it: a cylinder light scaled non-uniformly across its axis
 | V-6 | A volume limit on a Volume prim: Nova applies the volume's limit to every path, Karma the limit of the object the ray left | 3.5 % on the ground next to a dense volume; a decision |
 | V-7 | Field prims with a transform of their own, or outside their Volume: Karma places every field by the Volume's transform, Nova by the field prim's | Nova follows the UsdVol schema; Houdini's LOPs author untransformed children, where both agree |
 | T-4 | `filtertype` cubic of a MaterialX image is bilinear on Nova XPU | `docs/limitations.md` |
-| T-5 | A mesh without `st` under a textured material: Karma maps every face 0..1, Nova reads (0, 0) | `docs/limitations.md` |
+| T-5 | A mesh without `st` under a textured material: Karma maps every face 0..1, Nova reads (0, 0) | Rendered since 0.2.2: section 21 |
 | T-8, T-9 | Karma renders a `constant` address mode mixed with another as black and UsdUVTexture `mirror` as repeat, and interpolates 8-bit sRGB textures before decoding them (a 1-texel checker averages 0.25, Nova 0.50) | Karma's side; Nova follows the specifications |
 | R-2, T-1 | **Quads are split along the other diagonal**: Nova 0-2 (Hydra's fan), Karma 1-3. Vertex primvars and `st` that are not affine over a quad, and the fold of a non-planar quad, differ (found by two areas independently) | Karma's split since 0.2.1: section 20 |
 | R-3 | The default material ignores `displayOpacity`: unbound geometry with an opacity is opaque, in Karma see-through | Read since 0.2.1: section 20 |
@@ -702,7 +702,7 @@ Six entries, five of them from "Measured, not changed" of section 19 and one fou
 |---|---|
 | A light with ShadowAPI settings is sampled by its light samples alone | The price of shadows that only the light's own rays see: a large area light with such settings, reflected in a glossy surface close to it, is noisier than without them. `docs/limitations.md` |
 | `displayOpacity` of instance rate (per instance of a point instancer) on geometry without a material is not read | The check looks at the prim's own primvars; `docs/limitations.md` |
-| T-5, a mesh without `st` under a textured material: Karma gives a quad its own parameters ((0, 0) at its first vertex, (1, 0), (1, 1), (0, 1)), a triangle (b1 / (b1 + b2), b1 + b2) of its barycentrics, through MaterialX's image, texcoord and geompropvalue nodes; through UsdPrimvarReader a grey of 0.5. Nova reads (0, 0) | The rule is measured now; it needs the face's parameters in the shading of both devices. `docs/limitations.md` |
+| T-5, a mesh without `st` under a textured material: Karma gives a quad its own parameters ((0, 0) at its first vertex, (1, 0), (1, 1), (0, 1)), a triangle (b1 / (b1 + b2), b1 + b2) of its barycentrics, through MaterialX's image, texcoord and geompropvalue nodes; through UsdPrimvarReader a grey of 0.5. Nova reads (0, 0) | Done in 0.2.2 with the whole rule (the triangle's is u = w_b / (w_b + w_c), v = w_b + w_c): section 21 |
 | MA-6, MA-7 of section 19 (a transmission of 0.5, glass with a fractional opacity) in a white furnace: Nova returns 0.988 for the half transmission (Karma 0.984) and 0.86 to 0.99 for glass of opacity 0.5 and 0.25, smooth and rough (Karma 0.50 to 0.63); a thin-walled or a white matte surface of opacity 0.5 returns 1.000 in both | No gain in Nova: the "gain" of section 19 was against Karma, whose solid glass with holes loses half of the light. Not a defect of Nova's |
 | The sphere light's inside (L-0), the per-object volume limit (V-6) and the rest of section 19's list | As there |
 
@@ -715,3 +715,82 @@ A second full run showed what the first form of RL-1's fix cost. It gave the sam
 The other comparison that moved is a known difference that the noise of 64 samples had covered. In `aov_components`' beauty the block at (16, 32), on the coat ball, is 3.2 % above Karma in blue when converged, in 0.2.0 as now (Karma's Schlick-fit coat Fresnel, the reason given for the ball in the scene's other planes); a block may differ by 1 % and what the render's own noise allows. At 64 samples 0.2.0 stood at 0.88 of that allowance and this build at 1.07: the scene has light path expressions with an event per lobe, where the class's share is taken at once, so its samples are not 0.2.0's. The beauty has the ball as a region now (`tests/reference/manifest.json`: its mean within 2 %, its blocks within 6 %; converged the mean is -0.6, +1.0, +1.6 % and the blocks reach +4.9 %), and the planes that had no regions keep none. What RL-1 changed in this scene is the indirect diffuse light: converged it was 0.8 % under Karma in red and 1.5 and 1.7 % in green and blue, and is 1.5 to 1.6 % under in all three, the darker base of the coat ball without the diffuse light that had gone on as a reflection.
 
 One finding in the tests themselves: the cubes of density that five test files build around the origin (`cubeGrid`, `guideFog`) lacked an eighth. NanoVDB's builder turns a leaf of one value into a tile when it fills a box, and of the eight such tiles around the origin the grid it made had seven: 3584 active voxels of 4096 for a cube of 16 voxels, the octant at (-8, -8, -8) empty. The tests compare the CPU with the GPU or a render with another of the same grid, so none failed. The helpers set the voxels one by one now; every test still passes on the whole cubes.
+
+## 21. The texture coordinates of geometry without st, and the faces of seven vertices (0.2.2)
+
+T-5 of sections 19 and 20: a mesh without `st` under a textured material showed one colour, the texture at (0, 0), where Karma gives every face its own parameters. The rule was measured with faces seen from above that emit `st` as red and green (a `geompropvalue` of `st`; the same through an image's default coordinates and the `texcoord` node), 150 pixels per unit: a trapezoid, a kite, triangles, convex faces of 5 to 9 vertices, a concave pentagon, left-handed faces, subdivided and displaced ones. Nova and Nova XPU were then compared with Karma CPU pixel by pixel, away from the faces' edges and the seams of their pieces.
+
+### Karma's rule
+
+| Face | Its (u, v) |
+|---|---|
+| A quad 0 1 2 3 | (0, 0), (1, 0), (1, 1), (0, 1) at its vertices, linear over each of its triangles 3 0 1 and 3 1 2. Not the bilinear patch: on a trapezoid the two are up to 0.12 apart, and Karma has the triangles' |
+| A triangle a b c | u = w_b / (w_b + w_c), v = w_b + w_c of its barycentrics: the quad a a b c, with a the whole edge v = 0 |
+| A convex face of n > 4 vertices | A strip of quads between its two ends: 0 1 2 n-1, then k+1 k+2 n-1-k n-k for k = 1 .., each as a quad; where n is odd a last triangle k+1 k+2 n-k, as a triangle. A heptagon: 0 1 2 6, 2 3 5 6 and 3 4 5 |
+| A concave face | The triangles of its own shape, each as a triangle from its lowest vertex (an M of five vertices: 0 1 3, 1 2 3, 0 3 4) |
+| A left-handed face | The same, by the order of its vertices |
+| A Catmull-Clark surface | A quad's own (u, v) of the control face. A face of another count: each of the quads it is made of, (0, 0) at the face's vertex and (1, 1) at its centre |
+| The `bilinear` and `loop` schemes, displaced polygons | As polygons |
+| A UsdPrimvarReader of `st` | Its fallback: the usual UsdUVTexture network reads its texture at (0, 0) on such a mesh, in Karma as in Nova |
+| `ray:hituv`, and the primvar var of `st` on a mesh without it | A quad's parameters, also in the quads of a larger face; a triangle's (w_b, w_c) |
+
+### Fixed
+
+| ID | Severity | Defect | Fix | Against Karma after the fix |
+|---|---|---|---|---|
+| T-5 | medium | **A mesh without `st` under a textured material was one colour**: MaterialX's texture coordinates (an image's default, `texcoord`, a `geompropvalue` of `st`) read (0, 0) on every face | Those reads name the faces' parameters after `st` (`st|@face`, `kFaceParametersName`), and a mesh has them: a polygon mesh as one byte per triangle that says how the triangle lies in its face (`MeshDesc::faceParameters`, `face_parameters` in `core/scene/attributes.h`, read on both devices by `fetchAttribute`), written by the triangulation (`HdNovaFaceTriangles::parameterCodes`); a tessellated mesh as a corner attribute of that name, written by the tessellator (`SubdivFaceParameters`). A UsdPrimvarReader keeps its fallback (the translator knows it is inside one) | Polygons of 3 to 9 vertices, concave and left-handed ones: within 0.005 at every compared pixel, on both devices (0 pixels of 1.5 million beyond 0.01). Subdivided quads the same. Displaced quads, triangles, pentagons and concave faces: a median difference of 0.0007, 1 % of their pixels (at their edges) beyond 0.02 |
+| R-6 | low | **Faces of seven and more vertices had other triangles than Karma's.** The fan from a face's last vertex (R-2 of section 20) is Karma's split only up to six vertices: beyond it Karma's strip of quads turns away from the fan (a heptagon: 6 0 1, 6 1 2, 6 2 3, 6 3 5, 5 3 4). A face of that size that is not flat folded otherwise, and its primvars were interpolated otherwise | The strip for every face of more than three vertices (`stripTriangle`, `hydra/meshTriangulate.cpp`); ears are clipped where the strip's triangles leave the face | The pieces of faces of 7, 8 and 9 vertices are Karma's (their parameters agree at every pixel) |
+| H-1 | low | **`ray:hituv` of a face of more than four vertices was the barycentrics of Nova's triangles** (a pentagon's first quad: (0.521, 0.201) where Karma has (0.202, 0.278)); only quads had their parameters | From the triangles' codes: the parameters in every quad of a face, a triangle's (w_b, w_c) (`face_parameters::hit`, `faceParameters` in `core/integrator/camera_samples.cpp`) | 15 points of a trapezoid, a triangle, a pentagon, a heptagon, a concave and a left-handed face within 0.001, on both devices |
+| H-2 | low | **The primvar var of `st` was 0 on a mesh without `st`** | The face's parameters, as `ray:hituv` (`core/integrator/camera_samples.cpp`) | A quad (0.326, 0.399) and a triangle (0.201, 0.199), Karma (0.327, 0.399) and (0.201, 0.198) |
+
+### Measured, not changed
+
+| What differs | Why it stands |
+|---|---|
+| A face of a Catmull-Clark surface that is no quad: its parameters are up to 0.016 from Karma's at the default rate (1.5 % of its pixels beyond 0.01) | Nova's are linear over a triangle of the tessellation, Karma's those of the patch; the triangles have their corners in the coordinates of the quad they lie in (a point between two of the quads belongs to both) |
+| A Loop mesh: up to 0.033 on a single triangle | Karma renders it as polygons; Nova tessellates the limit surface, whose parameters are not affine over the face |
+| `ray:hituv` on a subdivision surface: Karma has (0.504, 0.501) at a point of a subdivided quad whose `st` is (0.864, 0.872); Nova the barycentrics of the tessellation's triangle | Karma's rule there was not looked for |
+| A hole among the faces of a displaced mesh without `st` | Not rendered either way; such a face is not split into Karma's pieces |
+| Tangent frames on a mesh without `st` | From the triangle's edges, as before; not measured |
+| Curves and points without `st` | Not measured |
+| An image read at exactly (0, 0) with the `closest` filter and a periodic wrap: Nova has the texel at the end of the row and the bottom ((0.992, 0.008) of a ramp of 64 texels), Nova XPU the one at the start and the top ((0.008, 0.992)) | The coordinate lies on the border of four texels; what T-5's stage showed before the fix, on every face |
+
+Tests: `test_hydra_triangulate.cpp` ("Faces of seven and more vertices are Karma's strip of quads": the triangles of faces of 7 to 9 vertices, tilted and left-handed; "The parameters of a face are Karma's": 54 of Karma's values on a trapezoid, a kite, a triangle and faces of 5 to 7 vertices from the triangles' codes, right- and left-handed, and the M's triangles; "A mesh split for its faces' parameters has Karma's pieces"), `test_attributes.cpp` ("The parameters of a face are an attribute of meshes without st": the codes, `ray:hituv`'s reading of them, and that a list of names takes `st` first), `test_subdiv.cpp` ("The tessellator writes the parameters of faces": a quad's and a triangle's against their positions, and that no triangle of the tessellation mixes the coordinates of two quads), `test_gpu_render.cpp` ("XPU reads the parameters of faces without st": a quad and a triangle at 8360 pixel centres, the CPU on the rule to 5e-7 and Nova XPU on the CPU), `test_hydra_materials.cpp` (the default coordinates' names), `husk_stage_features` (`face_parameters.usda`: ten shapes against Karma's values on both devices, among them a UsdPrimvarReader's fallback and a quad that has `st`, and `ray:hituv` at 15 points).
+
+What the first build showed: the tessellation of a face made of several quads has points between two of them, whose coordinates are one quad's; a triangle on the other side read them as its own (a quarter of such a face's pixels were up to 0.87 off). Every triangle takes its corners in the coordinates of the quad it lies in.
+
+## 22. IES profiles on lights (0.2.2)
+
+`shaping:ies:file`, `shaping:ies:angleScale` and `shaping:ies:normalize` of UsdLuxShapingAPI were not read: a light with a profile kept its plain distribution (`docs/limitations.md`). Karma's reading was measured with a point light one unit over a white ground, seen from above: the image with the profile over the image without it is the profile's factor in the direction from the light to each ground point. Houdini's own files (`$HFS/houdini/ies`, all of photometric type C) and files written for the measurement (one lobe off the axis, one spike, one step) were used.
+
+### Karma's rule
+
+| What | How Karma has it |
+|---|---|
+| The factor | The light's emission times the candela of the direction the light leaves in: the file's value times its candela multiplier. The lamp count, the lumens, the ballast factor and the ballast-lamp factor change nothing (a table of 200 gives 199.99 with each of them changed; a multiplier of 2.5 gives 499.97) |
+| The angles | The vertical angle from the light's -Z (0: the nadir), the horizontal one from its -X towards -Y. Of eight readings of the horizontal angle that one fits a file with a lobe at 30 degrees to 0.2 % on average, the next best to 9 % |
+| Beyond the file's vertical angles | Its first or last row holds (a file to 90 degrees whose last value is 1000: 1000 above) |
+| Between the file's entries | Not straight lines: each entry is spread over 1.63 steps of the table to either side. One entry of 1000 among zeros is 790 at its angle, 497 half a step away, 105 a step away, with the area of the straight lines' triangle; a step from 0 to 1000 is 110, 500, 896. The same in the horizontal angle, and where the steps differ each side of an entry has its own. It is the straight lines drawn with a triangle filter 0.63 steps wide to either side (the measured kernel within 0.007 at 12 distances) |
+| `normalize` | Divides by the mean candela over the file's vertical range, by solid angle: 2 x the sphere's mean for files to 90 degrees (Comet 2560.5, Defined 2093.7), the sphere's mean for files to 180 (AreaLight 2262.9). A table of one value is no change |
+| `angleScale` s | 0: none. s > 0: the table is read at theta / s (0.5 narrows a beam to half its angle). s < 0: at 180 - (180 - theta) / -s, scaled from the zenith (-1 is no change; -0.5 reads the nadir's value everywhere below 90 degrees). `normalize` divides by the unscaled mean |
+| The light's kind | The same factor by direction on point, rect and disk lights (measured; Nova applies it on sphere and cylinder lights too) |
+
+### Fixed
+
+| ID | Severity | Defect | Fix | Against Karma after the fix |
+|---|---|---|---|---|
+| L-5 | medium | **A light's IES profile was ignored**: the light kept its plain distribution, and without `normalize` it was darker by the profile's candela (a few thousand times for a file in candela) | The file is parsed (`core/lights/ies.cpp`: LM-63 of 1986 to 2002, TILT data skipped) and resampled with Karma's kernel onto a grid of half a degree by one degree, shared by the file's lights (`hydra/light.cpp`); the factor is part of the ShapingAPI's on both devices (`iesFactor`, `core/lights/lights.h`), and the light's share of the light samples follows the profile's mean | 15 stages (the lobe, a downlight to 90 degrees, four of Houdini's files; normalized, three angle scales, turned over, turned about its axis; on rect and disk lights): the images' means within 0.03 % of Karma's (0.25 % for one normalized file), 99 of 100 pixels within 0.4 % of the largest value on point lights; Nova XPU is the CPU |
+
+### Measured, not changed
+
+| What differs | Why it stands |
+|---|---|
+| The lobe's file at its steepest: up to 2.4 % of the largest value at single pixels | The file has steps of 15 degrees across a lobe; what is left of the kernel's fit |
+| A normalized profile: the mean Karma divides by is 0.1 to 0.3 % from Nova's | Karma's own integral of its table |
+| IES profiles on distant lights and domes | Not read: no direction is measured from a place there. Not measured in Karma |
+| Photometric types B and A | Read as type C, with a warning. Houdini ships none; not measured |
+| The lamp's tilt data (`TILT=INCLUDE`), a tilt file | Skipped, as its factors would be the lamp's, not the luminaire's distribution |
+
+Tests: `test_ies.cpp` ("An IES file is read as Karma reads it": Karma's numbers for a spike, uneven steps, a step, a spike at the nadir and one in the horizontal angle, the lobe's top of 957.5 and its mean of 144.87, the multiplier, the symmetries of the horizontal angles, files to and from 90 degrees, tilt data, and what is no profile; "A light's IES profile multiplies its light by the candela of each direction": the ground under a point light against the table at every pixel, plain, normalized and with three angle scales, on the CPU and on Nova XPU; "An IES profile turns with its light and holds on area lights"), `test_hydra_stage.cpp` ("A light's IES profile reaches the scene": the three attributes, a missing file, a distant light), `husk_stage_features` (`ies_profile.usda` with `tests/data/ies/lobe.ies` and `downlight.ies`: 51 points under three lights within 1.4 % of Karma's values on both devices).
+
+The first build drew the table with straight lines between its entries, as the files' own standard has it: the images' means agreed to 0.3 %, single pixels were up to 3.7 % off at the profiles' peaks and dips. The spike showed why.

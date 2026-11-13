@@ -44,7 +44,8 @@ messages) and from the design notes, each checked against the code.
 | At most **64 light-link and 64 shadow-link categories** (distinct link collections) per scene. | Lights of further categories light, or are shadowed by, every object; one message. | `Scene::computeLinks`, `core/scene/scene.cpp` |
 | Dome texture formats other than `latlong` (`mirroredBall`, `angular`, `cubeMapVerticalCross`). | Read as latlong, with a warning. | `hydra/light.cpp` |
 | Ellipsoid lights (a non-uniformly scaled sphere light). | A sphere of the mean radius, with a warning. | `hydra/light.cpp` |
-| IES profiles (`shaping:ies:file`) and `treatAsLine`. | Ignored: the light keeps its plain distribution; a line light renders as a cylinder. | not read in `hydra/light.cpp` |
+| `treatAsLine`. | Ignored: a line light renders as a cylinder. | not read in `hydra/light.cpp` |
+| IES profiles on distant lights and domes; photometric types B and A; a lamp's tilt data. | Not read on those lights; types B and A are read as type C, with a warning; the tilt data is skipped. | `hydra/light.cpp`, `core/lights/ies.cpp`; `bug-audit-2026-11.md` 22 |
 | Moving or deforming emissive meshes are not light sources. | They stay plain emitters (found by BSDF sampling only), with a message. | `core/scene/scene.cpp` |
 | Emission of VEX materials is never sampled as a light. | Plain emitter. | `design/M9.md` |
 | Heavily instanced emissive meshes have no two-level light tree. | Flattened to one light per triangle and instance; a message above the budget. | `design/M9.md` 2.2 |
@@ -71,7 +72,7 @@ messages) and from the design notes, each checked against the code.
 | VEX materials: AOV exports other than the mapped `export_*` names, fake caustics through them, ray-tracing VEX (`trace`, `gather`, `illuminance`), light, lens, fog and volume VEX shaders. | Opaque to fake-caustic rays; a shader that traces fails to compile and the preview material renders; the other shader kinds are ignored with a warning. | `design/M5.md` |
 | UDIM sets inside packages (`.usdz`). | The texture fails to load, with an error. | `hydra/textureConvert.cpp` |
 | `primvars:displayOpacity` of instance rate (per instance of a point instancer) on geometry without a material. | Opaque; the primvar on the prototype itself is read. | `HdNovaHasDisplayOpacity`, `hydra/primvarUtil.cpp` |
-| A mesh without `st` under a textured material. | The texture is read at (0, 0): one colour. Karma gives every face its own parameters (a quad (0, 0) to (1, 1) from its first vertex). | `bug-audit-2026-11.md` 20 (T-5) |
+| A mesh without `st`: the parameters of its faces are the texture coordinates, as in Karma. On a face of a Catmull-Clark surface that is no quad they are up to 0.016 from Karma's, on a Loop mesh up to 0.033; curves and points have none. | Nova's are linear over a triangle of the tessellation; Karma renders a Loop mesh as polygons. | `bug-audit-2026-11.md` 21 |
 | UsdPreviewSurface between metallic 0 and 1, and its specular workflow with a coloured `specularColor`. | MaterialX's graph of the shader, which is less saturated than Karma's own conversion of the USD shader. | `bug-audit-2026-11.md` 19 (MA-1) |
 | Rough coloured metal and rough glass against Karma. | Nova compensates multiple scattering (coloured for metals, energy-preserving for glass); Karma's rough metal keeps the base colour and its rough glass loses energy. From roughness 0.6 on the two differ visibly. | `bug-audit-2026-11.md` 19 (MA-4, MA-5) |
 
@@ -179,3 +180,18 @@ These four are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), sect
   with that class's light (the lights its own ray meets, which a ray of every class gathers, keep the whole).
 
 These six are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 20.
+
+- **A mesh without `st` under a textured material was one colour** (the texture at (0, 0)). Every face has its own
+  parameters as texture coordinates, as in Karma: a quad (0, 0) to (1, 1) from its first vertex, a triangle and larger
+  faces by Karma's rule, a subdivision surface by its control faces (`core/scene/attributes.h`). A UsdPrimvarReader of
+  `st` gives its fallback, as in Karma.
+- **Faces of seven and more vertices had other triangles than Karma's**, and `ray:hituv` and the primvar var of `st`
+  were wrong on faces that are no quads.
+
+These are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 21.
+
+- **IES profiles on lights were ignored** (`shaping:ies:file`, `angleScale`, `normalize`): a light with a profile
+  kept its plain distribution. They are rendered as Karma renders them, on point, sphere, rect, disk and cylinder
+  lights and on both devices (`core/lights/ies.h`).
+
+This is described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 22.

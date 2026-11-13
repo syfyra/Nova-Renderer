@@ -30,6 +30,17 @@ enum class SubdivCreaseMethod : uint8_t { Uniform, Chaikin };
 // Hydra/USD primvar interpolation.
 enum class PrimvarInterp : uint8_t { Constant, Uniform, Varying, Vertex, FaceVarying };
 
+// The parameters of the faces as a corner attribute named kFaceParametersName
+// (core/scene/attributes.h): the texture coordinates of geometry without st,
+// as Karma has them (measured, docs/bug-audit-2026-11.md section 21).
+//   Surface  a subdivision surface's: a quad's own (u, v), and for a face of
+//            another count each of the quads it is made of, from the face's
+//            vertex (0, 0) to its centre (1, 1);
+//   Polygon  a polygon's (what is diced for displacement, and Loop meshes): a
+//            quad's own (u, v), a triangle's u = w1 / (w1 + w2), v = w1 + w2;
+//            faces of more vertices get (0, 0).
+enum class SubdivFaceParameters : uint8_t { None, Surface, Polygon };
+
 // A primvar of the control mesh: `width` floats per value.
 struct SubdivPrimvar {
     std::string name;
@@ -47,6 +58,7 @@ struct SubdivMeshDesc {
     SubdivTriangleRule triangleRule = SubdivTriangleRule::CatmullClark;
     SubdivCreaseMethod creaseMethod = SubdivCreaseMethod::Uniform;
     bool leftHanded = false;               // USD orientation != rightHanded
+    SubdivFaceParameters faceParameters = SubdivFaceParameters::None;
 
     std::vector<int32_t> faceVertexCounts;
     std::vector<int32_t> faceVertexIndices;

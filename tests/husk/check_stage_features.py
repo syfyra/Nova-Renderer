@@ -175,6 +175,102 @@ def main():
                       f"{lo:.2f} to {hi:.2f} (Karma 2.0996 from -1.05 to 1.05; the cells of 8 voxels reach 1.40)")
                 check(abs(mean - 0.7716) < 0.008, f"{label} its image's mean {mean:.4f} (Karma 0.7716)")
 
+            # 3f. The texture coordinates of geometry without st (section 21): every face's own parameters,
+            # emitted as red and green. Karma CPU's means of 5 x 5 pixels at (row, column), 100 pixels per unit.
+            px = husk(renderer, "face_parameters.usda", os.path.join(args.out, f"face_parameters_{tag}.exr"),
+                      ["--settings", "/Render/rs"])
+            if px is not None:
+                for name, points in (
+                        ("the trapezoid", [(360, 40, 0.2007, 0.1214), (360, 125, 0.8077, 0.1213), (240, 100, 0.8175, 0.8717),
+                                           (245, 45, 0.1336, 0.8406), (300, 80, 0.4326, 0.4973)]),
+                        ("the triangle", [(365, 185, 0.5500, 0.2012), (360, 270, 0.8550, 0.8395), (260, 180, 0.0908, 0.8212),
+                                          (330, 210, 0.4828, 0.5986), (350, 240, 0.7322, 0.6875)]),
+                        ("the pentagon", [(360, 350, 0.1465, 0.1952), (360, 450, 0.8603, 0.1949), (300, 450, 0.8606, 0.7952),
+                                          (300, 350, 0.1464, 0.7956), (245, 400, 0.7335, 0.7832), (265, 370, 0.2900, 0.8319)]),
+                        ("the heptagon", [(365, 520, 0.1418, 0.1817), (365, 600, 0.9022, 0.2080), (280, 615, 0.7479, 0.1038),
+                                          (240, 530, 0.8320, 0.8587), (300, 510, 0.0543, 0.8590), (300, 560, 0.1913, 0.4967),
+                                          (250, 560, 0.8708, 0.5967)]),
+                        ("the concave face", [(350, 720, 0.4095, 0.7149), (290, 770, 0.6114, 0.7160), (250, 775, 0.7766, 0.9260),
+                                              (290, 670, 0.4041, 0.7243), (250, 665, 0.2361, 0.9334)]),
+                        ("the left-handed quad", [(160, 30, 0.1465, 0.1222), (160, 130, 0.8613, 0.1223), (40, 130, 0.8607, 0.8721),
+                                                  (40, 30, 0.1466, 0.8718), (100, 80, 0.5037, 0.4970)]),
+                        ("the subdivided quads", [(160, 180, 0.1500, 0.1218), (160, 230, 0.8646, 0.1215), (40, 230, 0.8638, 0.8718),
+                                                  (40, 180, 0.1503, 0.8720), (160, 250, 0.1493, 0.1219), (160, 300, 0.8643, 0.1222),
+                                                  (40, 300, 0.8642, 0.8717), (40, 250, 0.1495, 0.8716)]),
+                        ("the subdivided triangle", [(165, 340, 0.1602, 0.1919), (170, 440, 0.1331, 0.3162),
+                                                     (55, 340, 0.3117, 0.1664)]),
+                        ("a UsdPrimvarReader's fallback", [(140, 520, 0.0, 0.0), (60, 600, 0.0, 0.0)]),
+                        ("the quad with st: its st", [(160, 670, 0.2293, 0.2243), (160, 770, 0.3721, 0.2244),
+                                                      (40, 770, 0.3721, 0.3744), (40, 670, 0.2293, 0.3744)])):
+                    worst, at = 0.0, None
+                    for row, col, u, v in points:
+                        got = [float(px[row - 2:row + 3, col - 2:col + 3, ch].mean()) for ch in range(2)]
+                        d = max(abs(got[0] - u), abs(got[1] - v))
+                        if at is None or d > worst:
+                            worst, at = d, (got, (u, v))
+                    check(worst < 0.012,
+                          f"{label} face parameters, {name}: {len(points)} points within {worst:.4f} of Karma "
+                          f"(the furthest ({at[0][0]:.4f}, {at[0][1]:.4f}), Karma ({at[1][0]:.4f}, {at[1][1]:.4f}))")
+
+            # 3g. ray:hituv of the same faces (section 21): a quad's parameters, also in the quads of a
+            # face of more vertices; a triangle's barycentrics of its second and third vertex. Nova had
+            # the barycentrics of its own triangles for every face that is no quad.
+            px = husk(renderer, "face_parameters.usda", os.path.join(args.out, f"face_hituv_{tag}.exr"),
+                      ["--settings", "/Render/hit"])
+            if px is not None:
+                worst, at = 0.0, None
+                points = (("the trapezoid", 300, 80, 0.4326, 0.4973), ("the triangle", 330, 210, 0.2890, 0.3096),
+                          ("the triangle", 350, 240, 0.5033, 0.1841), ("the triangle", 260, 180, 0.0747, 0.7466),
+                          ("the pentagon's quad", 360, 450, 0.8603, 0.1949), ("the pentagon's triangle", 245, 400, 0.5746, 0.2085),
+                          ("the pentagon's triangle", 265, 370, 0.2417, 0.5902), ("a quad of the heptagon", 300, 560, 0.1913, 0.4967),
+                          ("a quad of the heptagon", 280, 615, 0.7479, 0.1038), ("the heptagon's triangle", 230, 560, 0.2484, 0.5415),
+                          ("the heptagon's triangle", 235, 580, 0.3775, 0.3127), ("the concave face", 350, 720, 0.2925, 0.4224),
+                          ("the concave face", 250, 775, 0.7190, 0.2071), ("the concave face", 250, 665, 0.2206, 0.7129),
+                          ("the left-handed quad", 40, 130, 0.8607, 0.8721))
+                for name, row, col, u, v in points:
+                    got = [float(px[row - 2:row + 3, col - 2:col + 3, ch].mean()) for ch in range(2)]
+                    d = max(abs(got[0] - u), abs(got[1] - v))
+                    if at is None or d > worst:
+                        worst, at = d, (name, got, (u, v))
+                check(worst < 0.012,
+                      f"{label} ray:hituv of faces: {len(points)} points within {worst:.4f} of Karma (the furthest in "
+                      f"{at[0]}: ({at[1][0]:.4f}, {at[1][1]:.4f}), Karma ({at[2][0]:.4f}, {at[2][1]:.4f}))")
+
+            # 3h. IES profiles on lights (section 22): three lights one unit over a ground, each in its
+            # bay, 50 pixels per unit. Karma CPU's means of 5 x 5 pixels at (row, column) on rings around
+            # each light's foot; Nova rendered the lights without their profiles (the lobe's bay 150
+            # times darker, the others without their shapes).
+            px = husk(renderer, "ies_profile.usda", os.path.join(args.out, f"ies_profile_{tag}.exr"),
+                      ["--settings", "/Render/rs"])
+            if px is not None:
+                for name, points in (
+                        ("the lobe", [(100, 100, 0.06346), (106, 116, 0.05322), (116, 94, 0.05395), (94, 84, 0.05446),
+                                      (84, 106, 0.05415), (112, 133, 0.03439), (133, 88, 0.05699), (88, 67, 0.03556),
+                                      (67, 112, 0.03518), (150, 123, 0.04317), (123, 50, 0.04363), (50, 77, 0.01975),
+                                      (77, 150, 0.01918), (173, 134, 0.02994), (134, 27, 0.03134), (27, 66, 0.00952),
+                                      (66, 173, 0.00929)]),
+                        ("the lobe normalized, its angles halved",
+                         [(100, 300, 0.10949), (106, 316, 0.09168), (116, 294, 0.13491), (94, 284, 0.11203),
+                          (84, 306, 0.09340), (112, 333, 0.05912), (133, 288, 0.16902), (88, 267, 0.13575),
+                          (67, 312, 0.06071), (150, 323, 0.03269), (123, 250, 0.03534), (50, 277, 0.03408),
+                          (77, 350, 0.03310), (173, 334, 0.01586), (134, 227, 0.01622), (27, 266, 0.01638),
+                          (66, 373, 0.01606)]),
+                        ("the downlight on a rect light, normalized",
+                         [(100, 500, 2.67430), (106, 516, 1.24244), (116, 494, 1.27668), (94, 484, 1.37516),
+                          (84, 506, 1.33598), (112, 533, 0.20124), (133, 488, 0.20924), (88, 467, 0.23268),
+                          (67, 512, 0.22044), (150, 523, 0.02667), (123, 450, 0.02934), (50, 477, 0.03024),
+                          (77, 550, 0.02785), (173, 534, 0.00534), (134, 427, 0.00552), (27, 466, 0.00570),
+                          (66, 573, 0.00542)])):
+                    worst, at = 0.0, None
+                    for row, col, karma in points:
+                        got = float(px[row - 2:row + 3, col - 2:col + 3, 1].mean())
+                        d = abs(got - karma) / (karma + 0.01)
+                        if at is None or d > worst:
+                            worst, at = d, (got, karma)
+                    check(worst < 0.03,
+                          f"{label} IES profile, {name}: {len(points)} points within {worst * 100:.2f} % of Karma "
+                          f"(the furthest {at[0]:.5f}, Karma {at[1]:.5f})")
+
             # 4. Render passes: cards of 40 x 40 pixels at columns 20, 60 and 100, the wall's strip in rows 55 to 65.
             images = {}
             for name in ("whole", "prune", "render_visibility", "camera_visibility", "matte"):

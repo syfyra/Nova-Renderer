@@ -67,6 +67,13 @@ void set3(float *o, Vec3f v) {
 // Karma does (hydra/meshTriangulate.h): v3 v0 v1, then v3 v1 v2, a
 // left-handed mesh with the last two corners of each the other way round.
 Vec2f faceParameters(const MeshDesc &d, uint32_t prim, Vec2f b) {
+    // How the triangle lies in its face, where the host said so: a quad's own parameters, also for
+    // the quads a face of more vertices is split into; a triangle's barycentrics.
+    if (d.shape == MeshShape::Triangles && prim < d.faceParameters.size()) {
+        Vec2f p;
+        face_parameters::hit(d.faceParameters[prim], b.x, b.y, p.x, p.y);
+        return p;
+    }
     if (d.isSphere() || d.isCurves() || prim >= d.triangleFaces.size())
         return b;
     const int32_t face = d.triangleFaces[prim];
@@ -172,7 +179,13 @@ void UtilityContext::value(const UtilityRequest &r, const UtilityHit &h, float *
             const MeshDesc &d = scene.meshRecord(hit->mesh).desc;
             const uint32_t none[3] = {0, 0, 0};
             const uint32_t *tri = size_t(hit->prim) * 3 + 2 < d.indices.size() ? &d.indices[size_t(hit->prim) * 3] : none;
-            fetchAttribute(ref, tri, hit->prim, hit->instance, hit->uv.x, hit->uv.y, 4, o);
+            // The var of st on a mesh without it is its face's parameters, Karma's ray:hituv
+            // (measured, docs/bug-audit-2026-11.md section 21).
+            if (!fetchAttribute(ref, tri, hit->prim, hit->instance, hit->uv.x, hit->uv.y, 4, o) && r.name == "st" &&
+                d.shape == MeshShape::Triangles) {
+                const Vec2f p = faceParameters(d, hit->prim, hit->uv);
+                set3(o, {p.x, p.y, 0.0f});
+            }
         }
         break;
     case UtilityKind::BaseColor:

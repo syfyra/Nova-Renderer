@@ -501,6 +501,70 @@ def DomeLight "white" (
     CHECK(shaped == 0);
 }
 
+// The ShapingAPI's IES profile (docs/bug-audit-2026-11.md, section 22): the
+// file, its angle scale and its normalization reach the light's record; a
+// file that is none leaves the light as it is, and a distant light has no
+// profile.
+TEST_CASE("A light's IES profile reaches the scene", "[hydra][lights][ies]") {
+    const std::string file = std::string(NOVA_TEST_DIR) + "/data/ies/lobe.ies";
+    Driver d(R"(
+def SphereLight "profile" (
+    prepend apiSchemas = ["ShapingAPI"]
+)
+{
+    asset inputs:shaping:ies:file = @)" + file + R"(@
+    float inputs:shaping:ies:angleScale = 0.5
+    bool inputs:shaping:ies:normalize = 1
+    float inputs:radius = 0.5
+}
+
+def RectLight "missing" (
+    prepend apiSchemas = ["ShapingAPI"]
+)
+{
+    asset inputs:shaping:ies:file = @)" + std::string(NOVA_TEST_DIR) + R"(/data/ies/none.ies@
+}
+
+def DistantLight "sun" (
+    prepend apiSchemas = ["ShapingAPI"]
+)
+{
+    asset inputs:shaping:ies:file = @)" + file + R"(@
+}
+)");
+    REQUIRE(d.scene().lights().size() == 3);
+    int profiles = 0;
+    for (nova::LightData const &l : d.scene().lights()) {
+        if (l.type != nova::LightType::Sphere) {
+            CHECK(l.ies == nullptr);
+            continue;
+        }
+        ++profiles;
+        REQUIRE(l.ies != nullptr);
+        CHECK(l.shaped);
+        CHECK(l.iesHeight > 100);
+        CHECK(l.iesWidth > 100); // the lobe's file has horizontal angles
+        CHECK(l.iesAngleScale == 0.5f);
+        CHECK(l.iesScale == Catch::Approx(1.0 / 144.87).epsilon(2e-3)); // Karma's mean of the file
+        // The frame of the horizontal angle: the light's own X and Y.
+        CHECK(l.iesX.x == Catch::Approx(1.0f));
+        CHECK(l.iesY.y == Catch::Approx(1.0f));
+        // Straight down its axis the file has its floor of 100.
+        CHECK(nova::iesFactor(l, l.axis) == Catch::Approx(100.0 / 144.87).epsilon(3e-3));
+    }
+    CHECK(profiles == 1);
+
+    // Without the normalization: the candela themselves.
+    d.stage->GetAttributeAtPath(SdfPath("/profile.inputs:shaping:ies:normalize")).Set(false);
+    d.sync();
+    for (nova::LightData const &l : d.scene().lights())
+        if (l.type == nova::LightType::Sphere) {
+            REQUIRE(l.ies != nullptr);
+            CHECK(l.iesScale == 1.0f);
+            CHECK(nova::iesFactor(l, l.axis) == Catch::Approx(100.0).epsilon(1e-3));
+        }
+}
+
 // Geometry without a material: Karma renders it see-through by its
 // displayOpacity primvar (section 20). It has a default material of its own
 // for that, so geometry without the primvar stays opaque to every ray.

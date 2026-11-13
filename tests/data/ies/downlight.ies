@@ -1,0 +1,9 @@
+IESNA:LM-63-2002
+[TEST] a downlight: a beam about the nadir on a floor of 20 candela, to 90 degrees
+[MANUFAC] made for Nova's tests
+TILT=NONE
+1 1200 1 19 1 1 2 0 0 0
+1 1 35
+0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90
+0
+1020.00 980.79 872.14 717.68 547.29 387.88 256.93 160.86 97.30 59.16 38.32 27.91 23.15 21.16 20.39 20.12 20.04 20.01 20.00

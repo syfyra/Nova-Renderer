@@ -86,6 +86,17 @@ struct LightData {
     float cosConeStart = -2.0f;         // full emission above this
     float focus = 0.0f;
     Spectrum focusTint{0.0f, 0.0f, 0.0f};
+    // The ShapingAPI's IES profile (core/lights/ies.h): candela on a grid of
+    // iesHeight vertical angles from `axis` (0 to 180 degrees) and iesWidth
+    // horizontal angles from -iesX towards -iesY (0 to 360 degrees; 1: the
+    // same all around). iesScale: 1, or 1 / the profile's mean (normalize).
+    // iesAngleScale: shaping:ies:angleScale. Null: none.
+    const float *ies = nullptr;
+    uint32_t iesWidth = 0, iesHeight = 0;
+    float iesScale = 1.0f;
+    float iesAngleScale = 0.0f;
+    float iesMean = 1.0f;               // the factor's mean over the sphere (the power estimate)
+    Vec3f iesX{1.0f, 0.0f, 0.0f}, iesY{0.0f, 1.0f, 0.0f}; // the light's local X and Y in world space
 
     // Texture (row 0 = top): latlong environment of a dome, or the image on
     // a rect light. Multiplies the emission.
@@ -232,17 +243,48 @@ NOVA_INLINE bool inDistantCone(const LightData &light, Vec3f dir) {
     return dot(x, x) <= omc * (2.0f - omc) * dot(dir, dir);
 }
 
+// The IES profile's factor for light leaving the light along `emitDir`
+// (core/lights/ies.h: Karma's reading of the angles and of angleScale).
+NOVA_INLINE float iesFactor(const LightData &light, Vec3f emitDir) {
+    const float c = nova::fmax(-1.0f, nova::fmin(1.0f, dot(light.axis, emitDir)));
+    float theta = std::acos(c) * (180.0f / kPi);
+    const float s = light.iesAngleScale;
+    if (s > 0.0f)
+        theta = theta / s;
+    else if (s < 0.0f)
+        theta = 180.0f - (180.0f - theta) / -s;
+    theta = nova::fmax(0.0f, nova::fmin(theta, 180.0f));
+    const float row = theta * float(light.iesHeight - 1) * (1.0f / 180.0f);
+    const uint32_t last = light.iesHeight - 1;
+    const uint32_t r0 = uint32_t(row) < last ? uint32_t(row) : last, r1 = r0 < last ? r0 + 1 : last;
+    const float tr = row - float(r0);
+    const float *t = light.ies;
+    if (light.iesWidth <= 1)
+        return (t[r0] * (1.0f - tr) + t[r1] * tr) * light.iesScale;
+    float phi = std::atan2(-dot(light.iesY, emitDir), -dot(light.iesX, emitDir)) * (180.0f / kPi);
+    if (!(phi >= 0.0f))
+        phi += 360.0f;
+    const float column = nova::fmax(0.0f, nova::fmin(phi, 360.0f)) * float(light.iesWidth - 1) * (1.0f / 360.0f);
+    const uint32_t c0 = uint32_t(column) < light.iesWidth - 2 ? uint32_t(column) : light.iesWidth - 2, c1 = c0 + 1;
+    const float tc = column - float(c0);
+    const size_t w = light.iesWidth;
+    const float a = t[size_t(r0) * w + c0] * (1.0f - tc) + t[size_t(r0) * w + c1] * tc;
+    const float b = t[size_t(r1) * w + c0] * (1.0f - tc) + t[size_t(r1) * w + c1] * tc;
+    return (a * (1.0f - tr) + b * tr) * light.iesScale;
+}
+
 // ShapingAPI factor for light leaving the light along `emitDir`.
 NOVA_INLINE Spectrum shapingFactor(const LightData &light, Vec3f emitDir) {
     if (!light.shaped)
         return {1.0f, 1.0f, 1.0f};
+    const float profile = light.ies ? iesFactor(light, emitDir) : 1.0f;
     const float c = dot(light.axis, emitDir);
     if (c < light.cosConeCut)
         return {0.0f, 0.0f, 0.0f};
-    float cone = 1.0f;
+    float cone = profile;
     if (c < light.cosConeStart) {
         const float t = (c - light.cosConeCut) / (light.cosConeStart - light.cosConeCut);
-        cone = t * t * (3.0f - 2.0f * t);
+        cone *= t * t * (3.0f - 2.0f * t);
     }
     if (light.focus > 0.0f) {
         const float f = std::pow(std::fabs(c), light.focus);

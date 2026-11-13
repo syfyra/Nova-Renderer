@@ -18,6 +18,7 @@
 #include <pxr/imaging/hd/sceneDelegate.h>
 #include <pxr/imaging/hd/tokens.h>
 
+#include <pxr/base/tf/getenv.h>
 #include <pxr/base/tf/stringUtils.h>
 
 #include "diagnostics.h"
@@ -395,6 +396,11 @@ bool HdNovaIsGeometryPrimvar(TfToken const &name) {
     return name == HdTokens->points || name == HdTokens->normals || name == HdInstancerTokens->instanceTranslations ||
            name == HdInstancerTokens->instanceRotations || name == HdInstancerTokens->instanceScales ||
            name == HdInstancerTokens->instanceTransforms;
+}
+
+std::string HdNovaPrimaryUvName() {
+    const std::string env = TfGetenv("USDMTLX_PRIMARY_UV_NAME");
+    return env.empty() ? std::string("st") : env;
 }
 
 bool HdNovaHasDisplayOpacity(HdSceneDelegate *sd, SdfPath const &id) {

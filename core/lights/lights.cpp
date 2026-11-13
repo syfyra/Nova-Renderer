@@ -36,6 +36,29 @@ void setupShaping(const LightDesc &desc, LightData &d) {
     }
     d.focus = nova::fmax(desc.focus, 0.0f); // negative values are ignored
     d.focusTint = desc.focusTint;
+    // The IES profile (core/lights/ies.h), around the same axis, its horizontal
+    // angle in the plane of the light's X and Y.
+    const IesProfile *ies = desc.ies.get();
+    if (ies && ies->height > 1 && ies->width >= 1 && ies->width != 2 &&
+        ies->candela.size() == size_t(ies->width) * ies->height) {
+        d.shaped = true;
+        d.ies = ies->candela.data();
+        d.iesWidth = ies->width;
+        d.iesHeight = ies->height;
+        d.iesAngleScale = std::isfinite(desc.iesAngleScale) ? desc.iesAngleScale : 0.0f;
+        d.iesScale = desc.iesNormalize && ies->mean > 0.0f ? 1.0f / ies->mean : 1.0f;
+        d.iesMean = nova::fmax(ies->sphereMean * d.iesScale, 0.0f);
+        Vec3f x = desc.transform.transformDir({1.0f, 0.0f, 0.0f});
+        x = x - d.axis * dot(x, d.axis);
+        if (!(dot(x, x) > 0.0f))
+            x = Frame::fromNormal(d.axis).t;
+        d.iesX = normalize(x);
+        // Y completes the frame the way the transform's own Y lies (mirrored transforms).
+        Vec3f y = cross(d.iesX, d.axis); // x cross -z = y for an unmirrored frame
+        if (dot(y, desc.transform.transformDir({0.0f, 1.0f, 0.0f})) < 0.0f)
+            y = -y;
+        d.iesY = y;
+    }
 }
 
 bool validImage(const std::shared_ptr<const Image> &image) {
@@ -346,6 +369,9 @@ float lightPower(const LightData &light, float sceneRadius) {
             if (light.type == LightType::Rect && light.texels)
                 power *= light.texMeanLuminance;
         }
+        // An IES profile multiplies the emission, by its mean over the directions.
+        if (light.ies)
+            power *= light.iesMean;
         break;
     }
     // A negative intensity subtracts light: select it by the magnitude, the

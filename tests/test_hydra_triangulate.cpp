@@ -9,6 +9,8 @@
 #include "hydra/renderDelegate.h"
 #include "hydra/renderParam.h"
 
+#include "core/scene/attributes.h"
+
 #include <pxr/base/gf/rotation.h>
 #include <pxr/base/gf/vec2d.h>
 #include <pxr/base/gf/vec3d.h>
@@ -496,4 +498,179 @@ def Mesh "u"
         CHECK(driver.area(&turned) == Catch::Approx(11.0).epsilon(1e-5));
         CHECK(turned == 0);
     }
+}
+
+// Faces of more than six vertices: Karma's strip of quads between the face's
+// two ends (measured, docs/bug-audit-2026-11.md section 21); the fan from the
+// last vertex is that only up to six.
+TEST_CASE("Faces of seven and more vertices are Karma's strip of quads", "[hydra][triangulate]") {
+    const std::vector<std::vector<GfVec3i>> expected = {
+        {{6, 0, 1}, {6, 1, 2}, {6, 2, 3}, {6, 3, 5}, {5, 3, 4}},
+        {{7, 0, 1}, {7, 1, 2}, {7, 2, 3}, {7, 3, 6}, {6, 3, 4}, {6, 4, 5}},
+        {{8, 0, 1}, {8, 1, 2}, {8, 2, 3}, {8, 3, 7}, {7, 3, 4}, {7, 4, 6}, {6, 4, 5}}};
+    for (int n = 7; n <= 9; ++n) {
+        Outline polygon;
+        for (int k = 0; k < n; ++k)
+            polygon.push_back({std::cos(k * 6.283185307179586 / n), std::sin(k * 6.283185307179586 / n)});
+        for (GfRotation const &tilt : kTilts)
+            for (TfToken const &orientation : {HdTokens->rightHanded, HdTokens->leftHanded}) {
+                const Triangles t = triangulate(faceOf(polygon, tilt, orientation));
+                CHECK(t.concave == 0);
+                REQUIRE(t.fixed.size() == size_t(n - 2));
+                for (size_t k = 0; k < t.fixed.size(); ++k) {
+                    const GfVec3i e = expected[size_t(n - 7)][k];
+                    CHECK(t.fixed[k] == (orientation == HdTokens->rightHanded ? e : GfVec3i(e[0], e[2], e[1])));
+                }
+            }
+    }
+}
+
+namespace {
+
+struct Coded {
+    Face face;
+    VtVec3iArray triangles;
+    std::vector<uint8_t> codes;
+    size_t clipped = 0;
+};
+
+Coded coded(Outline const &outline, TfToken const &orientation) {
+    Coded c;
+    c.face = faceOf(outline, kTilts[0], orientation);
+    HdMeshUtil util(&c.face.topology, SdfPath("/face"));
+    VtIntArray params;
+    util.ComputeTriangleIndices(&c.triangles, &params);
+    const HdNovaFaceTriangles triangles(c.face.topology, c.face.points);
+    triangles.fixTriangles(&c.triangles);
+    c.codes = triangles.parameterCodes(c.triangles.size());
+    c.clipped = triangles.size();
+    return c;
+}
+
+// The (u, v) of the point `p` of a face in the plane z = 0, from the code of the triangle it lies in.
+bool parametersAt(Coded const &c, GfVec2d p, float &u, float &v) {
+    for (size_t t = 0; t < c.triangles.size(); ++t) {
+        const GfVec3f a = c.face.points[c.triangles[t][0]], b = c.face.points[c.triangles[t][1]],
+                      d = c.face.points[c.triangles[t][2]];
+        const double area = double(b[0] - a[0]) * (d[1] - a[1]) - double(d[0] - a[0]) * (b[1] - a[1]);
+        if (area == 0.0)
+            continue;
+        const double b1 = ((p[0] - a[0]) * (d[1] - a[1]) - (d[0] - a[0]) * (p[1] - a[1])) / area;
+        const double b2 = ((b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1])) / area;
+        if (b1 >= -1e-9 && b2 >= -1e-9 && b1 + b2 <= 1.0 + 1e-9) {
+            nova::face_parameters::evaluate(c.codes[t], float(b1), float(b2), u, v);
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+// The texture coordinates of a face without st: Karma CPU's values at points
+// of faces seen from above (the material emits geomprop st; measured with
+// the probes of docs/bug-audit-2026-11.md section 21).
+TEST_CASE("The parameters of a face are Karma's", "[hydra][triangulate]") {
+    struct Sample {
+        double x, y, u, v;
+    };
+    struct Shape {
+        const char *name;
+        Outline outline;
+        std::vector<Sample> samples;
+    };
+    const std::vector<Shape> shapes = {
+        {"a trapezoid",
+         {{-3.5, 1.5}, {-0.5, 1.5}, {-1.5, -1.5}, {-3.0, -1.5}},
+         {{-3.0, 1.2, 0.151, 0.099}, {-1.2, 1.2, 0.751, 0.099}, {-1.7, -1.2, 0.802, 0.899}, {-2.9, -1.2, 0.051, 0.899},
+          {-2.2, 0.0, 0.351, 0.499}, {-1.4, 0.3, 0.668, 0.399}, {-3.0, 0.3, 0.101, 0.399}}},
+        {"a kite",
+         {{1.0, 1.5}, {3.5, 0.5}, {1.0, -1.5}, {0.5, 0.5}},
+         {{1.0, 1.0, 0.084, 0.413}, {2.8, 0.5, 0.768, 0.229}, {1.0, -1.0, 0.791, 0.957}, {0.8, 0.5, 0.101, 0.895},
+          {1.5, 0.3, 0.416, 0.682}, {2.0, 0.6, 0.484, 0.413}, {1.2, -0.4, 0.608, 0.840}}},
+        {"a triangle",
+         {{-3.5, 1.5}, {-0.5, 1.5}, {-3.5, -1.5}},
+         {{-3.2, 1.3, 0.602, 0.164}, {-1.2, 1.3, 0.921, 0.833}, {-3.3, -0.9, 0.078, 0.867}, {-2.5, 0.5, 0.502, 0.667},
+          {-2.0, 1.0, 0.752, 0.667}, {-3.0, 0.0, 0.252, 0.667}, {-2.8, 1.2, 0.704, 0.333}}},
+        {"a pentagon",
+         {{0.5, 1.5}, {3.5, 1.5}, {3.5, -0.5}, {2.0, -1.5}, {0.5, -0.5}},
+         {{0.8, 1.3, 0.101, 0.098}, {3.2, 1.3, 0.901, 0.098}, {3.2, -0.3, 0.901, 0.898}, {0.8, -0.3, 0.101, 0.898},
+          {2.0, 0.5, 0.501, 0.498}, {2.0, -1.2, 0.822, 0.847}, {2.9, -0.8, 0.854, 0.347}, {1.1, -0.8, 0.313, 0.947},
+          {2.5, -0.7, 0.457, 0.431}, {1.6, -1.0, 0.564, 0.881}}},
+        {"a hexagon",
+         {{-3.0, 1.5}, {-1.5, 1.5}, {-0.5, 0.0}, {-1.5, -1.5}, {-3.0, -1.5}, {-3.8, 0.0}},
+         {{-2.8, 1.2, 0.241, 0.198}, {-1.7, 1.2, 0.880, 0.198}, {-1.7, -1.2, 0.798, 0.121}, {-2.8, -1.2, 0.798, 0.757},
+          {-1.5, 0.5, 0.800, 0.664}, {-1.5, -0.5, 0.331, 0.202}, {-3.0, 0.5, 0.345, 0.664}, {-3.0, -0.5, 0.331, 0.656},
+          {-2.2, -1.0, 0.664, 0.313}, {-2.2, 1.0, 0.688, 0.331}}},
+        {"a heptagon",
+         {{1.0, 1.5}, {2.5, 1.5}, {3.5, 0.5}, {3.5, -0.8}, {2.5, -1.5}, {1.0, -1.5}, {0.3, 0.0}},
+         {{1.2, 1.2, 0.228, 0.198}, {2.4, 1.2, 0.894, 0.244}, {3.2, 0.4, 0.039, 0.093}, {3.2, -0.7, 0.885, 0.093},
+          {2.4, -1.2, 0.376, 0.567}, {1.2, -1.2, 0.855, 0.878}, {0.6, 0.0, 0.034, 0.905}, {1.8, 0.0, 0.178, 0.530},
+          {2.6, 0.5, 0.759, 0.876}, {2.6, -0.5, 0.659, 0.280}, {1.5, 0.8, 0.542, 0.468}, {3.0, -0.2, 0.476, 0.155},
+          {2.0, -1.2, 0.987, 0.595}}}};
+    for (Shape const &shape : shapes)
+        for (TfToken const &orientation : {HdTokens->rightHanded, HdTokens->leftHanded}) {
+            const Coded c = coded(shape.outline, orientation);
+            CHECK(c.clipped == 0);
+            REQUIRE(c.codes.size() == shape.outline.size() - 2);
+            for (Sample const &s : shape.samples) {
+                float u = -1.0f, v = -1.0f;
+                REQUIRE(parametersAt(c, {s.x, s.y}, u, v));
+                INFO(shape.name << (orientation == HdTokens->leftHanded ? " (left-handed)" : "") << " at (" << s.x << ", "
+                                << s.y << "): (" << u << ", " << v << "), Karma (" << s.u << ", " << s.v << ")");
+                CHECK(std::fabs(double(u) - s.u) < 0.01); // Karma's are means of 3 x 3 pixels of 1/150 unit
+                CHECK(std::fabs(double(v) - s.v) < 0.01);
+            }
+        }
+
+    // A concave face: its triangles, each from its lowest vertex as a of the triangle rule (u = 1 at the
+    // next, 0 at the third). The M seen from above: 0 1 3, 1 2 3 and 0 3 4 meet at its notch, vertex 3.
+    const Outline m{{0.5, 1.5}, {3.5, 1.5}, {3.5, -1.5}, {2.0, 0.2}, {0.5, -1.5}};
+    for (TfToken const &orientation : {HdTokens->rightHanded, HdTokens->leftHanded}) {
+        const Coded c = coded(m, orientation);
+        CHECK(c.clipped == 1);
+        REQUIRE(c.triangles.size() == 3);
+        for (GfVec3i const &t : c.triangles)
+            CHECK((t[0] < t[1] && t[0] < t[2]));
+        float u = 0.0f, v = 0.0f;
+        REQUIRE(parametersAt(c, {2.0, 0.6}, u, v)); // in 0 1 3 next to the notch, its c
+        CHECK(u < 0.2f);
+        CHECK(v > 0.8f);
+        REQUIRE(parametersAt(c, {2.4, 0.1}, u, v)); // in 1 2 3: its c too
+        CHECK(u < 0.2f);
+        CHECK(v > 0.8f);
+        REQUIRE(parametersAt(c, {1.6, 0.1}, u, v)); // in 0 3 4: its b
+        CHECK(u > 0.8f);
+        CHECK(v > 0.8f);
+        REQUIRE(parametersAt(c, {3.0, 1.4}, u, v)); // in 0 1 3 next to vertex 1, its b
+        CHECK(u > 0.8f);
+        CHECK(v > 0.8f);
+    }
+}
+
+// Dicing patches a face around its centre, and such patches have no parameters of the face. For a
+// mesh without st a face of more than four vertices is diced as Karma's pieces of it: the quads of
+// the strip and, where the count is odd, its last triangle.
+TEST_CASE("A mesh split for its faces' parameters has Karma's pieces", "[hydra][triangulate]") {
+    // A heptagon, a hole of five vertices and a quad.
+    VtVec3fArray points;
+    for (int k = 0; k < 7; ++k)
+        points.push_back(GfVec3f(float(std::cos(k * 6.283185307179586 / 7)), float(std::sin(k * 6.283185307179586 / 7)), 0.0f));
+    for (int k = 0; k < 5; ++k)
+        points.push_back(GfVec3f(4.0f + float(std::cos(k * 6.283185307179586 / 5)), float(std::sin(k * 6.283185307179586 / 5)), 0.0f));
+    for (GfVec3f const &p : {GfVec3f(7, 0, 0), GfVec3f(8, 0, 0), GfVec3f(8, 1, 0), GfVec3f(7, 1, 0)})
+        points.push_back(p);
+    const VtIntArray counts{7, 5, 4}, indices{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, holes{1};
+    const HdMeshTopology topology(PxOsdOpenSubdivTokens->none, HdTokens->rightHanded, counts, indices, holes);
+    const HdNovaFaceTriangles faces(topology, points, HdNovaFaceTriangles::Faces::Concave);
+    CHECK(faces.empty());
+    CHECK(faces.largeFaces());
+    const HdNovaFaceTriangles::Split whole = faces.split(topology);
+    CHECK(whole.counts == counts); // nothing to split without the parameters
+    const HdNovaFaceTriangles::Split s = faces.split(topology, true);
+    CHECK(s.counts == VtIntArray{4, 4, 3, 5, 4});
+    CHECK(s.indices == VtIntArray{0, 1, 2, 6, 2, 3, 5, 6, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+    CHECK(s.faces == std::vector<int32_t>{0, 0, 0, 1, 2});
+    CHECK(s.corners == std::vector<int32_t>{0, 1, 2, 6, 2, 3, 5, 6, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+    CHECK(s.holes == VtIntArray{3}); // the hole stays whole
 }

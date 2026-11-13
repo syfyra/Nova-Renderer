@@ -28,6 +28,10 @@ class HdSceneDelegate;
 // Karma (HdNovaMaterialRegistry::AcquireOpacityDefault).
 bool HdNovaHasDisplayOpacity(HdSceneDelegate *sd, SdfPath const &id);
 
+// The primvar materials read as texture coordinates where a node names none:
+// "st", or $USDMTLX_PRIMARY_UV_NAME.
+std::string HdNovaPrimaryUvName();
+
 // The object's tag in light path expressions: Karma's constant string
 // primvar karma:object:lpetag (empty if not authored).
 std::string HdNovaObjectLpeTag(HdSceneDelegate *sd, SdfPath const &id);

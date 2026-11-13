@@ -90,7 +90,14 @@ std::vector<float> evaluate(HdNovaTranslatedMaterial const &tr, uint16_t field, 
                 R[g.row + k] = it->second[k];
     }
     for (sh::PrimvarBinding const &b : p.primvarBindings) {
-        const auto given = primvars.find(p.primvars[b.name]);
+        // A binding's names "a|b": the first of them the test gives (as Scene::attributeRef).
+        auto given = primvars.end();
+        const std::string &names = p.primvars[b.name];
+        for (size_t begin = 0; begin <= names.size() && given == primvars.end();) {
+            const size_t bar = std::min(names.find('|', begin), names.size());
+            given = primvars.find(names.substr(begin, bar - begin));
+            begin = bar + 1;
+        }
         for (int k = 0; k < b.width; ++k)
             R[size_t(b.row) + size_t(k)] = given != primvars.end() && size_t(k) < given->second.size()
                                                 ? given->second[size_t(k)]

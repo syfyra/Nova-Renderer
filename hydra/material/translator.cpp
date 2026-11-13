@@ -6,6 +6,7 @@
 
 #include "core/bsdf/closure.h"
 #include "core/bsdf/surface.h"
+#include "core/scene/attributes.h"
 
 #include <MaterialXCore/Document.h>
 #include <MaterialXCore/Value.h>
@@ -175,10 +176,13 @@ std::string nodeDefName(std::string const &id) {
     return it != aliases.end() ? it->second : id;
 }
 
-std::string primaryUvName() {
-    const std::string env = TfGetenv("USDMTLX_PRIMARY_UV_NAME");
-    return env.empty() ? std::string("st") : env;
-}
+std::string primaryUvName() { return HdNovaPrimaryUvName(); }
+
+// The texture coordinates of MaterialX's nodes (an image's default, texcoord,
+// a geompropvalue of that name): the primvar, and on geometry without it the
+// parameters of the hit's face, as in Karma (core/scene/attributes.h; measured,
+// docs/bug-audit-2026-11.md section 21).
+std::string textureCoordinateNames() { return primaryUvName() + "|" + nova::kFaceParametersName; }
 
 // Surface model inputs -> SurfaceInputs fields.
 struct FieldMap {
@@ -473,6 +477,8 @@ private:
     }
     // The karma_mikkt input of a node, or of the node graph being expanded.
     int _mikkt = 0;
+    // Inside the graph of a UsdPrimvarReader (LowerGraph).
+    int _primvarReader = 0;
     static bool Enabled(std::string const &text) { return !text.empty() && text != "0" && text != "false"; }
     // A world-space direction in the given space (object/model: the object's).
     Ref InSpace(Ref worldDir, std::string const &space) {
@@ -607,7 +613,7 @@ Ref Translator::GeomProp(std::string const &name, int width) {
     const std::string prop = def ? def->getGeomProp() : name;
     const std::string space = def ? def->getSpace() : std::string();
     if (prop == "texcoord")
-        return _b.primvar(primaryUvName(), width, Zero(1));
+        return _b.primvar(textureCoordinateNames(), width, Zero(1));
     if (prop == "position")
         return _b.convert(_b.global(space == "world" ? Global::P : Global::Pobject), width);
     if (prop == "normal")
@@ -830,6 +836,18 @@ bool Translator::LowerGraph(mx::NodeDefPtr const &nd, ValueMap &in, ValueMap &ou
     } scope{_mikkt, mikktHere};
     if (mikktHere)
         ++_mikkt;
+    // Inside a UsdPrimvarReader (its geompropvalue reads the primvar alone).
+    const bool reader = nd->getNodeString() == "UsdPrimvarReader";
+    struct ReaderScope {
+        int &flag;
+        bool on;
+        ~ReaderScope() {
+            if (on)
+                --flag;
+        }
+    } readerScope{_primvarReader, reader};
+    if (reader)
+        ++_primvarReader;
     auto interfaceValue = [&](std::string const &name) -> Value {
         const auto it = in.find(name);
         if (it != in.end())
@@ -2116,7 +2134,7 @@ bool Translator::LowerNative(mx::NodeDefPtr const &nd, ValueMap &in, ValueMap &o
         return set(_b.component(get("in", wi), index));
     }
     if (category == "texcoord")
-        return set(_b.primvar(primaryUvName(), w, Zero(1)));
+        return set(_b.primvar(textureCoordinateNames(), w, Zero(1)));
     if (category == "position" || category == "normal") {
         // Karma's spaces too (space:world, space:current = world, space:ndc
         // for positions: docs/design/M11-P2.md).
@@ -2182,8 +2200,10 @@ bool Translator::LowerNative(mx::NodeDefPtr const &nd, ValueMap &in, ValueMap &o
     if (category == "geompropvalue") {
         const std::string name = text("geomprop");
         Ref fallback = get("default", w);
+        // The texture coordinates by name are the faces' parameters where the geometry has
+        // none; a UsdPrimvarReader (a graph around this node) gives its fallback, as in Karma.
         if (!name.empty())
-            return set(_b.primvar(name, w, fallback));
+            return set(_b.primvar(name == primaryUvName() && !_primvarReader ? textureCoordinateNames() : name, w, fallback));
         return set(fallback);
     }
     if (category == "geomcolor")

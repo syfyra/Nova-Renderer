@@ -1,5 +1,7 @@
 #include "meshTriangulate.h"
 
+#include "core/scene/attributes.h"
+
 #include <pxr/imaging/hd/tokens.h>
 
 #include <algorithm>
@@ -70,8 +72,53 @@ void clipEars(std::vector<P2> const &p, std::vector<uint32_t> &left, std::vector
         left.erase(left.begin() + std::ptrdiff_t(ear));
         from = ear == 0 ? left.size() - 1 : ear - 1;
     }
-    for (size_t j = 0; j + 2 < left.size(); ++j) // from the last vertex, as every fan here
+    for (size_t j = 0; j + 2 < left.size(); ++j) // what is left, from its last vertex
         out.insert(out.end(), {left.back(), left[j], left[j + 1]});
+}
+
+// Quad j of the strip Karma splits a face of n > 3 vertices into, its
+// vertices counted from the face's first: 0 1 2 n-1, then j+1 j+2 n-1-j n-j.
+// Where n is odd the last one has its second and third vertex in one: the
+// triangle j+1 j+2 n-j.
+void stripQuad(size_t n, size_t j, uint32_t q[4]) {
+    q[0] = uint32_t(j == 0 ? 0 : j + 1);
+    q[1] = uint32_t(j == 0 ? 1 : j + 2);
+    q[2] = uint32_t(j == 0 ? 2 : n - 1 - j);
+    q[3] = uint32_t(j == 0 ? n - 1 : n - j);
+}
+
+// Triangle k (of n - 2) of a face of n > 3 vertices as Karma splits it, its
+// corners counted from the face's first vertex: each quad of the strip as its
+// last vertex with its first two and with its second and third. Up to six
+// vertices: the fan from the last vertex.
+// `code`: how the triangle lies in the face, for its corners stored in this
+// order (face_parameters, core/scene/attributes.h).
+void stripTriangle(size_t n, size_t k, uint32_t c[3], uint32_t *code = nullptr) {
+    uint32_t q[4];
+    stripQuad(n, k / 2, q);
+    if (k % 2 == 0) {
+        c[0] = q[3];
+        c[1] = q[0];
+        c[2] = q[1];
+        if (code) // a quad's first half, or the triangle q0 q1 q3 that is left
+            *code = q[1] == q[2] ? nova::face_parameters::triangle(1, 2, 0) : nova::face_parameters::linear(3, 0, 1);
+    } else {
+        c[0] = q[3];
+        c[1] = q[1];
+        c[2] = q[2];
+        if (code)
+            *code = nova::face_parameters::linear(3, 1, 2);
+    }
+}
+
+// `code` for a triangle whose last two corners are stored the other way round
+// (HdMeshUtil's left-handed meshes).
+uint32_t flipped(uint32_t code) {
+    const uint32_t kind = code >> 6, f0 = code & 3u, f1 = (code >> 2) & 3u, f2 = (code >> 4) & 3u;
+    if (kind == 1u) // each stored corner's own value
+        return (kind << 6) | f0 | (f2 << 2) | (f1 << 4);
+    const auto other = [](uint32_t i) { return i == 1u ? 2u : i == 2u ? 1u : i; };
+    return (kind << 6) | other(f0) | (other(f1) << 2) | (other(f2) << 4); // which stored corner is a, b, c
 }
 
 } // namespace
@@ -98,12 +145,12 @@ HdNovaFaceTriangles::HdNovaFaceTriangles(HdMeshTopology const &topology, VtVec3f
         } else {
             const size_t n = size_t(nv);
             _polygons = _polygons || nv > 3;
+            _largeFaces = _largeFaces || nv > 4;
             bool usable = nv > 3 && v + n <= numVerts;
             for (size_t i = 0; i < n && usable; ++i)
                 usable = verts[v + i] >= 0 && size_t(verts[v + i]) < numPoints;
             if (usable) {
-                // The polygon's normal, twice its area long (Newell), and the triangles of the fan
-                // from the last vertex against it.
+                // The polygon's normal, twice its area long (Newell), and Karma's triangles against it.
                 const GfVec3f &p0 = pts[verts[v + n - 1]];
                 double nx = 0.0, ny = 0.0, nz = 0.0;
                 for (size_t i = 0; i + 2 < n; ++i) {
@@ -115,11 +162,14 @@ HdNovaFaceTriangles::HdNovaFaceTriangles(HdMeshTopology const &topology, VtVec3f
                 const double length2 = nx * nx + ny * ny + nz * nz;
                 bool leaves = false;
                 for (size_t i = 0; i + 2 < n && !leaves && length2 > 0.0; ++i) {
-                    const GfVec3f a = pts[verts[v + i]] - p0, b = pts[verts[v + i + 1]] - p0;
+                    uint32_t c[3];
+                    stripTriangle(n, i, c);
+                    const GfVec3f &o = pts[verts[v + c[0]]];
+                    const GfVec3f a = pts[verts[v + c[1]]] - o, b = pts[verts[v + c[2]]] - o;
                     const double along = (double(a[1]) * b[2] - double(a[2]) * b[1]) * nx +
                                          (double(a[2]) * b[0] - double(a[0]) * b[2]) * ny +
                                          (double(a[0]) * b[1] - double(a[1]) * b[0]) * nz;
-                    leaves = along < -1e-6 * length2; // a fan triangle turned over: the fan left the polygon
+                    leaves = along < -1e-6 * length2; // a triangle turned over: they left the polygon
                 }
                 // Or a corner that turns the other way.
                 for (size_t i = 0; i < n && !leaves && faces == Faces::Concave && length2 > 0.0; ++i) {
@@ -144,6 +194,12 @@ HdNovaFaceTriangles::HdNovaFaceTriangles(HdMeshTopology const &topology, VtVec3f
                     }
                     const uint32_t firstCorner = uint32_t(_corners.size());
                     clipEars(flat, left, _corners);
+                    // Each from its lowest vertex, the a of its face parameters (Karma's, measured).
+                    for (size_t t = firstCorner; t + 3 <= _corners.size(); t += 3)
+                        std::rotate(_corners.begin() + std::ptrdiff_t(t),
+                                    std::min_element(_corners.begin() + std::ptrdiff_t(t),
+                                                     _corners.begin() + std::ptrdiff_t(t + 3)),
+                                    _corners.begin() + std::ptrdiff_t(t + 3));
                     _faces.push_back({triangle, uint32_t(v), firstCorner, uint32_t(n - 2)});
                 }
             }
@@ -183,13 +239,30 @@ void HdNovaFaceTriangles::fixTriangles(VtVec3iArray *triangles) const {
         if (size_t(first) + n - 2 > count)
             return;
         for (size_t k = 0; k + 2 < n; ++k) {
-            // The corners of triangle k, counted from the face's first vertex: Karma's fan, or the ears'.
-            const uint32_t fan[3] = {uint32_t(n - 1), uint32_t(k), uint32_t(k + 1)};
-            const uint32_t *c = clipped ? &_corners[size_t(clipped->firstCorner) + k * 3] : fan;
+            // The corners of triangle k, counted from the face's first vertex: Karma's, or the ears'.
+            uint32_t strip[3];
+            stripTriangle(n, k, strip);
+            const uint32_t *c = clipped ? &_corners[size_t(clipped->firstCorner) + k * 3] : strip;
             const int a = verts[v + c[0]], b = verts[v + c[1]], d = verts[v + c[2]];
             out[first + k] = _flip ? GfVec3i(a, d, b) : GfVec3i(a, b, d);
         }
     });
+}
+
+std::vector<uint8_t> HdNovaFaceTriangles::parameterCodes(size_t count) const {
+    // A triangle a b c as HdMeshUtil has it, and the triangles of clipped ears, which start at their a.
+    const uint32_t triangle = nova::face_parameters::triangle(0, 1, 2);
+    std::vector<uint8_t> codes(count, uint8_t(_flip ? flipped(triangle) : triangle));
+    forEachPolygon([&](uint32_t first, size_t, size_t n, Face const *clipped) {
+        if (size_t(first) + n - 2 > count || clipped)
+            return;
+        for (size_t k = 0; k + 2 < n; ++k) {
+            uint32_t c[3], code = 0;
+            stripTriangle(n, k, c, &code);
+            codes[first + k] = uint8_t(_flip ? flipped(code) : code);
+        }
+    });
+    return codes;
 }
 
 void HdNovaFaceTriangles::fixFaceVarying(float const *authored, size_t authoredCount, size_t width,
@@ -201,8 +274,9 @@ void HdNovaFaceTriangles::fixFaceVarying(float const *authored, size_t authoredC
             const size_t first = (size_t(firstTriangle) + k) * 3;
             if (first + 3 > triangulatedCount)
                 return;
-            const uint32_t fan[3] = {uint32_t(n - 1), uint32_t(k), uint32_t(k + 1)};
-            const uint32_t *c = clipped ? &_corners[size_t(clipped->firstCorner) + k * 3] : fan;
+            uint32_t strip[3];
+            stripTriangle(n, k, strip);
+            const uint32_t *c = clipped ? &_corners[size_t(clipped->firstCorner) + k * 3] : strip;
             const size_t from[3] = {v + c[0], v + c[_flip ? 2 : 1], v + c[_flip ? 1 : 2]};
             for (int i = 0; i < 3; ++i)
                 if (from[i] < authoredCount)
@@ -211,7 +285,7 @@ void HdNovaFaceTriangles::fixFaceVarying(float const *authored, size_t authoredC
     });
 }
 
-HdNovaFaceTriangles::Split HdNovaFaceTriangles::split(HdMeshTopology const &topology) const {
+HdNovaFaceTriangles::Split HdNovaFaceTriangles::split(HdMeshTopology const &topology, bool strips) const {
     Split s;
     VtIntArray const &counts = topology.GetFaceVertexCounts();
     VtIntArray const &holes = topology.GetHoleIndices();
@@ -220,7 +294,8 @@ HdNovaFaceTriangles::Split HdNovaFaceTriangles::split(HdMeshTopology const &topo
     size_t v = 0, hole = 0, next = 0;
     for (size_t f = 0; f < counts.size(); ++f) {
         const size_t n = size_t(std::max(counts[f], 0));
-        if (hole < holes.size() && holes[hole] == int(f) && counts[f] >= 3) {
+        const bool isHole = hole < holes.size() && holes[hole] == int(f) && counts[f] >= 3;
+        if (isHole) {
             s.holes.push_back(int(s.counts.size()));
             ++hole;
         }
@@ -233,6 +308,21 @@ HdNovaFaceTriangles::Split HdNovaFaceTriangles::split(HdMeshTopology const &topo
                     const size_t corner = v + _corners[size_t(face.firstCorner) + size_t(k) * 3 + size_t(i)];
                     s.indices.push_back(verts[corner]);
                     s.corners.push_back(int32_t(corner));
+                }
+            }
+        } else if (strips && n > 4 && !isHole && v + n <= numVerts) {
+            for (size_t j = 0; 2 * j + 2 < n; ++j) { // Karma's pieces: quads, and a triangle where n is odd
+                uint32_t q[4];
+                stripQuad(n, j, q);
+                const bool triangle = q[1] == q[2];
+                const uint32_t three[3] = {q[0], q[1], q[3]};
+                const uint32_t *c = triangle ? three : q;
+                const int m = triangle ? 3 : 4;
+                s.counts.push_back(m);
+                s.faces.push_back(int32_t(f));
+                for (int i = 0; i < m; ++i) {
+                    s.indices.push_back(verts[v + c[i]]);
+                    s.corners.push_back(int32_t(v + c[i]));
                 }
             }
         } else {

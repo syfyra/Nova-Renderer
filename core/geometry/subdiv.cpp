@@ -23,7 +23,9 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -443,6 +445,16 @@ bool tessellateSubdiv(const SubdivMeshDesc &d, int rate, MeshDesc &out, const Te
         }
         out.attributes.push_back(std::move(a));
     }
+    // The faces' parameters, after the primvars' attributes.
+    const size_t faceParameters = out.attributes.size();
+    if (d.faceParameters != SubdivFaceParameters::None) {
+        MeshAttribute a;
+        a.name = kFaceParametersName;
+        a.width = 2;
+        a.rate = AttributeRate::Corner;
+        a.data.assign(numTris * 3 * 2, 0.0f);
+        out.attributes.push_back(std::move(a));
+    }
 
     // ---- Pass 2 (parallel over faces): evaluate and emit --------------------
     const float *meshPoints = &d.points[0].x;
@@ -574,6 +586,104 @@ bool tessellateSubdiv(const SubdivMeshDesc &d, int rate, MeshDesc &out, const Te
                         fvarSurface.Evaluate(&coords[c * 2], pvPatch.data(), int(w), &fvarValues[c * w]);
                     for (size_t k = 0; k < localFacets.size(); ++k)
                         std::copy_n(&fvarValues[size_t(localFacets[k]) * w], w, dst + (firstCorner + k) * w);
+                }
+            }
+            if (d.faceParameters != SubdivFaceParameters::None) {
+                // The pattern's coordinates are the face's own for a quad. A triangle of a
+                // triangle scheme has (u, v) = (w1, w2). Other faces are made of quads, one at
+                // each vertex i: (0, 0) there, u towards vertex i + 1, v towards vertex i - 1,
+                // (1, 1) at the face's centre.
+                const Bfr::Parameterization param = surface.GetParameterization();
+                const bool polygon = d.faceParameters == SubdivFaceParameters::Polygon;
+                const bool quads = param.GetType() == Bfr::Parameterization::QUAD_SUBFACES;
+                const int n = param.GetFaceSize();
+                float *dst = out.attributes[faceParameters].data.data() + firstCorner * 2;
+                for (size_t first = 0; first + 3 <= localFacets.size(); first += 3) {
+                    float p[3][2];
+                    int quad[3] = {-1, -1, -1};          // the quad a corner's coordinates are in
+                    bool apex[3] = {false, false, false}; // at the a of the triangle rule
+                    bool rule = false;
+                    for (int c = 0; c < 3; ++c) {
+                        const float *uv = &coords[size_t(localFacets[first + size_t(c)]) * 2];
+                        p[c][0] = uv[0];
+                        p[c][1] = uv[1];
+                        float w1 = -1.0f, w2 = 0.0f; // a triangle's barycentrics, if it is one of a polygon mesh
+                        if (param.GetType() == Bfr::Parameterization::TRI) {
+                            if (polygon) {
+                                w1 = uv[0];
+                                w2 = uv[1];
+                            }
+                        } else if (quads) {
+                            float st[2];
+                            const int i = param.ConvertCoordToNormalizedSubFace(uv, st);
+                            p[c][0] = st[0];
+                            p[c][1] = st[1];
+                            quad[c] = i;
+                            if (polygon && n == 3) {
+                                // The quad at vertex i spans it, the two edges' middles and the centre.
+                                const float a = st[0], b = st[1], centre = a * b * (1.0f / 3.0f);
+                                float w[3];
+                                w[i % 3] = (1.0f - a) * (1.0f - b) + 0.5f * a * (1.0f - b) + 0.5f * (1.0f - a) * b + centre;
+                                w[(i + 1) % 3] = 0.5f * a * (1.0f - b) + centre;
+                                w[(i + 2) % 3] = 0.5f * (1.0f - a) * b + centre;
+                                w1 = w[1];
+                                w2 = w[2];
+                            } else if (polygon) {
+                                p[c][0] = p[c][1] = 0.0f;
+                            }
+                        }
+                        if (w1 >= 0.0f) {
+                            rule = true;
+                            p[c][1] = w1 + w2;
+                            apex[c] = !(p[c][1] > 1e-6f);
+                            p[c][0] = apex[c] ? 0.0f : w1 / p[c][1];
+                        }
+                    }
+                    if (quads && !polygon) {
+                        // A point between two of the quads, or the centre, has the coordinates of
+                        // one of them: all three corners in those of the quad the triangle lies in.
+                        const auto is1 = [](float x) { return std::fabs(x - 1.0f) < 1e-4f; };
+                        for (int c = 0; c < 3; ++c) {
+                            const int f = quad[c];
+                            float q[3][2];
+                            bool fits = true;
+                            for (int e = 0; e < 3 && fits; ++e) {
+                                const float a = p[e][0], b = p[e][1];
+                                if (quad[e] == f) {
+                                    q[e][0] = a;
+                                    q[e][1] = b;
+                                } else if (is1(a) && is1(b)) { // the centre
+                                    q[e][0] = q[e][1] = 1.0f;
+                                } else if (quad[e] == (f + 1) % n && is1(b)) { // on the border with the next
+                                    q[e][0] = 1.0f;
+                                    q[e][1] = a;
+                                } else if (quad[e] == (f + n - 1) % n && is1(a)) { // and with the one before
+                                    q[e][0] = b;
+                                    q[e][1] = 1.0f;
+                                } else {
+                                    fits = false;
+                                }
+                            }
+                            if (fits) {
+                                std::memcpy(p, q, sizeof(p));
+                                break;
+                            }
+                        }
+                    }
+                    if (rule) {
+                        // At a every u is right: the mean of the triangle's other corners.
+                        for (int c = 0; c < 3; ++c)
+                            if (apex[c]) {
+                                const int o1 = (c + 1) % 3, o2 = (c + 2) % 3;
+                                const int others = int(!apex[o1]) + int(!apex[o2]);
+                                p[c][0] = others ? ((apex[o1] ? 0.0f : p[o1][0]) + (apex[o2] ? 0.0f : p[o2][0])) / float(others)
+                                                 : 0.0f;
+                            }
+                    }
+                    for (int c = 0; c < 3; ++c) {
+                        dst[(first + size_t(c)) * 2] = p[c][0];
+                        dst[(first + size_t(c)) * 2 + 1] = p[c][1];
+                    }
                 }
             }
         }
