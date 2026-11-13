@@ -44,7 +44,7 @@ if(NOT NOVA_CORE_ONLY)
     set(CMAKE_CONFIGURATION_TYPES "Release;RelWithDebInfo" CACHE STRING "Build configurations" FORCE)
 endif()
 
-project(Nova VERSION 0.1.6 LANGUAGES CXX)
+project(Nova VERSION 0.2.0 LANGUAGES CXX)
 if(NOT NOVA_CORE_ONLY)
     message(STATUS "Nova: vcpkg toolchain ${CMAKE_TOOLCHAIN_FILE}")
 endif()
