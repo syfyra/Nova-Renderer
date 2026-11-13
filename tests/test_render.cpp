@@ -1418,6 +1418,54 @@ TEST_CASE("Rotated meshes far from the origin do not shadow themselves", "[rende
         }
 }
 
+// A polygon that lies in a coordinate plane of its own space and is tilted by
+// its transform (a ground of one quad, rotated), around the world's origin.
+// In its own space it has no reach along its normal, and the hit point's
+// world coordinates go to zero at the origin, while its corners are rounded
+// in world space, as far out as they are: the offset of a leaving ray was too
+// small there. A ground 20 units wide showed a dark spot at the origin that
+// lost 32 % of its light (docs/bug-audit-2026-11.md, section 19, R-0). The
+// corners' world reach along the world normal is part of the offset's bound.
+TEST_CASE("Polygons tilted by their transform do not shadow themselves at the origin", "[render][robust]") {
+    for (const float half : {10.0f, 1000.0f, 30000.0f})
+        for (const Orientation &o : kOrientations) {
+            INFO("half-size " << half << ", tilted " << o.degrees << " degrees about (" << o.axis.x << ", "
+                              << o.axis.y << ", " << o.axis.z << ")");
+            const Mat4 rotation = rotationAbout(o.axis, o.degrees);
+            Scene scene;
+            MeshDesc plane = makeQuad(half); // in the plane z = 0 of its own space
+            plane.transform = rotation;
+            plane.setDisplayColor(spectrum(0.5f));
+            scene.updateMesh(scene.createMesh(), plane);
+            LightDesc dome;
+            dome.type = LightType::Dome;
+            scene.updateLight(scene.createLight(), dome);
+            scene.commit();
+
+            Renderer renderer;
+            RenderSettings settings;
+            settings.maxSamples = 64;
+            renderer.setScene(&scene);
+            renderer.setSettings(settings);
+            // From 3 units above the world's origin, along the polygon's normal.
+            Camera camera = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, 1.0, 1.0, 16, 16, 0.01, 100.0);
+            camera.viewToWorld = translation({0.0f, 0.0f, 3.0f}) * rotation;
+            camera.worldToView = inverse(camera.viewToWorld);
+            renderer.setCamera(camera);
+            renderer.resize(16, 16);
+            renderToConvergence(renderer);
+            const Film &film = renderer.film();
+            double mean = 0.0, darkest = 1.0;
+            for (size_t i = 0; i < film.colorSum.size(); ++i) {
+                const double v = double(film.colorSum[i].x) / double(film.count[i]);
+                mean += v / double(film.colorSum.size());
+                darkest = std::min(darkest, v);
+            }
+            CHECK_THAT(mean, WithinAbs(0.5, 0.005));
+            CHECK(darkest > 0.45);
+        }
+}
+
 // The offset that takes a ray off the polygon it leaves is that polygon's
 // alone: a small sheet 0.5 above a ground throws the same shadow whether or
 // not something far away stretches the scene's bounds.

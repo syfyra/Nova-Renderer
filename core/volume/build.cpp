@@ -556,7 +556,8 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
     // A shader that reads no field (a constant medium, a constant emission)
     // is where the volume's density is, else its first field: Karma renders
     // such a material in the VDB's voxels (audit V-3: Nova rendered nothing).
-    if (!d.shell && read.empty()) {
+    // Not the default volume: it is its density, and without one nothing.
+    if (!d.shell && rec.program && read.empty()) {
         note(fieldIndex(d, "density"));
         if (read.empty() && !d.fields.empty())
             note(0);

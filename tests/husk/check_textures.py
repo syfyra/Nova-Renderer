@@ -84,6 +84,7 @@ def Scope "Render"
         int nova:samples = 64
         int nova:maxDepth = 1
         token nova:pixelFilter = "box"
+        token nova:defaultMaterial = "lambert"
     }
 }
 """

@@ -62,7 +62,7 @@ with the same look, and every feature is measured against Karma CPU or an analyt
   - multi-part and deep EXR;
   - per-var sample filters and checkpoints.
 - **Look-dev and IPR.**
-  - OptiX denoiser and adaptive sampling.
+  - Two denoisers, NVIDIA OptiX and Intel Open Image Denoise, and adaptive sampling.
   - Progressive proxy passes after edits.
   - Outlines, look-dev overrides, path guiding.
 - **Reproducible.** The same scene renders the same image, run to run and on CPU and GPU alike.
@@ -72,7 +72,7 @@ with the same look, and every feature is measured against Karma CPU or an analyt
 Version 0.1.6, for **Windows x64** and **Houdini 22.0**. `hdNova` is built against the USD of Houdini 22.0.466.
 Nova was built milestone by milestone. The plan's milestones M0 to M10 ([`docs/PLAN.md`](docs/PLAN.md)) and the
 Karma-compatibility milestone M11 ([`docs/design/M11.md`](docs/design/M11.md)) are complete, with a design note per
-milestone in [`docs/design/`](docs/design/). About 690 automated tests cover it: unit
+milestone in [`docs/design/`](docs/design/). About 760 automated tests cover it: unit
 tests, husk and command-line renders, statistical comparisons against Karma references, and isolated Houdini
 sessions. The current limitations are listed in [`docs/limitations.md`](docs/limitations.md); known differences
 from Karma are documented in the design notes and in [`docs/bug-audit-2026-11.md`](docs/bug-audit-2026-11.md).
@@ -112,7 +112,7 @@ Requirements at run time:
 
 Requirements:
 
-- Houdini 22.0. USD/Hydra, TBB, OpenImageIO, OpenSubdiv, MaterialX and Python come from `$HFS`.
+- Houdini 22.0. USD/Hydra, TBB, OpenImageIO, OpenSubdiv, MaterialX, Open Image Denoise and Python come from `$HFS`.
 - Visual Studio 2022 Build Tools (MSVC v143, "Desktop development with C++"), which include CMake ≥ 3.26 and Ninja.
 - vcpkg in `%USERPROFILE%\vcpkg` or at `%VCPKG_ROOT%`. It provides only Embree 4 and Catch2 (`vcpkg.json`).
 - Optional, for Nova XPU and the OptiX denoiser: CUDA 12.8 or later.

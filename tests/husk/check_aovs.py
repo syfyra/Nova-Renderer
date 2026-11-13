@@ -97,6 +97,17 @@ def main():
         for name in ("combinedvolume", "visiblelights"):
             check(float(np.abs(rgb(name)).max()) == 0.0, f"{name} is empty (no volumes, no visible lights)")
 
+        # Float vars that husk writes as half, as the Karma Render Settings LOP
+        # authors its two facing ratios, were zeros or uninitialised memory
+        # (docs/bug-audit-2026-11.md, section 19, A-0).
+        covered = p["C"][..., 3] > 0.999
+        for name in ("Facingratio_N", "Facingratio_Ng"):
+            f = p[name][..., 0]
+            sane = bool(np.isfinite(f).all()) and float(f.min()) >= 0.0 and float(f.max()) <= 1.0005
+            on = float(f[covered].mean()) if sane else float("nan")
+            check(sane and 0.2 < on < 0.8,
+                  f"{name} (a float var, husk:format half) is a ratio between 0 and 1: {on:.4f} on the geometry")
+
         # M6.3: the prefixes and the A and B events.
         U = rgb("beautyunshadowed")
         check(float(U.mean()) > float(C.mean()), f"beautyunshadowed {U.mean():.4f} > C {C.mean():.4f}")
