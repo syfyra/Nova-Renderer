@@ -200,7 +200,8 @@ TEST_CASE("Texture coordinates default to the st primvar", "[hydra][materials]")
     const nova::shading::ProgramPtr program = nova::shading::compile(tr.graph).program;
     REQUIRE(program);
     REQUIRE(program->primvars.size() == 1);
-    CHECK(program->primvars[0] == "st");
+    // And on geometry without it to the parameters of its faces, as in Karma (attributes.h).
+    CHECK(program->primvars[0] == std::string("st|") + nova::kFaceParametersName);
 }
 
 TEST_CASE("USD ids, legacy names and unknown nodes", "[hydra][materials]") {

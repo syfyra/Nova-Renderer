@@ -102,6 +102,24 @@ bool topologyFits(HdMeshTopology const &topology, size_t pointCount, std::string
 }
 
 // Returns the interpolation of a primvar, or false if it is not authored.
+bool findPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name, HdInterpolation &interp);
+
+// Whether the mesh has the texture coordinates materials read by default.
+bool hasPrimaryUv(HdSceneDelegate *sd, SdfPath const &id) {
+    HdInterpolation interp = HdInterpolationConstant;
+    return findPrimvar(sd, id, TfToken(HdNovaPrimaryUvName()), interp);
+}
+
+// The faces' own parameters for a tessellated mesh without them: Karma gives
+// a Catmull-Clark surface the surface's, every other mesh its polygons'
+// (measured, docs/bug-audit-2026-11.md section 21).
+nova::SubdivFaceParameters faceParametersOf(HdSceneDelegate *sd, SdfPath const &id, nova::SubdivScheme scheme) {
+    if (hasPrimaryUv(sd, id))
+        return nova::SubdivFaceParameters::None;
+    return scheme == nova::SubdivScheme::CatmullClark ? nova::SubdivFaceParameters::Surface
+                                                      : nova::SubdivFaceParameters::Polygon;
+}
+
 bool findPrimvar(HdSceneDelegate *sd, SdfPath const &id, TfToken const &name, HdInterpolation &interp) {
     for (int i = 0; i < HdInterpolationCount; ++i) {
         for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolation(i))) {
@@ -433,6 +451,7 @@ bool HdNovaMesh::_BuildSubdivMesh(HdSceneDelegate *sd, std::vector<VtVec3fArray>
     if (!HdNovaToSubdivDesc(_topology, _subdivTags, pointSteps, id, &sdesc))
         return false;
     gatherSubdivPrimvars(sd, id, sdesc.primvars);
+    sdesc.faceParameters = faceParametersOf(sd, id, sdesc.scheme);
 
     // Authored normals are ignored on subdivision surfaces (UsdGeomMesh, Karma).
     std::string error;
@@ -504,6 +523,9 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
     // (the shape at the first motion step).
     const HdNovaFaceTriangles concave(_topology, pointSteps[0]);
     concave.fixTriangles(&triangles);
+    // How each triangle lies in its face: the faces' own parameters are the texture coordinates of a
+    // mesh without st, and ray:hituv (Karma).
+    desc.faceParameters = concave.parameterCodes(triangles.size());
     _triangleFaces.resize(triangles.size());
     for (size_t t = 0; t < triangles.size(); ++t)
         _triangleFaces[t] =
@@ -676,8 +698,11 @@ bool HdNovaMesh::_BuildDisplacedMesh(HdSceneDelegate *sd, HdNovaRenderParam &par
         // A bilinear face is patched around its centre, which leaves a concave
         // face as a fan does: those faces are diced as their triangles.
         const HdNovaFaceTriangles concave(_topology, pointSteps[0], HdNovaFaceTriangles::Faces::Concave);
-        if (!concave.empty())
-            split = concave.split(_topology);
+        // Without st the faces' own parameters are the texture coordinates: faces of more than four
+        // vertices are diced as Karma's pieces of them, which have those.
+        const bool strips = concave.largeFaces() && !hasPrimaryUv(sd, id);
+        if (!concave.empty() || strips)
+            split = concave.split(_topology, strips);
         const bool whole = split.faces.empty();
         const HdMeshTopology bilinear(PxOsdOpenSubdivTokens->bilinear, _topology.GetOrientation(),
                                       whole ? _topology.GetFaceVertexCounts() : split.counts,
@@ -687,6 +712,7 @@ bool HdNovaMesh::_BuildDisplacedMesh(HdSceneDelegate *sd, HdNovaRenderParam &par
             return false;
     }
     gatherSubdivPrimvars(sd, id, sdesc.primvars);
+    sdesc.faceParameters = faceParametersOf(sd, id, smooth ? scheme : nova::SubdivScheme::None);
     if (!split.faces.empty()) {
         // The primvars are those of the authored faces and face-vertices.
         for (nova::SubdivPrimvar &p : sdesc.primvars) {

@@ -17,6 +17,7 @@ add_library(nova_core STATIC
     integrator/material_eval.cpp
     integrator/shading_queries.cpp
     accel/embree_accel.cpp
+    lights/ies.cpp
     lights/lights.cpp
     lights/light_sampler.cpp
     lights/light_tree.cpp

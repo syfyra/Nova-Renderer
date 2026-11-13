@@ -2,18 +2,23 @@
 
 // The triangles of polygons.
 //
-// HdMeshUtil triangulates a face as a fan from its first vertex. Karma fans
-// from the face's last vertex (measured for 4 to 6 vertices, whatever the
-// shape: a quad 0 1 2 3 is 0 1 3 and 1 2 3, docs/bug-audit-2026-11.md section
-// 20), so a quad that is not flat folds along its other diagonal, and a
-// primvar that is not affine over a face is interpolated otherwise.
-// HdNovaFaceTriangles gives every face of more than three vertices Karma's
-// fan.
+// HdMeshUtil triangulates a face as a fan from its first vertex. Karma splits
+// a face of n vertices into a strip of quads between its two ends, 0 1 2 n-1
+// first and then k+1 k+2 n-1-k n-k for k = 1 .., each quad from its last
+// vertex, and where n is odd a last triangle (measured,
+// docs/bug-audit-2026-11.md sections 20 and 21). Up to six vertices that is
+// the fan from the face's last vertex: a quad 0 1 2 3 is 0 1 3 and 1 2 3, so a
+// quad that is not flat folds along its other diagonal, and a primvar that is
+// not affine over a face is interpolated otherwise. HdNovaFaceTriangles gives
+// every face of more than three vertices Karma's triangles.
 //
-// Where that fan leaves the polygon (a concave face that is not star-shaped
-// from the vertex) its triangles would cover what the face does not: an L
-// seen from above covered 10.4 units of area where it has 7. Those faces are
-// triangulated by clipping ears.
+// Where those leave the polygon (a concave face) they would cover what the
+// face does not: an L seen from above covered 10.4 units of area where it
+// has 7. Those faces are triangulated by clipping ears.
+//
+// It also says how every triangle lies in its face: the codes that give
+// geometry without st its texture coordinates (core/scene/attributes.h,
+// face_parameters).
 //
 // A polygon of n vertices has n - 2 triangles either way, so HdMeshUtil's
 // arrays are patched in place, and what is keyed to them (the face of a
@@ -33,10 +38,9 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 class HdNovaFaceTriangles {
 public:
-    // Which faces have their ears clipped: those whose fan leaves them (a
-    // concave face can be star-shaped from its last vertex, and then its fan
-    // is right), or every face with a corner that turns the other way (for
-    // split()).
+    // Which faces have their ears clipped: those that Karma's triangles
+    // leave (they can be right for a concave face), or every face with a
+    // corner that turns the other way (for split()).
     enum class Faces { FanLeaves, Concave };
 
     // The faces of `topology` at `points`. Faces HdMeshUtil skips (holes,
@@ -47,11 +51,17 @@ public:
     // The faces with clipped ears: none, how many.
     bool empty() const { return _faces.empty(); }
     size_t size() const { return _faces.size(); }
+    // Whether some face has more than four vertices.
+    bool largeFaces() const { return _largeFaces; }
 
-    // Patches the triangles of HdMeshUtil::ComputeTriangleIndices: Karma's fan
-    // for every face of more than three vertices, the clipped ears' triangles
+    // Patches the triangles of HdMeshUtil::ComputeTriangleIndices: Karma's
+    // triangles for every face of more than three vertices, the clipped ears'
     // for the faces that have them.
     void fixTriangles(VtVec3iArray *triangles) const;
+
+    // The face-parameter code of each of the `count` triangles (those of
+    // fixTriangles): MeshDesc::faceParameters.
+    std::vector<uint8_t> parameterCodes(size_t count) const;
 
     // Patches a face-varying primvar that HdMeshUtil triangulated:
     // `triangulated` holds `width` floats for each of the `triangulatedCount`
@@ -63,13 +73,15 @@ public:
     // `topology` (the one given to the constructor) with each of the faces with
     // clipped ears replaced by its triangles, for what does not triangulate faces as a fan:
     // dicing patches a face around its centre, which leaves a concave face as
-    // the fan does.
+    // the fan does. `strips`: every other face of more than four vertices is
+    // replaced by the quads of Karma's strip and its last triangle, the pieces
+    // that have the face's parameters (a face diced around its centre has none).
     struct Split {
         VtIntArray counts, indices, holes;
         std::vector<int32_t> faces;   // the authored face of each face
         std::vector<int32_t> corners; // the authored face-vertex of each face-vertex
     };
-    Split split(HdMeshTopology const &topology) const;
+    Split split(HdMeshTopology const &topology, bool strips = false) const;
 
 private:
     struct Face {
@@ -80,13 +92,15 @@ private:
     };
     // Calls visit(firstTriangle, firstVertex, vertexCount, clipped) for every
     // face of more than three vertices that HdMeshUtil triangulates; clipped:
-    // its entry of _faces, or null (Karma's fan).
+    // its entry of _faces, or null (Karma's strip).
     template <class Visit> void forEachPolygon(Visit &&visit) const;
 
     std::vector<Face> _faces;       // the faces with clipped ears, in order
-    std::vector<uint32_t> _corners; // 3 per triangle: vertices of the face, counted from its first, in its winding
+    // 3 per triangle: vertices of the face, counted from its first, in its winding, the lowest first.
+    std::vector<uint32_t> _corners;
     VtIntArray _counts, _vertexIndices, _holes;
     bool _polygons = false; // some face has more than three vertices
+    bool _largeFaces = false; // and some more than four
     bool _flip = false; // HdMeshUtil swaps the last two corners of a triangle for left-handed meshes
 };
 

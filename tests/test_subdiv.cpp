@@ -2,6 +2,7 @@
 // limit masks), watertightness and orientation.
 
 #include "core/geometry/subdiv.h"
+#include "core/scene/attributes.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -439,4 +440,79 @@ TEST_CASE("Subdivision tessellates every motion step", "[subdiv][motion]") {
     MeshDesc single;
     REQUIRE(tessellateSubdiv(unitCube(), 4, single));
     CHECK(single.indices == m.indices); // the same topology for every step
+}
+
+// The parameters of faces as a corner attribute of the tessellated mesh
+// (SubdivFaceParameters): the texture coordinates of geometry without st, as
+// Karma has them (docs/bug-audit-2026-11.md, section 21).
+TEST_CASE("The tessellator writes the parameters of faces", "[subdiv][attributes]") {
+    // A unit quad and a triangle next to it, bilinear: a point's position tells its parameters.
+    SubdivMeshDesc d;
+    d.scheme = SubdivScheme::Bilinear;
+    d.points = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {2, 0, 0}, {4, 0, 0}, {2, 2, 0}};
+    d.faceVertexCounts = {4, 3};
+    d.faceVertexIndices = {0, 1, 2, 3, 4, 5, 6};
+    MeshDesc m;
+    REQUIRE(tessellateSubdiv(d, 4, m));
+    CHECK(m.findAttribute(kFaceParametersName) == nullptr); // not asked for
+
+    // A polygon's: the quad's own (u, v), the triangle's rule u = w1 / (w1 + w2), v = w1 + w2.
+    std::vector<int32_t> faces;
+    d.faceParameters = SubdivFaceParameters::Polygon;
+    REQUIRE(tessellateSubdiv(d, 4, m, nullptr, nullptr, &faces));
+    const MeshAttribute *a = m.findAttribute(kFaceParametersName);
+    REQUIRE(a);
+    CHECK(a->rate == AttributeRate::Corner);
+    CHECK(a->width == 2);
+    REQUIRE(a->data.size() == m.indices.size() * 2);
+    REQUIRE(faces.size() == m.triangleCount());
+    int quadCorners = 0, triangleCorners = 0;
+    for (size_t k = 0; k < m.indices.size(); ++k) {
+        const Vec3f p = m.points[m.indices[k]];
+        const float u = a->data[k * 2], v = a->data[k * 2 + 1];
+        if (faces[k / 3] == 0) {
+            ++quadCorners;
+            CHECK_THAT(u, WithinAbs(p.x, 1e-5));
+            CHECK_THAT(v, WithinAbs(p.y, 1e-5));
+        } else {
+            const float w1 = (p.x - 2.0f) * 0.5f, w2 = p.y * 0.5f;
+            CHECK_THAT(v, WithinAbs(w1 + w2, 1e-5));
+            if (w1 + w2 > 1e-4f) { // at a itself every u is right
+                ++triangleCorners;
+                CHECK_THAT(u, WithinAbs(w1 / (w1 + w2), 1e-4));
+            }
+        }
+    }
+    CHECK(quadCorners == 32 * 3);
+    CHECK(triangleCorners > 30);
+
+    // A surface's: the triangle is three quads, (0, 0) at each vertex, u towards the next vertex, v
+    // towards the one before, (1, 1) at the centre. A point between two of them belongs to both: every
+    // triangle has its corners in the coordinates of the quad it lies in.
+    d.faceParameters = SubdivFaceParameters::Surface;
+    REQUIRE(tessellateSubdiv(d, 4, m, nullptr, nullptr, &faces));
+    a = m.findAttribute(kFaceParametersName);
+    REQUIRE(a);
+    const Vec3f corner[3] = {{2, 0, 0}, {4, 0, 0}, {2, 2, 0}};
+    const Vec3f centre = (corner[0] + corner[1] + corner[2]) * (1.0f / 3.0f);
+    int triangles = 0;
+    for (size_t t = 0; t < m.triangleCount(); ++t) {
+        if (faces[t] != 1)
+            continue;
+        ++triangles;
+        int fits[3] = {0, 0, 0}; // corners that lie where quad i has their coordinates
+        for (size_t c = 0; c < 3; ++c) {
+            const size_t k = t * 3 + c;
+            const float u = a->data[k * 2], v = a->data[k * 2 + 1];
+            CHECK((u >= -1e-5f && u <= 1.0f + 1e-5f && v >= -1e-5f && v <= 1.0f + 1e-5f));
+            for (int i = 0; i < 3; ++i) {
+                const Vec3f next = (corner[i] + corner[(i + 1) % 3]) * 0.5f, before = (corner[i] + corner[(i + 2) % 3]) * 0.5f;
+                const Vec3f p = corner[i] * ((1.0f - u) * (1.0f - v)) + next * (u * (1.0f - v)) + centre * (u * v) +
+                                before * ((1.0f - u) * v);
+                fits[i] += maxComponent(absolute(p - m.points[m.indices[k]])) < 1e-4f;
+            }
+        }
+        CHECK((fits[0] == 3 || fits[1] == 3 || fits[2] == 3));
+    }
+    CHECK(triangles > 0);
 }

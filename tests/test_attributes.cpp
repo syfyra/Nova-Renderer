@@ -171,3 +171,64 @@ TEST_CASE("A checker from st matches its analytic value at every pixel", "[attri
     CHECK(wrong == 0);
     CHECK_THAT(mean, WithinAbs(0.5, 1e-9));
 }
+
+// The parameters of a face (attributes.h, face_parameters): the texture
+// coordinates of geometry without st, from a code per triangle.
+TEST_CASE("The parameters of a face are an attribute of meshes without st", "[attributes]") {
+    using namespace face_parameters;
+    // A quad 0 1 2 3 as Karma splits it (3 0 1 and 3 1 2) and a triangle a b c.
+    const uint8_t codes[3] = {uint8_t(linear(3, 0, 1)), uint8_t(linear(3, 1, 2)), uint8_t(triangle(0, 1, 2))};
+    const AttributeRef ref{reinterpret_cast<const float *>(codes), AttributeSource::FaceParameters, 2}; // bytes
+    const uint32_t indices[9] = {3, 0, 1, 3, 1, 2, 4, 5, 6};
+    const auto at = [&](uint32_t prim, float b1, float b2) {
+        float v[2] = {-1.0f, -1.0f};
+        REQUIRE(fetchAttribute(ref, &indices[prim * 3], prim, 0, b1, b2, 2, v));
+        return Vec2f{v[0], v[1]};
+    };
+    const auto is = [](Vec2f p, float u, float v) { return std::fabs(p.x - u) < 1e-6f && std::fabs(p.y - v) < 1e-6f; };
+    // The quad's corners (0,0) (1,0) (1,1) (0,1), its centre from either triangle.
+    CHECK(is(at(0, 1.0f, 0.0f), 0.0f, 0.0f));
+    CHECK(is(at(0, 0.0f, 1.0f), 1.0f, 0.0f));
+    CHECK(is(at(0, 0.0f, 0.0f), 0.0f, 1.0f));
+    CHECK(is(at(1, 1.0f, 0.0f), 1.0f, 0.0f));
+    CHECK(is(at(1, 0.0f, 1.0f), 1.0f, 1.0f));
+    CHECK(is(at(1, 0.0f, 0.0f), 0.0f, 1.0f));
+    CHECK(is(at(0, 0.0f, 0.5f), 0.5f, 0.5f));
+    CHECK(is(at(1, 0.5f, 0.0f), 0.5f, 0.5f));
+    // The triangle: u = w_b / (w_b + w_c), v = w_b + w_c; a is the edge v = 0.
+    const Vec2f t = at(2, 0.25f, 0.5f);
+    CHECK_THAT(t.x, WithinAbs(1.0 / 3.0, 1e-6));
+    CHECK_THAT(t.y, WithinAbs(0.75, 1e-6));
+    CHECK(is(at(2, 1.0f, 0.0f), 1.0f, 1.0f));
+    CHECK(is(at(2, 0.0f, 1.0f), 0.0f, 1.0f));
+    CHECK(is(at(2, 0.0f, 0.0f), 0.0f, 0.0f));
+    // Karma's ray:hituv: the same for the quad, the triangle's barycentrics of b and c.
+    float hu = -1.0f, hv = -1.0f;
+    hit(codes[0], 0.0f, 0.5f, hu, hv);
+    CHECK((hu == 0.5f && hv == 0.5f));
+    hit(codes[2], 0.25f, 0.5f, hu, hv);
+    CHECK((hu == 0.25f && hv == 0.5f));
+    hit(triangle(1, 2, 0), 0.25f, 0.5f, hu, hv); // stored c a b: b's and c's
+    CHECK((hu == 0.5f && hv == 0.25f));
+    // Wider: padded with zeros.
+    float wide[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
+    REQUIRE(fetchAttribute(ref, &indices[0], 0, 0, 0.0f, 0.5f, 4, wide));
+    CHECK((wide[0] == 0.5f && wide[1] == 0.5f && wide[2] == 0.0f && wide[3] == 0.0f));
+
+    // A mesh has them where a list of names ends in theirs and it has none of the names before.
+    const std::string names = std::string("st|") + kFaceParametersName;
+    Scene scene;
+    MeshDesc quad = makeQuad(1.0f); // 0 1 2 and 0 2 3
+    const MeshId id = scene.createMesh();
+    scene.updateMesh(id, quad);
+    CHECK(scene.attributeRef(id, names).source == AttributeSource::None); // no codes
+    quad.faceParameters = {uint8_t(linear(0, 1, 2)), uint8_t(linear(0, 2, 3))};
+    scene.updateMesh(id, quad);
+    const AttributeRef bound = scene.attributeRef(id, names);
+    CHECK(bound.source == AttributeSource::FaceParameters);
+    CHECK(bound.width == 2);
+    CHECK(scene.attributeRef(id, "st").source == AttributeSource::None); // a name alone stays a name
+    quad.setAttribute({"st", AttributeRate::Vertex, 2, {0, 0, 2, 0, 2, 2, 0, 2}});
+    scene.updateMesh(id, quad);
+    CHECK(scene.attributeRef(id, names).source == AttributeSource::Vertex); // st first
+}

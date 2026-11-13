@@ -54,6 +54,12 @@ struct MeshDesc {
     // Optional: the authored face of every triangle (empty: the triangle
     // index), for the face-index AOV (Karma's ray:primid).
     std::vector<int32_t> triangleFaces;
+    // Optional: one code per triangle that says how it lies in its authored
+    // face (attributes.h, face_parameters): the face's parameters there are
+    // the texture coordinates of geometry without st, and Karma's ray:hituv.
+    // A tessellated mesh has a corner attribute named kFaceParametersName
+    // instead, where it has no st.
+    std::vector<uint8_t> faceParameters;
     bool visible = true;
     // The authored faces wind clockwise (USD leftHanded); the host reversed
     // them into the triangles (texture baking's MikkTSpace signs follow the

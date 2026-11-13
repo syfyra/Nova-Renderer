@@ -545,6 +545,15 @@ AttributeRef bindName(const MeshRecord &rec, const std::string &name) {
         ref.source = AttributeSource::Parametric; // the sphere's own parameterization
         ref.width = 2;
     }
+    // The parameters of the hit's face, from the triangles' codes (a
+    // tessellated mesh has them as the attribute of that name, found above).
+    if (ref.source == AttributeSource::None && name == kFaceParametersName &&
+        rec.desc.shape == MeshShape::Triangles && rec.desc.triangleCount() > 0 &&
+        rec.desc.faceParameters.size() >= rec.desc.triangleCount()) {
+        ref.data = reinterpret_cast<const float *>(rec.desc.faceParameters.data()); // bytes (attributes.h)
+        ref.source = AttributeSource::FaceParameters;
+        ref.width = 2;
+    }
     if (ref.source == AttributeSource::None) {
         for (const InstanceAttribute &a : rec.instanceAttributes)
             if (a.name == name && a.width >= 1 && a.width <= 4 &&

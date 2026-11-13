@@ -3094,3 +3094,92 @@ TEST_CASE("XPU kernels of the older architectures render the same image", "[gpu]
     CHECK(luminanceMean(embedded.film) > 0.01);
 }
 #endif
+
+// The texture coordinates of geometry without st are the parameters of its
+// faces (attributes.h, face_parameters; docs/bug-audit-2026-11.md section 21):
+// a program reads them through the name at the end of its list, on both
+// devices alike.
+TEST_CASE("XPU reads the parameters of faces without st", "[gpu][render][attributes]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    using namespace shading;
+    Scene scene;
+    // A quad as Karma splits it (3 0 1 and 3 1 2) over x, y in -1 .. 1, and a triangle a b c right of it.
+    MeshDesc mesh;
+    mesh.points = {{-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0}, {1.5f, -1, 0}, {3.5f, -1, 0}, {1.5f, 1, 0}};
+    mesh.indices = {3, 0, 1, 3, 1, 2, 4, 5, 6};
+    mesh.faceParameters = {uint8_t(face_parameters::linear(3, 0, 1)), uint8_t(face_parameters::linear(3, 1, 2)),
+                           uint8_t(face_parameters::triangle(0, 1, 2))};
+    const MeshId id = scene.createMesh();
+    scene.updateMesh(id, mesh);
+    IrGraph g;
+    g.model = SurfaceModel::StandardSurface;
+    IrBuilder b(g);
+    const float zero2[2] = {0.0f, 0.0f};
+    b.output(surface_field::emissionColor, 3,
+             b.concat(b.primvar(std::string("st|") + kFaceParametersName, 2, b.constant(zero2, 2)), b.constant(0.0f)));
+    MaterialDesc glow;
+    glow.inputs = standardSurfaceDefaults();
+    glow.inputs.set(surface_field::baseWeight, 0.0f);
+    glow.inputs.set(surface_field::specularWeight, 0.0f);
+    glow.inputs.set(surface_field::emissionWeight, 1.0f);
+    glow.program = compile(g).program;
+    REQUIRE(glow.program);
+    const MaterialId material = scene.createMaterial();
+    scene.updateMaterial(material, glow);
+    scene.setMeshMaterials(id, {material});
+    scene.commit();
+    // 40 pixels per unit over x -1 .. 3.5 (the eye at 1.25), y -1 .. 1 in the middle rows.
+    const int width = 180, height = 180;
+    const Camera camera = makeOrthoCamera({1.25f, 0.0f, 5.0f}, 2.25f, width, height);
+    RenderSettings base;
+    base.pixelFilterScale = 0.0f;
+    const Render cpu = render(scene, camera, width, height, 16, RenderDevice::Cpu, 1, false, base);
+    const Render gpu = render(scene, camera, width, height, 16, RenderDevice::Xpu, 1, false, base);
+    REQUIRE(gpu.gpu);
+    double worst = 0.0, worstDevices = 0.0;
+    int checked = 0;
+    std::string where, whereDevices;
+    for (int py = 0; py < height; ++py)
+        for (int px = 0; px < width; ++px) {
+            const float x = -1.0f + (float(px) + 0.5f) / 40.0f;
+            const float yWorld = -2.25f + (float(py) + 0.5f) / 40.0f; // row 0 is the lowest y
+            Vec2f expected;
+            if (std::fabs(yWorld) > 0.95f)
+                continue;
+            if (x > -0.95f && x < 0.95f) {
+                expected = {(x + 1.0f) * 0.5f, (yWorld + 1.0f) * 0.5f};
+            } else if (x > 1.55f) {
+                const float w1 = (x - 1.5f) * 0.5f, w2 = (yWorld + 1.0f) * 0.5f;
+                if (w1 + w2 > 0.95f || w1 + w2 < 0.1f || w1 < 0.03f || w2 < 0.03f)
+                    continue;
+                expected = {w1 / (w1 + w2), w1 + w2};
+            } else {
+                continue;
+            }
+            const Spectrum c = pixelMean(cpu.film, px, py), d = pixelMean(gpu.film, px, py);
+            const double rule = std::max(double(std::fabs(c.x - expected.x)), double(std::fabs(c.y - expected.y)));
+            const double devices = std::max(double(std::fabs(c.x - d.x)), double(std::fabs(c.y - d.y)));
+            const auto say = [&] {
+                return "pixel " + std::to_string(px) + ", " + std::to_string(py) + " at (" + std::to_string(x) + ", " +
+                       std::to_string(yWorld) + "): the rule (" + std::to_string(expected.x) + ", " +
+                       std::to_string(expected.y) + "), CPU (" + std::to_string(c.x) + ", " + std::to_string(c.y) +
+                       "), XPU (" + std::to_string(d.x) + ", " + std::to_string(d.y) + ")";
+            };
+            if (rule > worst) {
+                worst = rule;
+                where = say();
+            }
+            if (devices > worstDevices) {
+                worstDevices = devices;
+                whereDevices = say();
+            }
+            ++checked;
+        }
+    INFO(checked << " pixels: the CPU against the rule within " << worst << " (" << where << "), XPU against the CPU within "
+                 << worstDevices << " (" << whereDevices << ")");
+    CHECK(checked > 6000);
+    CHECK(worst < 1e-4); // point samples at the pixel centres
+    CHECK(worstDevices < 1e-4); // inside the faces; a pixel centre on an edge is a hit for one tracer and none for the other
+}
