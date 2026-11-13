@@ -84,13 +84,17 @@ MaterialRecord makeMaterialRecord(const MaterialDesc &desc);
 
 // The default material (id 0, always present): Lambert with the
 // displayColor attribute as base color, 0.18 where there is none. Unbound
-// geometry renders with it, as in M2.
-MaterialDesc defaultMaterial();
+// geometry renders with it, as in M2. With `displayOpacity` the
+// displayOpacity attribute is its opacity (Karma renders unbound geometry
+// that has the primvar see-through): a material of its own, so that
+// geometry without the attribute keeps an opaque one, which no ray has to
+// ask for its opacity.
+MaterialDesc defaultMaterial(bool displayOpacity = false);
 
 // Karma's material for geometry without one: Houdini's plastic with the
 // displayColor attribute as its colour, white where there is none
 // (plasticDefaults()). The Hydra delegate renders unbound geometry with it
 // unless nova:defaultMaterial says "lambert".
-MaterialDesc plasticDefaultMaterial();
+MaterialDesc plasticDefaultMaterial(bool displayOpacity = false);
 
 } // namespace nova

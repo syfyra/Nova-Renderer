@@ -29,6 +29,11 @@ constexpr uint8_t kVisibleShadow = 1u << 6;
 constexpr uint8_t kVisibleAll = 0x7F;
 
 NOVA_INLINE bool visibleTo(uint8_t mask, uint8_t rayClass) { return ((mask >> rayClass) & 1u) != 0; }
+// Whether the rays of every surface event's class (diffuse, reflect, refract, SSS) see the object.
+NOVA_INLINE bool visibleToSurfaceRays(uint8_t mask) {
+    const uint8_t all = kVisibleDiffuse | kVisibleReflect | kVisibleRefract | kVisibleSss;
+    return (mask & all) == all;
+}
 
 // A ray's class byte (RayBatch::rayType) holds the RayClass in its low bits
 // and, on shadow rays, flags for the hit filter: the ray leaves a

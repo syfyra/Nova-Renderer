@@ -86,7 +86,7 @@ NOVA_INLINE void surfaceInputs(const GpuSettings &st, uint32_t depth, const GpuM
 // program run there.
 NOVA_INLINE float hitOpacity(const ShadeGlobals &globals, uint32_t depth, const GpuMesh &mesh, uint32_t material,
                              const GpuMaterial &m, const SurfaceHit &hit, Vec3f dir, float time, uint8_t rayType) {
-    if (!m.opacityCode)
+    if (!m.opacityVaries)
         return m.uniformOpacity;
     float R[kGpuMaxRows];
     runMaterialProgram(globals, depth, mesh, material, m, m.opacityCode, m.opacityCodeSize, m.opacityUniforms,
@@ -136,7 +136,7 @@ NOVA_INLINE bool acceptHit(const GpuScene &sc, const ShadeGlobals &globals, uint
     if (!m.hasOpacity)
         return true;
     float o = m.uniformOpacity;
-    if (m.opacityCode) {
+    if (m.opacityVaries) {
         const SurfaceHit hit = resolveMeshHit(mesh.view, meshId, prim, uv, t, instance, time, org, dir);
         o = hitOpacity(globals, depth, mesh, material, m, hit, dir, time,
                        occlusion ? uint8_t(RayClass::Shadow) : rayType);

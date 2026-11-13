@@ -1,0 +1,80 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Where a volume shader runs (docs/bug-audit-2026-11.md, section 20, V-4).
+# A VDB box of 20 x 20 x 20 voxels of 0.1 (density 1, world -1..1) with a
+# material that emits 1 everywhere and has no extinction, seen from above by
+# an orthographic camera at 100 pixels per unit: a pixel is the length of its
+# ray inside what the renderer takes for the volume. Karma shades where a
+# lookup reaches a voxel, the voxels and half a voxel around them: 2.0996
+# between x = -1.05 and 1.05, with a hard edge. Nova filled the cells of 8
+# voxels (to 1.4). tests/husk/check_stage_features.py compares.
+def Xform "World"
+{
+    def Volume "box" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel field:density = </World/box/density>
+        rel material:binding = </World/glow>
+
+        def OpenVDBAsset "density"
+        {
+            asset filePath = @../data/volumes/box20.vdb@
+            token fieldName = "density"
+        }
+    }
+
+    def Material "glow"
+    {
+        token outputs:mtlx:volume.connect = </World/glow/vol.outputs:out>
+
+        def Shader "vol"
+        {
+            uniform token info:id = "ND_volume"
+            token inputs:vdf.connect = </World/glow/vdf.outputs:out>
+            token inputs:edf.connect = </World/glow/edf.outputs:out>
+            token outputs:out
+        }
+
+        def Shader "vdf"
+        {
+            uniform token info:id = "ND_anisotropic_vdf"
+            color3f inputs:scattering = (0, 0, 0)
+            color3f inputs:absorption = (0, 0, 0)
+            token outputs:out
+        }
+
+        def Shader "edf"
+        {
+            uniform token info:id = "ND_uniform_edf"
+            color3f inputs:color = (1, 1, 1)
+            token outputs:out
+        }
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 40
+        float verticalAperture = 30
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 10, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (400, 300)
+        int nova:samples = 64
+    }
+}

@@ -33,6 +33,8 @@ OUT = os.environ.get("NOVA_VIEWPORT_CHECK", "")
 # =plate the Background Plate's composite in Karma, Nova CPU and XPU
 # (setup_plate).
 # =karmasettings a Karma Render Settings LOP over the scene (setup_karmasettings).
+# =shadows a Light LOP's Shadow parameters edited live and a card that is
+# see-through by its displayOpacity (setup_shadows).
 ONLY = os.environ.get("NOVA_VIEWPORT_CHECK_ONLY", "")
 SCENE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scenes", "basic.usda").replace("\\", "/")
 # "started" (absolute) tells this run's log from an earlier one in the same folder.
@@ -1464,6 +1466,209 @@ def step_karmasettings():
     later(2, finish)
 
 
+SHADOW_STAGE = """#usda 1.0
+(
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-4, 0, 3), (4, 0, 3), (4, 0, -3), (-4, 0, -3)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    # A grey card: its shadow lies one unit towards -x.
+    def Mesh "card" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-2.5, 1, 1), (-0.5, 1, 1), (-0.5, 1, -1), (-2.5, 1, -1)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    # A card without a material, half see-through by its displayOpacity.
+    def Mesh "veil"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(1, 1, 1), (3, 1, 1), (3, 1, -1), (1, 1, -1)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:displayColor = [(0.8, 0.1, 0.1)]
+        float[] primvars:displayOpacity = [0.5]
+    }
+
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </World/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    # From above, in perspective (the viewport does not look through an orthographic camera).
+    def Camera "cam"
+    {
+        float focalLength = 54
+        float horizontalAperture = 36
+        float verticalAperture = 27
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 12, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+"""
+
+
+def changed_pixels(a, b, threshold=0.1):
+    """The pixels where two captures differ by more than `threshold` in a
+    channel: their share of the image and their mean colour in each."""
+    try:
+        from PySide6 import QtGui
+    except ImportError:  # pragma: no cover
+        from PySide2 import QtGui
+    images = []
+    for name in (a, b):
+        files = sorted(f for f in os.listdir(OUT) if f.startswith(name) and f.endswith(".png"))
+        if not files:
+            return None
+        images.append(QtGui.QImage(os.path.join(OUT, files[0])))
+    ia, ib = images
+    if ia.size() != ib.size():
+        return {"sizes": [[ia.width(), ia.height()], [ib.width(), ib.height()]]}
+    sa, sb, n, total = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0, 0
+    for y in range(0, ia.height(), 2):
+        for x in range(0, ia.width(), 2):
+            ca, cb = ia.pixelColor(x, y), ib.pixelColor(x, y)
+            va, vb = (ca.redF(), ca.greenF(), ca.blueF()), (cb.redF(), cb.greenF(), cb.blueF())
+            total += 1
+            if max(abs(p - q) for p, q in zip(va, vb)) > threshold:
+                n += 1
+                for k in range(3):
+                    sa[k] += va[k]
+                    sb[k] += vb[k]
+    return {"share": round(n / max(total, 1), 4), a: [round(v / max(n, 1), 4) for v in sa],
+            b: [round(v / max(n, 1), 4) for v in sb]}
+
+
+def shadow_parms(light, enable=None, colour=None):
+    """The Light LOP's Shadow parameters (UsdLux ShadowAPI), authored."""
+    for p in light.parms():
+        n = p.name()
+        if enable is not None and n.startswith("xn__inputsshadowenable_"):
+            p.set("set" if "_control_" in n else int(enable))
+        if colour is not None and n.startswith("xn__inputsshadowcolor_") and "_control_" in n:
+            p.set("set")
+    if colour is not None:
+        for t in light.parmTuples():
+            if t.name().startswith("xn__inputsshadowcolor_") and "_control_" not in t.name():
+                t.set(colour)
+
+
+def setup_shadows():
+    """0.2.1 in the viewport (docs/bug-audit-2026-11.md, section 20): a Light
+    LOP's Shadow parameters edited live (Enable off, then a shadow colour),
+    over a grey card and a card without a material that is half see-through by
+    its displayOpacity; Nova CPU, Nova XPU and Karma CPU."""
+    STATE["t0"] = time.time()
+    stage = hou.node("/stage")
+    path = os.path.join(OUT, "shadow_stage.usda")
+    with open(path, "w") as f:
+        f.write(SHADOW_STAGE)
+    sub = stage.createNode("sublayer", "cards")
+    sub.parm("filepath1").set(path.replace("\\", "/"))
+    light = stage.createNode("light", "sun")
+    light.setInput(0, sub)
+    light.parm("lighttype").set("UsdLuxDistantLight")
+    light.parmTuple("r").set((-90, 0, -45))  # from above, slanted towards -x
+    # Normalized: a distant light of half a degree is next to black otherwise (in Karma as well).
+    for p in light.parms():
+        if p.name().startswith("xn__inputsintensity_") and "_control_" not in p.name():
+            p.set(3.0)
+        if p.name().startswith("xn__inputsnormalize_") and "_control_" not in p.name():
+            p.set(1)
+    light.setDisplayFlag(True)
+    STATE["light"] = light
+    v = viewer()
+    v.setPwd(stage)
+    vp = v.curViewport()
+    try:
+        vp.setCamera("/World/cam")
+        camera = str(vp.cameraPath())
+    except Exception as e:  # noqa: BLE001
+        camera = f"failed: {e}"
+    prim = light.stage().GetPrimAtPath(light.evalParm("primpath"))
+    # The stage as the viewport has it, for a render of it through husk.
+    light.stage().Flatten().Export(os.path.join(OUT, "shadow_composed.usda"))
+    log("shadows setup", light=str(prim.GetPath()), type=str(prim.GetTypeName()), camera=camera,
+        viewport=str(vp.type()), prims=[str(p.GetPath()) for p in light.stage().Traverse()])
+    set_renderer("Nova CPU")
+    later(25, step_shadows_on)
+
+
+def shadow_attributes():
+    light = STATE["light"]
+    prim = light.stage().GetPrimAtPath(light.evalParm("primpath"))
+    return {a.GetName(): str(a.Get()) for a in prim.GetAttributes() if "shadow:" in a.GetName() and a.HasAuthoredValue()}
+
+
+def step_shadows_on():
+    capture("90_shadows_on")
+    grab("ui_shadows")
+    shadow_parms(STATE["light"], enable=0)  # live
+    log("shadows off", authored=shadow_attributes())
+    later(15, step_shadows_off)
+
+
+def step_shadows_off():
+    capture("91_shadows_off")
+    shadow_parms(STATE["light"], enable=1, colour=(1.0, 0.25, 0.0))
+    log("shadows tinted", authored=shadow_attributes())
+    later(15, step_shadows_tinted)
+
+
+def step_shadows_tinted():
+    capture("92_shadows_tinted")
+    set_renderer("Nova XPU")
+    later(25, step_shadows_xpu)
+
+
+def step_shadows_xpu():
+    capture("93_shadows_xpu")
+    set_renderer("Karma CPU")
+    later(45, step_shadows_karma)
+
+
+def step_shadows_karma():
+    capture("94_shadows_karma")
+    # Shadows on against off: the pixels of the two shadows, dark before and lit after. Off against the
+    # shadow colour: the same pixels, their red as lit and their blue as shadowed. Then the devices and Karma.
+    log("shadows", on_off=changed_pixels("90_shadows_on", "91_shadows_off"),
+        off_tinted=changed_pixels("91_shadows_off", "92_shadows_tinted"),
+        cpu_xpu=changed_pixels("92_shadows_tinted", "93_shadows_xpu", 0.06),
+        nova_karma=changed_pixels("92_shadows_tinted", "94_shadows_karma", 0.06),
+        means={name: image_mean(name) for name in ("90_shadows_on", "91_shadows_off", "92_shadows_tinted",
+                                                   "93_shadows_xpu", "94_shadows_karma")})
+    set_renderer("Nova CPU")
+    later(2, finish)
+
+
 def finish():
     log("done")
     hou.exit(exit_code=0, suppress_save_prompt=True)
@@ -1475,5 +1680,5 @@ def start():
     os.makedirs(OUT, exist_ok=True)
     modes = {"pyro": setup_pyro, "m9": setup_m9, "xpu": setup_xpu, "tumble": setup_tumble,
              "icons": setup_icons, "dome": setup_dome, "velocity": setup_velocity, "sky": setup_sky,
-             "plate": setup_plate, "karmasettings": setup_karmasettings}
+             "plate": setup_plate, "karmasettings": setup_karmasettings, "shadows": setup_shadows}
     later(5, modes.get(ONLY, setup))

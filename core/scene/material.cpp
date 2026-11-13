@@ -182,38 +182,42 @@ MaterialRecord makeMaterialRecord(const MaterialDesc &desc) {
     return r;
 }
 
-MaterialDesc defaultMaterial() {
-    static const shading::ProgramPtr program = [] {
-        shading::IrGraph g;
-        g.model = SurfaceModel::Lambert;
-        shading::IrBuilder b(g);
-        const shading::Ref color = b.primvar("displayColor", 3, b.constant(0.18f));
-        b.output(surface_field::baseColor, 3, color);
-        shading::CompileResult result = shading::compile(g);
-        assert(result.program);
-        return result.program;
-    }();
+namespace {
+
+// A default material's program: the displayColor attribute as its colour
+// (`fallback` where there is none) and, with `displayOpacity`, that attribute
+// as its opacity.
+shading::ProgramPtr defaultProgram(SurfaceModel model, float fallback, bool displayOpacity) {
+    shading::IrGraph g;
+    g.model = model;
+    shading::IrBuilder b(g);
+    const shading::Ref color = b.primvar("displayColor", 3, b.constant(fallback));
+    b.output(surface_field::baseColor, 3, color);
+    if (displayOpacity)
+        b.output(surface_field::opacity, 3, b.convert(b.primvar("displayOpacity", 1, b.constant(1.0f)), 3));
+    shading::CompileResult result = shading::compile(g);
+    assert(result.program);
+    return result.program;
+}
+
+} // namespace
+
+MaterialDesc defaultMaterial(bool displayOpacity) {
+    static const shading::ProgramPtr program[2] = {defaultProgram(SurfaceModel::Lambert, 0.18f, false),
+                                                   defaultProgram(SurfaceModel::Lambert, 0.18f, true)};
     MaterialDesc d;
     d.inputs = lambertDefaults();
-    d.program = program;
+    d.program = program[displayOpacity ? 1 : 0];
     d.cryptoId = cryptoHash("defaultshader"); // Karma's material name of unbound geometry
     return d;
 }
 
-MaterialDesc plasticDefaultMaterial() {
-    static const shading::ProgramPtr program = [] {
-        shading::IrGraph g;
-        g.model = SurfaceModel::Plastic;
-        shading::IrBuilder b(g);
-        const shading::Ref color = b.primvar("displayColor", 3, b.constant(1.0f));
-        b.output(surface_field::baseColor, 3, color);
-        shading::CompileResult result = shading::compile(g);
-        assert(result.program);
-        return result.program;
-    }();
+MaterialDesc plasticDefaultMaterial(bool displayOpacity) {
+    static const shading::ProgramPtr program[2] = {defaultProgram(SurfaceModel::Plastic, 1.0f, false),
+                                                   defaultProgram(SurfaceModel::Plastic, 1.0f, true)};
     MaterialDesc d;
     d.inputs = plasticDefaults();
-    d.program = program;
+    d.program = program[displayOpacity ? 1 : 0];
     d.cryptoId = cryptoHash("defaultshader");
     return d;
 }

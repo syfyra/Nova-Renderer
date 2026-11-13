@@ -60,9 +60,12 @@ void set3(float *o, Vec3f v) {
     o[2] = v.z;
 }
 
-// The face's own parameters at a triangle hit (Karma's ray:hituv): Hydra
-// fans an n-gon (v0, vk+1, vk+2), so a quad's two triangles map their
-// barycentrics onto the quad's bilinear (u, v); triangles keep theirs.
+// The face's own parameters at a triangle hit (Karma's ray:hituv): a quad's
+// two triangles map their barycentrics onto the quad's bilinear (u, v), u
+// from its first vertex to the second and v on to the last; triangles keep
+// theirs. The delegate fans a quad v0 v1 v2 v3 from its last vertex, as
+// Karma does (hydra/meshTriangulate.h): v3 v0 v1, then v3 v1 v2, a
+// left-handed mesh with the last two corners of each the other way round.
 Vec2f faceParameters(const MeshDesc &d, uint32_t prim, Vec2f b) {
     if (d.isSphere() || d.isCurves() || prim >= d.triangleFaces.size())
         return b;
@@ -74,7 +77,10 @@ Vec2f faceParameters(const MeshDesc &d, uint32_t prim, Vec2f b) {
         ++last;
     if (last - first != 1) // not a quad
         return b;
-    return prim == first ? Vec2f{b.x + b.y, b.y} : Vec2f{b.x, b.x + b.y};
+    if (d.leftHanded)
+        b = {b.y, b.x};
+    // P = v3 + b.x (v0 - v3) + b.y (v1 - v3), and v3 + b.x (v1 - v3) + b.y (v2 - v3).
+    return prim == first ? Vec2f{b.y, 1.0f - b.x - b.y} : Vec2f{b.x + b.y, 1.0f - b.x};
 }
 
 } // namespace

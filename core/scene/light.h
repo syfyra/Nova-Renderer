@@ -60,7 +60,20 @@ struct LightDesc {
     bool equiangular = false;     // karma:light:equiangular: equiangular distance sampling in volumes (M9 D17)
     bool outsideTree = false;     // karma:light:samplingmode Uniform: chosen with the lights at infinity (M9 D18)
     bool illumBackground = false; // karma:light:illumbackground: lights background holdouts (M11 P2)
-    bool castsShadows = true;     // distant lights only: off for Karma's look-dev headlight (M11 P9a)
+    // UsdLux ShadowAPI, as Karma renders it (measured, docs/bug-audit-2026-11.md
+    // section 20). castsShadows off (inputs:shadow:enable; Karma's look-dev
+    // headlight, M11 P9a): nothing shadows the light. shadowColor: the share
+    // of the light that arrives where it is shadowed, L (c + (1 - c) T) for a
+    // shadow ray's transmittance T. shadowDistance: occluders further from
+    // the lit point than this do not shadow (0 or less: no limit).
+    // shadowFalloff: the zone before that distance over which shadows fade,
+    // from full at distance - falloff to none at distance, by the power
+    // shadowFalloffGamma (0 or less: no zone).
+    bool castsShadows = true;
+    Spectrum shadowColor{0.0f, 0.0f, 0.0f};
+    float shadowDistance = -1.0f;
+    float shadowFalloff = -1.0f;
+    float shadowFalloffGamma = 1.0f;
     // Light linking (M9 D15): the category of the objects the light lights,
     // and of those that shadow it (empty: every object; UsdLux collections
     // through HdsiLightLinkingSceneIndex).

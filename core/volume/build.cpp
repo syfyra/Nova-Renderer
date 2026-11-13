@@ -521,6 +521,7 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
             }
     }
     rec.fieldObjectToIndex.clear();
+    rec.maskFields.clear();
     for (const VolumeField &f : d.fields)
         rec.fieldObjectToIndex.push_back(f.grid ? inverseAffine(f.indexToObject()) : Affine3f{});
 
@@ -650,6 +651,25 @@ void buildVolumeRecord(VolumeRecord &rec, const MaterialRecord *material, float 
         // shader gives for the fields' background values: a constant medium, a
         // constant emission or a density with an offset would fill the whole
         // box of cells otherwise (audit V-3, V-4).
+        // Inside a cell the evaluators ask the voxels themselves
+        // (VolumeRecord::maskFields), where the shader gives anything at the
+        // background values at all: its bound over the whole domain with every
+        // field at its background (no bound counts as something).
+        if (!d.shell) {
+            std::vector<CellRanges> background(read.size());
+            for (size_t r = 0; r < read.size(); ++r) {
+                const float value = d.fields[size_t(read[r])].grid->grid()->tree().background();
+                background[r].lo = background[r].hi = {value};
+            }
+            const ShaderBounds atBackground{rec, *material, *rec.program, read, background, sb.slot, objectToWorld, time, frame};
+            Vec3f olo, ohi, wlo, whi;
+            mappedBox(indexToObject, rec.layout.lower(), rec.layout.upper(), olo, ohi);
+            mappedBox(indexToWorld, rec.layout.lower(), rec.layout.upper(), wlo, whi);
+            std::vector<shading::Interval> rows(std::max<size_t>(rec.program->rowCount, 1));
+            const CellBound nothing = atBackground.interval(0, wlo, whi, olo, ohi, rows);
+            if (!(nothing.extinction == 0.0f && nothing.emission == 0.0f))
+                rec.maskFields = read;
+        }
         if (!d.shell)
             for (size_t i = 0; i < cells; ++i) {
                 bool touched = false;

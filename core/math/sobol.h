@@ -206,6 +206,10 @@ constexpr uint32_t kLookAo = 0xB0000u;
 // depth.
 constexpr uint32_t kGroundLightBase = 0xC0000u;
 NOVA_INLINE constexpr uint32_t groundLight(uint32_t depth) { return kGroundLightBase + depth; }
+// The ray class of a continuation off a surface whose lobes are events of
+// several classes (lpe_path.h splitEventClass), 1D per depth.
+constexpr uint32_t kClassSplitBase = 0xD0000u;
+NOVA_INLINE constexpr uint32_t classSplit(uint32_t depth) { return kClassSplitBase + depth; }
 } // namespace stream
 
 } // namespace nova

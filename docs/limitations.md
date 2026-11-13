@@ -50,7 +50,7 @@ messages) and from the design notes, each checked against the code.
 | Heavily instanced emissive meshes have no two-level light tree. | Flattened to one light per triangle and instance; a message above the budget. | `design/M9.md` 2.2 |
 | Light filters other than Karma's blocker; filter spaces other than world. | Ignored with a warning; world space. | `hydra/lightFilter.cpp` |
 | `misbias`, `activeradius`, `pointradius` and `contribs` light properties. | Ignored. | `design/M9.md` 2.2 |
-| UsdLux ShadowAPI: `inputs:shadow:enable` and `inputs:shadow:color`. | Ignored: every light casts full shadows (Karma: none, or tinted ones). | `bug-audit-2026-11.md` 19 (L-1) |
+| A light with UsdLux ShadowAPI settings (shadows off, a shadow colour, a shadow distance) is sampled by its own light samples alone: a ray that continues the path stops at the first surface and would shadow it as any light. | Its light is the same; a large area light with such settings reflected in a glossy surface close to it is noisier than without them. A dome's BSDF samples become shadow rays of their own, at one more ray per bounce. | `LightData::ownShadows`, `core/lights/lights.h`; `bug-audit-2026-11.md` 20 |
 | Geometry inside a sphere light (a bulb mesh, a light sunk into a wall). | Every surface inside is lit with the light's full radiance whatever it faces; Karma lights it by how it faces the centre. | `bug-audit-2026-11.md` 19 (L-0) |
 | A cylinder light scaled non-uniformly across its axis; a dome light scaled non-uniformly. | A circular cylinder of the mean radius; a dome that is turned and mirrored but not stretched. A warning each. | `hydra/light.cpp` |
 | Occluders very close to a light in a scene of large extent: shadow rays stop short of a light by 32 float ulps of the scene's largest coordinate (0.04 units in a scene that reaches 10 000, 0.4 at 100 000), so that a light lying on a surface is not shadowed by it. | An object closer to a light than that does not shadow it. | `shadowRayLength`, `core/lights/lights.h` |
@@ -70,8 +70,8 @@ messages) and from the design notes, each checked against the code.
 | Principled Shader: packed colour, the `vdisp` input, noise displacement, dispersion, rounded edges, `opdef:` textures. | Ignored with a warning. | `hydra/material/principled.cpp` |
 | VEX materials: AOV exports other than the mapped `export_*` names, fake caustics through them, ray-tracing VEX (`trace`, `gather`, `illuminance`), light, lens, fog and volume VEX shaders. | Opaque to fake-caustic rays; a shader that traces fails to compile and the preview material renders; the other shader kinds are ignored with a warning. | `design/M5.md` |
 | UDIM sets inside packages (`.usdz`). | The texture fails to load, with an error. | `hydra/textureConvert.cpp` |
-| `primvars:displayOpacity` on geometry without a material. | The default material is opaque (Karma: see-through). | `bug-audit-2026-11.md` 19 (R-3) |
-| A mesh without `st` under a textured material. | The texture is read at (0, 0): one colour. Karma maps every face 0..1. | `bug-audit-2026-11.md` 19 (T-5) |
+| `primvars:displayOpacity` of instance rate (per instance of a point instancer) on geometry without a material. | Opaque; the primvar on the prototype itself is read. | `HdNovaHasDisplayOpacity`, `hydra/primvarUtil.cpp` |
+| A mesh without `st` under a textured material. | The texture is read at (0, 0): one colour. Karma gives every face its own parameters (a quad (0, 0) to (1, 1) from its first vertex). | `bug-audit-2026-11.md` 20 (T-5) |
 | UsdPreviewSurface between metallic 0 and 1, and its specular workflow with a coloured `specularColor`. | MaterialX's graph of the shader, which is less saturated than Karma's own conversion of the USD shader. | `bug-audit-2026-11.md` 19 (MA-1) |
 | Rough coloured metal and rough glass against Karma. | Nova compensates multiple scattering (coloured for metals, energy-preserving for glass); Karma's rough metal keeps the base colour and its rough glass loses energy. From roughness 0.6 on the two differ visibly. | `bug-audit-2026-11.md` 19 (MA-4, MA-5) |
 
@@ -80,7 +80,6 @@ messages) and from the design notes, each checked against the code.
 | Limitation | What happens instead | Source |
 |---|---|---|
 | `nurbsCurves` prims. | Not rendered (Houdini's SOP Import never authors them). | `design/M9.md` |
-| The diagonal of a quad. | Hydra's: from the first vertex (0-2). Karma splits 1-3, so primvars and `st` that are not affine over a quad, and the fold of a non-planar quad, differ. | `bug-audit-2026-11.md` 19 (R-2) |
 | Karma's `instance_samples` for instances without velocity blur. | Instances follow every authored time sample; Karma samples them `instance_samples` times (2: a straight segment). | `bug-audit-2026-11.md` 19 (MO-2) |
 | Authored normals on subdivided meshes; subdivision of bilinear meshes. | Normals come from the limit surface; bilinear meshes stay polygonal. | `reference.md` |
 | Cylinders, cones and capsules are meshes of 96 sides, not analytic shapes. | They are the prim to 0.05 % of its radius. Karma renders them 6 % narrower (it subdivides UsdImaging's ten-sided cage), and spheres 8 % smaller, where Nova's are exact. | `hydra/implicitSceneIndex.h` |
@@ -100,7 +99,6 @@ messages) and from the design notes, each checked against the code.
 | Karma CPU's lattice-deformation velocity blur. | Velocity blur as a lookup offset. | `design/M8.md` |
 | Field prims other than VDB and Houdini volumes; VDB grids of value types other than the scalar and vector ones the bridge converts. | The field is skipped, with a warning. | `hydra/field.cpp`, `houdini/volume_bridge/bridge.cpp` |
 | Cryptomatte ids for volumes. | Volumes have no cryptomatte coverage. | `design/M8.md` 2.2 |
-| A volume shader that is not zero where its fields are (a constant emission, a density with an offset). | It fills the cells of 8 voxels that the fields' voxels reach, not the voxels themselves as in Karma: the volume is up to 7 voxels larger on its high sides. | `bug-audit-2026-11.md` 19 (V-4) |
 | Instanced VDB volumes. | Every instance builds its own bounds (the grids are shared): many instances of a large VDB cost build time and memory per instance. | `hydra/volume.cpp` |
 | Field prims with a transform of their own or outside their Volume prim. | Placed by the field prim's transform (the UsdVol schema); Karma places every field by the Volume's. | `bug-audit-2026-11.md` 19 (V-7) |
 | Karma's step-rate settings (`volumesteprate`, `volumeshadowsteprate`, `volumequality`, `volumesamplingchannel`). | Ignored: Nova tracks without bias at any setting; fire is slower than Karma at its default step rate. | `design/M8.md` D16 |
@@ -160,3 +158,24 @@ This one is described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section
   smooth normals. They are meshes of 96 sides at the prim's size (`hydra/implicitSceneIndex.cpp`).
 
 These four are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 16.
+
+- **Quads were split along the other diagonal than in Karma.** Hydra fans a face from its first vertex, Karma from its
+  last: a quad 0 1 2 3 was 0 1 2 and 0 2 3 where Karma renders 0 1 3 and 1 2 3, so a quad that is not flat folded the
+  other way, and a primvar or `st` that is not affine over a face was interpolated otherwise. Every face of more than
+  three vertices has Karma's triangles (`hydra/meshTriangulate.cpp`).
+- **UsdLux ShadowAPI was ignored.** `inputs:shadow:enable`, `inputs:shadow:color`, `inputs:shadow:distance`,
+  `inputs:shadow:falloff` and `inputs:shadow:falloffGamma` are rendered as Karma renders them, on every light type and
+  both devices (`shadowReach`, `shadowPass`, `core/lights/lights.h`).
+- **Geometry without a material ignored `primvars:displayOpacity`.** It is see-through by the primvar, as in Karma, and
+  its shadows let the rest of the light through.
+- **Nova XPU rendered a cut-out opaque when its opacity was a `geompropvalue` itself**, with nothing computed from it:
+  the opacity program then has no instruction, which the kernels took for no program.
+
+- **A volume shader that gives something without its fields filled cells of 8 voxels** (a constant emission or
+  medium on a VDB, a density with an offset). It runs where a lookup reaches a voxel of the fields it reads, the
+  voxels and half a voxel around them, as in Karma.
+- **Diffuse light passed the diffuse limit on surfaces that also have a glossy lobe** (and glossy light a reflect
+  limit): a bounce took the ray class of the lobe that was sampled and the light of all of them. It takes one class
+  with that class's light (the lights its own ray meets, which a ray of every class gathers, keep the whole).
+
+These six are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 20.

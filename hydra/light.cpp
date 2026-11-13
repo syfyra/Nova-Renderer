@@ -255,6 +255,18 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     }
     desc.visible = sd->GetVisible(id);
 
+    // UsdLux ShadowAPI, as Karma renders it (LightDesc): unauthored, full
+    // black shadows at any distance.
+    desc.castsShadows = lightParam<bool>(sd, id, HdLightTokens->shadowEnable, true);
+    {
+        const GfVec3f c = lightParam<GfVec3f>(sd, id, HdLightTokens->shadowColor, GfVec3f(0.0f));
+        const auto share = [](float v) { return v > 0.0f ? std::min(v, 1.0f) : 0.0f; }; // NaN: none
+        desc.shadowColor = {share(c[0]), share(c[1]), share(c[2])};
+    }
+    desc.shadowDistance = lightParam<float>(sd, id, HdLightTokens->shadowDistance, -1.0f);
+    desc.shadowFalloff = lightParam<float>(sd, id, HdLightTokens->shadowFalloff, -1.0f);
+    desc.shadowFalloffGamma = lightParam<float>(sd, id, HdLightTokens->shadowFalloffGamma, 1.0f);
+
     // Karma's light properties; unauthored they take Karma's fallbacks.
     desc.cameraVisible = lightParam<bool>(sd, id, _tokens->renderLightGeo, false);
     desc.twoSided = !lightParam<bool>(sd, id, _tokens->singleSided, true);

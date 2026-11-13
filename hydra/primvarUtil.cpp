@@ -397,4 +397,15 @@ bool HdNovaIsGeometryPrimvar(TfToken const &name) {
            name == HdInstancerTokens->instanceTransforms;
 }
 
+bool HdNovaHasDisplayOpacity(HdSceneDelegate *sd, SdfPath const &id) {
+    for (int i = 0; i < HdInterpolationCount; ++i) {
+        if (HdInterpolation(i) == HdInterpolationInstance)
+            continue;
+        for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolation(i)))
+            if (d.name == HdTokens->displayOpacity)
+                return true;
+    }
+    return false;
+}
+
 PXR_NAMESPACE_CLOSE_SCOPE

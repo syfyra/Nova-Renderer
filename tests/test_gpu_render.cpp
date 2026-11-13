@@ -164,7 +164,13 @@ double closePixels(const Film &a, const Film &b) {
 VolumeGridPtr cubeGrid(float value, int n, double h) {
     nanovdb::build::Grid<float> g(0.0f, "field", nanovdb::GridClass::FogVolume);
     g.setTransform(h, nanovdb::Vec3d(0.0));
-    g([&](const nanovdb::Coord &) { return value; }, nanovdb::CoordBBox(nanovdb::Coord(-n), nanovdb::Coord(n - 1)));
+    // Voxel by voxel: the builder's fill of a box turns a leaf of one value into a tile, and of the eight
+    // such tiles around the origin (n = 8) the grid then lacked the one at (-8, -8, -8): 3584 voxels of 4096.
+    auto acc = g.getAccessor();
+    for (int z = -n; z < n; ++z)
+        for (int y = -n; y < n; ++y)
+            for (int x = -n; x < n; ++x)
+                acc.setValue(nanovdb::Coord(x, y, z), value);
     const nanovdb::GridHandle<nanovdb::HostBuffer> handle = nanovdb::createNanoGrid(g);
     return VolumeGrid::copyOf(handle.data(), handle.size());
 }
@@ -895,6 +901,73 @@ TEST_CASE("XPU volumes: media, volume lights, equiangular", "[gpu][render][volum
     CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.005 * cpuMean));
 }
 
+// Audit V-4 (0.2.1): a volume shader that gives something without its field
+// (a constant emission here) runs where a lookup reaches the field's voxels,
+// as in Karma, and no further: on the device as on the CPU, and by the
+// box's own measure. Voxels -8 to 7 of 1/16 are reached from -9 to 8: 17/16
+// along the view and across.
+TEST_CASE("XPU volume shaders run where a lookup reaches their fields' voxels", "[gpu][render][volume]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    using namespace shading;
+    Scene scene;
+    IrGraph graph;
+    IrBuilder b(graph);
+    b.output(uint16_t(volume_field::kBase + volume_field::emission), 3, b.constant(1.0f, 1.0f, 1.0f));
+    MaterialDesc glow;
+    glow.program = compile(graph).program;
+    REQUIRE(glow.program);
+    const MaterialId material = scene.createMaterial();
+    scene.updateMaterial(material, glow);
+    VolumeDesc box;
+    box.fields.push_back({"density", "density", cubeGrid(1.0f, 8, 1.0 / 16.0), Affine3f{}});
+    box.material = material;
+    const VolumeId id = scene.createVolume();
+    scene.updateVolume(id, box);
+    scene.commit();
+    REQUIRE(scene.volumeRecord(id).maskFields.size() == 1);
+    // 64 pixels over -1 to 1: the box's reach, -9/16 to 8/16, is columns 14 to 47.
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 1.0f, 64, 64);
+    RenderSettings unfiltered; // every sample inside its own pixel
+    unfiltered.pixelFilterScale = 0.0f;
+    const Render cpu = render(scene, camera, 64, 64, 64, RenderDevice::Cpu, 2, false, unfiltered);
+    const Render gpu = render(scene, camera, 64, 64, 64, RenderDevice::Xpu, 2, false, unfiltered);
+    REQUIRE(gpu.gpu);
+    const auto pixel = [](const Film &film, int x, int y) {
+        const size_t i = size_t(y) * size_t(film.width) + size_t(x);
+        return double(film.colorSum[i].y) / double(film.count[i]);
+    };
+    for (const Film *film : {&cpu.film, &gpu.film}) {
+        INFO((film == &cpu.film ? "CPU" : "XPU"));
+        // The emission over the reach along the view, to the noise of 64 samples of a tracked estimate:
+        // blocks of 8 x 8 pixels at the middle and inside each edge of the reach.
+        const auto block = [&](int x0, int y0) {
+            double sum = 0.0;
+            for (int y = y0; y < y0 + 8; ++y)
+                for (int x = x0; x < x0 + 8; ++x)
+                    sum += pixel(*film, x, y);
+            return sum / 64.0;
+        };
+        CHECK_THAT(block(28, 28), WithinAbs(17.0 / 16.0, 0.02));
+        CHECK_THAT(block(14, 14), WithinAbs(17.0 / 16.0, 0.02)); // the corner at (-9/16, 9/16)
+        CHECK_THAT(block(40, 40), WithinAbs(17.0 / 16.0, 0.02)); // the corner at (8/16, -8/16)
+        CHECK_THAT(block(14, 40), WithinAbs(17.0 / 16.0, 0.02));
+        CHECK(pixel(*film, 12, 30) == 0.0); // 0.03 to 0.06 outside the reach: in a cell of the volume, not in reach
+        CHECK(pixel(*film, 50, 30) == 0.0);
+        CHECK(pixel(*film, 30, 12) == 0.0);
+        CHECK(pixel(*film, 30, 50) == 0.0);
+        // The whole image: the reach across, 17/16 squared of the 4 square units, times the reach along the view.
+        double sum = 0.0;
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x)
+                sum += pixel(*film, x, y);
+        CHECK_THAT(sum / 4096.0, WithinAbs(std::pow(17.0 / 16.0, 3.0) / 4.0, 0.01));
+    }
+    const double cpuMean = luminanceMean(cpu.film), gpuMean = luminanceMean(gpu.film);
+    CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.005 * cpuMean));
+}
+
 // A volume light that doubles its size while it moves over the shutter
 // (R1-36): its light samples and their MIS weights take the cell's world
 // volume at the path's time, on the GPU as on the CPU.
@@ -1226,6 +1299,69 @@ TEST_CASE("XPU opacity", "[gpu][render][opacity]") {
     for (size_t i = 0; i < cpu.film.alphaSum.size(); ++i)
         alphaSame += cpu.film.alphaSum[i] == gpu.film.alphaSum[i];
     CHECK(alphaSame >= int(cpu.film.alphaSum.size()) * 98 / 100);
+}
+
+// An opacity that is a primvar itself (Standard Surface's opacity connected
+// to a geompropvalue): its opacity program has bindings and outputs but not
+// one instruction, and the kernels took "no code" for "no program". Nova XPU
+// rendered such a cut-out opaque (docs/bug-audit-2026-11.md, A-1).
+TEST_CASE("XPU opacity straight from a primvar", "[gpu][render][opacity]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    using namespace shading;
+    Scene scene;
+    MeshDesc ground = makeQuad(3.0f);
+    ground.setDisplayColor(spectrum(0.6f));
+    scene.updateMesh(scene.createMesh(), ground);
+    // A green card over the ground, opaque at two of its corners and gone at the other two.
+    MeshDesc card = makeQuad(1.0f);
+    card.setAttribute({"op", AttributeRate::Vertex, 3, {0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1}});
+    card.transform = translation({0.0f, 0.0f, 0.6f});
+    const MeshId cardId = scene.createMesh();
+    scene.updateMesh(cardId, card);
+    IrGraph g;
+    g.model = SurfaceModel::StandardSurface;
+    IrBuilder b(g);
+    b.output(surface_field::opacity, 3, b.primvar("op", 3, b.constant(1.0f, 1.0f, 1.0f)));
+    MaterialDesc cutout;
+    cutout.inputs = standardSurfaceDefaults();
+    cutout.inputs.set(surface_field::baseColor, Spectrum{0.1f, 0.8f, 0.1f});
+    cutout.program = compile(g).program;
+    REQUIRE(cutout.program);
+    REQUIRE(cutout.program->opacity);
+    REQUIRE(cutout.program->opacity->code.empty()); // the case: nothing to run, only to read
+    const MaterialId cutoutId = scene.createMaterial();
+    scene.updateMaterial(cutoutId, cutout);
+    scene.setMeshMaterials(cardId, {cutoutId});
+    LightDesc rect;
+    rect.type = LightType::Rect;
+    rect.width = rect.height = 1.0f;
+    rect.intensity = 6.0f;
+    rect.transform = translation({0.0f, 0.0f, 3.0f});
+    scene.updateLight(scene.createLight(), rect);
+    scene.commit();
+    REQUIRE(scene.anyFiltered());
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 1.6f, 48, 48);
+    const Render cpu = render(scene, camera, 48, 48, 64, RenderDevice::Cpu, 6, true);
+    const Render gpu = render(scene, camera, 48, 48, 64, RenderDevice::Xpu, 6, true);
+    REQUIRE(gpu.gpu);
+    const double close = closePixels(cpu.film, gpu.film), cpuMean = luminanceMean(cpu.film),
+                 gpuMean = luminanceMean(gpu.film);
+    INFO("pixels within 1e-3: " << close << "; mean CPU " << cpuMean << ", GPU " << gpuMean);
+    CHECK(close >= 0.9);
+    CHECK_THAT(gpuMean, WithinAbs(cpuMean, 0.005 * cpuMean));
+    // The same hits counted on both devices: an opaque card would be alpha 1 in every pixel alike, so the
+    // colour decides. Opaque, the card's green would be in all of its pixels; cut out, in about half.
+    double cpuGreen = 0.0, gpuGreen = 0.0;
+    for (size_t i = 0; i < cpu.film.colorSum.size(); ++i) {
+        const Spectrum c = cpu.film.colorSum[i], d = gpu.film.colorSum[i];
+        cpuGreen += double(c.y - c.x);
+        gpuGreen += double(d.y - d.x);
+    }
+    INFO("green over red, summed: CPU " << cpuGreen << ", GPU " << gpuGreen);
+    CHECK(cpuGreen > 0.0);
+    CHECK_THAT(gpuGreen, WithinAbs(cpuGreen, 0.03 * cpuGreen));
 }
 
 // Fake caustics (M4 3.3): a solid glass ball and a tinted thin-walled pane

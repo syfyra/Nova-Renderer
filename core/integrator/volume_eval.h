@@ -29,6 +29,9 @@ public:
     VolumePoint operator()(Vec3f p, Vec3f w, Vec3f dir, float time, uint8_t rayType, uint32_t depth);
     // Field `index` of the volume at object-space point p.
     float field(int32_t index, Vec3f p);
+    // Whether a lookup at p reaches a voxel of one of the record's mask
+    // fields (VolumeRecord::maskFields).
+    bool reaches(Vec3f p);
 
 private:
     const Scene &m_scene;

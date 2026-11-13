@@ -542,6 +542,8 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     if (const bool plastic = param.GetMaterials().PlasticDefault(); int(plastic) != _defaultMaterial) {
         thread.StopRender();
         scene.updateMaterial(nova::kDefaultMaterialId, param.GetMaterials().DefaultMaterial());
+        if (const nova::MaterialId withOpacity = param.GetMaterials().OpacityDefault(); withOpacity != nova::kInvalidId)
+            scene.updateMaterial(withOpacity, param.GetMaterials().DefaultMaterial(true));
         _defaultMaterial = int(plastic);
     }
     const int threads = _delegate->GetThreadLimit(int(WorkGetConcurrencyLimit()));

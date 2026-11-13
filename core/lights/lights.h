@@ -40,11 +40,13 @@
 #include "core/math/distribution.h"
 #include "core/math/frame.h"
 #include "core/math/sampling.h"
+#include "core/math/sobol.h"
 #include "core/math/spectrum.h"
 #include "core/scene/light.h"
 #include "core/scene/ray.h"
 
 #include <cstdint>
+#include <cstring>
 
 namespace nova {
 
@@ -141,11 +143,25 @@ struct LightData {
     // background holdouts as it lights other objects, and its shadows are
     // left out of the holdout shadow outputs.
     bool illumBackground = false;
-    // Karma's look-dev headlight casts no shadows (measured, docs/design/
-    // M11-P9a.md): its distant light samples have shadow rays of length 0.
+    // UsdLux ShadowAPI (LightDesc; Karma's look-dev headlight casts no
+    // shadows, docs/design/M11-P9a.md). A light that casts none has shadow
+    // rays of length 0; a shadow distance shortens them (shadowReach()); a
+    // shadow colour is the share of a shadowed sample that still arrives
+    // (shadowPass()). shadowShaped: any of the three.
     bool castsShadows = true;
+    bool shadowShaped = false;
+    bool shadowTinted = false;
+    Spectrum shadowColor{0.0f, 0.0f, 0.0f};
+    float shadowDistance = -1.0f;
+    float shadowFalloff = -1.0f;
+    float shadowFalloffGamma = 1.0f;
     NOVA_INLINE bool shadowLinked() const { return shadowCategory != 0xFFFFu; }
-    NOVA_INLINE bool neeOnly() const { return shadowLinked() && type != LightType::Dome; }
+    // The light's shadows are not those of a ray that stops at the first
+    // surface: a shadow set of its own (M9 D15) or ShadowAPI settings. Such a
+    // light is seen by its own shadow rays only: a continuation ray that an
+    // object stops would shadow it as any light.
+    NOVA_INLINE bool ownShadows() const { return shadowLinked() || shadowShaped; }
+    NOVA_INLINE bool neeOnly() const { return ownShadows() && type != LightType::Dome; }
     // Light filters (docs/design/M11-P4.md): the light's filters in order
     // (Scene-owned; null: none).
     const LightFilterData *filters = nullptr;
@@ -432,6 +448,41 @@ NOVA_INLINE float lightSearchLimit(float tHit, float tolerance = 0.0f) {
     return nova::fmax(tHit / kShadowRayShortening, tHit + tolerance);
 }
 
+// UsdLux ShadowAPI on a shadow ray of length `distance` (LightDesc): no ray
+// for a light that casts no shadows, and none past its shadow distance. The
+// falloff zone is a random length: a ray that ends at D - F u^(1/g) meets an
+// occluder at distance d with probability ((D - d) / F)^g, the strength of
+// its shadow there (Karma, measured: linear for g = 1, 1 - (1 - t)^g of the
+// light arrives at the share t of the zone). `u`: the light sample's numbers;
+// the zone's number is hashed from them.
+NOVA_INLINE float shadowReach(const LightData &light, float distance, Vec2f u) {
+    if (!light.shadowShaped)
+        return distance;
+    if (!light.castsShadows)
+        return 0.0f;
+    if (!(light.shadowDistance > 0.0f))
+        return distance;
+    float reach = light.shadowDistance;
+    if (light.shadowFalloff > 0.0f) {
+        uint32_t a, b;
+        std::memcpy(&a, &u.x, sizeof(a));
+        std::memcpy(&b, &u.y, sizeof(b));
+        const float x = float(hashCombine(a ^ 0x5bd1e995u, b) >> 8) * (1.0f / 16777216.0f);
+        const float g = light.shadowFalloffGamma > 0.0f ? light.shadowFalloffGamma : 1.0f;
+        reach = nova::fmax(reach - light.shadowFalloff * std::pow(x, 1.0f / g), 0.0f);
+    }
+    return nova::fmin(distance, reach);
+}
+
+// The share of a light sample that arrives: all of it through an unblocked
+// shadow ray of transmittance T, and the light's shadow colour of what the
+// ray lost (UsdLux ShadowAPI; black: none).
+NOVA_INLINE Spectrum shadowPass(const Spectrum &shadowColor, bool blocked, const Spectrum &T) {
+    if (blocked)
+        return shadowColor;
+    return shadowColor + (Spectrum{1.0f, 1.0f, 1.0f} - shadowColor) * T;
+}
+
 NOVA_INLINE LightSample noLightSample() {
     LightSample s;
     s.wi = {0.0f, 0.0f, 1.0f};
@@ -585,6 +636,7 @@ NOVA_INLINE LightSample sampleLight(const LightData &light, Vec3f P, Vec2f u, ui
     LightSample s = sampleLightUnfiltered(light, P, u);
     if (light.filterCount > 0 && s.pdf > 0.0f)
         s.Li *= lightFilters(light, LightFilterSite{P, categories});
+    s.distance = shadowReach(light, s.distance, u);
     return s;
 }
 
@@ -667,10 +719,11 @@ NOVA_INLINE Spectrum escapedRadiance(const LightData *lights, const Pmf &pmf, ui
     Spectrum L{0.0f, 0.0f, 0.0f};
     for (uint32_t i = 0; i < count; ++i) {
         const LightData &light = lights[i];
-        // Off (sampling quality 0, M9 D18), unlinked, or shadow-linked after a
-        // non-delta event (D15): only the light's own samples see its shadow
-        // set (LightData::shadowCategory).
-        if (!light.illuminates() || !pmf.links(i) || (light.shadowLinked() && bsdfPdf >= 0.0f))
+        // Off (sampling quality 0, M9 D18), unlinked, or with shadows of its
+        // own after a non-delta event (D15, ShadowAPI): only the light's own
+        // samples see its shadow set and its shadow settings
+        // (LightData::ownShadows).
+        if (!light.illuminates() || !pmf.links(i) || (light.ownShadows() && bsdfPdf >= 0.0f))
             continue;
         if (light.type == LightType::Dome) {
             // With portals, only through them (seen from the ray's site).
@@ -860,7 +913,7 @@ NOVA_INLINE Spectrum areaLightsAlongRay(const LightData *lights, const Pmf &pmf,
     forEachAreaLightCrossing(lights, count, tree, o, d, tMax, [&](uint32_t i, float t, Vec3f n, bool) {
         const LightData &light = lights[i];
         if (!pmf.links(i) || (light.neeOnly() && bsdfPdf >= 0.0f))
-            return; // unlinked, or a shadow-linked light that only NEE samples (M9 D15)
+            return; // unlinked, or a light with shadows of its own that only NEE samples (M9 D15)
         const Vec3f p = o + d * t;
         const float weight = bsdfSampleWeight(
             strategy, bsdfPdf, misNeedsPmf(strategy, bsdfPdf) ? pmf(i) * areaLightPdf(light, pdfOrigin, p, n) : 0.0f);

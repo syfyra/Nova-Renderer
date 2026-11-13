@@ -1,0 +1,92 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# How a polygon is split into triangles (docs/bug-audit-2026-11.md, section
+# 20). Karma fans a face from its last vertex: a quad 0 1 2 3 is the
+# triangles 0 1 3 and 1 2 3. Hydra's own triangulation fans from the first
+# (0 1 2 and 0 2 3), which Nova rendered: a primvar that is not affine over
+# the quad came out otherwise, and a quad that is not flat folded along the
+# other diagonal.
+#
+# Two faces seen from above that emit a vertex primvar which is 1 at their
+# first vertex and 0 at the others: the left a quad (x in -4.5..-0.5), the
+# right a pentagon around (2.5, 0). In Karma the quad's far triangle 1 2 3
+# is black and the pentagon is lit in its triangle 0 1 4 alone.
+# tests/husk/check_stage_features.py compares.
+def Xform "World"
+{
+    def Mesh "quad" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-4.5, 0, 2), (-0.5, 0, 2), (-0.5, 0, -2), (-4.5, 0, -2)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:hat = [(1, 1, 1), (0, 0, 0), (0, 0, 0), (0, 0, 0)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </World/glow>
+    }
+
+    def Mesh "pentagon" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [5]
+        int[] faceVertexIndices = [0, 1, 2, 3, 4]
+        point3f[] points = [(2.5, 0, 2), (4.402, 0, 0.618), (3.676, 0, -1.618), (1.324, 0, -1.618), (0.598, 0, 0.618)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:hat = [(1, 1, 1), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </World/glow>
+    }
+
+    def Material "glow"
+    {
+        token outputs:mtlx:surface.connect = </World/glow/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:emission = 1
+            color3f inputs:emission_color.connect = </World/glow/hat.outputs:out>
+            token outputs:out
+        }
+
+        def Shader "hat"
+        {
+            uniform token info:id = "ND_geompropvalue_color3"
+            string inputs:geomprop = "hat"
+            color3f outputs:out
+        }
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 100
+        float verticalAperture = 60
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 10, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (200, 120)
+        int nova:samples = 16
+    }
+}

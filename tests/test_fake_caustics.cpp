@@ -479,3 +479,74 @@ TEST_CASE("Constrained roughness leaves fake-caustic pass-throughs as their shad
     CHECK_THAT(bsdf.x / light.x, WithinAbs(1.0, 0.02));
     CHECK_THAT(bsdf.z / light.z, WithinAbs(1.0, 0.02));
 }
+
+// A ray past its limit gathers lights only, and after a diffuse event it
+// crosses fake-caustic objects as a shadow ray would. Which rays do that
+// depends on the class of their event, so the light behind such an object is
+// the class's own: the share of the path's weight that a mixture's class has
+// (WaveQueues::classShare) is taken where the ray crosses. Off a red plastic
+// with no bounce allowed, the dome behind a pane arrives through the diffuse
+// lobe alone and has its colour; with the whole mixture's weight the Phong
+// lobe's white was in it.
+TEST_CASE("The light behind a fake-caustic object is the light of the ray's class", "[gpu][render][causticsfake][limits]") {
+    const Spectrum red{0.8f, 0.1f, 0.1f};
+    auto render = [&](RenderDevice device, bool pane, bool &onGpu) {
+        Setup s(false);
+        SurfaceInputs plastic = plasticDefaults();
+        plastic.set(sf::baseColor, red);
+        s.plane(0.0f, -4.0f, 4.0f, plastic);
+        RayLimitOverrides on;
+        on.fakeCaustics = 1;
+        if (pane)
+            s.plane(0.1f, -4.0f, 4.0f, glass(), &on); // over all of the hemisphere but its last degree
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        dome.intensity = 1.0f;
+        s.scene.updateLight(s.scene.createLight(), dome);
+        s.scene.commit();
+        RenderSettings settings;
+        settings.device = device;
+        settings.maxSamples = 1024;
+        settings.maxDepth = 8;
+        settings.lightStrategy = LightStrategy::BsdfOnly;
+        settings.clampIndirect = 0.0f;
+        settings.pixelFilterScale = 0.0f;
+        RayLimits limits;
+        limits.limit[int(LimitClass::Diffuse)] = 0.0f; // every bounce's ray gathers lights only
+        limits.limit[int(LimitClass::Reflect)] = 0.0f;
+        settings.limits = limits;
+        Renderer renderer;
+        renderer.setScene(&s.scene);
+        renderer.setSettings(settings);
+        renderer.setCamera(makeOrthoCamera({0.0f, 0.0f, 0.05f}, 0.25f, 8, 8)); // between the plastic and the pane
+        renderer.resize(8, 8);
+        onGpu = true;
+        while (!renderer.converged()) {
+            renderer.renderPass({});
+            onGpu = onGpu && renderer.lastPassOnGpu();
+        }
+        Spectrum sum{0, 0, 0};
+        for (int y = 0; y < 8; ++y)
+            for (int x = 0; x < 8; ++x)
+                sum += pixelMean(renderer.film(), x, y);
+        return sum * (1.0f / 64.0f);
+    };
+    for (const RenderDevice device : {RenderDevice::Cpu, RenderDevice::Xpu}) {
+        bool onGpu = false;
+        const Spectrum open = render(device, false, onGpu), behind = render(device, true, onGpu);
+        if (device == RenderDevice::Xpu && !onGpu) {
+            WARN("no GPU: the XPU render ran on the CPU");
+            continue;
+        }
+        INFO((device == RenderDevice::Xpu ? "XPU" : "CPU")
+             << ": under the open dome (" << open.x << ", " << open.y << ", " << open.z << "), behind the pane ("
+             << behind.x << ", " << behind.y << ", " << behind.z << ")");
+        // The open dome: every class's ray gathers it, both lobes' light.
+        REQUIRE(open.x > 0.0f);
+        CHECK(open.y / open.x > 1.3f * red.y / red.x);
+        // Behind the pane: the diffuse lobe's.
+        REQUIRE(behind.x > 0.1f);
+        CHECK_THAT(behind.y / behind.x, WithinAbs(red.y / red.x, 0.03 * red.y / red.x));
+        CHECK_THAT(behind.z / behind.x, WithinAbs(red.z / red.x, 0.03 * red.z / red.x));
+    }
+}

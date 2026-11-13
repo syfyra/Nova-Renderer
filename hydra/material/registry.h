@@ -56,7 +56,15 @@ public:
     // the scene's default material the same.
     void SetPlasticDefault(bool plastic) { _plasticDefault.store(plastic, std::memory_order_relaxed); }
     bool PlasticDefault() const { return _plasticDefault.load(std::memory_order_relaxed); }
-    nova::MaterialDesc DefaultMaterial() const;
+    nova::MaterialDesc DefaultMaterial(bool displayOpacity = false) const;
+
+    // The material of geometry without one that has a displayOpacity primvar:
+    // the default material with that primvar as its opacity (Karma renders
+    // such geometry see-through). A scene material of its own, created on
+    // first use; the render pass keeps it at the default material's kind
+    // (OpacityDefault(): its id, or kInvalidId while no prim has asked).
+    nova::MaterialId AcquireOpacityDefault(nova::Scene &scene);
+    nova::MaterialId OpacityDefault() const;
 
     // Logs `message` once per material.
     void Warn(SdfPath const &material, std::string const &message);
@@ -98,6 +106,7 @@ private:
 
     mutable std::mutex _mutex;
     std::unordered_map<SdfPath, nova::MaterialId, SdfPath::Hash> _ids;
+    nova::MaterialId _opacityDefault = nova::kInvalidId;
     std::unordered_map<uint64_t, std::weak_ptr<const nova::shading::Program>> _programs;
     std::set<std::string> _warned;
 };
