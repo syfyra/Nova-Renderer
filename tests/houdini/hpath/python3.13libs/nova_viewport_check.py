@@ -288,6 +288,23 @@ def step_nova_outline():
     log("look-dev means", lit=image_mean("14_nova_lop"), headlight=image_mean("17_nova_headlight"),
         simplified=image_mean("18_nova_simplified"), outline=image_mean("19_nova_outline"))
     STATE["nova"].parm("outline").set(0)
+    # 0.2.0: the groups the Nova LOPs took over from the Karma Render Settings
+    # LOP, each on its sub-tab (top tab, sub-tab, the grab's name).
+    STATE["tabs"] = [(1, "Aspect Ratio", "aspect"), (1, "Metadata", "metadata"), (1, "Deep Output", "deep"),
+                     (2, "Performance", "performance"), (2, "Checkpointing", "checkpointing")]
+    later(2, step_nova_output_tabs)
+
+
+def step_nova_output_tabs():
+    if STATE.get("tab_grab"):
+        grab(STATE.pop("tab_grab"))
+    if STATE["tabs"]:
+        top, label, name = STATE["tabs"].pop(0)
+        show_parms(STATE["nova"], top)
+        subtab(STATE["nova"], label)
+        STATE["tab_grab"] = "ui_nova_lop_" + name
+        later(3, step_nova_output_tabs)
+        return
     set_renderer("Karma CPU")
     later(40, step_rendersettings_karma)
 
