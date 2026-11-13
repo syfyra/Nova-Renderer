@@ -1,8 +1,9 @@
-// Concave polygons. HdMeshUtil triangulates every face as a fan from its
-// first vertex; for a concave face that is not star-shaped from that vertex
-// the fan covers what the polygon does not (an L started at its tip: 10.4
-// units of area for 7; Karma renders 7). HdNovaConcaveFaces replaces the
-// triangles of those faces, and of no others.
+// The triangles of polygons. HdMeshUtil triangulates every face as a fan from
+// its first vertex; Karma fans from the last (a quad 0 1 2 3 is 0 1 3 and
+// 1 2 3), and HdNovaFaceTriangles gives every face that fan. For a concave
+// face that is not star-shaped from that vertex a fan covers what the polygon
+// does not (an L: 10.4 units of area for 7; Karma renders 7): those faces get
+// the triangles of their own shape.
 
 #include "hydra/meshTriangulate.h"
 #include "hydra/renderDelegate.h"
@@ -112,7 +113,7 @@ Triangles triangulate(Face const &f) {
     VtIntArray params;
     util.ComputeTriangleIndices(&t.fan, &params);
     t.fixed = t.fan;
-    const HdNovaConcaveFaces concave(f.topology, f.points);
+    const HdNovaFaceTriangles concave(f.topology, f.points);
     concave.fixTriangles(&t.fixed);
     t.concave = concave.size();
     return t;
@@ -229,21 +230,38 @@ TEST_CASE("Concave faces are triangulated inside their polygon", "[hydra][triang
     CHECK(fixedFaces > 100); // the fan is wrong for most starts of these shapes
 }
 
-TEST_CASE("Faces whose fan is right keep it", "[hydra][triangulate]") {
-    // A triangle, a square, a hexagon, a square with a vertex on an edge, and the L started at its inner
-    // corner's opposite (star-shaped from there).
+TEST_CASE("Faces whose fan is right are fanned from their last vertex, as in Karma", "[hydra][triangulate]") {
+    // A triangle, a square, a hexagon, a square with a vertex on an edge, and the L ended at its outer
+    // corner (star-shaped from there).
     const Outline tri{{0, 0}, {1, 0}, {0, 1}}, square{{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     Outline hexagon;
     for (int k = 0; k < 6; ++k)
         hexagon.push_back({std::cos(k * 1.0471975512), std::sin(k * 1.0471975512)});
     const Outline edge{{0, 0}, {0.5, 0}, {1, 0}, {1, 1}, {0, 1}};
-    const Outline l{{0, 0}, {4, 0}, {4, 1}, {1, 1}, {1, 4}, {0, 4}};
+    const Outline l = rotated({{0, 0}, {4, 0}, {4, 1}, {1, 1}, {1, 4}, {0, 4}}, 1);
     for (Outline const &shape : {tri, square, hexagon, edge, l})
-        for (GfRotation const &tilt : kTilts) {
-            const Triangles t = triangulate(faceOf(shape, tilt));
-            CHECK(t.concave == 0);
-            CHECK(t.fixed == t.fan);
-        }
+        for (GfRotation const &tilt : kTilts)
+            for (TfToken const &orientation : {HdTokens->rightHanded, HdTokens->leftHanded}) {
+                const Face f = faceOf(shape, tilt, orientation);
+                const Triangles t = triangulate(f);
+                CHECK(t.concave == 0);
+                const int n = int(shape.size());
+                REQUIRE(t.fixed.size() == size_t(n - 2));
+                // Triangle k: the last vertex, k and k + 1 (Karma CPU, measured for 4 to 6 vertices); a
+                // left-handed mesh has the last two the other way round, as HdMeshUtil has them.
+                for (int k = 0; k + 2 < n && n > 3; ++k)
+                    CHECK(t.fixed[size_t(k)] ==
+                          (orientation == HdTokens->rightHanded ? GfVec3i(n - 1, k, k + 1) : GfVec3i(n - 1, k + 1, k)));
+                if (n == 3) // a triangle is itself and stays as HdMeshUtil has it
+                    CHECK(t.fixed == t.fan);
+                // The same winding as HdMeshUtil's triangles.
+                for (size_t k = 0; k < t.fixed.size(); ++k)
+                    CHECK(GfDot(doubleArea(f.points, t.fixed[k]), doubleArea(f.points, t.fan[0])) >= 0.0);
+            }
+    // A quad 0 1 2 3: 0 1 3 and 1 2 3, the diagonal from 1 to 3 (HdMeshUtil: 0 to 2).
+    const Triangles quad = triangulate(faceOf(square, kTilts[0]));
+    CHECK(quad.fan == VtVec3iArray{GfVec3i(0, 1, 2), GfVec3i(0, 2, 3)});
+    CHECK(quad.fixed == VtVec3iArray{GfVec3i(3, 0, 1), GfVec3i(3, 1, 2)});
     // Every start of a convex polygon.
     for (size_t first = 0; first < hexagon.size(); ++first)
         CHECK(triangulate(faceOf(rotated(hexagon, first), kTilts[3])).concave == 0);
@@ -274,14 +292,16 @@ TEST_CASE("Concave faces among others: holes, short faces, left-handed meshes", 
         util.ComputeTriangleIndices(&fan, &params);
         REQUIRE(fan.size() == 1 + 6 + 2);
         VtVec3iArray fixed = fan;
-        const HdNovaConcaveFaces concave(topology, points);
+        const HdNovaFaceTriangles concave(topology, points);
         concave.fixTriangles(&fixed);
         CHECK(concave.size() == 1);
-        // The triangle and the square are as they were; the U's six triangles tile it, in the mesh's winding.
+        // The triangle is as it was and the square (points 17 to 20) has Karma's fan; the U's six
+        // triangles tile it, in the mesh's winding.
+        const bool right = orientation == HdTokens->rightHanded;
         CHECK(fixed[0] == fan[0]);
-        CHECK(fixed[7] == fan[7]);
-        CHECK(fixed[8] == fan[8]);
-        const double sign = orientation == HdTokens->rightHanded ? 1.0 : -1.0;
+        CHECK(fixed[7] == (right ? GfVec3i(20, 17, 18) : GfVec3i(20, 18, 17)));
+        CHECK(fixed[8] == (right ? GfVec3i(20, 18, 19) : GfVec3i(20, 19, 18)));
+        const double sign = right ? 1.0 : -1.0;
         CHECK(sign * doubleArea(points, fixed[0])[2] > 0.0);
         double sum = 0.0;
         for (size_t t = 1; t <= 6; ++t) {
@@ -336,9 +356,9 @@ TEST_CASE("A mesh split at its concave faces keeps its faces and face-vertices",
     add({{0, 0}, {1, 0}}, 30.0);
     add({{0, 0}, {1, 0}, {0, 1}}, 40.0);
     const HdMeshTopology topology(PxOsdOpenSubdivTokens->none, HdTokens->rightHanded, counts, indices, VtIntArray{2});
-    const HdNovaConcaveFaces concave(topology, points, HdNovaConcaveFaces::Faces::Concave);
+    const HdNovaFaceTriangles concave(topology, points, HdNovaFaceTriangles::Faces::Concave);
     REQUIRE(concave.size() == 1);
-    const HdNovaConcaveFaces::Split split = concave.split(topology);
+    const HdNovaFaceTriangles::Split split = concave.split(topology);
     // The square, six triangles, the hole, the two vertices, the triangle.
     REQUIRE(split.counts == VtIntArray{4, 3, 3, 3, 3, 3, 3, 4, 2, 3});
     CHECK(split.faces == std::vector<int32_t>{0, 1, 1, 1, 1, 1, 1, 2, 3, 4});
@@ -357,16 +377,16 @@ TEST_CASE("A mesh split at its concave faces keeps its faces and face-vertices",
     }
     CHECK(sum == Catch::Approx(11.0).epsilon(1e-6));
 
-    // An L started at its outer corner: the fan from there is right, the patches around its centre
+    // An L ended at its outer corner: the fan from there is right, the patches around its centre
     // (which lies outside it) are not.
-    const Face l = faceOf({{0, 0}, {4, 0}, {4, 1}, {1, 1}, {1, 4}, {0, 4}}, kTilts[3]);
-    CHECK(HdNovaConcaveFaces(l.topology, l.points).empty());
-    const HdNovaConcaveFaces whole(l.topology, l.points, HdNovaConcaveFaces::Faces::Concave);
+    const Face l = faceOf(rotated({{0, 0}, {4, 0}, {4, 1}, {1, 1}, {1, 4}, {0, 4}}, 1), kTilts[3]);
+    CHECK(HdNovaFaceTriangles(l.topology, l.points).empty());
+    const HdNovaFaceTriangles whole(l.topology, l.points, HdNovaFaceTriangles::Faces::Concave);
     CHECK(whole.size() == 1);
     CHECK(whole.split(l.topology).counts == VtIntArray{3, 3, 3, 3});
     // Convex faces stay whole either way.
     const Face square4 = faceOf(square, kTilts[3]);
-    CHECK(HdNovaConcaveFaces(square4.topology, square4.points, HdNovaConcaveFaces::Faces::Concave).empty());
+    CHECK(HdNovaFaceTriangles(square4.topology, square4.points, HdNovaFaceTriangles::Faces::Concave).empty());
 }
 
 TEST_CASE("Polygons that cannot be triangulated keep a fan", "[hydra][triangulate]") {
@@ -387,6 +407,63 @@ TEST_CASE("Polygons that cannot be triangulated keep a fan", "[hydra][triangulat
     for (GfVec3i const &tri : t.fixed)
         for (int k = 0; k < 3; ++k)
             CHECK((tri[k] >= 0 && tri[k] < 6));
+}
+
+TEST_CASE("A quad reaches the scene split from its second to its last vertex", "[hydra][triangulate]") {
+    // Not flat: the fold is the diagonal, 1 to 3 in Karma. Its primvars follow (a face-varying one below).
+    const std::string quad = R"(
+def Mesh "quad"
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 1), (0, 1, 0)]
+    uniform token subdivisionScheme = "none"
+)";
+    const auto triangles = [](Driver &driver) {
+        std::vector<GfVec3i> out;
+        for (nova::MeshId i = 0; i < driver.scene().meshCount(); ++i) {
+            nova::MeshRecord const &record = driver.scene().meshRecord(i);
+            if (!record.alive)
+                continue;
+            nova::MeshDesc const &d = record.desc;
+            for (size_t t = 0; t + 2 < d.indices.size(); t += 3) {
+                GfVec3i tri;
+                for (size_t k = 0; k < 3; ++k) { // the corner's point among the quad's four
+                    const nova::Vec3f p = d.points[d.indices[t + k]];
+                    tri[int(k)] = p.x == 0.0f ? (p.y == 0.0f ? 0 : 3) : (p.y == 0.0f ? 1 : 2);
+                }
+                out.push_back(tri);
+            }
+        }
+        return out;
+    };
+    SECTION("points alone") {
+        Driver driver(quad + "}\n");
+        CHECK(triangles(driver) == std::vector<GfVec3i>{GfVec3i(3, 0, 1), GfVec3i(3, 1, 2)});
+    }
+    SECTION("with a face-varying primvar: the corners carry their own face-vertex's value") {
+        Driver driver(quad + R"(    texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+        interpolation = "faceVarying"
+    )
+}
+)");
+        CHECK(triangles(driver) == std::vector<GfVec3i>{GfVec3i(3, 0, 1), GfVec3i(3, 1, 2)});
+        for (nova::MeshId i = 0; i < driver.scene().meshCount(); ++i) {
+            nova::MeshRecord const &record = driver.scene().meshRecord(i);
+            if (!record.alive)
+                continue;
+            const nova::MeshAttribute *st = record.desc.findAttribute("st");
+            REQUIRE(st);
+            REQUIRE(st->rate == nova::AttributeRate::Corner);
+            REQUIRE(st->data.size() == 12);
+            // st is the point's (x, y) here, corner by corner.
+            for (size_t c = 0; c < 6; ++c) {
+                const nova::Vec3f p = record.desc.points[record.desc.indices[c]];
+                CHECK(st->data[c * 2] == p.x);
+                CHECK(st->data[c * 2 + 1] == p.y);
+            }
+        }
+    }
 }
 
 TEST_CASE("A concave polygon reaches the scene with its own area", "[hydra][triangulate]") {

@@ -418,3 +418,149 @@ def Capsule "capsule"
     CHECK(solidOf(d.record("/cylinder"), 0).radius == Catch::Approx(2.0f).epsilon(1e-5));
     CHECK(solidOf(d.record("/capsule"), 2).reach == Catch::Approx(2.0f).epsilon(1e-5));
 }
+
+// UsdLux ShadowAPI (docs/bug-audit-2026-11.md, section 20): the attributes
+// reach the lights; a light without them casts full shadows by every
+// strategy.
+TEST_CASE("A light's ShadowAPI settings reach the scene", "[hydra][lights][shadow]") {
+    Driver d(R"(
+def DistantLight "plain"
+{
+}
+
+def DistantLight "off" (
+    prepend apiSchemas = ["ShadowAPI"]
+)
+{
+    bool inputs:shadow:enable = 0
+}
+
+def SphereLight "tinted" (
+    prepend apiSchemas = ["ShadowAPI"]
+)
+{
+    color3f inputs:shadow:color = (1, 0.25, -2)
+    float inputs:shadow:distance = 3
+    float inputs:shadow:falloff = 1.5
+    float inputs:shadow:falloffGamma = 2
+}
+
+def DomeLight "white" (
+    prepend apiSchemas = ["ShadowAPI"]
+)
+{
+    color3f inputs:shadow:color = (1, 1, 4)
+}
+)");
+    REQUIRE(d.scene().lights().size() == 4);
+    int plain = 0, off = 0, tinted = 0, white = 0;
+    for (nova::LightData const &l : d.scene().lights()) {
+        if (l.type == nova::LightType::Sphere) {
+            ++tinted;
+            CHECK(l.castsShadows);
+            CHECK(l.shadowTinted);
+            CHECK(l.shadowShaped);
+            CHECK(l.ownShadows());
+            CHECK(l.neeOnly()); // a continuation ray would shadow it as any light
+            CHECK(l.shadowColor.x == 1.0f);
+            CHECK(l.shadowColor.y == 0.25f);
+            CHECK(l.shadowColor.z == 0.0f); // a share of the light: 0 to 1
+            CHECK(l.shadowDistance == 3.0f);
+            CHECK(l.shadowFalloff == 1.5f);
+            CHECK(l.shadowFalloffGamma == 2.0f);
+        } else if (l.type == nova::LightType::Dome) {
+            ++white; // a white shadow colour: no shadows
+            CHECK_FALSE(l.castsShadows);
+            CHECK_FALSE(l.shadowTinted);
+            CHECK(l.ownShadows());
+            CHECK_FALSE(l.neeOnly()); // a dome's BSDF samples are shadow rays of their own
+        } else if (!l.castsShadows) {
+            ++off;
+            CHECK(l.shadowShaped);
+            CHECK_FALSE(l.shadowTinted);
+        } else {
+            ++plain;
+            CHECK_FALSE(l.shadowShaped);
+            CHECK_FALSE(l.ownShadows());
+            CHECK(l.shadowDistance <= 0.0f);
+        }
+    }
+    CHECK(plain == 1);
+    CHECK(off == 1);
+    CHECK(tinted == 1);
+    CHECK(white == 1);
+    // The dome with shadow settings is among those whose BSDF samples are shadow rays.
+    CHECK(d.scene().shadowLinkedDomes().size() == 1);
+
+    // Shadows on again.
+    d.stage->GetAttributeAtPath(SdfPath("/off.inputs:shadow:enable")).Set(true);
+    d.sync();
+    int shaped = 0;
+    for (nova::LightData const &l : d.scene().lights())
+        shaped += l.type == nova::LightType::Distant && l.shadowShaped;
+    CHECK(shaped == 0);
+}
+
+// Geometry without a material: Karma renders it see-through by its
+// displayOpacity primvar (section 20). It has a default material of its own
+// for that, so geometry without the primvar stays opaque to every ray.
+TEST_CASE("Geometry without a material is see-through by its displayOpacity", "[hydra][materials][opacity]") {
+    Driver d(mesh("plain") + mesh("veiled", "    float[] primvars:displayOpacity = [0.5]") +
+             mesh("faces", "    float[] primvars:displayOpacity = [0.25] (interpolation = \"uniform\")") + R"(
+def Material "matte"
+{
+}
+
+def Mesh "bound" (
+    prepend apiSchemas = ["MaterialBindingAPI"]
+)
+{
+    int[] faceVertexCounts = [4]
+    int[] faceVertexIndices = [0, 1, 2, 3]
+    point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    uniform token subdivisionScheme = "none"
+    float[] primvars:displayOpacity = [0.5]
+    rel material:binding = </matte>
+}
+)");
+    const nova::MeshRecord &plain = d.record("/plain");
+    CHECK(plain.materialSlots.empty());
+    CHECK_FALSE(plain.filtered);
+    CHECK_FALSE(d.scene().material(nova::kDefaultMaterialId).hasOpacity);
+
+    const nova::MeshRecord &veiled = d.record("/veiled");
+    REQUIRE(veiled.materialSlots.size() == 1);
+    const nova::MaterialId withOpacity = veiled.materialSlots[0];
+    CHECK(withOpacity != nova::kDefaultMaterialId);
+    CHECK(veiled.filtered);
+    const nova::MaterialRecord &material = d.scene().material(withOpacity);
+    CHECK(material.hasOpacity);
+    REQUIRE(material.desc.program);
+    CHECK(material.desc.program->opacity);
+    // Karma's plastic, as the default material is.
+    CHECK(material.resolved.model == d.scene().material(nova::kDefaultMaterialId).resolved.model);
+    // One such material for all of them; the primvar goes to the mesh with its interpolation.
+    const nova::MeshRecord &faces = d.record("/faces");
+    REQUIRE(faces.materialSlots.size() == 1);
+    CHECK(faces.materialSlots[0] == withOpacity);
+    const nova::MeshAttribute *opacity = faces.desc.findAttribute("displayOpacity");
+    REQUIRE(opacity);
+    CHECK(opacity->rate == nova::AttributeRate::Uniform);
+    // A prim with a material keeps it (here one that is not translated: the default look, opaque).
+    const nova::MeshRecord &bound = d.record("/bound");
+    REQUIRE(bound.materialSlots.size() == 1);
+    CHECK(bound.materialSlots[0] != withOpacity);
+
+    // The primvar gone: the plain default material again.
+    d.stage->GetAttributeAtPath(SdfPath("/veiled.primvars:displayOpacity")).Block();
+    d.sync();
+    CHECK(d.record("/veiled").materialSlots.empty());
+    CHECK_FALSE(d.record("/veiled").filtered);
+    // And authored where there was none.
+    d.stage->GetPrimAtPath(SdfPath("/plain"))
+        .CreateAttribute(TfToken("primvars:displayOpacity"), SdfValueTypeNames->FloatArray)
+        .Set(VtFloatArray{0.75f});
+    d.sync();
+    REQUIRE(d.record("/plain").materialSlots.size() == 1);
+    CHECK(d.record("/plain").materialSlots[0] == withOpacity);
+}

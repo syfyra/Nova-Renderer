@@ -43,7 +43,13 @@ namespace {
 VolumeGridPtr cubeGrid(float value, int n, double h) {
     nanovdb::build::Grid<float> g(0.0f, "field", nanovdb::GridClass::FogVolume);
     g.setTransform(h, nanovdb::Vec3d(0.0));
-    g([&](const nanovdb::Coord &) { return value; }, nanovdb::CoordBBox(nanovdb::Coord(-n), nanovdb::Coord(n - 1)));
+    // Voxel by voxel: the builder's fill of a box turns a leaf of one value into a tile, and of the eight
+    // such tiles around the origin (n = 8) the grid then lacked the one at (-8, -8, -8): 3584 voxels of 4096.
+    auto acc = g.getAccessor();
+    for (int z = -n; z < n; ++z)
+        for (int y = -n; y < n; ++y)
+            for (int x = -n; x < n; ++x)
+                acc.setValue(nanovdb::Coord(x, y, z), value);
     const nanovdb::GridHandle<nanovdb::HostBuffer> handle = nanovdb::createNanoGrid(g);
     return VolumeGrid::copyOf(handle.data(), handle.size());
 }

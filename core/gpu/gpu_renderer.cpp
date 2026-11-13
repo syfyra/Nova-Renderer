@@ -676,6 +676,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
         const shading::Program *op = p ? p->opacity.get() : nullptr;
         const bool opacityVaries = opacityRuns(rec);
         if (opacityVaries) {
+            g.opacityVaries = 1;
             g.opacityCode = put(op->code).ptr;
             g.opacityCodeSize = uint32_t(op->code.size());
             g.opacityUniforms = put(rec.opacityUniforms).ptr;
@@ -847,6 +848,7 @@ bool GpuRenderer::setScene(const Scene &scene) {
             for (const std::array<int32_t, 4> &b : rec.bindings)
                 fieldBindings.insert(fieldBindings.end(), b.begin(), b.end());
             g.bindings = put(fieldBindings).ptr;
+            g.maskFields = put(rec.maskFields);
             g.constants = put(rec.constantValues).ptr;
             g.defaults = put(&mat.volume, 1).ptr;
             texSlots.clear();
@@ -1026,6 +1028,7 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.limitDither, paths);
     field(w.lightOnly, paths);
     field(w.afterDiffuse, paths);
+    field(w.classShare, paths);
     field(w.pathAlpha, paths);
     field(w.holdout, paths);
     field(w.coneWidth, paths);
@@ -1055,6 +1058,7 @@ bool GpuRenderer::reserveWave(uint32_t paths) {
     field(w.shadowContribution, shadows);
     field(w.occluded, shadows);
     field(w.shadowCategory, shadows);
+    field(w.shadowLight, shadows);
     field(w.shadowEmitter, shadows);
     field(w.shadowBary, shadows);
     field(w.shadowClamp, shadows);

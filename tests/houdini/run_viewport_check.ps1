@@ -49,6 +49,11 @@
 # -Only karmasettings: the scene under a Karma Render Settings LOP in Nova
 # CPU (80_karma_settings); stdout.txt lists the render settings Nova
 # receives (TF_DEBUG HDNOVA_SETTINGS).
+# -Only shadows: a Light LOP's Shadow parameters (UsdLux ShadowAPI) edited
+# live, Enable off and then a shadow colour, over a grey card and a card
+# without a material that is half see-through by its displayOpacity, in Nova
+# CPU, Nova XPU and Karma CPU (90_shadows_on ... 94_shadows_karma; log.json
+# has the pixels each step changed and their colours before and after).
 #
 # -Prefs <dir> gives the instance its own preference directory (created if
 # needed; no user packages then). The first start in a new one takes a few

@@ -104,6 +104,25 @@ NOVA_INLINE float volumeField(const GpuVolume &v, int32_t index, Vec3f p) {
     return float(sample(nanovdb::Vec3f(q.x, q.y, q.z)));
 }
 
+// Whether a lookup at object-space point p reaches a voxel of one of the
+// volume's mask fields (VolumeEvaluator::reaches): one of the eight voxels it
+// interpolates is active.
+NOVA_INLINE bool volumeReaches(const GpuVolume &v, Vec3f p) {
+    for (size_t m = 0; m < v.maskFields.size(); ++m) {
+        const int32_t index = v.maskFields[m];
+        if (index < 0 || size_t(index) >= v.grids.size() || !v.grids[size_t(index)])
+            continue;
+        const auto *grid = static_cast<const nanovdb::FloatGrid *>(v.grids[size_t(index)]);
+        const Vec3f q = v.fieldObjectToIndex[size_t(index)].point(p);
+        const int x = int(std::floor(q.x)), y = int(std::floor(q.y)), z = int(std::floor(q.z));
+        auto acc = grid->getAccessor();
+        for (int k = 0; k < 8; ++k)
+            if (acc.isActive(nanovdb::Coord(x + (k & 1), y + ((k >> 1) & 1), z + (k >> 2))))
+                return true;
+    }
+    return false;
+}
+
 // A volume's coefficients at object-space point p (world point w, the ray's
 // direction, normalized time and class, the scattering events before):
 // VolumeEvaluator::operator() on the device.
@@ -124,6 +143,9 @@ NOVA_INLINE VolumePoint evaluateVolume(const GpuVolume &v, const ShadeGlobals &g
         out.scattering = {d, d, d};
         return out;
     }
+    // Only where a lookup reaches the fields' voxels (Karma; VolumeRecord::maskFields).
+    if (v.maskFields.size() > 0 && !volumeReaches(v, lookup))
+        return out;
     using namespace shading;
     float R[kGpuMaxRows];
     const float *U = v.uniforms;
@@ -498,7 +520,7 @@ __device__ void equiangularSample(const ShadeArgs &a, uint32_t k, const MediumRa
     // it, and an absorbing refractive interior.
     MediumRay to = ray;
     to.tEnd = t;
-    Spectrum beta = w.beta[p] * trackAtmosphere(media, spans, active, to, rng.next(), rng, nullptr);
+    Spectrum beta = w.beta[p] * w.classShare[p] * trackAtmosphere(media, spans, active, to, rng.next(), rng, nullptr);
     if (w.inMedium[p]) {
         const Spectrum s = w.sigmaA[p];
         beta *= Spectrum{std::exp(-s.x * t), std::exp(-s.y * t), std::exp(-s.z * t)};
@@ -523,6 +545,7 @@ __device__ void equiangularSample(const ShadeArgs &a, uint32_t k, const MediumRa
         if (r == kInvalidId)
             return; // the queue is full (not expected: one ray per path and kind)
         w.shadowCategory[r] = light.shadowCategory;
+        w.shadowLight[r] = li;
         w.shadowSlot[r] = 1;
         if (light.type == LightType::Triangle) {
             w.shadowContribution[r] = contribution;
@@ -568,10 +591,13 @@ __device__ void pushShadowDomeRay(const ShadeArgs &a, uint32_t p, const PathPmf 
     if (isBlack(contribution) && !(state && lpe.unit && parts.size() > 0))
         return;
     const float clampNee = clampNeeAt(a.settings, a.depth);
-    const uint32_t r = pushRay(w.shadow, o, wi, kInf, p, time, seed, RayClass::Shadow);
+    // The dome's shadow settings as its light samples have them (shadowReach; wi is a random direction).
+    const uint32_t r = pushRay(w.shadow, o, wi, shadowReach(sc.lights[li], kInf, Vec2f{wi.x, wi.y}), p, time, seed,
+                               RayClass::Shadow);
     if (r == kInvalidId)
         return;
     w.shadowCategory[r] = sc.lights[li].shadowCategory;
+    w.shadowLight[r] = li;
     w.shadowSlot[r] = 3;
     w.shadowContribution[r] = clampContribution(contribution, clampNee);
     w.shadowEmitter[r] = kInvalidId;
@@ -657,6 +683,7 @@ __device__ void shadePrelit(const ShadeArgs &a, uint32_t k, const SurfaceHit &hi
                 i != kInvalidId) {
                 w.shadow.rayType[i] |= kRayFromBackground;
                 w.shadowCategory[i] = pick.ray.category;
+                w.shadowLight[i] = kInvalidId;
                 w.shadowSlot[i] = 0;
                 w.shadowContribution[i] = value;
                 w.shadowEmitter[i] = kInvalidId;
@@ -693,6 +720,7 @@ __device__ void shadePrelit(const ShadeArgs &a, uint32_t k, const SurfaceHit &hi
         return;
     w.shadow.rayType[i] |= kRayFromBackground;
     w.shadowCategory[i] = light.shadowCategory;
+    w.shadowLight[i] = choice.light;
     w.shadowSlot[i] = 2;
     if (light.type == LightType::Triangle) { // the emission waits for the ray's end
         w.shadowContribution[i] = contribution;
@@ -787,6 +815,19 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
     const uint32_t tag = state ? lpe.objectTag(meshId, materialIdOf(mesh, hit.prim)) : 0u;
 
+    // The path meets a surface: from here on with the share of its weight that
+    // the last event's ray class has (WaveQueues::classShare), also where it only
+    // crosses the surface (wavefront.cpp shadeHit). The lights its ray met before
+    // took the whole weight, as an emissive triangle treated as a light does
+    // below. A ray past a limit keeps the whole weight, until it crosses a
+    // fake-caustic object.
+    const Spectrum lightBeta = w.beta[p];
+    const Spectrum classBeta = lightBeta * w.classShare[p];
+    if (!lightsOnly) {
+        w.beta[p] = classBeta;
+        w.classShare[p] = spectrum(1.0f);
+    }
+
     // Nested dielectrics (core/integrator/nested.h): a false interface is
     // crossed without an event, at a real one the transmission bends by the
     // media's indices. Fake-caustic and light-only rays cross every surface,
@@ -828,8 +869,12 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                                        : 0.0f;
             Le *= lightMultiplier(light, w.diffuseShare[p]) * bsdfSampleWeight(strategy, bsdfPdf, lightPdf);
         }
-        const Spectrum contribution = clampContribution(
-            w.beta[p] * Le, emitter != kInvalidId ? clampLightAt(st, a.depth) : clampEmissionAt(st, a.depth));
+        // The whole weight for a light that the ray of every class finds; one that
+        // some classes do not see is the light of this ray's class.
+        const bool wholeLight = emitter != kInvalidId && a.depth > 0 && visibleToSurfaceRays(mesh.visibility);
+        const Spectrum contribution =
+            clampContribution((wholeLight ? lightBeta : classBeta) * Le,
+                              emitter != kInvalidId ? clampLightAt(st, a.depth) : clampEmissionAt(st, a.depth));
         addRadiance(w, p, contribution);
         // A treated emitter reached past the camera is MIS-weighted against
         // its light samples, whose weight-1 parts already feed unoccluded;
@@ -867,6 +912,7 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         if (i == kInvalidId)
             return;
         w.shadowCategory[i] = 0xFFFFu;
+        w.shadowLight[i] = kInvalidId;
         w.shadowSlot[i] = 0;
         w.shadowContribution[i] = base;
         w.shadowEmitter[i] = kInvalidId;
@@ -892,7 +938,9 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
         if (w.lightOnly[p]) {
             // A light-only ray: through, still gathering lights only.
             if (!isBlack(fakeT)) {
-                w.beta[p] *= fakeT;
+                // Only the rays after a diffuse event come through: their class's light.
+                w.beta[p] = classBeta * fakeT;
+                w.classShare[p] = spectrum(1.0f);
                 w.coneWidth[p] += w.coneSpread[p] * hit.t;
                 pushRay(a.next, leave(-wo), -wo, kInf, p, time, a.rays.filterSeed[k], RayClass(a.rays.rayType[k]));
             }
@@ -982,6 +1030,7 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
                             if (backgroundPoint)
                                 w.shadow.rayType[i] |= kRayFromBackground;
                             w.shadowCategory[i] = light.shadowCategory;
+                            w.shadowLight[i] = li;
                             w.shadowSlot[i] = 0;
                             if (light.type == LightType::Triangle) { // the emission waits for the ray's end
                                 w.shadowContribution[i] = contribution;
@@ -1029,14 +1078,29 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     Spectrum lobeF[ClosureList::kMaxLobes];
     uint32_t lobeMask = 0;
     const Vec3f us = sampler.get3D(stream::bounce(a.depth, stream::kBsdf));
+    // The lobes' values: for light path expressions, and for the event's
+    // class wherever a mixture of lobes is sampled (splitEventClass).
+    const bool lobes = perLobe || cl.count > 1;
     if (guided.alpha > 0.0f) {
-        if (!sampleGuidedAt(a, cl, wo, us, sampler.get1D(stream::guide(a.depth)), guided, s, lobeF, lobeMask, perLobe))
+        if (!sampleGuidedAt(a, cl, wo, us, sampler.get1D(stream::guide(a.depth)), guided, s, lobeF, lobeMask, lobes))
             return;
-    } else if (!(perLobe ? sampleClosureLobes(cl, wo, us, s, lobeF, lobeMask) : sampleClosure(cl, wo, us, s))) {
+    } else if (!(lobes ? sampleClosureLobes(cl, wo, us, s, lobeF, lobeMask) : sampleClosure(cl, wo, us, s))) {
         return;
     }
-    const Spectrum wholeWeight = s.weight; // all lobes (lpeScatter may keep one class's share)
-    const lpe::State next = state ? lpeScatter(lpe, a.depth, state, cl, s, lobeF, lobeMask, tag, sampler) : state;
+    const Spectrum wholeWeight = s.weight; // all lobes (the splits below may keep one class's share)
+    // The event's ray class and its share of the weight (splitEventClass): at once for light
+    // path expressions with events per lobe, else at the path's next scattering vertex
+    // (WaveQueues::classShare).
+    float classDiffuse = s.diffuseShare;
+    Spectrum pendingShare = splitEventClass(cl, s, lobeF, lobeMask, classDiffuse,
+                                            [&] { return sampler.get1D(stream::classSplit(a.depth)); });
+    if (perLobe) {
+        s.weight = s.weight * pendingShare;
+        s.diffuseShare = classDiffuse;
+        pendingShare = spectrum(1.0f);
+    }
+    const lpe::State next =
+        state ? lpeScatter(lpe, a.depth, state, cl, s, lobeF, perLobe ? lobeMask : 0u, tag, sampler) : state;
     // Into the inside of a solid dielectric (as for light samples), before
     // thin-wall pass-throughs change s.
     const bool intoSolid = s.lobe >= 0 && cl.lobe[s.lobe].type == LobeType::Dielectric && refractsInto(cl) &&
@@ -1126,6 +1190,7 @@ __device__ void shadeHit(const ShadeArgs &a, uint32_t k) {
     if (!alive)
         return;
     w.beta[p] = beta;
+    w.classShare[p] = pendingShare;
     if (state) {
         w.lpeState[p] = next;
         // As light samples: none into solid glass. At a background point by
@@ -1231,6 +1296,7 @@ extern "C" __global__ void novaGenerate(const GenerateArgs a) {
     w.limitDither[slot] = sampler.get1D(stream::kLimit);
     w.lightOnly[slot] = 0;
     w.afterDiffuse[slot] = 0;
+    w.classShare[slot] = spectrum(1.0f);
     w.pathAlpha[slot] = 0.0f;
     w.holdout[slot] = 0;
     // No MIS vertex yet (path.h, kPrevSetDelta): device memory is not
@@ -1306,7 +1372,7 @@ __device__ void shadeGround(const ShadeArgs &a, uint32_t k, uint32_t p, const Me
     const AtmosphereView &at = sc.atmosphere;
     const Vec3f x = ray.o + ray.d * t;
     const Vec3f n = atmosphereNormal(at, x);
-    const Spectrum beta = w.beta[p] * weight * at.groundAlbedo;
+    const Spectrum beta = w.beta[p] * w.classShare[p] * weight * at.groundAlbedo; // the ground scatters the path
     if (isBlack(beta))
         return;
     const float clampEscape = clampEmissionAt(a.settings, a.depth); // an object's light (the CPU's clampEmission)
@@ -1324,11 +1390,13 @@ __device__ void shadeGround(const ShadeArgs &a, uint32_t k, uint32_t p, const Me
         const LightData &l = sc.lights[li];
         const float clampNee = clampNeeAt(a.settings, a.depth);
         const float seed = a.rays.filterSeed[k] + 0.5f;
-        const uint32_t r = pushRay(w.shadow, origin, l.direction, shadowRayLength(kInf, sc.tolerance), p, ray.time,
+        const float reach = shadowReach(l, kInf, Vec2f{u, seed - std::floor(seed)});
+        const uint32_t r = pushRay(w.shadow, origin, l.direction, shadowRayLength(reach, sc.tolerance), p, ray.time,
                                    seed - std::floor(seed), RayClass::Shadow);
         if (r == kInvalidId)
             return;
         w.shadowCategory[r] = l.shadowCategory;
+        w.shadowLight[r] = li;
         w.shadowSlot[r] = 4;
         w.shadowContribution[r] = clampContribution(unit, clampNee);
         w.shadowEmitter[r] = kInvalidId;
@@ -1550,7 +1618,8 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
     const uint32_t pixel = w.pixel[p];
     const lpe::State state = w.lpeState ? w.lpeState[p] : lpe::State(0);
     if (!isBlack(gather.objectSum)) {
-        const Spectrum contribution = clampContribution(w.beta[p] * gather.objectSum, clampEmission);
+        // Emission that is no light is seen by the path's class alone (WaveQueues::classShare).
+        const Spectrum contribution = clampContribution(w.beta[p] * w.classShare[p] * gather.objectSum, clampEmission);
         addRadiance(w, p, contribution);
         if (state)
             lpeDepositAll(lpe, film, pixel, lpeStep(lpe, state, lpe::TypeObject, lpe::ScatterNone, 0, 0), contribution);
@@ -1560,7 +1629,7 @@ extern "C" __global__ void novaMedia(const ShadeArgs a) {
         const lpe::State held = lpeHoldoutState(lpe.program, state);
         if (held)
             lpeDepositAll(lpe, film, pixel, lpeStep(lpe, held, lpe::TypeObject, lpe::ScatterNone, 0, 0),
-                          clampContribution(w.beta[p] * gather.holdoutSum, clampEmission));
+                          clampContribution(w.beta[p] * w.classShare[p] * gather.holdoutSum, clampEmission));
     }
     const EmissionGather *gathers[2] = {&gather, &lightGather};
     for (const EmissionGather *g : gathers)
@@ -1790,6 +1859,9 @@ extern "C" __global__ void novaShade(const ShadeArgs a) {
                 lpeDepositParts(lpe, film, parts, pixel, beta * scale);
         }
         if (event) {
+            // The path scatters here: with its class's share from now on (WaveQueues::classShare).
+            w.beta[p] *= w.classShare[p];
+            w.classShare[p] = spectrum(1.0f);
             pushEvent();
             return;
         }
@@ -1873,6 +1945,7 @@ extern "C" __global__ void novaWalkExit(const ShadeArgs a) {
                                            time, shadowRaySeed(a.rays.filterSeed[k]), RayClass::Shadow);
                 if (r != kInvalidId) {
                     w.shadowCategory[r] = light.shadowCategory;
+                    w.shadowLight[r] = li;
                     w.shadowSlot[r] = 2;
                     if (light.type == LightType::Triangle) {
                         w.shadowContribution[r] = contribution;
@@ -2052,6 +2125,7 @@ extern "C" __global__ void novaVolumes(const ShadeArgs a) {
                         if (backgroundPoint)
                             w.shadow.rayType[r] |= kRayFromBackground;
                         w.shadowCategory[r] = light.shadowCategory;
+                        w.shadowLight[r] = li;
                         w.shadowSlot[r] = 0;
                         if (light.type == LightType::Triangle) {
                             w.shadowContribution[r] = contribution;
@@ -2141,7 +2215,11 @@ extern "C" __global__ void novaShadow(const ShadowArgs a) {
     const bool parts = w.partBegin && w.partCount[i] > 0;
     const bool unit = parts && lpe.unit;
     const bool blocked = w.occluded[i] != 0;
-    if (blocked && !unit)
+    // A light with a shadow colour (UsdLux ShadowAPI): that share of what the
+    // ray loses arrives all the same (shadowPass).
+    const uint32_t tintLight = w.shadowLight[i];
+    const bool tinted = tintLight != kInvalidId && a.scene.lights[tintLight].shadowTinted;
+    if (blocked && !unit && !tinted)
         return;
     Spectrum c = w.shadowContribution[i];
     float emitterScale = 1.0f;
@@ -2198,7 +2276,12 @@ extern "C" __global__ void novaShadow(const ShadowArgs a) {
         T *= Tm;
         c *= Tm;
     }
-    if (!blocked)
+    const bool arrives = !blocked || tinted;
+    if (tinted) {
+        T = shadowPass(a.scene.lights[tintLight].shadowColor, blocked, T);
+        c = w.shadowContribution[i] * T;
+    }
+    if (arrives)
         addRadiance(w, p, c);
     if (!parts)
         return;
@@ -2211,16 +2294,16 @@ extern "C" __global__ void novaShadow(const ShadowArgs a) {
     const bool background = a.depth == 0 && (w.shadow.rayType[i] & kRayFromBackground);
     for (uint32_t j = w.partBegin[i], end = j + w.partCount[i]; j < end; ++j) {
         const Spectrum value = w.partValue[j] * Le * emitterScale, unitValue = w.partUnit[j] * Le;
-        if (!blocked)
+        if (arrives)
             lpeDeposit(lpe, film, pixel, w.partState[j], value * T);
         if (!unit)
             continue;
         if (background) {
             lpeDepositBackgroundUnit(lpe, film, pixel, w.partState[j], unitValue,
-                                     blocked ? spectrum(0.0f) : unitValue * T, true);
+                                     arrives ? unitValue * T : spectrum(0.0f), true);
         } else {
             lpeDepositUnit(lpe, film, pixel, w.partState[j], unitValue, true, false);
-            if (!blocked)
+            if (arrives)
                 lpeDepositUnit(lpe, film, pixel, w.partState[j], unitValue * T, false, true);
         }
     }

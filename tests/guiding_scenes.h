@@ -69,7 +69,12 @@ inline void guideRoom(Scene &scene, float grey = 0.7f) {
 inline void guideFog(Scene &scene, float sigma) {
     nanovdb::build::Grid<float> grid(0.0f, "density", nanovdb::GridClass::FogVolume);
     grid.setTransform(0.25, nanovdb::Vec3d(0.0));
-    grid([](const nanovdb::Coord &) { return 1.0f; }, nanovdb::CoordBBox(nanovdb::Coord(-12), nanovdb::Coord(11)));
+    // Voxel by voxel: the builder's fill of a box lost the leaf of one value at (-8, -8, -8) (test_gpu_render.cpp).
+    auto acc = grid.getAccessor();
+    for (int z = -12; z < 12; ++z)
+        for (int y = -12; y < 12; ++y)
+            for (int x = -12; x < 12; ++x)
+                acc.setValue(nanovdb::Coord(x, y, z), 1.0f);
     const nanovdb::GridHandle<nanovdb::HostBuffer> handle = nanovdb::createNanoGrid(grid);
     shading::IrGraph graph;
     shading::IrBuilder b(graph);

@@ -81,6 +81,7 @@ struct ShadowQueue {
     std::vector<Spectrum> partValue;
     std::vector<Spectrum> partUnit; // the part with MIS weight 1, unclamped (unoccluded;, shadow;)
     std::vector<uint16_t> shadowCategory; // per ray: its light's shadow-link category (M9 D15)
+    std::vector<uint32_t> light;          // per ray: its light, for its shadow colour (kInvalidId: none)
     // Emissive triangles (M9 D14): per ray its light (kInvalidId: another
     // kind), the point's barycentrics and the clamp; the contribution and
     // its parts wait for the emission there (traceShadowRays). How many.
@@ -100,13 +101,16 @@ struct ShadowQueue {
             grow();
         contribution[rays.size] = c;
         shadowCategory[rays.size] = category;
+        light[rays.size] = kInvalidId;
         emitter[rays.size] = kInvalidId;
         rays.push(o, d, t, pathSlot, rayTime, seed, RayClass::Shadow);
         rays.rayType[rays.size - 1] |= flags;
     }
+    // The last ray pushed is a sample of light `li` (traceShadowRays: its shadow colour).
+    void markLight(uint32_t li) { light[rays.size - 1] = li; }
     // The last ray pushed goes to emissive triangle `light`.
-    void markEmitter(uint32_t light, Vec2f bary, float clamp) {
-        emitter[rays.size - 1] = light;
+    void markEmitter(uint32_t li, Vec2f bary, float clamp) {
+        emitter[rays.size - 1] = li;
         emitterBary[rays.size - 1] = bary;
         emitterClamp[rays.size - 1] = clamp;
         ++emitterCount;
@@ -217,6 +221,12 @@ struct WaveQueues {
     std::vector<float> limitDither;
     std::vector<uint8_t> lightOnly;
     std::vector<uint8_t> afterDiffuse; // a diffuse or SSS event happened (fake caustics)
+    // The share of beta that the last event's ray class has (lpe_path.h
+    // splitEventClass; 1: all of it). beta is the whole weight, which the
+    // lights the ray meets take; the path's next scattering vertex (a surface
+    // that is shaded, a volume event, emission that is no light) takes
+    // beta x classShare, and from there on beta is that.
+    std::vector<Spectrum> classShare;
     std::vector<float> pathAlpha;      // the roughest glossy event so far (GGX alpha; constrainRoughness)
     // The camera ray hit a holdout (HoldoutMode; docs/design/M11-P2.md): the
     // path's light goes to holdout; outputs only, not to the beauty.

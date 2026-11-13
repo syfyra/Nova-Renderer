@@ -110,7 +110,10 @@ struct GpuMaterial {
     // Opacity (M3 K10): whether some hit may be (partly) transparent, the
     // uniform value, or the per-hit opacity program (Program::opacity, the
     // material's primvar order and textures) with its uniform block.
+    // opacityVaries says that the program runs: its code may be empty (an
+    // opacity that is a primvar itself has bindings and outputs alone).
     uint8_t hasOpacity = 0;
+    uint8_t opacityVaries = 0;
     float uniformOpacity = 1.0f;
     const shading::Instr *opacityCode = nullptr;
     uint32_t opacityCodeSize = 0;
@@ -152,6 +155,7 @@ struct GpuVolume {
     Span<shading::PrimvarBinding> primvars;
     Span<shading::OutputBinding> outputs;
     const int32_t *bindings = nullptr; // per primvar binding: the fields of its 4 components (-1: fallback, -2 - i: constants[i])
+    Span<int32_t> maskFields;          // VolumeRecord::maskFields: the shader runs where a lookup reaches their voxels
     const float *constants = nullptr;  // a shell's constant primvars (VolumeRecord::constantValues)
     const VolumeInputs *defaults = nullptr; // the inputs with the uniform outputs applied
     const DeviceTexSlot *textures = nullptr;
@@ -316,6 +320,7 @@ struct GpuWave {
     float *limitDither = nullptr;
     uint8_t *lightOnly = nullptr;
     uint8_t *afterDiffuse = nullptr;
+    Spectrum *classShare = nullptr; // WaveQueues::classShare
     float *pathAlpha = nullptr; // the roughest glossy event so far (GGX alpha; constrainRoughness)
     uint8_t *holdout = nullptr; // the camera ray hit a holdout (HoldoutMode, core/integrator/holdout.h)
     float *coneWidth = nullptr; // the ray cone at the current ray's origin (core/texture/ray_cone.h)
@@ -344,6 +349,7 @@ struct GpuWave {
     Spectrum *shadowContribution = nullptr;
     uint8_t *occluded = nullptr;
     uint16_t *shadowCategory = nullptr; // the light's shadow-link category (M9 D15)
+    uint32_t *shadowLight = nullptr;    // the ray's light, for its shadow colour (kInvalidId: none)
     // Towards an emissive triangle (M9 D14): the light (kInvalidId: another
     // kind), the point's barycentrics and the clamp; the contribution waits
     // for the emission there.

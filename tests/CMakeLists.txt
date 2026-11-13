@@ -27,6 +27,7 @@ add_executable(nova_tests
     test_textures.cpp
     test_ray_cones.cpp
     test_opacity.cpp
+    test_shadow_api.cpp
     test_ray_state.cpp
     test_shading_queries.cpp
     test_graph_closures.cpp

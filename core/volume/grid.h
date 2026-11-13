@@ -14,6 +14,7 @@
 #include <nanovdb/NanoVDB.h>
 #include <nanovdb/util/SampleFromVoxels.h>
 
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <memory>
@@ -92,6 +93,15 @@ public:
 
     // The value at index-space point p (voxel centres at integers).
     float operator()(Vec3f p) const { return float(m_sample(nanovdb::Vec3f(p.x, p.y, p.z))); }
+    // Whether a lookup at p reaches a voxel of the grid: one of the eight
+    // voxels it interpolates is active (VolumeRecord::maskFields).
+    bool reaches(Vec3f p) const {
+        const int x = int(std::floor(p.x)), y = int(std::floor(p.y)), z = int(std::floor(p.z));
+        for (int k = 0; k < 8; ++k)
+            if (m_acc.isActive(nanovdb::Coord(x + (k & 1), y + ((k >> 1) & 1), z + (k >> 2))))
+                return true;
+        return false;
+    }
     float voxel(int x, int y, int z) const { return m_acc.getValue(nanovdb::Coord(x, y, z)); }
 
 private:

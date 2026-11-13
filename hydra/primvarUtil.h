@@ -23,6 +23,11 @@ bool HdNovaIsGeometryPrimvar(TfToken const &name);
 
 class HdSceneDelegate;
 
+// Whether the prim has a displayOpacity primvar (of any interpolation but
+// instance). Geometry without a material is then see-through by it, as in
+// Karma (HdNovaMaterialRegistry::AcquireOpacityDefault).
+bool HdNovaHasDisplayOpacity(HdSceneDelegate *sd, SdfPath const &id);
+
 // The object's tag in light path expressions: Karma's constant string
 // primvar karma:object:lpetag (empty if not authored).
 std::string HdNovaObjectLpeTag(HdSceneDelegate *sd, SdfPath const &id);

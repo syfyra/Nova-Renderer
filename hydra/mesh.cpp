@@ -230,7 +230,7 @@ namespace {
 // `deindexed`: the mesh has one point per triangle corner, so per-point data
 // goes per corner. Inconsistent data is skipped.
 void buildAttributes(HdSceneDelegate *sd, SdfPath const &id, HdMeshUtil const &meshUtil,
-                     HdNovaConcaveFaces const &concave, VtVec3iArray const &triangles,
+                     HdNovaFaceTriangles const &concave, VtVec3iArray const &triangles,
                      VtIntArray const &primitiveParams, size_t pointCount, bool deindexed, nova::MeshDesc &desc) {
     const size_t numTris = triangles.size();
     for (const PrimvarRef &pv : shadingPrimvars(sd, id)) {
@@ -287,7 +287,7 @@ void buildAttributes(HdSceneDelegate *sd, SdfPath const &id, HdMeshUtil const &m
                 valid = false;
             else if (result == HdMeshComputationResult::Success) {
                 valid = HdNovaPrimvarToFloats(triangulated, &cw, &corners) && size_t(cw) == w;
-                if (valid) // the corners of the concave faces' own triangles
+                if (valid) // the corners of Karma's triangles, and of the concave faces' own
                     concave.fixFaceVarying(data.data(), count, w, corners.data(), corners.size() / w);
             } else // unchanged: already one per triangle corner
                 corners = std::move(data);
@@ -499,9 +499,10 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
     meshUtil.ComputeTriangleIndices(&triangles, &primitiveParams);
     if (triangles.empty())
         return false;
-    // HdMeshUtil's fan leaves a concave face: those faces get the triangles of
-    // their own shape (the shape at the first motion step).
-    const HdNovaConcaveFaces concave(_topology, pointSteps[0]);
+    // Karma's triangles of every polygon (HdMeshUtil fans from the other end),
+    // and for a concave face that a fan leaves the triangles of its own shape
+    // (the shape at the first motion step).
+    const HdNovaFaceTriangles concave(_topology, pointSteps[0]);
     concave.fixTriangles(&triangles);
     _triangleFaces.resize(triangles.size());
     for (size_t t = 0; t < triangles.size(); ++t)
@@ -533,7 +534,7 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
             cornerNormals.push_back(result == HdMeshComputationResult::Success
                                         ? triangulated.UncheckedGet<VtVec3fArray>()
                                         : normals);
-            if (result == HdMeshComputationResult::Success && !concave.empty())
+            if (result == HdMeshComputationResult::Success)
                 concave.fixFaceVarying(normals.cdata()->data(), normals.size(), 3, cornerNormals.back().data()->data(),
                                        cornerNormals.back().size());
         }
@@ -667,14 +668,14 @@ bool HdNovaMesh::_BuildDisplacedMesh(HdSceneDelegate *sd, HdNovaRenderParam &par
     nova::SubdivScheme scheme = nova::SubdivScheme::Bilinear;
     const bool smooth = HdNovaGetSubdivScheme(_topology.GetScheme(), &scheme) && scheme != nova::SubdivScheme::Bilinear;
     nova::SubdivMeshDesc sdesc;
-    HdNovaConcaveFaces::Split split; // of a polygon mesh with concave faces
+    HdNovaFaceTriangles::Split split; // of a polygon mesh with concave faces
     if (smooth) {
         if (!HdNovaToSubdivDesc(_topology, _subdivTags, pointSteps, id, &sdesc))
             return false;
     } else { // polygon meshes: bilinear patches on the authored faces
         // A bilinear face is patched around its centre, which leaves a concave
         // face as a fan does: those faces are diced as their triangles.
-        const HdNovaConcaveFaces concave(_topology, pointSteps[0], HdNovaConcaveFaces::Faces::Concave);
+        const HdNovaFaceTriangles concave(_topology, pointSteps[0], HdNovaFaceTriangles::Faces::Concave);
         if (!concave.empty())
             split = concave.split(_topology);
         const bool whole = split.faces.empty();
@@ -1208,8 +1209,15 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         std::vector<uint16_t> triangleSlots;
         _MaterialSlots(slotPaths, triangleSlots);
         std::vector<nova::MaterialId> slots;
-        for (SdfPath const &path : slotPaths)
-            slots.push_back(param->GetMaterials().Acquire(path, scene));
+        // Without a material: the default one, or the one that reads the
+        // prim's displayOpacity (Karma renders such geometry see-through).
+        const bool seeThrough = HdNovaHasDisplayOpacity(sd, id);
+        for (SdfPath const &path : slotPaths) {
+            const nova::MaterialId material = param->GetMaterials().Acquire(path, scene);
+            slots.push_back(material == nova::kDefaultMaterialId && seeThrough
+                                ? param->GetMaterials().AcquireOpacityDefault(scene)
+                                : material);
+        }
         if (triangleSlots.empty() && slots.size() == 1 && slots[0] == nova::kDefaultMaterialId)
             slots.clear();
         scene.setMeshMaterials(_meshId, std::move(slots), std::move(triangleSlots));
@@ -1292,7 +1300,7 @@ bool HdNovaMesh::_SyncPortal(HdSceneDelegate *sd, HdNovaRenderParam &param, HdDi
     VtVec3iArray triangles;
     VtIntArray primitiveParams;
     meshUtil.ComputeTriangleIndices(&triangles, &primitiveParams);
-    HdNovaConcaveFaces(_topology, points).fixTriangles(&triangles);
+    HdNovaFaceTriangles(_topology, points).fixTriangles(&triangles);
     // World space: the prim's transform, or each instance's.
     std::vector<nova::Xform34> xforms;
     const GfMatrix4d xf = sd->GetTransform(id);
@@ -1342,7 +1350,7 @@ nova::MediumShellPtr HdNovaMesh::_BuildShell(HdSceneDelegate *sd, HdNovaRenderPa
     VtVec3iArray triangles;
     VtIntArray primitiveParams;
     meshUtil.ComputeTriangleIndices(&triangles, &primitiveParams);
-    HdNovaConcaveFaces(_topology, points).fixTriangles(&triangles);
+    HdNovaFaceTriangles(_topology, points).fixTriangles(&triangles);
     std::vector<nova::Vec3f> p(points.size());
     for (size_t i = 0; i < points.size(); ++i)
         p[i] = toNova(points[i]);

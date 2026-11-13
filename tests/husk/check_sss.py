@@ -98,7 +98,10 @@ def main():
     names = list(FURNACE) + list(SLABS) + list(ROOM) + ["term_s0p2", "head"]
     for name in names:
         out = os.path.join(args.out, name + ".exr")
-        proc = run([tool(args, "husk.exe"), "--renderer", "Nova", "-s", "/Render/s", "-o", out,
+        # No headlight: the rooms have no light, and the one husk then adds casts no shadows (its
+        # ShadowAPI): it lights the walls from outside the closed room, in Karma as in Nova since 0.2.1
+        # (room_l0 1.308, 1.613, 1.918 in both). The values here are the rooms' own light.
+        proc = run([tool(args, "husk.exe"), "--renderer", "Nova", "--headlight", "none", "-s", "/Render/s", "-o", out,
                     os.path.join(scenes_dir, name + ".usda")], env, args.out)
         check(proc.returncode == 0, f"husk {name}.usda exits with 0")
         renders[name] = load(out)

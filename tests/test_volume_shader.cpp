@@ -22,6 +22,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <random>
 
@@ -420,4 +421,83 @@ TEST_CASE("The multiple-scattering start level is defined for every float", "[vo
     CHECK(scatteringAt(-inf, 0) == 0.0f); // started long ago: exp(-0.5 * 2^20)
     CHECK(scatteringAt(-1e30f, 0) == 0.0f);
     CHECK_THAT(scatteringAt(nan, 0), WithinRel(std::exp(-0.5f), 1e-6f)); // level 0
+}
+
+// Audit V-4 (0.2.1): Karma shades a volume only where a lookup reaches a voxel
+// of its fields, the active voxels and half a voxel around them (a constant
+// emission on a VDB box of 20 voxels of 0.1 is 2.1 units wide, with a hard
+// edge). Nova filled the cells of 8 voxels the voxels are in. It matters for
+// shaders that give something at the fields' background values: a constant
+// emission or medium, a density with an offset.
+TEST_CASE("A volume shader runs only where a lookup reaches its fields' voxels", "[volume][shader][mask]") {
+    Scene scene;
+    // 20 voxels of 0.1 with density 1: centres at 0 to 1.9, so lookups reach them from -0.1 to 2.0,
+    // while the cells of 8 voxels go on to 2.4.
+    const VolumeGridPtr density = makeGrid([](int, int, int) { return 1.0f; }, 20, 0.1);
+    const auto volume = [&](const std::function<void(IrBuilder &)> &shader) {
+        VolumeDesc desc;
+        desc.fields.push_back({"density", "density", density, Affine3f{}});
+        if (shader) {
+            IrGraph g;
+            IrBuilder b(g);
+            shader(b);
+            const CompileResult compiled = compile(g);
+            REQUIRE(compiled.program);
+            MaterialDesc material;
+            material.program = compiled.program;
+            desc.material = scene.createMaterial();
+            scene.updateMaterial(desc.material, material);
+        }
+        const VolumeId id = scene.createVolume();
+        scene.updateVolume(id, desc);
+        return id;
+    };
+    const VolumeId glow = volume([](IrBuilder &b) { vout(b, volume_field::emission, 3, b.constant(1.0f, 0.5f, 0.25f)); });
+    const VolumeId offset = volume([](IrBuilder &b) {
+        const Ref d = b.primvar("density", 1, b.constant(0.0f));
+        vout(b, volume_field::scattering, 3, b.convert(b.add(d, b.constant(0.5f)), 3));
+    });
+    const VolumeId plain = volume([](IrBuilder &b) {
+        const Ref d = b.primvar("density", 1, b.constant(0.0f));
+        vout(b, volume_field::scattering, 3, b.convert(b.mul(d, b.constant(2.0f)), 3));
+    });
+    const VolumeId standard = volume(nullptr); // the default volume: its density
+    scene.commit();
+    // Asked only where the shader gives something without the field.
+    CHECK(scene.volumeRecord(glow).maskFields == std::vector<int32_t>{0});
+    CHECK(scene.volumeRecord(offset).maskFields == std::vector<int32_t>{0});
+    CHECK(scene.volumeRecord(plain).maskFields.empty());
+    CHECK(scene.volumeRecord(standard).maskFields.empty());
+
+    const auto at = [&](VolumeId id, float x) {
+        VolumeEvaluator eval(scene, id);
+        const Vec3f p{x, 1.0f, 1.0f};
+        return eval(p, p, {0.0f, 0.0f, 1.0f}, 0.5f, 0, 0);
+    };
+    // Inside, and in the half voxel around the voxels that a lookup still reaches.
+    for (const float x : {1.0f, -0.05f, 1.95f, -0.099f, 1.999f}) {
+        INFO("x " << x);
+        CHECK_THAT(at(glow, x).emission.x, WithinAbs(1.0, 1e-6));
+        CHECK_THAT(at(glow, x).emission.z, WithinAbs(0.25, 1e-6));
+    }
+    // Beyond it nothing, though the point is in a cell of the volume's grid of majorants (to 2.4).
+    for (const float x : {-0.101f, -0.15f, 2.001f, 2.05f, 2.3f}) {
+        INFO("x " << x);
+        CHECK(at(glow, x).emission.x == 0.0f);
+        CHECK(at(offset, x).scattering.x == 0.0f);
+    }
+    {
+        // Just beyond the reach the point is still in a cell of the volume (the tracker comes by), and gets nothing.
+        const VolumeRecord &rec = scene.volumeRecord(glow);
+        int32_t c[3];
+        REQUIRE(rec.layout.cellOf(rec.fieldObjectToIndex[0].point({2.001f, 1.0f, 1.0f}), c));
+        CHECK(rec.majorant[rec.layout.index(c[0], c[1], c[2])] > 0.0f);
+    }
+    // The offset where the field fades out: half the density and the 0.5.
+    CHECK_THAT(at(offset, 1.0f).scattering.x, WithinAbs(1.5, 1e-5));
+    CHECK_THAT(at(offset, 1.95f).scattering.x, WithinAbs(1.0, 1e-4));
+    // Shaders that give nothing without the field, and the default volume, as before.
+    CHECK_THAT(at(plain, 1.95f).scattering.x, WithinAbs(1.0, 1e-4));
+    CHECK(at(plain, 2.05f).scattering.x == 0.0f);
+    CHECK_THAT(at(standard, 1.95f).scattering.x, WithinAbs(0.5, 1e-4));
 }

@@ -560,8 +560,23 @@
       },
       "aovs": ["C_key", "C_fill", "C_emission", "beautyunshadowed", "shadow", "combineddiffuse", "directdiffuse", "indirectdiffuse", "directdiffuseunshadowed", "directdiffuseshadow", "combinedglossyreflection", "directglossyreflection", "indirectglossyreflection", "glossytransmission", "directemission", "indirectemission", "coat", "metal_glossy", "albedo", "albedoglossyreflection", "albedoglossytransmission", "albedotransmitteddiffuse", "alphatransmission"],
       "compare": {
-        "regions": [],
+        "regions": [
+          {
+            "name": "coat_ball",
+            "center": [33.2, 40.8],
+            "radius": 19,
+            "rel_tol": 0.02,
+            "block_rel_tol": 0.06,
+            "reason": "Karma's Schlick-fit coat Fresnel: Nova's coat reflects more and its base gets less. Converged, the ball's mean is -0.6, +1.0, +1.6 % (red, green, blue) and its blocks reach +4.9 % in blue; 0.2.0 had the same (-0.3, +0.9, +1.4 %, the same blocks), under the noise of 64 samples but for the block at (16, 32), which sat at 0.88 of its allowance"
+          }
+        ],
         "aovs": {
+          "directemission": {
+            "regions": []
+          },
+          "metal_glossy": {
+            "regions": []
+          },
           "C_key": {
             "regions": [
               {
@@ -696,6 +711,7 @@
             "reason": "an occluded fraction (1 - lit / unoccluded of the pixel's sums in Nova): +1.4 % overall, unstable where the unoccluded light is near 0"
           },
           "indirectdiffuse": {
+            "regions": [],
             "global_rel_tol": 0.05,
             "block_rel_tol": 0.1,
             "abs_tol": 0.03,
@@ -762,6 +778,7 @@
             ]
           },
           "directdiffuseshadow": {
+            "regions": [],
             "global_rel_tol": 0.04,
             "block_rel_tol": 0.1,
             "abs_tol": 0.03,

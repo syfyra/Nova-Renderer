@@ -7,6 +7,7 @@
 #include "test_helpers.h"
 
 #include "core/bsdf/surface.h"
+#include "core/integrator/lpe_path.h"
 #include "core/math/sobol.h"
 #include "core/scene/scene.h"
 
@@ -597,4 +598,210 @@ TEST_CASE("Emission and unlit surfaces", "[closure]") {
     ss.set(sf::coatWeight, 1.0f);
     const float F0 = iorToF0(1.5f);
     CHECK_THAT(build(ss, direction(1.0f)).emission.x, WithinAbs(2.0f * (1.0f - F0), 1e-5));
+}
+
+// Ray limits count events by class, and a continuation off a surface with a
+// diffuse and a glossy lobe is weighted by both (one-sample MIS). With the
+// class of the lobe that happened to be sampled, the sample of a glossy lobe
+// carried diffuse light on as a reflection, past a diffuse limit
+// (docs/bug-audit-2026-11.md, section 20: a red card's bounce light after one
+// diffuse event was (0.0022, 0.0007, 0.0007) where Karma's is the glossy
+// lobe's white 0.0008). splitEventClass gives the sample one class with that
+// class's own light.
+TEST_CASE("A mixture's sample carries the light of its own ray class", "[closure][limits]") {
+    // Houdini's plastic in red (a diffuse lobe and a colourless Phong lobe), and a Standard Surface
+    // with a blue base under a rough specular layer.
+    SurfaceInputs plastic = plasticDefaults();
+    plastic.set(sf::baseColor, Spectrum{0.8f, 0.1f, 0.1f});
+    SurfaceInputs ss = standardSurfaceDefaults();
+    ss.set(sf::baseColor, Spectrum{0.1f, 0.2f, 0.8f});
+    ss.set(sf::specularRoughness, 0.5f);
+    const SurfaceInputs *surfaces[2] = {&plastic, &ss};
+    for (int which = 0; which < 2; ++which) {
+        for (const float mu : {0.9f, 0.35f}) {
+            const Vec3f wo = direction(mu);
+            const ClosureList cl = build(*surfaces[which], wo);
+            REQUIRE(cl.count >= 2);
+            Pcg32 rng(7 + uint64_t(which));
+            // Per class (0 diffuse, 1 reflect): the light the split samples carry, each sample's share
+            // by its lobes' values (what they must carry on average), and what the sampled lobe's class got.
+            double split[2][3] = {}, exact[2][3] = {}, sampled[2][3] = {};
+            int classes[2] = {};
+            const int n = 400000;
+            for (int i = 0; i < n; ++i) {
+                const Vec3f u{float(rng.uniform()), float(rng.uniform()), float(rng.uniform())};
+                ClosureSample cs;
+                Spectrum lobeF[ClosureList::kMaxLobes];
+                uint32_t mask = 0;
+                if (!sampleClosureLobes(cl, wo, u, cs, lobeF, mask) || cs.delta)
+                    continue;
+                REQUIRE(mask != 0);
+                Spectrum f[2] = {spectrum(0.0f), spectrum(0.0f)};
+                for (int l = 0; l < cl.count; ++l)
+                    if (mask & (1u << l)) {
+                        const int k = int(cl.lobe[l].eventClass(cs.transmit)) - int(RayClass::Diffuse);
+                        REQUIRE((k == 0 || k == 1));
+                        f[k] += lobeF[l];
+                    }
+                const Spectrum total = f[0] + f[1];
+                for (int k = 0; k < 2; ++k)
+                    for (int ch = 0; ch < 3; ++ch)
+                        if (total[ch] > 0.0f)
+                            exact[k][ch] += double(cs.weight[ch]) * double(f[k][ch]) / double(total[ch]);
+                const int before = int(cs.rayClass) - int(RayClass::Diffuse);
+                for (int ch = 0; ch < 3; ++ch)
+                    sampled[before][ch] += double(cs.weight[ch]);
+                const float luminanceBefore = luminance(cs.weight);
+                const Spectrum whole = cs.weight;
+                float classDiffuse = cs.diffuseShare;
+                const Spectrum share =
+                    splitEventClass(cl, cs, lobeF, mask, classDiffuse, [&] { return float(rng.uniform()); });
+                // The weight itself stays whole (the lights the ray meets take it) ...
+                REQUIRE((cs.weight.x == whole.x && cs.weight.y == whole.y && cs.weight.z == whole.z));
+                REQUIRE((classDiffuse >= 0.0f && classDiffuse <= 1.0f));
+                cs.weight = cs.weight * share; // ... and this is what the path scatters on with
+                const int k = int(cs.rayClass) - int(RayClass::Diffuse);
+                REQUIRE((k == 0 || k == 1));
+                ++classes[k];
+                // The sample keeps its luminance; only the lobes of its class are left for what follows.
+                REQUIRE_THAT(luminance(cs.weight), Catch::Matchers::WithinRel(luminanceBefore, 1e-3f));
+                for (int l = 0; l < cl.count; ++l)
+                    if (mask & (1u << l))
+                        REQUIRE(int(cl.lobe[l].eventClass(cs.transmit)) - int(RayClass::Diffuse) == k);
+                for (int ch = 0; ch < 3; ++ch)
+                    split[k][ch] += double(cs.weight[ch]);
+            }
+            INFO((which == 0 ? "plastic" : "standard surface") << " at mu " << mu << ": diffuse (" << split[0][0] / n << ", "
+                 << split[0][1] / n << ", " << split[0][2] / n << "), reflect (" << split[1][0] / n << ", " << split[1][1] / n
+                 << ", " << split[1][2] / n << "); exact reflect (" << exact[1][0] / n << ", " << exact[1][1] / n << ", "
+                 << exact[1][2] / n << "); by the sampled lobe (" << sampled[1][0] / n << ", " << sampled[1][1] / n << ", "
+                 << sampled[1][2] / n << ")");
+            CHECK(classes[0] > n / 100);
+            CHECK(classes[1] > n / 100);
+            for (int k = 0; k < 2; ++k)
+                for (int ch = 0; ch < 3; ++ch)
+                    CHECK_THAT(split[k][ch] / n, WithinAbs(exact[k][ch] / n, 0.02 * exact[k][ch] / n + 3e-4));
+            // The plastic's reflection is its Phong lobe, which has no colour; the class of the sampled
+            // lobe had the diffuse lobe's red in it.
+            if (which == 0) {
+                CHECK_THAT(split[1][0] / split[1][2], WithinAbs(1.0, 0.03));
+                CHECK(sampled[1][0] > 1.5 * exact[1][0]);
+            }
+        }
+    }
+}
+
+// The class's share is for what the path scatters next. The lights the
+// continuation's own ray meets are gathered by a ray of every class, so they
+// take the weight of the whole mixture, and its noise: with the share in it a
+// bounce off a red plastic to a white dome flickered between the colours of
+// its classes (docs/bug-audit-2026-11.md, section 20). One BSDF sample per
+// pixel of a plastic seen straight on under a uniform dome: every pixel is
+// one sample of the closure's weight, so its spread from pixel to pixel is
+// the closure's own.
+TEST_CASE("The light a bounce's own ray gathers has the whole mixture's weight", "[gpu][render][closure][limits]") {
+    SurfaceInputs plastic = plasticDefaults();
+    plastic.set(sf::baseColor, Spectrum{0.8f, 0.1f, 0.1f});
+    const Vec3f wo{0.0f, 0.0f, 1.0f};
+    const ClosureList cl = build(plastic, wo);
+    REQUIRE(cl.count >= 2);
+    // The closure's own samples: mean and variance per channel of the whole mixture's weight, and
+    // the variance of the weight with the class's share in it.
+    Pcg32 rng(11);
+    const int n = 400000;
+    double sum[3] = {}, sumSq[3] = {}, splitSq[3] = {};
+    for (int i = 0; i < n; ++i) {
+        const Vec3f u{float(rng.uniform()), float(rng.uniform()), float(rng.uniform())};
+        ClosureSample cs;
+        Spectrum lobeF[ClosureList::kMaxLobes];
+        uint32_t mask = 0;
+        if (!sampleClosureLobes(cl, wo, u, cs, lobeF, mask) || cs.wi.z <= 0.0f)
+            continue; // no light: a sample of 0
+        float classDiffuse = 0.0f;
+        const Spectrum share = splitEventClass(cl, cs, lobeF, mask, classDiffuse, [&] { return float(rng.uniform()); });
+        for (int ch = 0; ch < 3; ++ch) {
+            const double w = cs.weight[ch], s = w * double(share[ch]);
+            sum[ch] += w;
+            sumSq[ch] += w * w;
+            splitSq[ch] += s * s;
+        }
+    }
+    double mean[3], var[3], varSplit[3];
+    for (int ch = 0; ch < 3; ++ch) {
+        mean[ch] = sum[ch] / n;
+        var[ch] = sumSq[ch] / n - mean[ch] * mean[ch];
+        varSplit[ch] = splitSq[ch] / n - mean[ch] * mean[ch];
+    }
+    INFO("closure: mean (" << mean[0] << ", " << mean[1] << ", " << mean[2] << "), variance (" << var[0] << ", " << var[1]
+                           << ", " << var[2] << "), with the class's share (" << varSplit[0] << ", " << varSplit[1] << ", "
+                           << varSplit[2] << ")");
+    // The plastic tells the two apart: its green and blue are mostly the Phong lobe's.
+    REQUIRE(varSplit[1] > 2.0 * var[1]);
+
+    const int size = 64;
+    auto render = [&](RenderDevice device, bool &onGpu, double *outMean, double *outVar) {
+        Scene scene;
+        const MeshId mesh = scene.createMesh();
+        scene.updateMesh(mesh, nova::test::makeQuad(8.0f));
+        MaterialDesc desc;
+        desc.inputs = plastic;
+        const MaterialId m = scene.createMaterial();
+        scene.updateMaterial(m, desc);
+        scene.setMeshMaterials(mesh, {m});
+        LightDesc dome;
+        dome.type = LightType::Dome;
+        dome.intensity = 1.0f;
+        scene.updateLight(scene.createLight(), dome);
+        scene.commit();
+        Renderer renderer;
+        RenderSettings settings;
+        settings.device = device;
+        settings.maxSamples = 1;
+        settings.maxDepth = 4;
+        settings.lightStrategy = LightStrategy::BsdfOnly;
+        settings.pixelFilterScale = 0.0f;
+        settings.clampIndirect = 0.0f;
+        settings.rrStartDepth = 64;
+        renderer.setScene(&scene);
+        renderer.setSettings(settings);
+        renderer.setCamera(nova::test::makeOrthoCamera({0.0f, 0.0f, 5.0f}, 1.0f, size, size));
+        renderer.resize(size, size);
+        onGpu = true;
+        while (!renderer.converged()) {
+            renderer.renderPass({});
+            onGpu = onGpu && renderer.lastPassOnGpu();
+        }
+        double s1[3] = {}, s2[3] = {};
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x) {
+                const Spectrum c = nova::test::pixelMean(renderer.film(), x, y);
+                for (int ch = 0; ch < 3; ++ch) {
+                    s1[ch] += double(c[ch]);
+                    s2[ch] += double(c[ch]) * double(c[ch]);
+                }
+            }
+        const double pixels = double(size) * double(size);
+        for (int ch = 0; ch < 3; ++ch) {
+            outMean[ch] = s1[ch] / pixels;
+            outVar[ch] = s2[ch] / pixels - outMean[ch] * outMean[ch];
+        }
+    };
+    for (const RenderDevice device : {RenderDevice::Cpu, RenderDevice::Xpu}) {
+        bool onGpu = false;
+        double got[3], gotVar[3];
+        render(device, onGpu, got, gotVar);
+        if (device == RenderDevice::Xpu && !onGpu) {
+            WARN("no GPU: the XPU render ran on the CPU");
+            continue;
+        }
+        INFO((device == RenderDevice::Xpu ? "XPU" : "CPU")
+             << ": mean (" << got[0] << ", " << got[1] << ", " << got[2] << "), variance (" << gotVar[0] << ", " << gotVar[1]
+             << ", " << gotVar[2] << ")");
+        for (int ch = 0; ch < 3; ++ch) {
+            CHECK_THAT(got[ch], WithinAbs(mean[ch], 5.0 * std::sqrt(var[ch]) / size + 0.01 * mean[ch]));
+            // The whole weight's variance (the 4096 pixels estimate it to a few percent), far from
+            // the variance with the share.
+            CHECK_THAT(gotVar[ch], WithinAbs(var[ch], 0.25 * var[ch]));
+        }
+    }
 }

@@ -209,10 +209,16 @@ NOVA_INLINE float domeRaySeed(float seed) { return seed + 0.125f - std::floor(se
 // (lights at infinity: the same direction). Returns the direction; `dist`
 // becomes the ray's length to the light.
 NOVA_INLINE Vec3f transmittedShadowRay(Vec3f origin, Vec3f below, Vec3f wi, float &dist) {
-    if (!(dist < kInf))
-        return wi;
+    if (!(dist < kInf) || !(dist > 0.0f))
+        return wi; // at infinity, or no shadow ray (ShadowAPI)
     const Vec3f target = origin + wi * (dist / kShadowRayShortening);
     const Vec3f to = target - below;
+    // A shadow distance (shadowReach) shorter than the step through the
+    // surface: no ray, where one back to the target would cross the surface.
+    if (!(dot(to, wi) > 0.0f)) {
+        dist = 0.0f;
+        return wi;
+    }
     const float len = length(to);
     dist = len * kShadowRayShortening;
     return to * (1.0f / len);

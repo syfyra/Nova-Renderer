@@ -22,6 +22,14 @@ float VolumeEvaluator::field(int32_t index, Vec3f p) {
     return (*m_samplers[size_t(index)])(m_rec.fieldObjectToIndex[size_t(index)].point(p));
 }
 
+bool VolumeEvaluator::reaches(Vec3f p) {
+    for (const int32_t f : m_rec.maskFields)
+        if (size_t(f) < m_samplers.size() && m_samplers[size_t(f)] &&
+            m_samplers[size_t(f)]->reaches(m_rec.fieldObjectToIndex[size_t(f)].point(p)))
+            return true;
+    return false;
+}
+
 VolumePoint VolumeEvaluator::operator()(Vec3f p, Vec3f w, Vec3f dir, float time, uint8_t rayType, uint32_t depth) {
     VolumePoint out;
     // Velocity blur by lookup offset (D17): the fields are read at
@@ -37,6 +45,9 @@ VolumePoint VolumeEvaluator::operator()(Vec3f p, Vec3f w, Vec3f dir, float time,
         out.scattering = {d, d, d};
         return out;
     }
+    // Only where a lookup reaches the fields' voxels (Karma; VolumeRecord::maskFields).
+    if (!m_rec.maskFields.empty() && !reaches(lookup))
+        return out;
     using namespace shading;
     const Program &prog = *m_rec.program;
     const float *U = m_material->volumeUniforms.data();

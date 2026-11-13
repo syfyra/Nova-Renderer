@@ -146,6 +146,16 @@ struct VolumeRecord {
     std::vector<Affine3f> fieldObjectToIndex;
     std::vector<std::array<int32_t, 4>> bindings;
     std::vector<float> constantValues;
+    // Where the shader runs. Karma shades a volume only where a lookup
+    // reaches a voxel of its fields: where one of the eight voxels a
+    // trilinear lookup reads is active, which is the active voxels and half a
+    // voxel around them (measured: a constant emission on a box of 20 voxels
+    // of 0.1 is 2.1 wide, with a hard edge; docs/bug-audit-2026-11.md section
+    // 20). The fields to ask, those the shader reads; empty where it makes no
+    // difference, because the shader gives nothing at the fields' background
+    // values (most do: no density, no medium), and for the default volume and
+    // media bounded by a surface.
+    std::vector<int32_t> maskFields;
     // Cells whose extinction has no interval bound (D7): a sampled estimate,
     // which the tracker tolerates (D8); the host warns.
     uint32_t estimatedCells = 0;

@@ -4,8 +4,22 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-nova::MaterialDesc HdNovaMaterialRegistry::DefaultMaterial() const {
-    return PlasticDefault() ? nova::plasticDefaultMaterial() : nova::defaultMaterial();
+nova::MaterialDesc HdNovaMaterialRegistry::DefaultMaterial(bool displayOpacity) const {
+    return PlasticDefault() ? nova::plasticDefaultMaterial(displayOpacity) : nova::defaultMaterial(displayOpacity);
+}
+
+nova::MaterialId HdNovaMaterialRegistry::AcquireOpacityDefault(nova::Scene &scene) {
+    std::lock_guard lock(_mutex);
+    if (_opacityDefault == nova::kInvalidId) {
+        _opacityDefault = scene.createMaterial();
+        scene.updateMaterial(_opacityDefault, DefaultMaterial(true));
+    }
+    return _opacityDefault;
+}
+
+nova::MaterialId HdNovaMaterialRegistry::OpacityDefault() const {
+    std::lock_guard lock(_mutex);
+    return _opacityDefault;
 }
 
 nova::MaterialId HdNovaMaterialRegistry::Acquire(SdfPath const &path, nova::Scene &scene) {

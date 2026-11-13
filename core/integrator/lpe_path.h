@@ -233,7 +233,7 @@ NOVA_INLINE void lpeUnoccludedEnvironment(const LpeView &t, const LightData *lig
                                           bool nonDelta, const Spectrum *wholeBeta = nullptr) {
     for (uint32_t i = 0; i < lightCount; ++i) {
         const LightData &light = lights[i];
-        if (pmf[i] > 0.0f || !light.illuminates() || (nonDelta && light.shadowLinked()))
+        if (pmf[i] > 0.0f || !light.illuminates() || (nonDelta && light.ownShadows()))
             continue;
         Spectrum Le;
         if (light.type == LightType::Dome) {
@@ -272,6 +272,89 @@ NOVA_INLINE bool sampleClosureLobes(const ClosureList &cl, Vec3f wo, Vec3f u, Cl
         lobeF[i] = f;
         mask |= 1u << i;
     });
+}
+
+// The ray class of a continuation (ray limits, fake caustics, ray
+// visibility). A sample weighted by the whole mixture (several lobes, `lobeF`
+// their values at the sampled direction) whose lobes are events of several
+// classes, a diffuse and a glossy lobe say, takes one class, chosen in
+// proportion to its luminance there. Returned: that class's share of the
+// sample's weight divided by the choice probability, the factor that turns
+// the weight into the class's own light (1: one class). With it each class
+// carries its own light, so a ray limit ends the light of its class and no
+// other: with the class of the lobe that happened to be sampled and the
+// weight of all of them, part of the diffuse light went on as a reflection
+// past a diffuse limit (Karma samples a component with its bounce type;
+// measured, docs/bug-audit-2026-11.md section 20). Unbiased per class; the
+// factor keeps the weight's luminance and changes its hue.
+//
+// The factor belongs to what the path scatters next, not to the lights its
+// ray meets on the way: those are gathered whatever the class (a ray past a
+// limit still sees lights), so they keep the whole weight and its lower
+// noise. The integrators therefore hold the factor back until the path's
+// next scattering vertex (WaveQueues::classShare), unless light path
+// expressions need the class's own light at once.
+//
+// cs.rayClass becomes the class; `classDiffuse` its diffuse share (for
+// cs.diffuseShare where the factor is applied at once). The lobes of the
+// other classes leave lobeF and lobeMask: a light path expression's own
+// split (lpeScatter) goes on among those of the class. `draw`: a uniform
+// number, asked for only where there is a choice.
+template <class Draw>
+NOVA_INLINE Spectrum splitEventClass(const ClosureList &cl, ClosureSample &cs, Spectrum *lobeF, uint32_t &lobeMask,
+                                     float &classDiffuse, Draw &&draw) {
+    Spectrum factor = spectrum(1.0f);
+    classDiffuse = cs.diffuseShare;
+    if (cl.external.active || cs.delta || lobeMask == 0)
+        return factor;
+    constexpr int kClasses = 4; // Diffuse, Reflect, Refract, Sss
+    Spectrum f[kClasses], fDiffuse[kClasses];
+    for (int k = 0; k < kClasses; ++k)
+        f[k] = fDiffuse[k] = spectrum(0.0f);
+    const auto classOf = [&](int i) { return int(cl.lobe[i].eventClass(cs.transmit)) - int(RayClass::Diffuse); };
+    for (int i = 0; i < cl.count; ++i) {
+        if (!(lobeMask & (1u << i)))
+            continue;
+        const int k = classOf(i);
+        if (k < 0 || k >= kClasses)
+            return factor; // not a surface event's class: as sampled
+        f[k] += lobeF[i];
+        if (cl.lobe[i].diffuse)
+            fDiffuse[k] += lobeF[i];
+    }
+    float lum[kClasses], total = 0.0f;
+    Spectrum fTotal = spectrum(0.0f);
+    int classes = 0, only = 0;
+    for (int k = 0; k < kClasses; ++k) {
+        lum[k] = nova::fmax(luminance(f[k]), 0.0f);
+        total += lum[k];
+        fTotal += f[k];
+        if (lum[k] > 0.0f) {
+            ++classes;
+            only = k;
+        }
+    }
+    if (classes == 0)
+        return factor;
+    int k = only;
+    if (classes > 1) {
+        const float u = draw() * total;
+        k = 0;
+        float edge = lum[0];
+        while (k + 1 < kClasses && u >= edge)
+            edge += lum[++k];
+        while (k > 0 && !(lum[k] > 0.0f)) // rounding past the last class with a share
+            --k;
+        const auto share = [](float a, float b) { return b > 0.0f ? a / b : 0.0f; };
+        const Spectrum ratio{share(f[k].x, fTotal.x), share(f[k].y, fTotal.y), share(f[k].z, fTotal.z)};
+        factor = ratio * (total / lum[k]);
+        classDiffuse = saturate(luminance(fDiffuse[k]) / lum[k]);
+    }
+    for (int i = 0; i < cl.count; ++i)
+        if ((lobeMask & (1u << i)) && classOf(i) != k)
+            lobeMask &= ~(1u << i);
+    cs.rayClass = RayClass(k + int(RayClass::Diffuse));
+    return factor;
 }
 
 // The scattering event of a continuation (docs/design/M6.md D5). A sample

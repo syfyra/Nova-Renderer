@@ -1,0 +1,194 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# UsdLux ShadowAPI as Karma renders it (docs/bug-audit-2026-11.md, section 20).
+# A grey card (2 x 2 at height 1, over x in -1..1) above a grey ground, seen
+# from above, under a sun slanted 45 degrees: the card's shadow lies on the
+# ground at x in -2..0, so the strip x in -2..-1 is in shadow and not under
+# the card. The open ground has the radiance 0.5 cos 45 = 0.3536; the shadow
+# rays meet the card after sqrt 2. Six suns, one per pass; Karma CPU renders
+# in the strip: plain 0, off 0.3535, tinted (0.3535, 0.0884, 0), near 0.3535,
+# fade 0.2155, fade2 0.2996. tests/husk/check_stage_features.py compares.
+def Xform "World"
+{
+    def Mesh "card" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-1, 1, 1), (1, 1, 1), (1, 1, -1), (-1, 1, -1)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-4, 0, 3), (4, 0, 3), (4, 0, -3), (-4, 0, -3)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </World/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def Scope "suns"
+    {
+        # Normalized, of intensity pi: a matte surface of albedo a facing it has the radiance a.
+        def DistantLight "plain" (
+            prepend apiSchemas = ["ShadowAPI"]
+        )
+        {
+            float inputs:intensity = 3.14159265
+            float inputs:angle = 1
+            bool inputs:normalize = 1
+            float3 xformOp:rotateXYZ = (-90, 0, 0)
+            float3 xformOp:rotateXYZ:tilt = (0, 0, -45)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ:tilt", "xformOp:rotateXYZ"]
+        }
+
+        def DistantLight "off" (
+            prepend apiSchemas = ["ShadowAPI"]
+        )
+        {
+            float inputs:intensity = 3.14159265
+            float inputs:angle = 1
+            bool inputs:normalize = 1
+            bool inputs:shadow:enable = 0
+            float3 xformOp:rotateXYZ = (-90, 0, 0)
+            float3 xformOp:rotateXYZ:tilt = (0, 0, -45)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ:tilt", "xformOp:rotateXYZ"]
+        }
+
+        def DistantLight "tinted" (
+            prepend apiSchemas = ["ShadowAPI"]
+        )
+        {
+            float inputs:intensity = 3.14159265
+            float inputs:angle = 1
+            bool inputs:normalize = 1
+            color3f inputs:shadow:color = (1, 0.25, 0)
+            float3 xformOp:rotateXYZ = (-90, 0, 0)
+            float3 xformOp:rotateXYZ:tilt = (0, 0, -45)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ:tilt", "xformOp:rotateXYZ"]
+        }
+
+        def DistantLight "near" (
+            prepend apiSchemas = ["ShadowAPI"]
+        )
+        {
+            float inputs:intensity = 3.14159265
+            float inputs:angle = 1
+            bool inputs:normalize = 1
+            float inputs:shadow:distance = 0.5
+            float3 xformOp:rotateXYZ = (-90, 0, 0)
+            float3 xformOp:rotateXYZ:tilt = (0, 0, -45)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ:tilt", "xformOp:rotateXYZ"]
+        }
+
+        def DistantLight "fade" (
+            prepend apiSchemas = ["ShadowAPI"]
+        )
+        {
+            float inputs:intensity = 3.14159265
+            float inputs:angle = 1
+            bool inputs:normalize = 1
+            float inputs:shadow:distance = 2
+            float inputs:shadow:falloff = 1.5
+            float3 xformOp:rotateXYZ = (-90, 0, 0)
+            float3 xformOp:rotateXYZ:tilt = (0, 0, -45)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ:tilt", "xformOp:rotateXYZ"]
+        }
+
+        def DistantLight "fade2" (
+            prepend apiSchemas = ["ShadowAPI"]
+        )
+        {
+            float inputs:intensity = 3.14159265
+            float inputs:angle = 1
+            bool inputs:normalize = 1
+            float inputs:shadow:distance = 2
+            float inputs:shadow:falloff = 1.5
+            float inputs:shadow:falloffGamma = 2
+            float3 xformOp:rotateXYZ = (-90, 0, 0)
+            float3 xformOp:rotateXYZ:tilt = (0, 0, -45)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ:tilt", "xformOp:rotateXYZ"]
+        }
+    }
+
+    def Camera "cam"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 80
+        float verticalAperture = 60
+        float2 clippingRange = (0.1, 100)
+        double3 xformOp:translate = (0, 10, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/cam>
+        int2 resolution = (160, 120)
+        int nova:samples = 256
+    }
+
+    def RenderPass "plain"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/suns/off>, </World/suns/tinted>, </World/suns/near>, </World/suns/fade>, </World/suns/fade2>]
+    }
+
+    def RenderPass "off"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/suns/plain>, </World/suns/tinted>, </World/suns/near>, </World/suns/fade>, </World/suns/fade2>]
+    }
+
+    def RenderPass "tinted"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/suns/plain>, </World/suns/off>, </World/suns/near>, </World/suns/fade>, </World/suns/fade2>]
+    }
+
+    def RenderPass "near"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/suns/plain>, </World/suns/off>, </World/suns/tinted>, </World/suns/fade>, </World/suns/fade2>]
+    }
+
+    def RenderPass "fade"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/suns/plain>, </World/suns/off>, </World/suns/tinted>, </World/suns/near>, </World/suns/fade2>]
+    }
+
+    def RenderPass "fade2"
+    {
+        rel renderSource = </Render/rs>
+        rel collection:prune:includes = [</World/suns/plain>, </World/suns/off>, </World/suns/tinted>, </World/suns/near>, </World/suns/fade>]
+    }
+}

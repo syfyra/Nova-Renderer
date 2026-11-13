@@ -960,7 +960,7 @@ void Scene::computeLinks() {
     for (size_t i = 0; i < m_lightLinks.size(); ++i) { // emissive triangles (after them) link everything
         const auto it = shadowCats.find(m_lightLinks[i].second);
         m_lightData[i].shadowCategory = it != shadowCats.end() && it->second < 64 ? uint16_t(it->second) : 0xFFFFu;
-        if (m_lightData[i].type == LightType::Dome && m_lightData[i].shadowLinked() && m_lightData[i].illuminates())
+        if (m_lightData[i].type == LightType::Dome && m_lightData[i].ownShadows() && m_lightData[i].illuminates())
             m_shadowDomes.push_back(uint32_t(i));
     }
     if (linkCats.size() > 64 || shadowCats.size() > 64)

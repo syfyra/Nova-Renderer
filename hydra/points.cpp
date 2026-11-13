@@ -257,8 +257,11 @@ void HdNovaPoints::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     }
     if (categoriesDirty)
         HdNovaSyncCategories(sd, id, GetInstancerId(), scene, _meshId); // light linking (M9 D15)
-    if (materialsDirty) {
-        const nova::MaterialId material = registry.Acquire(GetMaterialId(), scene);
+    if (materialsDirty || rebuild) { // a displayOpacity primvar that came or went rebuilds
+        nova::MaterialId material = registry.Acquire(GetMaterialId(), scene);
+        // Without a material but with a displayOpacity: see-through by it, as in Karma.
+        if (material == nova::kDefaultMaterialId && HdNovaHasDisplayOpacity(sd, id))
+            material = registry.AcquireOpacityDefault(scene);
         scene.setMeshMaterials(_meshId, material == nova::kDefaultMaterialId ? std::vector<nova::MaterialId>{}
                                                                              : std::vector<nova::MaterialId>{material});
     }

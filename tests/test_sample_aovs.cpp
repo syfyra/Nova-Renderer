@@ -27,7 +27,7 @@ namespace {
 MeshDesc rect(float x0, float x1, float z, int32_t userId) {
     MeshDesc m;
     m.points = {{x0, -1, z}, {x1, -1, z}, {x1, 1, z}, {x0, 1, z}};
-    m.indices = {0, 1, 2, 0, 2, 3};
+    m.indices = {3, 0, 1, 3, 1, 2}; // a quad as the delegate splits it: from its last vertex (Karma)
     m.triangleFaces = {0, 0};
     m.userId = userId;
     return m;

@@ -61,6 +61,15 @@ LightData buildLightData(const LightDesc &desc) {
     d.cameraVisible = desc.cameraVisible;
     d.illumBackground = desc.illumBackground;
     d.castsShadows = desc.castsShadows;
+    d.shadowColor = desc.shadowColor;
+    d.shadowDistance = desc.shadowDistance;
+    d.shadowFalloff = desc.shadowFalloff;
+    d.shadowFalloffGamma = desc.shadowFalloffGamma;
+    // A shadow colour of white is no shadow at all (the ray would decide nothing).
+    if (d.shadowColor.x >= 1.0f && d.shadowColor.y >= 1.0f && d.shadowColor.z >= 1.0f)
+        d.castsShadows = false;
+    d.shadowTinted = d.castsShadows && !isBlack(d.shadowColor);
+    d.shadowShaped = !d.castsShadows || d.shadowTinted || d.shadowDistance > 0.0f;
     const Spectrum base = desc.color * (desc.intensity * std::exp2(desc.exposure));
     const Mat4 &xf = desc.transform;
     d.position = xf.transformAffine({0.0f, 0.0f, 0.0f});
