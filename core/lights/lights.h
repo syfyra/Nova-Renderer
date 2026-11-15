@@ -131,6 +131,13 @@ struct LightData {
     // where a sample lands. The triangle: mesh, instance, primitive.
     uint32_t mesh = 0, instance = 0, prim = 0;
 
+    // Emissive triangles: the colour their light is multiplied by where it
+    // lights something, and not where the camera sees them (the colour and
+    // intensity of UsdLux MeshLightAPI over the material's glow: Karma,
+    // measured; docs/bug-audit-2026-11.md section 23). It is the light
+    // sample's Li, which the emission at the shadow ray's end multiplies, and
+    // a factor of a scattered ray's hit on the triangle.
+    Spectrum tint{1.0f, 1.0f, 1.0f};
     // Multiplies the light's selection weight (Karma's sampling quality, M9
     // D18). 0 turns the illumination of a light other than an emissive
     // triangle off, as in Karma (measured): light sampling never picks it and
@@ -612,6 +619,32 @@ NOVA_INLINE LightSample sampleLightUnfiltered(const LightData &light, Vec3f P, V
         return s;
     }
 
+    if (light.delta && light.type == LightType::Cylinder) {
+        // A line light (a cylinder light with treatAsLine), as Karma renders
+        // it (docs/bug-audit-2026-11.md section 23; measured on a lit ground
+        // to 2 parts in 10 000, over lines of three lengths and two heights):
+        // a point light at the line's middle whose light at P is `emission`
+        // times the angle, in radians, under which P sees the line. No point
+        // of the line is sampled: its direction, and so its shadows and what
+        // a surface makes of it, are the middle's. The radius and normalize
+        // do nothing.
+        const Vec3f d = light.position - P;
+        const float dist2 = dot(d, d);
+        if (!(dist2 > 0.0f))
+            return noLightSample();
+        const Vec3f toA = d - light.axisU, toB = d + light.axisU;
+        const float angle = std::atan2(length(cross(toA, toB)), dot(toA, toB));
+        if (!(angle > 0.0f))
+            return noLightSample(); // seen end-on, or a line without length
+        const float dist = std::sqrt(dist2);
+        LightSample s;
+        s.wi = d / dist;
+        s.Li = light.emission * shapingFactor(light, -s.wi) * angle;
+        s.pdf = 1.0f;
+        s.distance = dist * kShadowRayShortening;
+        s.delta = true;
+        return s;
+    }
     if (light.delta) { // point light
         LightSample s;
         const Vec3f d = light.position - P;
@@ -659,7 +692,7 @@ NOVA_INLINE LightSample sampleLightUnfiltered(const LightData &light, Vec3f P, V
     s.distance = dist * kShadowRayShortening;
     s.delta = false;
     if (light.type == LightType::Triangle) {
-        s.Li = {1.0f, 1.0f, 1.0f}; // the emission follows at the shadow ray's end
+        s.Li = light.tint; // the emission follows at the shadow ray's end
         s.bary = bary;
         return s;
     }

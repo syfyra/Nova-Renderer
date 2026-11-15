@@ -8,6 +8,8 @@
 
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/vec2f.h>
+#include <pxr/base/gf/vec3f.h>
+#include <pxr/base/gf/vec4f.h>
 #include <pxr/imaging/hd/aov.h>
 #include <pxr/imaging/hd/renderPass.h>
 #include <pxr/pxr.h>
@@ -48,6 +50,10 @@ private:
         // Thin lens (see nova::Camera::lensRadius).
         float lensRadius = 0.0f;
         float focusDistance = 0.0f;
+        // The camera's exposure and Karma's tint (nova::Camera::exposure) and
+        // its clipping planes, in camera space (nova::Camera::clipPlanes).
+        GfVec3f exposure{1.0f};
+        std::vector<GfVec4f> clipPlanes;
         // Camera motion: camera-to-world at uniform shutter steps (empty if
         // static) and the shutter position of the frame.
         std::vector<GfMatrix4d> cameraMotion;
@@ -58,7 +64,8 @@ private:
                    region.y0 == o.region.y0 && region.x1 == o.region.x1 && region.y1 == o.region.y1 &&
                    ndcScale == o.ndcScale && ndcOffset == o.ndcOffset && imageOriginX == o.imageOriginX &&
                    imageOriginY == o.imageOriginY && lensRadius == o.lensRadius && focusDistance == o.focusDistance &&
-                   cameraMotion == o.cameraMotion && frameTime == o.frameTime;
+                   cameraMotion == o.cameraMotion && frameTime == o.frameTime && exposure == o.exposure &&
+                   clipPlanes == o.clipPlanes;
         }
     };
 

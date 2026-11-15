@@ -15,11 +15,16 @@
 #include <pxr/base/gf/vec4i.h>
 #include <pxr/base/vt/array.h>
 #include <pxr/imaging/hd/instancer.h>
+#include <pxr/imaging/hd/light.h>
+#include <pxr/imaging/hd/lightSchema.h>
+#include <pxr/imaging/hd/renderIndex.h>
+#include <pxr/imaging/hd/sceneIndex.h>
 #include <pxr/imaging/hd/sceneDelegate.h>
 #include <pxr/imaging/hd/tokens.h>
 
 #include <pxr/base/tf/getenv.h>
 #include <pxr/base/tf/stringUtils.h>
+#include <pxr/usd/usdLux/blackbody.h>
 
 #include "diagnostics.h"
 
@@ -121,6 +126,36 @@ std::string HdNovaObjectLpeTag(HdSceneDelegate *sd, SdfPath const &id) {
         found[k] = true;
     }
     return found[0] ? tags[0] : tags[1];
+}
+
+HdNovaMeshLight HdNovaReadMeshLight(HdSceneDelegate *sd, SdfPath const &id) {
+    HdNovaMeshLight light;
+    const HdSceneIndexBaseRefPtr si = sd->GetRenderIndex().GetTerminalSceneIndex();
+    if (!si || !HdLightSchema::GetFromParent(si->GetPrim(id).dataSource).IsDefined())
+        return light;
+    light.on = true;
+    const auto number = [&](TfToken const &name, float fallback) {
+        return VtValue::Cast<float>(sd->GetLightParamValue(id, name)).GetWithDefault<float>(fallback);
+    };
+    GfVec3f color = VtValue::Cast<GfVec3f>(sd->GetLightParamValue(id, HdLightTokens->color)).GetWithDefault<GfVec3f>(GfVec3f(1.0f));
+    if (VtValue::Cast<bool>(sd->GetLightParamValue(id, HdLightTokens->enableColorTemperature)).GetWithDefault<bool>(false)) {
+        const float kelvin = number(HdLightTokens->colorTemperature, 6500.0f);
+        if (!std::isnan(kelvin)) // (a NaN passes UsdLux's clamp and indexes its table out of bounds)
+            color = GfCompMult(color, UsdLuxBlackbodyTemperatureAsRgb(kelvin));
+    }
+    light.color = color * (number(HdLightTokens->intensity, 1.0f) * std::exp2(number(HdLightTokens->exposure, 0.0f)));
+    for (int c = 0; c < 3; ++c)
+        if (!std::isfinite(light.color[c]))
+            light.color = GfVec3f(0.0f);
+    const VtValue mode = sd->GetLightParamValue(id, HdTokens->materialSyncMode);
+    const std::string sync = mode.IsHolding<TfToken>() ? mode.UncheckedGet<TfToken>().GetString()
+                                                       : mode.IsHolding<std::string>() ? mode.UncheckedGet<std::string>() : std::string();
+    light.ownMaterial = sync == "noMaterialResponse";
+    if (sync == "independent")
+        HD_NOVA_WARN("mesh light %s has the material sync mode \"independent\"; Nova renders it as "
+                     "\"materialGlowTintsLight\" (the material's glow times the light's colour lights the scene)",
+                     id.GetText());
+    return light;
 }
 
 nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &id, HdNovaObjectDefaults const &defaults) {
@@ -410,6 +445,16 @@ bool HdNovaHasDisplayOpacity(HdSceneDelegate *sd, SdfPath const &id) {
         for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(id, HdInterpolation(i)))
             if (d.name == HdTokens->displayOpacity)
                 return true;
+    }
+    // One per instance: a point instancer's primvar, a native instance's own
+    // (an instance attribute of the mesh, HdNovaInstancer). Karma renders
+    // every instance by its value (section 23).
+    SdfPath instancer = sd->GetInstancerId(id);
+    for (int level = 0; !instancer.IsEmpty() && level < 64; ++level) {
+        for (const HdPrimvarDescriptor &d : sd->GetPrimvarDescriptors(instancer, HdInterpolationInstance))
+            if (d.name == HdTokens->displayOpacity)
+                return true;
+        instancer = sd->GetInstancerId(instancer);
     }
     return false;
 }

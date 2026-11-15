@@ -80,6 +80,10 @@ struct SubdivStats {
     uint32_t splitVertices = 0; // copies with their own normal at infinitely sharp features
     uint32_t skippedFaces = 0;  // non-hole faces without a limit surface (degenerate topology)
     uint32_t droppedFaces = 0;  // faces with fewer than 3 vertices, ignored
+    // Every face is a hole (holeIndices, or interpolateBoundary "none" on a
+    // mesh whose faces all touch the boundary): the surface is nothing, which
+    // is no failure of the tessellation. Set where it fails for that reason.
+    bool allHoles = false;
 };
 
 // Triangles produced at `rate` (upper bound; holes not subtracted). Catmull-Clark

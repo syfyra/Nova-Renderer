@@ -3183,3 +3183,110 @@ TEST_CASE("XPU reads the parameters of faces without st", "[gpu][render][attribu
     CHECK(worst < 1e-4); // point samples at the pixel centres
     CHECK(worstDevices < 1e-4); // inside the faces; a pixel centre on an edge is a hit for one tracer and none for the other
 }
+
+// docs/bug-audit-2026-11.md, section 23: a half-transparent sphere, point or
+// round curve is crossed twice (0.75 of the rays stop at an opacity of 0.5).
+// OptiX reports a ray's way into a round curve and never its way out, so the
+// one hit of a tube stands for both.
+TEST_CASE("XPU crosses half-transparent spheres, points and tubes twice", "[gpu][opacity][shapes]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    for (const int shape : {0, 1, 2}) {
+        for (const float opacity : {0.5f, 0.2f}) {
+            INFO((shape == 0 ? "sphere" : shape == 1 ? "point" : "tube") << ", opacity " << opacity);
+            Scene scene;
+            MeshDesc d;
+            if (shape == 0) {
+                d.shape = MeshShape::Sphere;
+                d.points = {{0.0f, 0.0f, 0.0f}};
+                d.sphereRadius = {1.0f};
+            } else if (shape == 1) {
+                d.shape = MeshShape::Points;
+                d.points = {{0.0f, 0.0f, 0.0f}};
+                d.pointRadius = {1.0f};
+            } else {
+                d.shape = MeshShape::Curves;
+                d.curveBasis = CurveBasis::Linear;
+                d.points = {{-3.0f, 0.0f, 0.0f}, {3.0f, 0.0f, 0.0f}};
+                d.curveVertexCounts = {2};
+                d.curveRadius = {1.0f, 1.0f};
+                REQUIRE(prepareCurves(d));
+            }
+            const MeshId id = scene.createMesh();
+            scene.updateMesh(id, std::move(d));
+            MaterialDesc veil;
+            veil.inputs = unlitDefaults();
+            veil.inputs.set(surface_field::opacity, spectrum(opacity));
+            const MaterialId m = scene.createMaterial();
+            scene.updateMaterial(m, veil);
+            scene.setMeshMaterials(id, {m});
+            scene.commit();
+            const Camera camera = makeOrthoCamera({0.0f, 0.0f, 5.0f}, 0.3f, 8, 8);
+            const double twice = 1.0 - double(1.0f - opacity) * double(1.0f - opacity);
+            for (const RenderDevice device : {RenderDevice::Cpu, RenderDevice::Xpu}) {
+                const Render r = render(scene, camera, 8, 8, 2048, device, 4);
+                CHECK(r.gpu == (device == RenderDevice::Xpu));
+                double alpha = 0.0;
+                for (size_t i = 0; i < r.film.alphaSum.size(); ++i)
+                    alpha += double(r.film.alphaSum[i]) / double(r.film.count[i]);
+                alpha /= double(r.film.alphaSum.size());
+                INFO((device == RenderDevice::Xpu ? "XPU" : "CPU") << ": alpha " << alpha);
+                CHECK_THAT(alpha, WithinAbs(twice, 0.006));
+            }
+        }
+    }
+}
+
+// The line light (tests/test_line_light.cpp): Karma's law on both devices.
+TEST_CASE("XPU renders a line light as the CPU", "[gpu][lights][line]") {
+    std::string why;
+    if (!gpuAvailable(why))
+        SKIP("no GPU: " << why);
+    Scene scene;
+    scene.updateMesh(scene.createMesh(), makeQuad(5.0f));
+    MeshDesc card;
+    card.points = {{-0.5f, -0.5f, 1.0f}, {0.5f, -0.5f, 1.0f}, {0.5f, 0.5f, 1.0f}, {-0.5f, 0.5f, 1.0f}};
+    card.indices = {0, 1, 2, 0, 2, 3};
+    scene.updateMesh(scene.createMesh(), card);
+    LightDesc line;
+    line.type = LightType::Cylinder;
+    line.treatAsLine = true;
+    line.intensity = 10.0f;
+    line.length = 3.0f;
+    line.transform = translation({0.0f, 0.0f, 2.0f});
+    scene.updateLight(scene.createLight(), line);
+    scene.commit();
+    RenderSettings settings;
+    settings.pixelFilterScale = 0.0f;
+    const Camera camera = makeOrthoCamera({0.0f, 0.0f, 9.0f}, 4.0f, 20, 20);
+    const Render cpu = render(scene, camera, 20, 20, 1, RenderDevice::Cpu, 1, false, settings);
+    const Render gpu = render(scene, camera, 20, 20, 1, RenderDevice::Xpu, 1, false, settings);
+    CHECK(gpu.gpu);
+    int lit = 0;
+    double worst = 0.0;
+    for (int y = 0; y < 20; ++y)
+        for (int x = 0; x < 20; ++x) {
+            const double px = (x + 0.5) * 0.4 - 4.0, py = (y + 0.5) * 0.4 - 4.0;
+            if ((std::fabs(std::fabs(px) - 1.0) < 0.05 && std::fabs(py) < 1.05) ||
+                (std::fabs(std::fabs(py) - 1.0) < 0.05 && std::fabs(px) < 1.05) ||
+                (std::fabs(std::fabs(px) - 0.5) < 0.05 && std::fabs(py) < 0.55) ||
+                (std::fabs(std::fabs(py) - 0.5) < 0.05 && std::fabs(px) < 0.55))
+                continue; // on the card's edge or its shadow's
+            const float c = pixelMean(cpu.film, x, y).x, g = pixelMean(gpu.film, x, y).x;
+            worst = std::max(worst, double(std::fabs(c - g)) / std::max(double(c), 1e-3));
+            lit += c > 0.0f;
+            // In the open the law itself: intensity x the angle the line is seen under x the cosine to its middle.
+            if (std::fabs(px) > 1.05 || std::fabs(py) > 1.05) {
+                const double a[3] = {-1.5 - px, -py, 2.0}, b[3] = {1.5 - px, -py, 2.0};
+                const double angle = std::acos((a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) /
+                                               (std::sqrt(a[0] * a[0] + a[1] * a[1] + 4.0) *
+                                                std::sqrt(b[0] * b[0] + b[1] * b[1] + 4.0)));
+                const double expected = 10.0 * angle * 2.0 / std::sqrt(px * px + py * py + 4.0) * 0.18 / kPi;
+                CHECK_THAT(double(g), WithinRel(expected, 5e-4));
+            }
+        }
+    INFO("the devices differ by up to " << worst);
+    CHECK(worst < 1e-4);
+    CHECK(lit > 300);
+}

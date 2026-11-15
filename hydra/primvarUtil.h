@@ -3,6 +3,7 @@
 // Numeric primvars as flat float arrays: the shading attributes of meshes
 // and instancers (docs/design/M3.md K12).
 
+#include <pxr/base/gf/vec3f.h>
 #include <pxr/base/tf/token.h>
 #include <pxr/base/vt/value.h>
 #include <pxr/pxr.h>
@@ -50,6 +51,26 @@ PXR_NAMESPACE_OPEN_SCOPE
 // yes, 2 auto) and karma:object:lightsource_diffusescale, _specularscale and
 // _samplingquality, else the render settings' Karma values (`defaults`,
 // docs/design/M11-P1.md).
+// UsdLux MeshLightAPI (docs/bug-audit-2026-11.md, section 23). In Karma a mesh
+// with the API is a light source, by light:materialSyncMode (measured):
+//   materialGlowTintsLight (the default)  the light it gives is the glow of
+//       its material times the light's colour, intensity and 2^exposure; the
+//       camera sees the material's glow itself. Without a material the glow
+//       is white; a material that does not glow gives no light.
+//   noMaterialResponse  nothing of the material: it emits the light's colour
+//       times its intensity, to the camera too.
+//   independent  the light's own colour as its light and the material's glow
+//       to the camera: rendered as the default, with a warning.
+// `normalize` does nothing. `on`: the prim has the API; `color`: the light's
+// colour x intensity x 2^exposure; `ownMaterial`: noMaterialResponse.
+struct HdNovaMeshLight {
+    bool on = false;
+    bool ownMaterial = false;
+    GfVec3f color{1.0f};
+    bool operator==(HdNovaMeshLight const &) const = default;
+};
+HdNovaMeshLight HdNovaReadMeshLight(HdSceneDelegate *sd, SdfPath const &id);
+
 nova::MeshLightSource HdNovaMeshLightSource(HdSceneDelegate *sd, SdfPath const &id,
                                             HdNovaObjectDefaults const &defaults = HdNovaObjectDefaults{});
 

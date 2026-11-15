@@ -1,5 +1,7 @@
 #include "mesh.h"
 
+#include "stablePath.h"
+
 #include "diagnostics.h"
 #include "instancer.h"
 #include "meshSubdiv.h"
@@ -13,6 +15,7 @@
 
 #include <pxr/base/arch/hash.h>
 #include <pxr/base/gf/matrix4d.h>
+#include <pxr/base/gf/vec3d.h>
 #include <pxr/base/gf/vec3f.h>
 #include <pxr/base/tf/debug.h>
 #include <pxr/base/work/loops.h>
@@ -182,6 +185,73 @@ nova::PrimvarInterp toNovaInterp(HdInterpolation interp) {
     default:
         return nova::PrimvarInterp::Constant;
     }
+}
+
+// The normals of polygons that are not flat (docs/bug-audit-2026-11.md,
+// section 23). Without authored normals Karma shades the whole of a polygon
+// by one normal, the face's own: Newell's, the sum of the cross products of
+// its vertices in turn (measured in its N plane on quads, pentagons and
+// hexagons). The triangles a bent face is made of have each their own, which
+// showed the fold between them. Returns whether a face of the mesh is bent
+// (at the first motion step), and then for every step that normal per
+// face-vertex; a mesh of flat faces needs none (its triangles' normals are
+// the faces').
+bool bentFaceNormals(HdMeshTopology const &topology, std::vector<VtVec3fArray> const &pointSteps,
+                     std::vector<VtVec3fArray> &normalSteps) {
+    VtIntArray const &counts = topology.GetFaceVertexCounts();
+    VtIntArray const &indices = topology.GetFaceVertexIndices();
+    if (pointSteps.empty())
+        return false;
+    const double side = topology.GetOrientation() == HdTokens->leftHanded ? -1.0 : 1.0;
+    const auto faceNormal = [&](VtVec3fArray const &points, size_t first, int n, GfVec3d &normal) {
+        normal = GfVec3d(0.0);
+        for (int k = 0; k < n; ++k) {
+            const int a = indices[first + size_t(k)], b = indices[first + size_t((k + 1) % n)];
+            if (a < 0 || b < 0 || size_t(a) >= points.size() || size_t(b) >= points.size())
+                return false;
+            normal += GfCross(GfVec3d(points[a]), GfVec3d(points[b]));
+        }
+        return normal.Normalize() > 0.0;
+    };
+    // Bent: a triangle of the face's fan is turned from the face's normal
+    // (by a quarter of a degree; below that the eye sees no fold).
+    bool bent = false;
+    {
+        VtVec3fArray const &points = pointSteps[0];
+        size_t first = 0;
+        for (size_t f = 0; f < counts.size() && !bent; first += size_t(std::max(counts[f], 0)), ++f) {
+            const int n = counts[f];
+            if (n < 4 || first + size_t(n) > indices.size())
+                continue;
+            GfVec3d normal;
+            if (!faceNormal(points, first, n, normal))
+                continue;
+            const GfVec3d origin(points[indices[first]]);
+            for (int k = 1; k + 1 < n && !bent; ++k) {
+                GfVec3d t = GfCross(GfVec3d(points[indices[first + size_t(k)]]) - origin,
+                                    GfVec3d(points[indices[first + size_t(k) + 1]]) - origin);
+                bent = t.Normalize() > 0.0 && GfDot(t, normal) < 1.0 - 1e-5;
+            }
+        }
+    }
+    if (!bent)
+        return false;
+    normalSteps.clear();
+    for (VtVec3fArray const &points : pointSteps) {
+        VtVec3fArray normals;
+        normals.reserve(indices.size());
+        size_t first = 0;
+        for (size_t f = 0; f < counts.size(); first += size_t(std::max(counts[f], 0)), ++f) {
+            const int n = counts[f];
+            GfVec3d normal(0.0, 0.0, 1.0);
+            if (n >= 3 && first + size_t(n) <= indices.size())
+                faceNormal(points, first, n, normal);
+            for (int k = 0; k < n; ++k)
+                normals.push_back(GfVec3f(normal * side));
+        }
+        normalSteps.push_back(std::move(normals));
+    }
+    return true;
 }
 
 // The primvars of a subdivision surface on the control mesh. faceVarying data
@@ -457,8 +527,15 @@ bool HdNovaMesh::_BuildSubdivMesh(HdSceneDelegate *sd, std::vector<VtVec3fArray>
     std::string error;
     nova::SubdivStats stats;
     if (!nova::tessellateSubdiv(sdesc, rate, desc, &error, &stats, &_triangleFaces)) {
-        HD_NOVA_WARN("cannot subdivide %s (%s), rendering its control mesh", id.GetText(), error.c_str());
         desc = nova::MeshDesc{};
+        if (stats.allHoles) {
+            // Every face is a hole (holeIndices, or interpolateBoundary "none"
+            // on a mesh whose faces all touch its boundary): the surface is
+            // nothing, as in Karma, and not its control mesh.
+            _triangleFaces.clear();
+            return true;
+        }
+        HD_NOVA_WARN("cannot subdivide %s (%s), rendering its control mesh", id.GetText(), error.c_str());
         return false;
     }
     if (stats.droppedFaces > 0)
@@ -533,12 +610,44 @@ bool HdNovaMesh::_BuildMesh(HdSceneDelegate *sd, HdNovaRenderParam &param, int s
 
     // Authored normals: sampled like the points, or one set for all steps.
     HdInterpolation nInterp = HdInterpolationConstant;
-    const bool hasNormals = findPrimvar(sd, id, HdTokens->normals, nInterp);
+    bool hasNormals = findPrimvar(sd, id, HdTokens->normals, nInterp);
+    // (Karma shades a mesh of the bilinear scheme without its authored normals, as other subdivision schemes: measured.)
+    const bool polygons = _topology.GetScheme() == PxOsdOpenSubdivTokens->none ||
+                          _topology.GetScheme() == PxOsdOpenSubdivTokens->bilinear;
+    if (_topology.GetScheme() == PxOsdOpenSubdivTokens->bilinear)
+        hasNormals = false;
     std::vector<VtVec3fArray> normalSteps;
     if (hasNormals && HdNovaSampleVec3fArray(sd, id, HdTokens->normals, shutter, maxSteps, &normalSteps) &&
         normalSteps.size() != steps)
         normalSteps.resize(1);
     desc.pointSteps = steps;
+
+    // Normals per face (uniform) or one for the whole mesh (constant): every
+    // face-vertex gets its face's, and the mesh is built as with faceVarying
+    // normals (Karma shades by them; they were ignored).
+    if (hasNormals && (nInterp == HdInterpolationUniform || nInterp == HdInterpolationConstant) && !normalSteps.empty()) {
+        VtIntArray const &counts = _topology.GetFaceVertexCounts();
+        const bool perFace = nInterp == HdInterpolationUniform;
+        bool fits = true;
+        for (VtVec3fArray const &normals : normalSteps)
+            fits = fits && (perFace ? normals.size() >= counts.size() : !normals.empty());
+        if (fits) {
+            for (VtVec3fArray &normals : normalSteps) {
+                VtVec3fArray corners;
+                corners.reserve(_topology.GetFaceVertexIndices().size());
+                for (size_t f = 0; f < counts.size(); ++f)
+                    for (int k = 0; k < counts[f]; ++k)
+                        corners.push_back(normals[perFace ? f : 0]);
+                normals = std::move(corners);
+            }
+            nInterp = HdInterpolationFaceVarying;
+        }
+    }
+    // Polygons that are not flat are shaded by their face's normal (bentFaceNormals).
+    if (!hasNormals && polygons && bentFaceNormals(_topology, pointSteps, normalSteps)) {
+        hasNormals = true;
+        nInterp = HdInterpolationFaceVarying;
+    }
 
     if (hasNormals && nInterp == HdInterpolationFaceVarying && !normalSteps.empty() && !normalSteps[0].empty()) {
         // Houdini vertex normals arrive as faceVarying: de-index the mesh so
@@ -958,6 +1067,15 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         const HdNovaObjectDefaults defaults = param->GetObjectDefaults();
         _lpeTag = HdNovaObjectLpeTag(sd, id); // light path expressions
         _lightSource = HdNovaMeshLightSource(sd, id, defaults); // emissive meshes as lights (M9 D14)
+        // A mesh light (MeshLightAPI) is a light source whatever these say,
+        // and its colour tints the light its material's glow gives; its
+        // values arrive as dirty primvars (HdNovaNoticeSceneIndex).
+        _meshLight = HdNovaReadMeshLight(sd, id);
+        if (_meshLight.on) {
+            _lightSource.mode = 1;
+            if (!_meshLight.ownMaterial)
+                _lightSource.tint = {_meshLight.color[0], _meshLight.color[1], _meshLight.color[2]};
+        }
         _visibility = HdNovaObjectVisibility(sd, id); // ray visibility and holdouts (M11 P2)
         _outline = HdNovaObjectOutline(sd, id);       // Karma's outlines (M11 P9a)
         // Light portals (docs/design/M11-P9b.md): Nova's primvars, Karma's,
@@ -1147,8 +1265,9 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     const bool visibilityDirty = bits & HdChangeTracker::DirtyVisibility;
     const bool primIdDirty = bits & HdChangeTracker::DirtyPrimID;
     // A GeomSubset rebind arrives as topology dirtiness without a topology change.
-    const bool materialsDirty =
-        first || geometryDirty || (bits & (HdChangeTracker::DirtyMaterialId | HdChangeTracker::DirtyTopology));
+    const bool materialsDirty = first || geometryDirty || _meshLight.on != _appliedMeshLight.on ||
+                                _meshLight.ownMaterial != _appliedMeshLight.ownMaterial ||
+                                (bits & (HdChangeTracker::DirtyMaterialId | HdChangeTracker::DirtyTopology));
     if (materialsDirty)
         registry.BindMesh(id, slotPaths);
     if (displaces)
@@ -1160,7 +1279,8 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
     // Settings that can change without a change of the prim's primvars (the
     // render settings' per-object defaults, docs/design/M11-P1.md); a change
     // of its own primvars rebuilds the geometry (_GeometryUnchanged).
-    const bool settingsDirty = !(_lightSource == _appliedLightSource) || _lpeTag != _appliedLpeTag;
+    const bool settingsDirty =
+        !(_lightSource == _appliedLightSource) || _lpeTag != _appliedLpeTag || !(_meshLight == _appliedMeshLight);
     if (!(geometryDirty || instancesDirty || visibilityDirty || primIdDirty || materialsDirty || limitsDirty ||
           categoriesDirty || settingsDirty)) {
         *dirtyBits &= ~HdChangeTracker::AllSceneDirtyBits;
@@ -1215,8 +1335,10 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
 
     nova::Scene &scene = param->AcquireSceneForEdit();
     if (first) {
-        _meshId = scene.createMesh(nova::objectKey(id.GetString())); // stable, not the sync order
+        _meshId = scene.createMesh(HdNovaObjectKey(sd, id)); // stable, not the sync order
         param->NoteMeshPath(id, _meshId); // texture baking finds meshes by path
+    } else if (instancesDirty) { // a native instance's prototype is named by its first instance (stablePath.h)
+        scene.setMeshKey(_meshId, HdNovaObjectKey(sd, id));
     }
     if (geometryDirty)
         scene.updateMesh(_meshId, std::move(desc));
@@ -1230,19 +1352,42 @@ void HdNovaMesh::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyBi
         if (instanced)
             scene.setMeshInstanceAttributes(_meshId, std::move(instanceAttributes));
     }
-    if (materialsDirty) {
+    // A mesh light's own material (Karma, measured): one that glows and does
+    // nothing else, in place of what is bound to the mesh (noMaterialResponse:
+    // the light's colour), or on the faces nothing is bound to (white, which
+    // the light's colour tints).
+    const bool meshLightMaterial = _meshLight.on;
+    if (meshLightMaterial && (!(_meshLight == _appliedMeshLight) || _meshLightMaterial == nova::kInvalidId)) {
+        if (_meshLightMaterial == nova::kInvalidId)
+            _meshLightMaterial = scene.createMaterial();
+        const GfVec3f glow = _meshLight.ownMaterial ? _meshLight.color : GfVec3f(1.0f);
+        nova::MaterialDesc emitter;
+        emitter.inputs = nova::unlitDefaults(); // emission alone
+        emitter.inputs.set(nova::surface_field::emissionColor, nova::Spectrum{glow[0], glow[1], glow[2]});
+        emitter.inputs.set(nova::surface_field::emissionWeight, 1.0f);
+        scene.updateMaterial(_meshLightMaterial, emitter);
+    } else if (!meshLightMaterial && _meshLightMaterial != nova::kInvalidId) {
+        scene.removeMaterial(_meshLightMaterial);
+        _meshLightMaterial = nova::kInvalidId;
+    }
+    _appliedMeshLight = _meshLight;
+    if (materialsDirty && meshLightMaterial && _meshLight.ownMaterial) {
+        scene.setMeshMaterials(_meshId, {_meshLightMaterial}, {});
+    } else if (materialsDirty || (bits & HdChangeTracker::DirtyInstancer)) { // (an opacity per instance came or went)
         std::vector<SdfPath> slotPaths;
         std::vector<uint16_t> triangleSlots;
         _MaterialSlots(slotPaths, triangleSlots);
         std::vector<nova::MaterialId> slots;
         // Without a material: the default one, or the one that reads the
-        // prim's displayOpacity (Karma renders such geometry see-through).
+        // prim's displayOpacity (Karma renders such geometry see-through); a
+        // mesh light's white glow.
         const bool seeThrough = HdNovaHasDisplayOpacity(sd, id);
         for (SdfPath const &path : slotPaths) {
             const nova::MaterialId material = param->GetMaterials().Acquire(path, scene);
-            slots.push_back(material == nova::kDefaultMaterialId && seeThrough
-                                ? param->GetMaterials().AcquireOpacityDefault(scene)
-                                : material);
+            slots.push_back(material != nova::kDefaultMaterialId ? material
+                            : meshLightMaterial                  ? _meshLightMaterial
+                            : seeThrough                         ? param->GetMaterials().AcquireOpacityDefault(scene)
+                                                                 : material);
         }
         if (triangleSlots.empty() && slots.size() == 1 && slots[0] == nova::kDefaultMaterialId)
             slots.clear();
@@ -1290,6 +1435,10 @@ void HdNovaMesh::Finalize(HdRenderParam *renderParam) {
     if (_meshId != nova::kInvalidId) {
         param->AcquireSceneForEdit().removeMesh(_meshId);
         _meshId = nova::kInvalidId;
+    }
+    if (_meshLightMaterial != nova::kInvalidId) {
+        param->AcquireSceneForEdit().removeMaterial(_meshLightMaterial);
+        _meshLightMaterial = nova::kInvalidId;
     }
     _medium.Remove(*param);
     if (_portalActive) {

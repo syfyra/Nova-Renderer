@@ -1,0 +1,214 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# Details of shapes as Karma renders them (docs/bug-audit-2026-11.md, section
+# 23), seen from above by an orthographic camera, 20 pixels per unit, the
+# image 12 x 6 units. Two rows:
+#
+# Back row (z = -1.5), unlit shapes of opacity 0.5 over nothing: a ray
+# crosses each twice, in and out, so three quarters of the rays stop.
+#   x = -4.5   a Sphere of radius 1
+#   x = -1.5   a Points prim of one point of width 2
+#   x =  1.5   a round curve of width 2 along z
+#   x =  4.5   a cube of 1.6 units (two faces: the mesh that was right)
+#
+# Front row (z = 1.5), under a sun:
+#   x = -4.5   an opaque curve along x, 2 units long, whose widths are the
+#              one value [0.4] without an interpolation (the schema's
+#              "vertex"): Karma takes it as the width of the whole curve
+#   x = -1.5   a quad that is not flat (a saddle) without normals: Karma
+#              shades all of it by its face's normal, (0, 1, 0)
+#   x =  1.5   the same quad with normals per face (uniform)
+#   x =  4.5   a grid of four quads, Catmull-Clark, interpolateBoundary
+#              "none": every face touches the boundary, so there is nothing
+
+def Xform "World"
+{
+    def Material "veil"
+    {
+        token outputs:mtlx:surface.connect = </World/veil/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_surface_unlit"
+            float inputs:emission = 1
+            color3f inputs:emission_color = (0.3, 0.6, 0.9)
+            float inputs:opacity = 0.5
+            token outputs:out
+        }
+    }
+
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </World/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def DistantLight "sun"
+    {
+        float inputs:intensity = 3
+        float inputs:angle = 1
+        bool inputs:normalize = 1
+        float3 xformOp:rotateXYZ = (-60, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def Sphere "ball" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        double radius = 1
+        double3 xformOp:translate = (-4.5, 0, -1.5)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel material:binding = </World/veil>
+    }
+
+    def Points "point" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        point3f[] points = [(-1.5, 0, -1.5)]
+        float[] widths = [2] (
+            interpolation = "vertex"
+        )
+        rel material:binding = </World/veil>
+    }
+
+    def BasisCurves "tube" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        uniform token type = "linear"
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(1.5, 0, -2.6), (1.5, 0, -0.4)]
+        float[] widths = [2] (
+            interpolation = "constant"
+        )
+        rel material:binding = </World/veil>
+    }
+
+    def Cube "box" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        double size = 1.6
+        double3 xformOp:translate = (4.5, 0, -1.5)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel material:binding = </World/veil>
+    }
+
+    def BasisCurves "oneWidth" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        uniform token type = "linear"
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(-5.5, 0, 1.5), (-3.5, 0, 1.5)]
+        float[] widths = [0.4]
+        rel material:binding = </World/grey>
+    }
+
+    def Mesh "saddle" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-2.5, -0.4, 2.5), (-0.5, 0.4, 2.5), (-0.5, -0.4, 0.5), (-2.5, 0.4, 0.5)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    def Mesh "faceNormals" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0.5, -0.4, 2.5), (2.5, 0.4, 2.5), (2.5, -0.4, 0.5), (0.5, 0.4, 0.5)]
+        normal3f[] normals = [(0.6, 0.8, 0)] (
+            interpolation = "uniform"
+        )
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    def Mesh "holes" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 4, 3, 1, 2, 5, 4, 3, 4, 7, 6, 4, 5, 8, 7]
+        point3f[] points = [(3.5, 0, 2.5), (4.5, 0, 2.5), (5.5, 0, 2.5), (3.5, 0, 1.5), (4.5, 0.5, 1.5), (5.5, 0, 1.5), (3.5, 0, 0.5), (4.5, 0, 0.5), (5.5, 0, 0.5)]
+        uniform token subdivisionScheme = "catmullClark"
+        token interpolateBoundary = "none"
+        rel material:binding = </World/grey>
+    }
+
+    def Camera "top"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 120
+        float verticalAperture = 60
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (0, 20, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/top>
+        int2 resolution = (240, 120)
+        int nova:samples = 256
+        int nova:seed = 11
+        int karma:global:pathtracedsamples = 256
+        token karma:global:convergence_mode = "Path Traced"
+        rel products = </Render/Products/planes>
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "planes"
+        {
+            token productName = "planes.exr"
+            rel orderedVars = [</Render/Vars/C>, </Render/Vars/N>]
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+
+        def RenderVar "N"
+        {
+            uniform token dataType = "normal3f"
+            uniform string sourceName = "ray:hitN"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:format = "float3"
+            string driver:parameters:aov:name = "N"
+        }
+    }
+}

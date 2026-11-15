@@ -44,7 +44,8 @@ messages) and from the design notes, each checked against the code.
 | At most **64 light-link and 64 shadow-link categories** (distinct link collections) per scene. | Lights of further categories light, or are shadowed by, every object; one message. | `Scene::computeLinks`, `core/scene/scene.cpp` |
 | Dome texture formats other than `latlong` (`mirroredBall`, `angular`, `cubeMapVerticalCross`). | Read as latlong, with a warning. | `hydra/light.cpp` |
 | Ellipsoid lights (a non-uniformly scaled sphere light). | A sphere of the mean radius, with a warning. | `hydra/light.cpp` |
-| `treatAsLine`. | Ignored: a line light renders as a cylinder. | not read in `hydra/light.cpp` |
+| `treatAsLine` or `treatAsPoint` of a light changed while its stage is edited (the viewport). | Not noticed: UsdImaging sends no notice for them. The light changes with the next edit of another of its values, or with a new render. | `bug-audit-2026-11.md` 23 |
+| A mesh light (UsdLux MeshLightAPI) with `light:materialSyncMode = independent`; a mesh light without a material. | `independent` renders as `materialGlowTintsLight` (the material's glow times the light's colour lights the scene), with a warning; Karma lights with the light's colour alone. Without a material the mesh glows white and reflects nothing; Karma's also reflects as its plastic. | `HdNovaReadMeshLight`, `hydra/primvarUtil.cpp`; `bug-audit-2026-11.md` 23 (L-7) |
 | IES profiles on distant lights and domes; photometric types B and A; a lamp's tilt data. | Not read on those lights; types B and A are read as type C, with a warning; the tilt data is skipped. | `hydra/light.cpp`, `core/lights/ies.cpp`; `bug-audit-2026-11.md` 22 |
 | Moving or deforming emissive meshes are not light sources. | They stay plain emitters (found by BSDF sampling only), with a message. | `core/scene/scene.cpp` |
 | Emission of VEX materials is never sampled as a light. | Plain emitter. | `design/M9.md` |
@@ -71,7 +72,6 @@ messages) and from the design notes, each checked against the code.
 | Principled Shader: packed colour, the `vdisp` input, noise displacement, dispersion, rounded edges, `opdef:` textures. | Ignored with a warning. | `hydra/material/principled.cpp` |
 | VEX materials: AOV exports other than the mapped `export_*` names, fake caustics through them, ray-tracing VEX (`trace`, `gather`, `illuminance`), light, lens, fog and volume VEX shaders. | Opaque to fake-caustic rays; a shader that traces fails to compile and the preview material renders; the other shader kinds are ignored with a warning. | `design/M5.md` |
 | UDIM sets inside packages (`.usdz`). | The texture fails to load, with an error. | `hydra/textureConvert.cpp` |
-| `primvars:displayOpacity` of instance rate (per instance of a point instancer) on geometry without a material. | Opaque; the primvar on the prototype itself is read. | `HdNovaHasDisplayOpacity`, `hydra/primvarUtil.cpp` |
 | A mesh without `st`: the parameters of its faces are the texture coordinates, as in Karma. On a face of a Catmull-Clark surface that is no quad they are up to 0.016 from Karma's, on a Loop mesh up to 0.033; curves and points have none. | Nova's are linear over a triangle of the tessellation; Karma renders a Loop mesh as polygons. | `bug-audit-2026-11.md` 21 |
 | UsdPreviewSurface between metallic 0 and 1, and its specular workflow with a coloured `specularColor`. | MaterialX's graph of the shader, which is less saturated than Karma's own conversion of the USD shader. | `bug-audit-2026-11.md` 19 (MA-1) |
 | Rough coloured metal and rough glass against Karma. | Nova compensates multiple scattering (coloured for metals, energy-preserving for glass); Karma's rough metal keeps the base colour and its rough glass loses energy. From roughness 0.6 on the two differ visibly. | `bug-audit-2026-11.md` 19 (MA-4, MA-5) |
@@ -85,6 +85,7 @@ messages) and from the design notes, each checked against the code.
 | Authored normals on subdivided meshes; subdivision of bilinear meshes. | Normals come from the limit surface; bilinear meshes stay polygonal. | `reference.md` |
 | Cylinders, cones and capsules are meshes of 96 sides, not analytic shapes. | They are the prim to 0.05 % of its radius. Karma renders them 6 % narrower (it subdivides UsdImaging's ten-sided cage), and spheres 8 % smaller, where Nova's are exact. | `hydra/implicitSceneIndex.h` |
 | Long round linear curves (bug audit R1-11). | Reprojected onto the tube, leaving with an error-bounded offset. | `bug-audit-2026-11.md` |
+| Half-transparent round curves. | Their coverage is Karma's (a ray crosses both walls). Nova XPU meets a tube once and takes its opacity o as o (2 - o), shaded as the near wall; lit from outside such a tube is brighter than Karma's (opacity 0.5 under a dome: 0.316 on the CPU, 0.326 on Nova XPU, Karma 0.278). | `acceptHit`, `core/gpu/device_shading.h`; `bug-audit-2026-11.md` 23 (O-1) |
 | Two exactly coplanar overlapping surfaces. | Which one a ray reports follows the accelerator's traversal and can change between runs. | `bug-audit-2026-11.md` section 7 |
 | A single polygon that reaches far beyond what is seen of it: rays leave a polygon by a few float ulps of its reach from the hit (Nova XPU: 10^-6 of it; the CPU half of that for polygons that are not axis-aligned, nothing for axis-aligned ones), the error of the ray-triangle tests. | Off a polygon that reaches 100 000 units the rays start up to 0.1 units above it: objects that close to it lose part of their shadow on it, and a light 5 units away lights it too brightly (a sphere on such a ground: the image 0.8 % brighter on XPU when it is axis-aligned, 1.6 % when rotated; 0.3 % on the CPU when rotated). At 10 000 units the difference is 0.1 % (XPU), below that none; from 10^6 units Nova XPU's image is 9 % and more off, the CPU's 3 % if the polygon is rotated. Split such polygons. | `leaveSurface`, `core/scene/ray.h`; `bug-audit-2026-11.md` section 12 |
 | A point instancer that lists itself or one of its ancestors among its prototypes; `protoIndices` beyond the prototypes. | The process ends inside UsdImaging (a stack overflow in its prototype scene index, memory written out of bounds in its instancer data source) before the delegate sees a prim, as with any Hydra renderer. | `bug-audit-2026-11.md` section 12 |
@@ -113,6 +114,7 @@ messages) and from the design notes, each checked against the code.
 | AOV sources Nova does not know; render product types other than raster, `karma:deep` and `karma:checkpoint`. | The plane keeps its clear value; the product is skipped; each with a warning. | `hydra/aov.cpp`, `hydra/renderDelegate.cpp` |
 | Temporal denoising. | Each frame is denoised by itself. | `design/M7.md` D9 |
 | Render passes (`husk --pass`): the pass's collections name paths of the stage, and geometry inside a native instance has its prototype's path in Hydra. | Such geometry is not pruned, hidden or made a matte by itself; a collection that holds the whole instance works. Geometry under a point instancer follows the instancer's path. | `hydra/renderPassSceneIndex.h` |
+| The `primId` plane (Hydra's prim ids) of prims inside native instances. | It follows USD's names of the prototypes, which differ from one load of a file to the next: two renders can number such prims differently. The beauty, cryptomatte and everything else are the same from run to run. | `bug-audit-2026-11.md` 23 (N-1) |
 | Texture Baker: textures for trace bias, trace max distance and trace skew; bake trace sets; some image filters. | The global values; every visible object; the filter is skipped; each with a warning. | `hydra/bake.cpp` |
 
 ## Removed since this list was started
@@ -195,3 +197,27 @@ These are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 2
   lights and on both devices (`core/lights/ies.h`).
 
 This is described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 22.
+
+- **A stage with native instances rendered differently from run to run** (stochastic opacity, the order of lights,
+  cryptomatte): USD numbers the prototypes anew at every load, and Nova's keys held those names. Prims inside native
+  instancing are keyed by their first instance (`hydra/stablePath.cpp`).
+- **A light kept its link in the viewport** when the link was taken away in the same step that resynced the light
+  (an API schema applied to it, a node that composes it anew), and **a light link that takes a native instance in
+  or out reached its geometry only after a reload**: two notices pxr's light linking leaves out, which Nova's scene
+  indices add (`hydra/noticeSceneIndex.h`).
+- **A camera's exposure, `karma:camera:tint` and `clippingPlanes` were ignored.** They are rendered as in Karma: the
+  exposure and the tint multiply the beauty and the light path expressions, the planes cut the camera's rays.
+- **`treatAsLine` was ignored**: a line light rendered as the cylinder of its radius. It is Karma's line light, a
+  point light at the line's middle by the angle under which a point sees the line.
+- **UsdLux MeshLightAPI was not read.** A mesh with it lights by its material's glow times the light's colour and
+  intensity, as in Karma (`MeshLightSource::tint`).
+- **Half-transparent spheres, points and round curves were crossed once**, and covered their opacity where Karma and
+  a mesh of the same shape cover 1 - (1 - opacity)^2.
+- **`primvars:displayOpacity` per instance on geometry without a material was not read**: a point instancer's
+  primvar, a native instance's own.
+- **Polygons that are not flat showed the fold of their two triangles** (Karma shades such a face with one normal),
+  **normals per face were ignored**, **one value of `widths` was not the curve's width**, **a subdivision surface of
+  holes alone rendered its cage**, and **face-varying primvars without indices were never joined on a subdivision
+  surface**.
+
+These are described in [`bug-audit-2026-11.md`](bug-audit-2026-11.md), section 23.

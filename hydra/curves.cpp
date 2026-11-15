@@ -1,5 +1,7 @@
 #include "curves.h"
 
+#include "stablePath.h"
+
 #include "diagnostics.h"
 #include "instancer.h"
 #include "primvarUtil.h"
@@ -255,6 +257,12 @@ bool HdNovaBasisCurves::_Build(HdSceneDelegate *sd, HdNovaShutter const &shutter
             }
     desc.curveRadius.assign(n, 0.5f); // USD gives no fallback; Hydra's renderers draw width 1
     if (haveWidths) {
+        // One value is the width of every curve, whatever its interpolation
+        // says (Karma, measured): files write `float[] widths = [0.4]` and
+        // leave the interpolation at the schema's "vertex", for which one
+        // value is too few.
+        if (widths.size() == 1)
+            widthInterp = HdInterpolationConstant;
         switch (widthInterp) {
         case HdInterpolationConstant:
             desc.curveRadius.assign(n, 0.5f * widths[0]);
@@ -445,7 +453,9 @@ void HdNovaBasisCurves::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
 
     nova::Scene &scene = param->AcquireSceneForEdit();
     if (first)
-        _meshId = scene.createMesh(nova::objectKey(id.GetString())); // stable, not the sync order
+        _meshId = scene.createMesh(HdNovaObjectKey(sd, id)); // stable, not the sync order
+    else if (instancesDirty) // a native instance's prototype is named by its first instance (stablePath.h)
+        scene.setMeshKey(_meshId, HdNovaObjectKey(sd, id));
     if (rebuild)
         scene.updateMesh(_meshId, built ? std::move(desc) : nova::MeshDesc{});
     if (instancesDirty) {
@@ -473,7 +483,8 @@ void HdNovaBasisCurves::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, Hd
     }
     if (categoriesDirty)
         HdNovaSyncCategories(sd, id, GetInstancerId(), scene, _meshId); // light linking (M9 D15)
-    if (materialsDirty || rebuild) { // a displayOpacity primvar that came or went rebuilds
+    // (A displayOpacity primvar that came or went rebuilds; one per instance dirties the instancer.)
+    if (materialsDirty || rebuild || (bits & HdChangeTracker::DirtyInstancer)) {
         nova::MaterialId material = registry.Acquire(GetMaterialId(), scene);
         // Without a material but with a displayOpacity: see-through by it, as in Karma.
         if (material == nova::kDefaultMaterialId && HdNovaHasDisplayOpacity(sd, id))

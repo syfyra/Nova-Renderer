@@ -60,6 +60,20 @@ struct Camera {
     Vec2f rasterToNdcScale{1.0f, 1.0f};
     Vec2f rasterToNdcOffset{-1.0f, -1.0f};
 
+    // What the camera multiplies the light it records by: UsdGeomCamera's
+    // exposure (time x iso / 100 x 2^exposure x responsivity / fStop^2) and
+    // Karma's tint (measured: both multiply the beauty and every light path
+    // expression, and neither alpha nor the planes of the first hit). Paths
+    // are traced without it; the film's radiance is read with it
+    // (Film::exposure), so it changes neither roulette nor the clamps.
+    Spectrum exposure{1.0f, 1.0f, 1.0f};
+
+    // UsdGeomCamera's clippingPlanes, in the camera's space: a camera ray is
+    // cut off where a x + b y + c z + d < 0, as by the near and far planes.
+    static constexpr uint32_t kMaxClipPlanes = 6;
+    float clipPlanes[kMaxClipPlanes][4] = {};
+    uint32_t clipPlaneCount = 0;
+
     // Position of the film in the full image. Rays and sampler seeds are
     // computed from image pixels, so crop and tile renders reproduce the
     // full image exactly.
@@ -159,10 +173,28 @@ struct Camera {
             normalize3(d);
         }
         // Planar near and far clipping.
-        const double nearDist = -pNear[2], tNear = nearDist / -d[2];
+        const double nearDist = -pNear[2];
+        double tNear = nearDist / -d[2];
         double tFar = 1e300;
         if (unproject(ndc, 1.0, pFar) && -pFar[2] > nearDist)
             tFar = -pFar[2] / -d[2];
+        // The clipping planes: the part of the ray on their kept side.
+        for (uint32_t k = 0; k < clipPlaneCount; ++k) {
+            const float *p = clipPlanes[k];
+            const double side = double(p[0]) * o[0] + double(p[1]) * o[1] + double(p[2]) * o[2] + double(p[3]);
+            const double slope = double(p[0]) * d[0] + double(p[1]) * d[1] + double(p[2]) * d[2];
+            if (slope > 1e-12) {
+                if (-side / slope > tNear)
+                    tNear = -side / slope;
+            } else if (slope < -1e-12) {
+                if (-side / slope < tFar)
+                    tFar = -side / slope;
+            } else if (side < 0.0) {
+                tFar = -1.0; // along the plane, on its cut side
+            }
+        }
+        if (clipPlaneCount > 0 && !(tFar > tNear)) // nothing of the ray is left
+            return Ray{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, 0.0f, 0.0f};
         const double ov[3] = {o[0] + tNear * d[0], o[1] + tNear * d[1], o[2] + tNear * d[2]};
 
         double ow[3], dw[3];

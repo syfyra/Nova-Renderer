@@ -214,3 +214,20 @@ TEST_CASE("Curve indices that do not match the counts render nothing", "[hydra][
             CHECK_THAT(desc->points[size_t(i)].x, WithinAbs(float(i), 1e-6));
     }
 }
+
+// Files write `float[] widths = [0.4]` and leave the interpolation at the
+// schema's "vertex": Karma takes the one value as the width of every curve
+// (measured). It was too few values for the points, and the curves had the
+// width 1 of a prim without widths (docs/bug-audit-2026-11.md, section 23).
+TEST_CASE("One width is the width of every curve whatever its interpolation", "[hydra][curves]") {
+    Curves c;
+    c.counts = {3, 2};
+    c.points = fivePoints();
+    c.widths = {0.4f}; // the driver authors widths as vertex primvars
+    Driver d(c);
+    const nova::MeshDesc *curves = d.curves();
+    REQUIRE(curves);
+    REQUIRE(curves->curveRadius.size() == 5);
+    for (float r : curves->curveRadius)
+        CHECK(r == 0.2f);
+}

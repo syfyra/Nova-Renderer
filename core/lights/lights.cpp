@@ -169,6 +169,18 @@ LightData buildLightData(const LightDesc &desc) {
         break;
     case LightType::Cylinder: {
         d.axisU = xf.transformDir({0.5f * desc.length, 0.0f, 0.0f});
+        if (desc.treatAsLine) {
+            // A line light, as Karma renders it (measured; the law is in
+            // sampleLightUnfiltered()): a point light at the line's middle
+            // with `base` per radian of the angle the line is seen under,
+            // whatever the radius and normalize say; no ray meets it.
+            d.delta = true;
+            d.cameraVisible = false;
+            d.radius = 0.0f;
+            d.axisV = d.axisW = {0.0f, 0.0f, 0.0f};
+            d.emission = base;
+            break;
+        }
         // A circular cross-section of the mean radial scale, perpendicular to the axis.
         const float radial = 0.5f * (length(xf.transformDir({0.0f, desc.radius, 0.0f})) +
                                      length(xf.transformDir({0.0f, 0.0f, desc.radius})));
@@ -364,6 +376,7 @@ float lightPower(const LightData &light, float sceneRadius) {
             // Point light; an active cone limits the emitted solid angle.
             const float cosMid = light.cosConeCut >= -1.0f ? 0.5f * (light.cosConeCut + light.cosConeStart) : -1.0f;
             power = luminance(light.emission) * kTwoPi * (1.0f - cosMid);
+            // (A line light is seen under an angle of up to pi: any estimate serves the selection.)
         } else {
             power = luminance(light.emission) * kPi * light.area * (light.twoSided ? 2.0f : 1.0f);
             if (light.type == LightType::Rect && light.texels)

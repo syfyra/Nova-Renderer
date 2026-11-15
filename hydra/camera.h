@@ -3,6 +3,7 @@
 #include "motion.h"
 
 #include <pxr/base/gf/matrix4d.h>
+#include <pxr/base/gf/vec3f.h>
 #include <pxr/imaging/hd/camera.h>
 #include <pxr/pxr.h>
 
@@ -23,10 +24,14 @@ public:
     // last sync; one entry if the camera does not move.
     std::vector<GfMatrix4d> const &GetMotionSteps() const { return _motion; }
     HdNovaShutter GetSampledShutter() const { return _sampledShutter; }
+    // Karma's camera tint (karma:camera:tint; white without one): it multiplies
+    // what the camera records, as the exposure does.
+    GfVec3f GetTint() const { return _tint; }
 
 private:
     std::vector<GfMatrix4d> _motion;
     HdNovaShutter _sampledShutter;
+    GfVec3f _tint{1.0f};
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

@@ -1,5 +1,7 @@
 #include "light.h"
 
+#include "stablePath.h"
+
 #include "colorSpace.h"
 #include "diagnostics.h"
 #include "instancer.h"
@@ -33,6 +35,7 @@ namespace {
 // Names that are not HdLightTokens are looked up as attribute names verbatim.
 TF_DEFINE_PRIVATE_TOKENS(_tokens,
     (treatAsPoint)
+    (treatAsLine)
     (latlong)
     (automatic)
     ((renderLightGeo, "inputs:karma:light:renderlightgeo"))
@@ -270,7 +273,7 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
 
     nova::Scene &scene = static_cast<HdNovaRenderParam *>(renderParam)->AcquireSceneForEdit();
     if (_lightId == nova::kInvalidId)
-        _lightId = scene.createLight(nova::objectKey(id.GetString())); // stable, not the sync order
+        _lightId = scene.createLight(HdNovaObjectKey(sd, id)); // stable, not the sync order
 
     nova::LightDesc desc;
     desc.type = lightType(_lightType);
@@ -295,6 +298,8 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     desc.height = lightParam<float>(sd, id, HdLightTokens->height, 1.0f);
     desc.length = lightParam<float>(sd, id, HdLightTokens->length, 1.0f);
     desc.treatAsPoint = lightParam<bool>(sd, id, _tokens->treatAsPoint, false);
+    // A line light (the Light LOP's type "Line"): Karma's law, core/lights/lights.h.
+    desc.treatAsLine = desc.type == nova::LightType::Cylinder && lightParam<bool>(sd, id, _tokens->treatAsLine, false);
 
     // ShapingAPI attributes only exist where the schema is applied.
     const VtValue coneAngle = sd->GetLightParamValue(id, HdLightTokens->shapingConeAngle);
@@ -466,11 +471,16 @@ void HdNovaLight::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirtyB
     } else {
         while (_instanceLightIds.size() + 1 < std::max<size_t>(instanceXf.size(), 1))
             _instanceLightIds.push_back( // instance k > 0 keys by the path and k
-                scene.createLight(nova::objectKey(id.GetString(), _instanceLightIds.size() + 1)));
+                scene.createLight(HdNovaObjectKey(sd, id, _instanceLightIds.size() + 1)));
         while (_instanceLightIds.size() + 1 > std::max<size_t>(instanceXf.size(), 1)) {
             scene.removeLight(_instanceLightIds.back());
             _instanceLightIds.pop_back();
         }
+        // A native instance's prototype is named by its first instance (stablePath.h).
+        const std::string name = HdNovaStablePath(sd, id);
+        scene.setLightKey(_lightId, nova::objectKey(name));
+        for (size_t k = 0; k < _instanceLightIds.size(); ++k)
+            scene.setLightKey(_instanceLightIds[k], nova::objectKey(name, k + 1));
         for (size_t k = 0; k < std::max<size_t>(instanceXf.size(), 1); ++k) {
             nova::LightDesc d = desc;
             if (k < instanceXf.size()) {

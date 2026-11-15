@@ -214,6 +214,26 @@ HdNovaRenderPass::View HdNovaRenderPass::_ComputeView(HdRenderPassStateSharedPtr
         // length) has no focus plane to aim the rays at: a pinhole.
         if (!std::isfinite(view.lensRadius) || !std::isfinite(view.focusDistance))
             view.lensRadius = view.focusDistance = 0.0f;
+        // UsdGeomCamera's exposure (time x iso / 100 x 2^exposure x
+        // responsivity / fStop^2) and Karma's tint multiply what the camera
+        // records (docs/bug-audit-2026-11.md, section 23). A value that is
+        // not finite is no exposure (and would never compare equal to itself:
+        // the render would restart at every Execute).
+        float scale = cam->GetLinearExposureScale();
+        if (!std::isfinite(scale) || scale < 0.0f)
+            scale = 1.0f;
+        GfVec3f tint(1.0f);
+        if (auto const *nova = dynamic_cast<HdNovaCamera const *>(cam))
+            tint = nova->GetTint();
+        for (int c = 0; c < 3; ++c)
+            view.exposure[c] = std::isfinite(tint[c]) ? scale * tint[c] : scale;
+        // Its clipping planes, which cut camera rays as the near and far planes do.
+        for (GfVec4d const &plane : cam->GetClipPlanes()) {
+            const GfVec4f p(plane);
+            if (std::isfinite(p[0]) && std::isfinite(p[1]) && std::isfinite(p[2]) && std::isfinite(p[3]) &&
+                (p[0] != 0.0f || p[1] != 0.0f || p[2] != 0.0f) && view.clipPlanes.size() < nova::Camera::kMaxClipPlanes)
+                view.clipPlanes.push_back(p);
+        }
     }
 
     const CameraUtilFraming &framing = state->GetFraming();
@@ -615,6 +635,11 @@ void HdNovaRenderPass::_Execute(HdRenderPassStateSharedPtr const &state, TfToken
     camera.worldToView = toNova(view.worldToView);
     camera.lensRadius = view.lensRadius;
     camera.focusDistance = view.focusDistance;
+    camera.exposure = {view.exposure[0], view.exposure[1], view.exposure[2]};
+    camera.clipPlaneCount = uint32_t(view.clipPlanes.size());
+    for (size_t k = 0; k < view.clipPlanes.size(); ++k)
+        for (int c = 0; c < 4; ++c)
+            camera.clipPlanes[k][c] = view.clipPlanes[k][c];
     camera.frameTime = view.frameTime;
     std::vector<nova::Mat4> cameraSteps;
     for (GfMatrix4d const &m : view.cameraMotion)

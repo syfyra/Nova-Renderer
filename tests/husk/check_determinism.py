@@ -17,7 +17,13 @@ cryptomatte). Scenes:
 - emitters: four emissive meshes treated as light sources;
 - hair: twelve curve prims with Karma Hair's melanin randomisation;
 - fog: the Karma Fog Box scatter scene (husk/fogbox), its three boxes moved
-  to overlap.
+  to overlap;
+- instances: native instances of six prototypes (partly transparent cards,
+  an emissive card that is a light source, a lamp, instances in instances, a
+  point instancer). USD numbers its prototypes anew at every load
+  (/__Prototype_N: which N a prototype gets differs from process to
+  process as soon as there are two), so a key made of the Hydra path of such
+  a prim changed from run to run (docs/bug-audit-2026-11.md, section 23).
 
 Needs numpy and OpenImageIO, so run it with Houdini's Python:
 $HFS/python313/python.exe -I check_determinism.py --hfs ... --stage ... --out ...
@@ -307,12 +313,77 @@ def fog_scene():
     return FOG_OVERRIDE % os.path.join(HERE, 'fogbox', 'scatter.usda').replace('\\', '/')
 
 
+def instances_scene():
+    body = backdrop() + SUN
+    glow = '\n        int primvars:karma:object:treat_as_lightsource = 1'
+    protos = ''
+    protos += 'class Xform "ProtoA"\n{\n' + quad('card', (0, 0, 0), 0.9, 'veil') + '}\n'
+    protos += 'class Xform "ProtoB"\n{\n' + quad('card', (0, 0, 0), 0.7, 'veil2') + '}\n'
+    protos += 'class Xform "ProtoC"\n{\n' + quad('card', (0, 0, 0), 0.4, 'glow', axis='y', extra=glow) + '}\n'
+    protos += '''class Xform "ProtoD"
+{
+    def SphereLight "lamp"
+    {
+        float inputs:intensity = 4
+        float inputs:radius = 0.1
+        color3f inputs:color = (1, 0.7, 0.4)
+    }
+}
+class Xform "ProtoE"
+{
+    def Xform "inner" (instanceable = true
+        prepend references = </ProtoA>)
+    {
+    }
+    def Xform "inner2" (instanceable = true
+        prepend references = </ProtoB>)
+    {
+        double3 xformOp:translate = (0.3, 0.6, 0.05)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+class Xform "ProtoF"
+{
+    def PointInstancer "panes"
+    {
+        rel prototypes = [</ProtoF/panes/protos/pane>]
+        int[] protoIndices = [0, 0, 0]
+        point3f[] positions = [(-0.3, 0, 0), (0, 0.3, 0.05), (0.3, 0, 0.1)]
+        def Scope "protos"
+        {
+''' + quad('pane', (0, 0, 0), 0.35, 'veil2').replace('\n    ', '\n            ') + '''
+        }
+    }
+}
+'''
+    places = {'A': [(-2.4, 0.6, 1.0), (-1.9, 1.5, 1.1), (-1.2, 0.8, 1.2)],
+              'B': [(-0.6, 0.6, 1.0), (0.0, 1.4, 1.1), (0.5, 0.7, 1.2)],
+              'C': [(-1.5, 2.6, 0.5), (1.5, 2.6, 0.2)],
+              'D': [(-2.6, 2.2, 1.5), (2.6, 2.0, 1.2)],
+              'E': [(1.2, 0.6, 1.3), (2.0, 1.2, 1.5)],
+              'F': [(-0.4, 2.3, 1.6), (0.9, 2.2, 1.8)]}
+    for letter, where in places.items():
+        for k, (x, y, z) in enumerate(where):
+            body += '''
+    def Xform "%s%d" (instanceable = true
+        prepend references = </Proto%s>)
+    {
+        double3 xformOp:translate = (%g, %g, %g)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+''' % (letter.lower(), k, letter, x, y, z)
+    mats = surface('grey', (0.5, 0.5, 0.5)) + surface('veil', (0.9, 0.3, 0.2), opacity=0.5) + \
+        surface('veil2', (0.2, 0.4, 0.9), opacity=0.35) + surface('glow', (1, 3, 1), emission=1.0)
+    return stage(body, mats, root=protos)
+
+
 SCENES = {
     'opacity': opacity_scene,
     'lights': lights_scene,
     'emitters': emitters_scene,
     'hair': hair_scene,
     'fog': fog_scene,
+    'instances': instances_scene,
 }
 
 
@@ -381,6 +452,12 @@ def main():
                         print(f"skip {name} (xpu): Nova XPU does not render on this machine")
                         break
                     parts = read_parts(oiio, np, exr)
+                    if name == "instances":
+                        # primId is Hydra's own id of the prim, which Hydra gives out in the order of
+                        # the paths: for a prototype of native instancing that is USD's name of the
+                        # load. (instanceId and the cryptomatte, which name objects by their first
+                        # instance, must hold.)
+                        parts = [part for part in parts if not part[0].startswith("primId")]
                     hashes.append(digest(parts))
                     if first is None:
                         first = parts

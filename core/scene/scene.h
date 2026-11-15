@@ -231,6 +231,14 @@ public:
     // the same objects render the same image whatever their ids. Without a
     // key an object keys by its id.
     MeshId createMesh(std::optional<uint64_t> key = std::nullopt);
+    // Another key for an object that has one already: a host whose stable
+    // name for an object can change while the object stays (Hydra: a native
+    // instance's prototype is named by its first instance,
+    // hydra/stablePath.h). The object then renders as one created with that
+    // key. A no-op for the key it has.
+    void setMeshKey(MeshId id, uint64_t key);
+    void setLightKey(LightId id, uint64_t key);
+    void setVolumeKey(VolumeId id, uint64_t key);
     // Geometry; an instanced mesh keeps its instances.
     void updateMesh(MeshId id, MeshDesc desc);
     // Single (non-instanced) transform; also leaves instanced mode.

@@ -184,6 +184,10 @@ struct Film {
 
     std::vector<Spectrum> colorSum; // radiance sum
     std::vector<float> alphaSum;
+    // The camera's exposure and tint (Camera::exposure): what the radiance
+    // sums (colorSum, lpeSum, a deep map's colour) are multiplied by where
+    // they are read. The renderer sets it with its camera; clear() keeps it.
+    Spectrum exposure{1.0f, 1.0f, 1.0f};
     // Samples per pixel (D5): every sum below is normalized by its pixel's
     // count. `samples` counts the finished passes.
     std::vector<uint32_t> count;

@@ -119,9 +119,9 @@ bool HdNovaWriteDeepImage(nova::Film const &film, HdNovaDeepOutput const &out, s
                 const float coverage = rec[4] * inv;
                 const float s = inv / T;
                 const float alpha = std::min(1.0f, coverage / T);
-                deep.set_deep_value(dst, 0, n, rec[1] * s);
-                deep.set_deep_value(dst, 1, n, rec[2] * s);
-                deep.set_deep_value(dst, 2, n, rec[3] * s);
+                deep.set_deep_value(dst, 0, n, rec[1] * s * film.exposure.x);
+                deep.set_deep_value(dst, 1, n, rec[2] * s * film.exposure.y);
+                deep.set_deep_value(dst, 2, n, rec[3] * s * film.exposure.z);
                 deep.set_deep_value(dst, 3, n, alpha);
                 if (colourOpacity)
                     for (int c = 4; c < 7; ++c)

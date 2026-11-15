@@ -95,9 +95,23 @@ $env:NOVA_VIEWPORT_CHECK_ONLY = $Only
 $env:TF_DEBUG = 'HDNOVA_MATERIAL HDNOVA_AOV HDNOVA_SETTINGS'
 $p = Start-Process -FilePath (Join-Path $Hfs 'bin\houdini.exe') -ArgumentList '-foreground' -PassThru `
     -RedirectStandardOutput (Join-Path $Out 'stdout.txt') -RedirectStandardError (Join-Path $Out 'stderr.txt')
-$timedOut = -not $p.WaitForExit($TimeoutSeconds * 1000)
-if ($timedOut) {
-    Write-Output "timeout: stopping Houdini $($p.Id)"
+# Houdini may also hang in hou.exit() after a complete run (seen in the default
+# mode, with 0.2.2 as with later builds): once the log ends with "done" it gets
+# half a minute to leave and is stopped then, which is no timeout.
+$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+$doneAt = $null
+while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Milliseconds 500
+    if (-not $doneAt -and (Test-Path $logPath)) {
+        try {
+            if (@((Get-Content $logPath -Raw | ConvertFrom-Json).steps)[-1].step -eq 'done') { $doneAt = Get-Date }
+        } catch { } # (the log is being written)
+    }
+    if ($doneAt -and ((Get-Date) - $doneAt).TotalSeconds -gt 30) { break }
+}
+$timedOut = -not $p.HasExited -and -not $doneAt
+if (-not $p.HasExited) {
+    Write-Output $(if ($timedOut) { "timeout: stopping Houdini $($p.Id)" } else { "the check is done and Houdini did not exit: stopping Houdini $($p.Id)" })
     Stop-Process -Id $p.Id -Force
 }
 # Houdini's exit code says nothing (it crashes in hou.exit() after a good

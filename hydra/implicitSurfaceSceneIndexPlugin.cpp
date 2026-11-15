@@ -1,6 +1,7 @@
 #include "implicitSurfaceSceneIndexPlugin.h"
 
 #include "implicitSceneIndex.h"
+#include "noticeSceneIndex.h"
 #include "renderPassSceneIndex.h"
 #include "resyncSceneIndex.h"
 #include "velocitySceneIndex.h"
@@ -57,7 +58,9 @@ TF_REGISTRY_FUNCTION(HdSceneIndexPlugin) {
         HdSceneIndexPluginRegistry::GetInstance().RegisterSceneIndexForRenderer(
             renderer,
             [](const std::string &, const HdSceneIndexBaseRefPtr &input, const HdContainerDataSourceHandle &args) {
-                return HdSceneIndexBaseRefPtr(HdsiLightLinkingSceneIndex::New(input, args));
+                // With the notices that are left out before it (a link that takes a
+                // native instance in or out; the light of a mesh light).
+                return HdSceneIndexBaseRefPtr(HdNovaNoticeSceneIndex::New(HdsiLightLinkingSceneIndex::New(HdNovaRelinkSceneIndex::New(input), args)));
             },
             linkArgs, 0, HdSceneIndexPluginRegistry::InsertionOrderAtEnd);
 }

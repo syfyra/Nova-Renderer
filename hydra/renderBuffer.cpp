@@ -374,7 +374,8 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
             const float inv = 1.0f / float(film.count[src]);
             switch (kind) {
             case Kind::Beauty: {
-                const nova::Spectrum c0 = film.colorSum[src] * inv;
+                // (The camera's exposure and tint multiply what the paths gathered, not the plate.)
+                const nova::Spectrum c0 = film.colorSum[src] * inv * film.exposure;
                 float alpha = film.alphaSum[src] * inv;
                 if (source.catcherOutput >= 0 && uint32_t(source.catcherSlot) < film.lpeShadowOutputs) {
                     // Karma's shadow catcher filter (denoise.h): the holdout
@@ -414,7 +415,7 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
                     nova::Spectrum extras{0.0f, 0.0f, 0.0f};
                     for (int o : source.plateExtras)
                         if (o >= 0 && uint32_t(o) < film.lpeOutputs)
-                            extras += film.lpe(uint32_t(o))[src] * inv;
+                            extras += film.lpe(uint32_t(o))[src] * inv * film.exposure;
                     const float t = 1.0f - alpha;
                     c = nova::Spectrum{c.x + t * (plate[0] * (1.0f - s.x) + extras.x),
                                        c.y + t * (plate[1] * (1.0f - s.y) + extras.y),
@@ -427,7 +428,7 @@ void HdNovaRenderBuffer::WriteFromFilm(nova::Film const &film, nova::TileRect co
             }
             case Kind::Lpe: {
                 // Filtered like the beauty; 4 channels take the beauty's alpha.
-                nova::Spectrum c = film.lpe(uint32_t(source.output))[src] * inv;
+                nova::Spectrum c = film.lpe(uint32_t(source.output))[src] * inv * film.exposure;
                 if (source.shadowSlot >= 0 && uint32_t(source.shadowSlot) < film.lpeShadowOutputs) {
                     // The occluded fraction (Karma's shadow AOVs); of holdout
                     // paths over the background points' whole light too (D14).

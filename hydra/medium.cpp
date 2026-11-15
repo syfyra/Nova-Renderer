@@ -1,5 +1,7 @@
 #include "medium.h"
 
+#include "stablePath.h"
+
 #include "diagnostics.h"
 #include "instancer.h"
 #include "motion.h"
@@ -161,12 +163,18 @@ void HdNovaMedium::Sync(HdSceneDelegate *sd, HdNovaRenderParam &param, SdfPath c
     // Stable keys, not the sync order: the path, and the instance's index
     // behind the first.
     if (first)
-        _volumeId = scene.createVolume(nova::objectKey(id.GetString()));
+        _volumeId = scene.createVolume(HdNovaObjectKey(sd, id));
     while (_instanceVolumeIds.size() + 1 < count)
-        _instanceVolumeIds.push_back(scene.createVolume(nova::objectKey(id.GetString(), _instanceVolumeIds.size() + 1)));
+        _instanceVolumeIds.push_back(scene.createVolume(HdNovaObjectKey(sd, id, _instanceVolumeIds.size() + 1)));
     while (_instanceVolumeIds.size() + 1 > count) {
         scene.removeVolume(_instanceVolumeIds.back());
         _instanceVolumeIds.pop_back();
+    }
+    if (!first && resample) { // a native instance's prototype is named by its first instance (stablePath.h)
+        const std::string name = HdNovaStablePath(sd, id);
+        scene.setVolumeKey(_volumeId, nova::objectKey(name));
+        for (size_t k = 0; k < _instanceVolumeIds.size(); ++k)
+            scene.setVolumeKey(_instanceVolumeIds[k], nova::objectKey(name, k + 1));
     }
     desc.material = registry.Acquire(material, scene);
     if (_noInstances)

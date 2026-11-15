@@ -6,6 +6,7 @@
 
 #include "test_helpers.h"
 
+#include "core/geometry/curves.h"
 #include "core/scene/scene.h"
 #include "core/shading/compiler.h"
 
@@ -369,5 +370,55 @@ TEST_CASE("Shadow rays see the render camera's NDC positions", "[opacity][render
         INFO("light samples " << light << ", BSDF samples " << bsdf);
         REQUIRE(bsdf > 0.0);
         CHECK_THAT(light / bsdf, WithinAbs(1.0, 0.03));
+    }
+}
+
+// A sphere, a point and a round curve are one primitive each, and a ray
+// crosses them twice, in and out. Both crossings had the surface's one random
+// number: a ray that passed the near side passed the far one too, and a
+// half-transparent ball stopped half of the rays where two surfaces of that
+// opacity stop three quarters (Karma: 0.750 and 0.360 at opacities of 0.5 and
+// 0.2, on all three; docs/bug-audit-2026-11.md, section 23).
+TEST_CASE("A half-transparent sphere, point or tube is crossed twice", "[opacity][shapes]") {
+    for (const int shape : {0, 1, 2}) {
+        for (const float opacity : {0.5f, 0.2f}) {
+            INFO((shape == 0 ? "sphere" : shape == 1 ? "point" : "tube") << ", opacity " << opacity);
+            Scene scene;
+            MeshDesc d;
+            if (shape == 0) {
+                d.shape = MeshShape::Sphere;
+                d.points = {{0.0f, 0.0f, 0.0f}};
+                d.sphereRadius = {1.0f};
+            } else if (shape == 1) {
+                d.shape = MeshShape::Points;
+                d.points = {{0.0f, 0.0f, 0.0f}};
+                d.pointRadius = {1.0f};
+            } else {
+                d.shape = MeshShape::Curves;
+                d.curveBasis = CurveBasis::Linear;
+                d.points = {{-3.0f, 0.0f, 0.0f}, {3.0f, 0.0f, 0.0f}};
+                d.curveVertexCounts = {2};
+                d.curveRadius = {1.0f, 1.0f};
+                REQUIRE(prepareCurves(d));
+            }
+            const MeshId id = scene.createMesh();
+            scene.updateMesh(id, std::move(d));
+            const MaterialId m = scene.createMaterial();
+            scene.updateMaterial(m, unlit(opacity));
+            scene.setMeshMaterials(id, {m});
+            scene.commit();
+            // The middle of the shape, well inside its outline: every ray crosses it twice.
+            const Frame2D img = render(scene, 8, 2048, 4, 0.3f);
+            double alpha = 0.0, color = 0.0;
+            for (size_t i = 0; i < img.alpha.size(); ++i) {
+                alpha += img.alpha[i];
+                color += img.color[i].x;
+            }
+            alpha /= double(img.alpha.size());
+            color /= double(img.alpha.size());
+            const double twice = 1.0 - double(1.0f - opacity) * double(1.0f - opacity);
+            CHECK_THAT(alpha, WithinAbs(twice, 0.006)); // 131 072 samples: 3 sigma is 0.004
+            CHECK_THAT(color, WithinAbs(twice, 0.006)); // unlit white
+        }
     }
 }

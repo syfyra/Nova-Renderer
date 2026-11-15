@@ -1,0 +1,254 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# What a camera multiplies its image by, and its clipping planes, as Karma
+# renders them (docs/bug-audit-2026-11.md, section 23).
+#
+# Three boxes on a ground under a dome and a sun, seen by five cameras at the
+# same place, one render settings prim each (husk --settings):
+#   /Render/plain     no exposure
+#   /Render/exposed   exposure 1.5: the image times 2^1.5
+#   /Render/photo     exposure:time 0.5, exposure:iso 400, exposure:fStop 2:
+#                     time x iso / 100 / fStop^2 = 0.5
+#   /Render/tinted    karma:camera:tint (1, 0.5, 0.25), with exposure 1
+#   /Render/clipped   clippingPlanes [(1, 0, 0, 0.5)]: what lies left of
+#                     x = -0.5 in the camera's space is cut off
+# Exposure and tint multiply the beauty and the light path expressions and
+# leave alpha and the planes of the first hit alone: /Render/tinted also
+# writes the direct diffuse light and the normal.
+
+def Xform "World"
+{
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-20, 0, 20), (20, 0, 20), (20, 0, -20), (-20, 0, -20)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    def Cube "boxA" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        double size = 1
+        double3 xformOp:translate = (-1.6, 0.5, 3)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel material:binding = </World/grey>
+    }
+
+    def Cube "boxB" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        double size = 1
+        double3 xformOp:translate = (0, 0.5, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel material:binding = </World/grey>
+    }
+
+    def Cube "boxC" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        double size = 1
+        double3 xformOp:translate = (1.6, 0.5, -4)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel material:binding = </World/grey>
+    }
+
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </World/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def DomeLight "dome"
+    {
+        float inputs:intensity = 0.6
+    }
+
+    def DistantLight "sun"
+    {
+        float inputs:intensity = 3
+        float inputs:angle = 2
+        bool inputs:normalize = 1
+        float3 xformOp:rotateXYZ = (-50, 30, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def Camera "plain"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 27
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (0, 1.5, 8)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "exposed"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 27
+        float2 clippingRange = (0.1, 1000)
+        float exposure = 1.5
+        double3 xformOp:translate = (0, 1.5, 8)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "photo"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 27
+        float2 clippingRange = (0.1, 1000)
+        float exposure:time = 0.5
+        float exposure:iso = 400
+        float exposure:fStop = 2
+        double3 xformOp:translate = (0, 1.5, 8)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "tinted"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 27
+        float2 clippingRange = (0.1, 1000)
+        float exposure = 1
+        color3f karma:camera:tint = (1, 0.5, 0.25)
+        double3 xformOp:translate = (0, 1.5, 8)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Camera "clipped"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 27
+        float2 clippingRange = (0.1, 1000)
+        float4[] clippingPlanes = [(1, 0, 0, 0.5)]
+        double3 xformOp:translate = (0, 1.5, 8)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "plain"
+    {
+        rel camera = </World/plain>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        int nova:seed = 11
+        int karma:global:pathtracedsamples = 64
+        token karma:global:convergence_mode = "Path Traced"
+        rel products = </Render/Products/beauty>
+    }
+
+    def RenderSettings "exposed"
+    {
+        rel camera = </World/exposed>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        int nova:seed = 11
+        int karma:global:pathtracedsamples = 64
+        token karma:global:convergence_mode = "Path Traced"
+        rel products = </Render/Products/beauty>
+    }
+
+    def RenderSettings "photo"
+    {
+        rel camera = </World/photo>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        int nova:seed = 11
+        int karma:global:pathtracedsamples = 64
+        token karma:global:convergence_mode = "Path Traced"
+        rel products = </Render/Products/beauty>
+    }
+
+    def RenderSettings "tinted"
+    {
+        rel camera = </World/tinted>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        int nova:seed = 11
+        int karma:global:pathtracedsamples = 64
+        token karma:global:convergence_mode = "Path Traced"
+        rel products = </Render/Products/planes>
+    }
+
+    def RenderSettings "clipped"
+    {
+        rel camera = </World/clipped>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        int nova:seed = 11
+        int karma:global:pathtracedsamples = 64
+        token karma:global:convergence_mode = "Path Traced"
+        rel products = </Render/Products/beauty>
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "beauty"
+        {
+            token productName = "beauty.exr"
+            rel orderedVars = [</Render/Vars/C>]
+        }
+
+        def RenderProduct "planes"
+        {
+            token productName = "planes.exr"
+            rel orderedVars = [</Render/Vars/C>, </Render/Vars/direct>, </Render/Vars/N>]
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+
+        def RenderVar "direct"
+        {
+            uniform token dataType = "color3f"
+            uniform string sourceName = "C<RD>L"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color3f"
+            string driver:parameters:aov:name = "direct"
+        }
+
+        def RenderVar "N"
+        {
+            uniform token dataType = "normal3f"
+            uniform string sourceName = "ray:hitN"
+            uniform token sourceType = "raw"
+            token driver:parameters:aov:format = "float3"
+            string driver:parameters:aov:name = "N"
+        }
+    }
+}
