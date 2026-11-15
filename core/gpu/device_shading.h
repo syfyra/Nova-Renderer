@@ -145,12 +145,24 @@ NOVA_INLINE bool acceptHit(const GpuScene &sc, const ShadeGlobals &globals, uint
         return true;
     if (!(o > 0.0f))
         return false;
+    // OptiX reports a ray's way into a round curve and never its way out:
+    // the one hit stands for both, with the chance that either stops the ray
+    // (the CPU meets both, as Karma: a tube of opacity 0.5 stops 0.75).
+    if (mesh.view.desc.shape == MeshShape::Curves && mesh.view.desc.curveStyle == CurveStyle::Round)
+        o = o * (2.0f - o);
     // The object's stable key, not its id (core/scene/object_key.h).
     uint32_t seedBits;
     std::memcpy(&seedBits, &seed, sizeof(seedBits));
     const auto mix = hit_detail::hashMix;
-    const uint32_t h =
-        mix(seedBits ^ mix(objectHash(mesh.view.key) * 0x9E3779B1u + mix(prim ^ mix(instance + 0x632BE5ABu))));
+    uint32_t surface = mix(prim ^ mix(instance + 0x632BE5ABu));
+    // The way in and the way out of a sphere, a point or a curve segment are
+    // one primitive: the distance tells them apart (Scene::OpacityFilter).
+    if (mesh.view.desc.shape != MeshShape::Triangles) {
+        uint32_t tBits;
+        std::memcpy(&tBits, &t, sizeof(tBits));
+        surface = mix(surface ^ mix(tBits + 0x85EBCA6Bu));
+    }
+    const uint32_t h = mix(seedBits ^ mix(objectHash(mesh.view.key) * 0x9E3779B1u + surface));
     return float(h >> 8) * (1.0f / 16777216.0f) < o;
 }
 

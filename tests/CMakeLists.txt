@@ -63,6 +63,7 @@ add_executable(nova_tests
     test_guiding.cpp
     test_determinism.cpp
     test_ipr_fuzz.cpp
+    test_line_light.cpp
 )
 target_link_libraries(nova_tests PRIVATE nova_core Catch2::Catch2WithMain)
 # The GPU backend's tests (docs/design/M10.md); they skip without a device.
@@ -129,7 +130,8 @@ add_executable(nova_hydra_tests test_hydra.cpp test_hydra_mtlx.cpp test_hydra_oi
     test_hydra_holdouts.cpp
     test_hydra_filters.cpp
     test_hydra_sky.cpp test_hydra_medium.cpp test_hydra_karma_settings.cpp test_hydra_resync.cpp
-    test_hydra_curves.cpp test_hydra_robust.cpp test_hydra_fuzz.cpp test_hydra_triangulate.cpp
+    test_hydra_curves.cpp test_hydra_robust.cpp test_hydra_fuzz.cpp test_hydra_fuzz_features.cpp
+    test_hydra_triangulate.cpp
     test_hydra_stage.cpp hydra_test_defaults.cpp)
 target_compile_definitions(nova_hydra_tests PRIVATE NOVA_HFS="${HFS}" NOVA_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nova_hydra_tests PRIVATE hdNova_objects Catch2::Catch2WithMain
@@ -436,6 +438,14 @@ if(EXISTS "${HFS}/python313/python.exe" AND EXISTS "${HFS}/bin/husk.exe")
                 --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova"
                 --out "${CMAKE_CURRENT_BINARY_DIR}/husk_materials/$<CONFIG>")
     set_tests_properties(husk_materials PROPERTIES LABELS husk TIMEOUT 300)
+    # Camera exposure, tint and clipping planes, line and mesh lights and the
+    # details of shapes against Karma's values (docs/bug-audit-2026-11.md,
+    # section 23), CPU and Nova XPU.
+    add_test(NAME husk_scene_details
+        COMMAND "${HFS}/python313/python.exe" -I "${CMAKE_CURRENT_SOURCE_DIR}/husk/check_scene_details.py"
+                --hfs "${HFS}" --stage "${NOVA_STAGE_ROOT}/$<CONFIG>/nova" --scenes "${CMAKE_CURRENT_SOURCE_DIR}/scenes"
+                --out "${CMAKE_CURRENT_BINARY_DIR}/husk_scene_details/$<CONFIG>")
+    set_tests_properties(husk_scene_details PROPERTIES LABELS husk TIMEOUT 600)
 endif()
 
 # nova_cli renders of tests/scenes: no husk, no Houdini license.

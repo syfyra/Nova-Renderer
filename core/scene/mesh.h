@@ -130,7 +130,14 @@ struct MeshDesc {
 struct MeshLightSource {
     int mode = 0;
     float diffuse = 1.0f, specular = 1.0f, samplingQuality = 1.0f;
-    bool operator==(const MeshLightSource &) const = default;
+    // What the light it gives is multiplied by, the camera's view of it left
+    // alone: UsdLux MeshLightAPI's colour times its intensity, which tint the
+    // glow of the mesh's material (LightData::tint).
+    Spectrum tint{1.0f, 1.0f, 1.0f};
+    bool operator==(const MeshLightSource &o) const {
+        return mode == o.mode && diffuse == o.diffuse && specular == o.specular && samplingQuality == o.samplingQuality &&
+               tint.x == o.tint.x && tint.y == o.tint.y && tint.z == o.tint.z;
+    }
 };
 
 } // namespace nova

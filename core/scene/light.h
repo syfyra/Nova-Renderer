@@ -43,6 +43,7 @@ struct LightDesc {
     float height = 1.0f;               // rect light, along local Y
     float length = 1.0f;               // cylinder light, along local X
     bool treatAsPoint = false;         // sphere light as a point light
+    bool treatAsLine = false;          // cylinder light as a line light (lights.h, sampleLightUnfiltered)
 
     // UsdLuxShapingAPI, around the light's -Z axis. Only applied if `shaped`.
     // A cone angle of exactly 90 degrees (the schema fallback) means no cone.

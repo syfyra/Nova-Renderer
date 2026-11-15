@@ -1,0 +1,121 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# The mesh light as Karma renders it (docs/bug-audit-2026-11.md, section 23):
+# a card with UsdLux MeshLightAPI, one unit square, 2 units over a ground of
+# albedo 0.5, facing down, seen from below its level by an orthographic camera
+# that looks down, 20 pixels per unit.
+#
+# In Karma the light of a mesh with the API is the glow of its material, red of
+# 9 here, times the light's colour and intensity, (0.6, 3, 0.6): a red light of
+# 5.4, whatever normalize says (and the camera would see the card's 9).
+
+def Xform "World"
+{
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-10, 0, 10), (10, 0, 10), (10, 0, -10), (-10, 0, -10)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </World/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def Material "glow"
+    {
+        token outputs:mtlx:surface.connect = </World/glow/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 0
+            float inputs:specular = 0
+            float inputs:emission = 9
+            color3f inputs:emission_color = (1, 0, 0)
+            token outputs:out
+        }
+    }
+
+    def Mesh "card" (
+        prepend apiSchemas = ["MeshLightAPI", "MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 3, 2, 1]
+        point3f[] points = [(-0.5, 2, -0.5), (0.5, 2, -0.5), (0.5, 2, 0.5), (-0.5, 2, 0.5)]
+        uniform token subdivisionScheme = "none"
+        uniform bool doubleSided = 1
+        float inputs:intensity = 3
+        color3f inputs:color = (0.2, 1, 0.2)
+        bool inputs:normalize = 1
+        rel material:binding = </World/glow>
+    }
+
+    def Camera "below"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 80
+        float verticalAperture = 60
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (0, 1.5, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/below>
+        int2 resolution = (160, 120)
+        int nova:samples = 64
+        int nova:seed = 11
+        int karma:global:pathtracedsamples = 64
+        token karma:global:convergence_mode = "Path Traced"
+        int karma:object:diffuselimit = 0
+        int nova:object:diffuseLimit = 0
+        rel products = </Render/Products/beauty>
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "beauty"
+        {
+            token productName = "beauty.exr"
+            rel orderedVars = [</Render/Vars/C>]
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+    }
+}

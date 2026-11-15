@@ -1,0 +1,113 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+# The line light as Karma renders it (docs/bug-audit-2026-11.md, section 23):
+# a CylinderLight with treatAsLine (the Light LOP's type "Line"), 3 units
+# long, 2 units over a ground of albedo 0.5, with a box under its right half,
+# seen from above by an orthographic camera, 20 pixels per unit.
+#
+# Karma's law: a point light at the line's middle whose light at a point is
+# its intensity times the angle under which that point sees the line. The
+# radius and normalize do nothing, and the shadows are the middle's: the box
+# at x = 1.8 casts the shadow of a point light at x = 0.
+
+def Xform "World"
+{
+    def Mesh "ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-10, 0, 10), (10, 0, 10), (10, 0, -10), (-10, 0, -10)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/grey>
+    }
+
+    def Material "grey"
+    {
+        token outputs:mtlx:surface.connect = </World/grey/s.outputs:out>
+
+        def Shader "s"
+        {
+            uniform token info:id = "ND_standard_surface_surfaceshader"
+            float inputs:base = 1
+            color3f inputs:base_color = (0.5, 0.5, 0.5)
+            float inputs:specular = 0
+            token outputs:out
+        }
+    }
+
+    def CylinderLight "light"
+    {
+        float inputs:intensity = 10
+        float inputs:radius = 0.1
+        float inputs:length = 3
+        bool inputs:normalize = 1
+        bool treatAsLine = 1
+        double3 xformOp:translate = (0, 2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Cube "box" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        double size = 0.8
+        double3 xformOp:translate = (1.8, 0.4, 0.6)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel material:binding = </World/grey>
+    }
+
+    def Camera "top"
+    {
+        token projection = "orthographic"
+        float horizontalAperture = 80
+        float verticalAperture = 60
+        float2 clippingRange = (0.1, 1000)
+        double3 xformOp:translate = (0, 20, 0)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+
+def Scope "Render"
+{
+    def RenderSettings "rs"
+    {
+        rel camera = </World/top>
+        int2 resolution = (160, 120)
+        int nova:samples = 16
+        int nova:seed = 11
+        int karma:global:pathtracedsamples = 16
+        token karma:global:convergence_mode = "Path Traced"
+        int karma:object:diffuselimit = 0
+        int nova:object:diffuseLimit = 0
+        rel products = </Render/Products/beauty>
+    }
+
+    def Scope "Products"
+    {
+        def RenderProduct "beauty"
+        {
+            token productName = "beauty.exr"
+            rel orderedVars = [</Render/Vars/C>]
+        }
+    }
+
+    def Scope "Vars"
+    {
+        def RenderVar "C"
+        {
+            uniform token dataType = "color4f"
+            uniform string sourceName = "C.*[LO]"
+            uniform token sourceType = "lpe"
+            token driver:parameters:aov:format = "color4f"
+            string driver:parameters:aov:name = "C"
+        }
+    }
+}

@@ -165,8 +165,19 @@ bool Scene::OpacityFilter::accept(const HitCandidate &c, const RayBatch &rays) c
     const float seed = rays.filterSeed ? rays.filterSeed[c.ray] : 0.5f;
     uint32_t seedBits;
     std::memcpy(&seedBits, &seed, sizeof(seedBits));
-    const uint32_t h = hashMix(seedBits ^ hashMix(objectHash(mesh.key) * 0x9E3779B1u +
-                                                   hashMix(c.prim ^ hashMix(c.instance + 0x632BE5ABu))));
+    uint32_t surface = hashMix(c.prim ^ hashMix(c.instance + 0x632BE5ABu));
+    // A ray crosses a sphere, a point or a curve segment twice, in and out,
+    // and both are that one primitive: the distance tells them apart, or the
+    // ray that passed the near side would always pass the far one (a
+    // half-transparent sphere stopped half of the rays where two surfaces of
+    // that opacity stop three quarters; Karma: 0.750, measured). Triangles
+    // are met once and keep their numbers.
+    if (mesh.desc.shape != MeshShape::Triangles) {
+        uint32_t tBits;
+        std::memcpy(&tBits, &c.t, sizeof(tBits));
+        surface = hashMix(surface ^ hashMix(tBits + 0x85EBCA6Bu));
+    }
+    const uint32_t h = hashMix(seedBits ^ hashMix(objectHash(mesh.key) * 0x9E3779B1u + surface));
     return float(h >> 8) * (1.0f / 16777216.0f) < o;
 }
 
@@ -243,6 +254,33 @@ MeshId Scene::createMesh(std::optional<uint64_t> key) {
     m_meshes[id].alive = true;
     m_meshes[id].key = key ? *key : id;
     return id;
+}
+
+void Scene::setMeshKey(MeshId id, uint64_t key) {
+    std::lock_guard lock(m_mutex);
+    if (id >= m_meshes.size() || !m_meshes[id].alive || m_meshes[id].key == key)
+        return;
+    m_meshes[id].key = key;
+    m_emittersDirty = true; // emissive meshes are lights in the order of their keys
+    ++m_version;
+}
+
+void Scene::setLightKey(LightId id, uint64_t key) {
+    std::lock_guard lock(m_mutex);
+    if (id >= m_lights.size() || !m_lights[id] || m_lightKeys[id] == key)
+        return;
+    m_lightKeys[id] = key;
+    m_lightsDirty = true; // the lights are in the order of their keys
+    ++m_version;
+}
+
+void Scene::setVolumeKey(VolumeId id, uint64_t key) {
+    std::lock_guard lock(m_mutex);
+    if (id >= m_volumes.size() || !m_volumes[id].alive || m_volumes[id].key == key)
+        return;
+    m_volumes[id].key = key;
+    m_volumesDirty = true; // the active volumes are in the order of their keys
+    ++m_version;
 }
 
 void Scene::updateMesh(MeshId id, MeshDesc desc) {
@@ -396,6 +434,8 @@ void Scene::setMeshMaterials(MeshId id, std::vector<MaterialId> slots, std::vect
     std::lock_guard lock(m_mutex);
     if (id >= m_meshes.size() || !m_meshes[id].alive)
         return;
+    if (m_meshes[id].materialSlots == slots && m_meshes[id].triangleSlots == triangleSlots)
+        return; // (a delegate may bind again what is bound)
     m_meshes[id].materialSlots = std::move(slots);
     m_meshes[id].triangleSlots = std::move(triangleSlots);
     m_bindingsDirty = true;
@@ -1556,7 +1596,8 @@ void Scene::buildEmitters() {
                 d.normal = len > 0.0f ? nc * (1.0f / len) : Vec3f{0.0f, 0.0f, 1.0f};
                 d.area = 0.5f * len;
                 d.twoSided = true;
-                d.emission = isFinite(estimate[t]) ? estimate[t] : spectrum(0.0f);
+                d.tint = isFinite(rec.lightSource.tint) ? rec.lightSource.tint : spectrum(0.0f);
+                d.emission = isFinite(estimate[t]) ? estimate[t] * d.tint : spectrum(0.0f); // (the power estimate)
                 d.diffuse = rec.lightSource.diffuse;
                 d.specular = rec.lightSource.specular;
                 d.selection = quality;

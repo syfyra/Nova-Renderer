@@ -218,3 +218,50 @@ TEST_CASE("Depth of field blurs a defocused edge by the circle of confusion", "[
         CHECK_THAT(alpha[size_t(x)], WithinAbs(expected, 0.01));
     }
 }
+
+// UsdGeomCamera's clippingPlanes (docs/bug-audit-2026-11.md, section 23): a
+// plane (a, b, c, d) in the camera's space cuts a camera ray off where
+// a x + b y + c z + d < 0, as the near and far planes do. They were not read.
+TEST_CASE("Clipping planes cut camera rays as the near and far planes do", "[camera]") {
+    const Camera plain = makePerspectiveCamera({0.0f, 0.0f, 0.0f}, kFocal, kAperture, kWidth, kHeight);
+    const Ray free = plain.generateRay({0.0f, 0.0f});
+
+    // What lies nearer than 3 units is cut off: the central ray starts 3 units out.
+    Camera nearer = plain;
+    nearer.clipPlanes[0][0] = 0.0f, nearer.clipPlanes[0][1] = 0.0f, nearer.clipPlanes[0][2] = -1.0f,
+    nearer.clipPlanes[0][3] = -3.0f; // -z - 3 >= 0: z <= -3
+    nearer.clipPlaneCount = 1;
+    const Ray a = nearer.generateRay({0.0f, 0.0f});
+    CHECK_THAT(double(a.org.z), WithinAbs(-3.0, 1e-5));
+    CHECK(length(a.dir - free.dir) < 1e-6f);
+    CHECK(a.tMax > 2.0f); // still open towards the far plane
+    // An oblique ray starts on the plane too, further along its own direction.
+    const Ray oblique = nearer.generateRay({0.8f, 0.5f});
+    CHECK_THAT(double(oblique.org.z), WithinAbs(-3.0, 1e-4));
+
+    // With a second plane that cuts off what lies beyond 5 units the ray is 2 long.
+    Camera slab = nearer;
+    slab.clipPlanes[1][2] = 1.0f, slab.clipPlanes[1][3] = 5.0f; // z + 5 >= 0: z >= -5
+    slab.clipPlaneCount = 2;
+    const Ray b = slab.generateRay({0.0f, 0.0f});
+    CHECK_THAT(double(b.org.z), WithinAbs(-3.0, 1e-5));
+    CHECK_THAT(double(b.tMax), WithinAbs(2.0, 1e-4));
+
+    // A plane through the eye along the view: the rays of its cut side see nothing, the others all.
+    Camera half = plain;
+    half.clipPlanes[0][0] = 1.0f; // x >= 0
+    half.clipPlaneCount = 1;
+    const Ray cut = half.generateRay({-0.5f, 0.0f}), kept = half.generateRay({0.5f, 0.0f});
+    CHECK(cut.tMax == 0.0f);
+    const Ray same = plain.generateRay({0.5f, 0.0f});
+    CHECK(length(kept.org - same.org) < 1e-6f);
+    CHECK(length(kept.dir - same.dir) < 1e-6f);
+    CHECK(kept.tMax == same.tMax);
+
+    // Two planes that leave nothing between them.
+    Camera none = plain;
+    none.clipPlanes[0][2] = -1.0f, none.clipPlanes[0][3] = -5.0f; // z <= -5
+    none.clipPlanes[1][2] = 1.0f, none.clipPlanes[1][3] = 3.0f;   // z >= -3
+    none.clipPlaneCount = 2;
+    CHECK(none.generateRay({0.0f, 0.0f}).tMax == 0.0f);
+}

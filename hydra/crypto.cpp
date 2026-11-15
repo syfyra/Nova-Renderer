@@ -1,6 +1,7 @@
 #include "crypto.h"
 
 #include "instancer.h"
+#include "stablePath.h"
 
 #include <pxr/base/vt/array.h>
 #include <pxr/imaging/hd/instancerTopologySchema.h>
@@ -42,11 +43,14 @@ std::string HdNovaCryptoObjectName(HdSceneDelegate *sd, SdfPath const &id, SdfPa
     // A prototype prim of native instancing: relative to its instances.
     if (HdInstancerTopologySchema topo = HdInstancerTopologySchema::GetFromParent(si->GetPrim(instancerId).dataSource))
         if (HdPathArrayDataSourceHandle locations = topo.GetInstanceLocations()) {
+            // The least of the instances, itself named by its first instance
+            // where it lies in a prototype (an instance in an instance): USD
+            // numbers its prototypes anew at every load (stablePath.h).
             const VtArray<SdfPath> paths = locations->GetTypedValue(0.0f);
             if (!paths.empty())
-                return paths[0].AppendPath(path).GetString();
+                return HdNovaStablePath(si, *std::min_element(paths.begin(), paths.end())) + "/" + path.GetString();
         }
-    return id.GetString();
+    return HdNovaStablePath(si, id);
 }
 
 namespace {

@@ -1,5 +1,7 @@
 #include "volume.h"
 
+#include "stablePath.h"
+
 #include "diagnostics.h"
 #include "field.h"
 #include "instancer.h"
@@ -358,15 +360,21 @@ void HdNovaVolume::Sync(HdSceneDelegate *sd, HdRenderParam *renderParam, HdDirty
     // Stable keys, not the sync order: the path, and the instance's index
     // behind the first.
     if (first)
-        _volumeId = scene.createVolume(nova::objectKey(id.GetString()));
+        _volumeId = scene.createVolume(HdNovaObjectKey(sd, id));
     std::vector<nova::VolumeId> added;
     while (_instanceVolumeIds.size() + 1 < count) {
-        _instanceVolumeIds.push_back(scene.createVolume(nova::objectKey(id.GetString(), _instanceVolumeIds.size() + 1)));
+        _instanceVolumeIds.push_back(scene.createVolume(HdNovaObjectKey(sd, id, _instanceVolumeIds.size() + 1)));
         added.push_back(_instanceVolumeIds.back());
     }
     while (_instanceVolumeIds.size() + 1 > count) {
         scene.removeVolume(_instanceVolumeIds.back());
         _instanceVolumeIds.pop_back();
+    }
+    if (!first && resample) { // a native instance's prototype is named by its first instance (stablePath.h)
+        const std::string name = HdNovaStablePath(sd, id);
+        scene.setVolumeKey(_volumeId, nova::objectKey(name));
+        for (size_t k = 0; k < _instanceVolumeIds.size(); ++k)
+            scene.setVolumeKey(_instanceVolumeIds[k], nova::objectKey(name, k + 1));
     }
     const bool visible = IsVisible() && !_noInstances;
     if (rebuild) {

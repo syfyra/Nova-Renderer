@@ -2,6 +2,7 @@
 
 #include "medium.h"
 #include "motion.h"
+#include "primvarUtil.h"
 #include "material/registry.h"
 
 #include "core/scene/mesh.h"
@@ -78,6 +79,11 @@ private:
     // (nova:object:lightSource) and lightsource_* (constant).
     nova::MeshLightSource _lightSource;
     nova::MeshLightSource _appliedLightSource;
+    // UsdLux MeshLightAPI (HdNovaMeshLight): the light the mesh is, as read and
+    // as its material in the scene has it (the mesh's own; none without the API).
+    HdNovaMeshLight _meshLight;
+    HdNovaMeshLight _appliedMeshLight;
+    nova::MaterialId _meshLightMaterial = nova::kInvalidId;
     // Ray visibility and holdout mode (M11 P2): karma:object:rendervisibility
     // and holdoutmode (constant).
     nova::ObjectVisibility _visibility;

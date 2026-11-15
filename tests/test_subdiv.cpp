@@ -516,3 +516,86 @@ TEST_CASE("The tessellator writes the parameters of faces", "[subdiv][attributes
     }
     CHECK(triangles > 0);
 }
+
+// A surface whose faces are all holes (holeIndices, or interpolateBoundary
+// "none" on a mesh whose faces all touch its boundary) is nothing. The
+// tessellation fails as before, and says that this is why: the host then
+// renders nothing, as Karma does, and not the control mesh
+// (docs/bug-audit-2026-11.md, section 23).
+TEST_CASE("A surface of holes alone is reported as one", "[subdiv]") {
+    SubdivMeshDesc quad;
+    quad.points = {{-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0}};
+    quad.faceVertexCounts = {4};
+    quad.faceVertexIndices = {0, 1, 2, 3};
+    quad.vtxBoundary = SubdivVtxBoundary::None;
+    MeshDesc m;
+    std::string err;
+    SubdivStats boundary;
+    CHECK_FALSE(tessellateSubdiv(quad, 8, m, &err, &boundary));
+    CHECK(boundary.allHoles);
+
+    SubdivMeshDesc cube = unitCube();
+    cube.holeIndices = {0, 1, 2, 3, 4, 5};
+    SubdivStats holes;
+    CHECK_FALSE(tessellateSubdiv(cube, 4, m, &err, &holes));
+    CHECK(holes.allHoles);
+
+    SubdivMeshDesc bad = unitCube(); // another failure is not one of holes
+    bad.faceVertexIndices[3] = 99;
+    SubdivStats other;
+    CHECK_FALSE(tessellateSubdiv(bad, 4, m, &err, &other));
+    CHECK_FALSE(other.allHoles);
+}
+
+// Face-varying values without indices (one value per face-vertex, as files
+// without primvars:st:indices have them): what the face-vertices of a vertex
+// hold alike is one value there. Each face-vertex its own value made every
+// face an island, whose values were interpolated to its own border only; Karma
+// joins them (measured with faceVaryingLinearInterpolation "none").
+TEST_CASE("Face-varying values without indices are joined where they agree", "[subdiv][attributes]") {
+    SubdivMeshDesc c = unitCube();
+    SubdivPrimvar rest; // the position of every face-vertex: continuous over the whole cube
+    rest.name = "rest";
+    rest.interp = PrimvarInterp::FaceVarying;
+    rest.width = 3;
+    for (int32_t v : c.faceVertexIndices) {
+        const Vec3f x = c.points[size_t(v)];
+        rest.values.insert(rest.values.end(), {x.x, x.y, x.z});
+    }
+    c.primvars.push_back(rest);
+    MeshDesc m;
+    REQUIRE(tessellateSubdiv(c, 8, m));
+    const MeshAttribute *a = m.findAttribute("rest");
+    REQUIRE(a);
+    REQUIRE(a->rate == AttributeRate::Corner);
+    float worst = 0.0f; // joined, the values are the limit positions, as with the vertices' own indices
+    for (size_t k = 0; k < m.indices.size(); ++k)
+        worst = std::fmax(worst, maxComponent(absolute(valueAt(*a, k) - m.points[m.indices[k]])));
+    CHECK(worst < 2e-6f);
+
+    // Where the values differ a seam stays: every face its own square, two units apart.
+    SubdivMeshDesc s = unitCube();
+    SubdivPrimvar st;
+    st.name = "st";
+    st.interp = PrimvarInterp::FaceVarying;
+    st.width = 2;
+    for (size_t f = 0; f < 6; ++f) {
+        const float u0 = 2.0f * float(f), corners[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+        for (const auto &q : corners)
+            st.values.insert(st.values.end(), {u0 + q[0], q[1]});
+    }
+    s.primvars.push_back(st);
+    REQUIRE(tessellateSubdiv(s, 8, m));
+    a = m.findAttribute("st");
+    REQUIRE(a);
+    int outside = 0, cornersFound = 0;
+    for (size_t k = 0; k < m.indices.size(); ++k) {
+        const size_t face = (k / 3) / 128;
+        const float fs = a->data[k * 2] - 2.0f * float(face), t = a->data[k * 2 + 1];
+        outside += fs < -1e-5f || fs > 1.0f + 1e-5f || t < -1e-5f || t > 1.0f + 1e-5f;
+        cornersFound += (std::fabs(fs) < 1e-6f || std::fabs(fs - 1.0f) < 1e-6f) &&
+                        (std::fabs(t) < 1e-6f || std::fabs(t - 1.0f) < 1e-6f);
+    }
+    CHECK(outside == 0);
+    CHECK(cornersFound >= 6 * 4);
+}

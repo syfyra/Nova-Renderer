@@ -34,7 +34,10 @@ public:
         m_lpeProgram = nullptr;
         m_guide.reset(); // another scene's field (versions are per scene)
     }
-    void setCamera(const Camera &camera) { m_camera = camera; }
+    void setCamera(const Camera &camera) {
+        m_camera = camera;
+        m_film.exposure = camera.exposure; // read with the film's radiance (Film::exposure)
+    }
     const Camera &camera() const { return m_camera; }
     void setSettings(const RenderSettings &settings);
     const RenderSettings &settings() const { return m_settings; }

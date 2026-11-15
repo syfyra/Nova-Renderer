@@ -1958,7 +1958,7 @@ void shadeHit(const ShadeContext &c, WaveQueues &q, uint32_t k, const SurfaceHit
                 const float lightPdf = misNeedsPmf(strategy, bsdfPdf)
                                            ? pathPmf(c, q, p)(emitter) * emitterPdf(light, q.prevP[p], hit.P)
                                            : 0.0f;
-                Le *= lightMultiplier(light, q.diffuseShare[p]) * bsdfSampleWeight(strategy, bsdfPdf, lightPdf);
+                Le *= light.tint * (lightMultiplier(light, q.diffuseShare[p]) * bsdfSampleWeight(strategy, bsdfPdf, lightPdf));
             }
             // The whole weight for a light that the ray of every class finds; one that
             // some classes do not see is the light of this ray's class.

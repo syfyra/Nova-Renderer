@@ -229,7 +229,7 @@ bool HdNovaDenoiseBuffers(nova::Film const &film, std::vector<HdNovaRenderBuffer
         for (int x = 0; x < w; ++x) {
             const size_t src = size_t(y) * size_t(w) + size_t(x), dst = size_t(h - 1 - y) * size_t(w) + size_t(x);
             const float inv = film.count[src] ? 1.0f / float(film.count[src]) : 0.0f;
-            const nova::Spectrum c = film.colorSum[src] * inv;
+            const nova::Spectrum c = film.colorSum[src] * inv * film.exposure;
             float *b = beauty.data() + dst * 4;
             b[0] = c.x;
             b[1] = c.y;

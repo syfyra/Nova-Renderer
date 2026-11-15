@@ -235,8 +235,35 @@ bool tessellateSubdiv(const SubdivMeshDesc &d, int rate, MeshDesc &out, const Te
         Primvar p{&pv, pv.interp, {}, -1};
         if (p.interp == PrimvarInterp::FaceVarying) {
             if (pv.indices.empty()) {
+                // Values without indices: what face-vertices of one vertex
+                // hold alike is one value there, so the surface's faces are
+                // joined where their values agree and a seam is where they
+                // differ. One value per face-vertex, each its own, would make
+                // every face an island: its values would be interpolated to
+                // its own border only (Karma joins them; measured with
+                // faceVaryingLinearInterpolation "none", docs/bug-audit-2026-11.md 23).
                 p.fvarIndices.resize(allFaceVerts);
                 std::iota(p.fvarIndices.begin(), p.fvarIndices.end(), 0);
+                if (count >= allFaceVerts && d.faceVertexIndices.size() == allFaceVerts) {
+                    const size_t w = pv.width;
+                    // Per vertex the face-vertices seen so far, as a list through `next`.
+                    std::vector<int32_t> first(size_t(numVertices), -1), next(allFaceVerts, -1);
+                    for (size_t k = 0; k < allFaceVerts; ++k) {
+                        const int32_t v = d.faceVertexIndices[k];
+                        if (v < 0 || v >= numVertices)
+                            continue;
+                        int32_t same = -1;
+                        for (int32_t j = first[size_t(v)]; j >= 0 && same < 0; j = next[size_t(j)])
+                            if (std::memcmp(&pv.values[size_t(j) * w], &pv.values[k * w], w * sizeof(float)) == 0)
+                                same = j;
+                        if (same >= 0) {
+                            p.fvarIndices[k] = same;
+                        } else {
+                            next[k] = first[size_t(v)];
+                            first[size_t(v)] = int32_t(k);
+                        }
+                    }
+                }
             } else {
                 p.fvarIndices = pv.indices;
             }
@@ -410,8 +437,11 @@ bool tessellateSubdiv(const SubdivMeshDesc &d, int rate, MeshDesc &out, const Te
     const int32_t copyBase = sharedPoints + interiorStart[size_t(numFaces)];
     const size_t numPoints = size_t(copyBase) + size_t(copyStart[size_t(numFaces)]);
     const size_t numTris = size_t(facetStart[size_t(numFaces)]);
-    if (numTris == 0)
+    if (numTris == 0) {
+        if (stats)
+            stats->allHoles = true;
         return fail(error, "every face is a hole");
+    }
 
     out.pointSteps = steps;
     out.points.assign(numPoints * steps, Vec3f{0.0f, 0.0f, 0.0f});
